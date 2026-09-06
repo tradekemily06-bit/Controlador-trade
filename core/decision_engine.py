@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from .market_context import MarketContext, MarketContextResult, MarketDirection
 from .models import AnalysisResult, Signal
 from .risk_manager import RiskManager
 
@@ -18,7 +19,7 @@ class DecisionResult:
 
 
 class DecisionEngine:
-    """Orquestra sinal e gerenciamento de risco."""
+    """Orquestra sinal, contexto de mercado e gerenciamento de risco."""
 
     def __init__(self, risk_manager: RiskManager):
         self.risk_manager = risk_manager
@@ -27,6 +28,7 @@ class DecisionEngine:
         self,
         *,
         analysis: AnalysisResult,
+        market_context: MarketContextResult | None = None,
         daily_result=0.0,
         operations_count=0,
         consecutive_losses=0,
@@ -38,6 +40,43 @@ class DecisionEngine:
                 signal=analysis.signal,
                 reason=analysis.reason,
             )
+
+        if market_context is not None:
+            if market_context.context != MarketContext.FAVORAVEL:
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=analysis.signal,
+                    reason=(
+                        "Contexto de mercado não favorável "
+                        "para execução."
+                    ),
+                )
+
+            if (
+                analysis.signal == Signal.COMPRA
+                and market_context.direction != MarketDirection.ALTA
+            ):
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=analysis.signal,
+                    reason=(
+                        "Direção do contexto incompatível "
+                        "com sinal de compra."
+                    ),
+                )
+
+            if (
+                analysis.signal == Signal.VENDA
+                and market_context.direction != MarketDirection.BAIXA
+            ):
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=analysis.signal,
+                    reason=(
+                        "Direção do contexto incompatível "
+                        "com sinal de venda."
+                    ),
+                )
 
         risk = self.risk_manager.evaluate(
             daily_result=daily_result,
@@ -55,5 +94,5 @@ class DecisionEngine:
         return DecisionResult(
             decision=FinalDecision.EXECUTAR,
             signal=analysis.signal,
-            reason="Sinal aprovado e risco dentro dos limites.",
+            reason="Sinal, contexto e risco aprovados.",
         )

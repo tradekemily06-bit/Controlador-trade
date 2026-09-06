@@ -86,3 +86,211 @@ def test_bloqueia_por_perdas_consecutivas():
         consecutive_losses=3,
     )
     assert result.decision == FinalDecision.BLOQUEAR
+
+
+def test_executa_compra_com_contexto_favoravel_na_alta():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.COMPRA,
+        score=80,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=85,
+        reason="Ambiente favorável.",
+        direction=MarketDirection.ALTA,
+    )
+
+    result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+        analysis=analysis,
+        market_context=context,
+        daily_result=-20,
+    )
+
+    assert result.decision == FinalDecision.EXECUTAR
+
+
+def test_executa_venda_com_contexto_favoravel_na_baixa():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.VENDA,
+        score=20,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=85,
+        reason="Ambiente favorável.",
+        direction=MarketDirection.BAIXA,
+    )
+
+    result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+        analysis=analysis,
+        market_context=context,
+        daily_result=-20,
+    )
+
+    assert result.decision == FinalDecision.EXECUTAR
+
+
+def test_aguarda_compra_com_contexto_favoravel_na_baixa():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.COMPRA,
+        score=80,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=85,
+        reason="Ambiente favorável.",
+        direction=MarketDirection.BAIXA,
+    )
+
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=context,
+    )
+
+    assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_aguarda_venda_com_contexto_favoravel_na_alta():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.VENDA,
+        score=20,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=85,
+        reason="Ambiente favorável.",
+        direction=MarketDirection.ALTA,
+    )
+
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=context,
+    )
+
+    assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_aguarda_com_contexto_neutro():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.COMPRA,
+        score=80,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.NEUTRO,
+        score=50,
+        reason="Ambiente neutro.",
+        direction=MarketDirection.ALTA,
+    )
+
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=context,
+    )
+
+    assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_aguarda_com_contexto_desfavoravel():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.VENDA,
+        score=20,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.DESFAVORAVEL,
+        score=20,
+        reason="Ambiente desfavorável.",
+        direction=MarketDirection.BAIXA,
+    )
+
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=context,
+    )
+
+    assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_risco_bloqueia_mesmo_com_contexto_favoravel():
+    from core.market_context import (
+        MarketContext,
+        MarketContextResult,
+        MarketDirection,
+    )
+
+    analysis = AnalysisResult(
+        signal=Signal.COMPRA,
+        score=90,
+        reason="Score forte.",
+        confirmed=True,
+    )
+
+    context = MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=90,
+        reason="Ambiente favorável.",
+        direction=MarketDirection.ALTA,
+    )
+
+    result = DecisionEngine(
+        RiskManager(daily_loss_limit=100)
+    ).evaluate(
+        analysis=analysis,
+        market_context=context,
+        daily_result=-100,
+    )
+
+    assert result.decision == FinalDecision.BLOQUEAR
