@@ -3,6 +3,7 @@ from enum import Enum
 
 from .market_direction import MarketDirection
 from .market_data import Candle
+from .liquidity_engine import LiquidityEngine
 from .trend_engine import TrendEngine
 from .volatility_engine import VolatilityEngine
 
@@ -38,9 +39,11 @@ class MarketContextEngine:
         *,
         trend_engine=None,
         volatility_engine=None,
+        liquidity_engine=None,
     ):
         self.trend_engine = trend_engine or TrendEngine()
         self.volatility_engine = volatility_engine or VolatilityEngine()
+        self.liquidity_engine = liquidity_engine or LiquidityEngine()
 
     def evaluate(
         self,
@@ -99,7 +102,7 @@ class MarketContextEngine:
         self,
         *,
         candles: list[Candle],
-        liquidity_quality: float = 0.0,
+        liquidity_quality: float | None = None,
     ) -> MarketContextResult:
         """Avalia automaticamente tendência + volatilidade + liquidez."""
 
@@ -108,6 +111,10 @@ class MarketContextEngine:
 
         trend = self.trend_engine.evaluate(candles=candles)
         volatility = self.volatility_engine.evaluate(candles=candles)
+
+        if liquidity_quality is None:
+            liquidity = self.liquidity_engine.evaluate(candles=candles)
+            liquidity_quality = liquidity.score
 
         return self.evaluate(
             trend_strength=trend.strength,
