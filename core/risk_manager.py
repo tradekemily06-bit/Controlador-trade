@@ -35,14 +35,14 @@ class RiskManager:
         operations_count=0,
         consecutive_losses=0,
     ):
-        if daily_result < -abs(self.daily_loss_limit):
+        if self.daily_loss_limit != 0 and daily_result <= -abs(self.daily_loss_limit):
             return RiskDecision(False, "Limite de perda diária atingido.")
 
-        if self.max_operations > 0 and operations_count >= self.max_operations:
+        if self.max_operations != 0 and operations_count >= self.max_operations:
             return RiskDecision(False, "Limite de operações atingido.")
 
         if (
-            self.max_consecutive_losses > 0
+            self.max_consecutive_losses != 0
             and consecutive_losses >= self.max_consecutive_losses
         ):
             return RiskDecision(
