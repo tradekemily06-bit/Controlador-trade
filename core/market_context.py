@@ -1,17 +1,16 @@
 from dataclasses import dataclass
 from enum import Enum
 
+from .market_direction import MarketDirection
+from .market_data import Candle
+from .trend_engine import TrendEngine
+from .volatility_engine import VolatilityEngine
+
 
 class MarketContext(str, Enum):
     FAVORAVEL = "FAVORAVEL"
     NEUTRO = "NEUTRO"
     DESFAVORAVEL = "DESFAVORAVEL"
-
-
-class MarketDirection(str, Enum):
-    ALTA = "ALTA"
-    BAIXA = "BAIXA"
-    NEUTRA = "NEUTRA"
 
 
 @dataclass(frozen=True)
@@ -26,14 +25,22 @@ class MarketContextEngine:
     """
     Avalia a qualidade geral do ambiente de mercado.
 
-    Os parâmetros são notas de qualidade de 0 a 100:
-    - trend_strength: força da tendência.
-    - volatility_quality: qualidade da volatilidade para execução.
-    - liquidity_quality: qualidade da liquidez para execução.
+    A API numérica original é preservada.
+    A análise automática por candles é feita por
+    evaluate_from_candles().
 
     Este módulo NÃO gera COMPRA ou VENDA.
     Ele apenas avalia o ambiente de mercado.
     """
+
+    def __init__(
+        self,
+        *,
+        trend_engine=None,
+        volatility_engine=None,
+    ):
+        self.trend_engine = trend_engine or TrendEngine()
+        self.volatility_engine = volatility_engine or VolatilityEngine()
 
     def evaluate(
         self,
@@ -86,4 +93,25 @@ class MarketContextEngine:
             score=score,
             reason="Ambiente de mercado sem vantagem clara.",
             direction=direction,
+        )
+
+    def evaluate_from_candles(
+        self,
+        *,
+        candles: list[Candle],
+        liquidity_quality: float = 0.0,
+    ) -> MarketContextResult:
+        """Avalia automaticamente tendência + volatilidade + liquidez."""
+
+        if not candles:
+            raise ValueError("É necessário fornecer candles.")
+
+        trend = self.trend_engine.evaluate(candles=candles)
+        volatility = self.volatility_engine.evaluate(candles=candles)
+
+        return self.evaluate(
+            trend_strength=trend.strength,
+            volatility_quality=volatility.score,
+            liquidity_quality=liquidity_quality,
+            direction=trend.direction,
         )

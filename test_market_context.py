@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import pytest
 
 from core.market_context import (
@@ -5,160 +7,132 @@ from core.market_context import (
     MarketContextEngine,
     MarketDirection,
 )
+from core.market_data import Candle
 
 
-def test_contexto_favoravel():
-    engine = MarketContextEngine()
+def make_candle(
+    index,
+    *,
+    open_price,
+    high,
+    low,
+    close,
+):
+    return Candle(
+        timestamp=datetime(2026, 1, 1) + timedelta(minutes=index),
+        open=open_price,
+        high=high,
+        low=low,
+        close=close,
+        volume=100,
+    )
 
-    result = engine.evaluate(
-        trend_strength=90,
-        volatility_quality=80,
-        liquidity_quality=90,
-        direction=MarketDirection.ALTA,
+
+def test_integrates_trend_and_volatility_into_context():
+    candles = [
+        make_candle(0, open_price=100, high=101, low=99, close=100),
+        make_candle(1, open_price=100, high=102, low=100, close=101),
+        make_candle(2, open_price=101, high=103, low=101, close=102),
+    ]
+
+    result = MarketContextEngine().evaluate_from_candles(
+        candles=candles,
+        liquidity_quality=100,
     )
 
     assert result.context == MarketContext.FAVORAVEL
-    assert result.score >= 70
     assert result.direction == MarketDirection.ALTA
+    assert result.score >= 70
 
 
-def test_contexto_desfavoravel():
-    engine = MarketContextEngine()
+def test_low_volatility_can_keep_context_neutral():
+    candles = [
+        make_candle(0, open_price=100, high=100.05, low=99.95, close=100),
+        make_candle(1, open_price=100, high=100.05, low=99.95, close=100),
+        make_candle(2, open_price=100, high=100.05, low=99.95, close=100),
+    ]
 
-    result = engine.evaluate(
-        trend_strength=10,
-        volatility_quality=20,
-        liquidity_quality=10,
-        direction=MarketDirection.BAIXA,
-    )
-
-    assert result.context == MarketContext.DESFAVORAVEL
-    assert result.score <= 30
-    assert result.direction == MarketDirection.BAIXA
-
-
-def test_contexto_neutro():
-    engine = MarketContextEngine()
-
-    result = engine.evaluate(
-        trend_strength=50,
-        volatility_quality=50,
+    result = MarketContextEngine().evaluate_from_candles(
+        candles=candles,
         liquidity_quality=50,
     )
 
     assert result.context == MarketContext.NEUTRO
-    assert result.score == 50
     assert result.direction == MarketDirection.NEUTRA
 
 
-@pytest.mark.parametrize(
-    "field",
-    [
-        "trend_strength",
-        "volatility_quality",
-        "liquidity_quality",
-    ],
-)
-def test_valores_abaixo_de_zero_sao_rejeitados(field):
-    engine = MarketContextEngine()
-
-    values = {
-        "trend_strength": 50,
-        "volatility_quality": 50,
-        "liquidity_quality": 50,
-    }
-
-    values[field] = -1
+def test_rejects_invalid_liquidity():
+    candles = [
+        make_candle(0, open_price=100, high=101, low=99, close=100),
+        make_candle(1, open_price=100, high=101, low=99, close=100),
+        make_candle(2, open_price=100, high=101, low=99, close=100),
+    ]
 
     with pytest.raises(ValueError):
-        engine.evaluate(**values)
-
-
-@pytest.mark.parametrize(
-    "field",
-    [
-        "trend_strength",
-        "volatility_quality",
-        "liquidity_quality",
-    ],
-)
-def test_valores_acima_de_cem_sao_rejeitados(field):
-    engine = MarketContextEngine()
-
-    values = {
-        "trend_strength": 50,
-        "volatility_quality": 50,
-        "liquidity_quality": 50,
-    }
-
-    values[field] = 101
-
-    with pytest.raises(ValueError):
-        engine.evaluate(**values)
-
-
-@pytest.mark.parametrize(
-    "direction",
-    [
-        MarketDirection.ALTA,
-        MarketDirection.BAIXA,
-        MarketDirection.NEUTRA,
-    ],
-)
-def test_direcao_e_preservada(direction):
-    engine = MarketContextEngine()
-
-    result = engine.evaluate(
-        trend_strength=80,
-        volatility_quality=80,
-        liquidity_quality=80,
-        direction=direction,
-    )
-
-    assert result.direction == direction
-
-
-def test_direcao_invalida_e_rejeitada():
-    engine = MarketContextEngine()
-
-    with pytest.raises(ValueError):
-        engine.evaluate(
-            trend_strength=80,
-            volatility_quality=80,
-            liquidity_quality=80,
-            direction="INVALIDA",
+        MarketContextEngine().evaluate_from_candles(
+            candles=candles,
+            liquidity_quality=101,
         )
 
 
-def test_volatilidade_baixa_pode_ser_qualidade():
-    engine = MarketContextEngine()
+def test_requires_candles():
+    with pytest.raises(ValueError):
+        MarketContextEngine().evaluate_from_candles(
+            candles=[],
+            liquidity_quality=50,
+        )
 
-    result = engine.evaluate(
-        trend_strength=80,
-        volatility_quality=90,
-        liquidity_quality=90,
+
+def test_context_from_candles_integrates_trend_and_volatility():
+    candles = [
+        make_candle(0, open_price=100, high=101, low=99, close=100),
+        make_candle(1, open_price=100, high=102, low=100, close=101),
+        make_candle(2, open_price=101, high=103, low=101, close=102),
+    ]
+
+    result = MarketContextEngine().evaluate_from_candles(
+        candles=candles,
+        liquidity_quality=100,
     )
 
     assert result.context == MarketContext.FAVORAVEL
+    assert result.direction == MarketDirection.ALTA
+    assert result.score >= 70
 
 
-def test_score_nao_define_direcao():
-    engine = MarketContextEngine()
+def test_low_volatility_can_keep_context_neutral():
+    candles = [
+        make_candle(0, open_price=100, high=100.05, low=99.95, close=100),
+        make_candle(1, open_price=100, high=100.05, low=99.95, close=100.01),
+        make_candle(2, open_price=100.01, high=100.06, low=99.96, close=100.02),
+    ]
 
-    alta = engine.evaluate(
-        trend_strength=90,
-        volatility_quality=90,
-        liquidity_quality=90,
-        direction=MarketDirection.ALTA,
+    result = MarketContextEngine().evaluate_from_candles(
+        candles=candles,
+        liquidity_quality=50,
     )
 
-    baixa = engine.evaluate(
-        trend_strength=90,
-        volatility_quality=90,
-        liquidity_quality=90,
-        direction=MarketDirection.BAIXA,
-    )
+    assert result.context == MarketContext.NEUTRO
+    assert result.direction == MarketDirection.ALTA
 
-    assert alta.score == baixa.score
-    assert alta.direction == MarketDirection.ALTA
-    assert baixa.direction == MarketDirection.BAIXA
+
+def test_evaluate_from_candles_requires_candles():
+    with pytest.raises(ValueError):
+        MarketContextEngine().evaluate_from_candles(
+            candles=[],
+            liquidity_quality=50,
+        )
+
+
+def test_evaluate_from_candles_rejects_invalid_liquidity():
+    candles = [
+        make_candle(0, open_price=100, high=101, low=99, close=100),
+        make_candle(1, open_price=100, high=101, low=99, close=100),
+        make_candle(2, open_price=100, high=101, low=99, close=100),
+    ]
+
+    with pytest.raises(ValueError):
+        MarketContextEngine().evaluate_from_candles(
+            candles=candles,
+            liquidity_quality=101,
+        )

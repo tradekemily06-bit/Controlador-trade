@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from .market_data import Candle
-from .market_context import MarketDirection
+from .market_direction import MarketDirection
 
 
 @dataclass(frozen=True)
