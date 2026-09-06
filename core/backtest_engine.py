@@ -34,6 +34,10 @@ class BacktestResult:
     ambiguous: int
     pending: int
     total_profit: float
+    win_rate: float
+    profit_factor: float
+    max_consecutive_losses: int
+    max_drawdown: float
 
 
 class BacktestEngine:
@@ -200,12 +204,70 @@ class BacktestEngine:
 
     @staticmethod
     def _build_result(trades):
+        total_trades = len(trades)
+        wins = sum(t.result == TradeResult.WIN for t in trades)
+        losses = sum(t.result == TradeResult.LOSS for t in trades)
+        ambiguous = sum(t.result == TradeResult.AMBOS for t in trades)
+        pending = sum(t.result == TradeResult.PENDENTE for t in trades)
+
+        total_profit = sum(t.profit for t in trades)
+
+        decided_trades = wins + losses + ambiguous
+
+        win_rate = (
+            (wins / decided_trades) * 100
+            if decided_trades
+            else 0.0
+        )
+
+        gross_profit = sum(
+            max(t.profit, 0.0)
+            for t in trades
+        )
+        gross_loss = sum(
+            abs(min(t.profit, 0.0))
+            for t in trades
+        )
+
+        profit_factor = (
+            gross_profit / gross_loss
+            if gross_loss
+            else float("inf") if gross_profit > 0 else 0.0
+        )
+
+        current_losses = 0
+        max_consecutive_losses = 0
+
+        for trade in trades:
+            if trade.result == TradeResult.LOSS:
+                current_losses += 1
+                max_consecutive_losses = max(
+                    max_consecutive_losses,
+                    current_losses,
+                )
+            elif trade.result == TradeResult.WIN:
+                current_losses = 0
+
+        equity = 0.0
+        peak = 0.0
+        max_drawdown = 0.0
+
+        for trade in trades:
+            equity += trade.profit
+            peak = max(peak, equity)
+            drawdown = peak - equity
+            max_drawdown = max(max_drawdown, drawdown)
+
         return BacktestResult(
             trades=trades,
-            total_trades=len(trades),
-            wins=sum(t.result == TradeResult.WIN for t in trades),
-            losses=sum(t.result == TradeResult.LOSS for t in trades),
-            ambiguous=sum(t.result == TradeResult.AMBOS for t in trades),
-            pending=sum(t.result == TradeResult.PENDENTE for t in trades),
-            total_profit=sum(t.profit for t in trades),
+            total_trades=total_trades,
+            wins=wins,
+            losses=losses,
+            ambiguous=ambiguous,
+            pending=pending,
+            total_profit=total_profit,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            max_consecutive_losses=max_consecutive_losses,
+            max_drawdown=max_drawdown,
         )
