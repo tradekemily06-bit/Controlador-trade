@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from .models import Candle
 
 
@@ -12,14 +14,20 @@ def normalize_candle(
 ) -> Candle:
     """Cria um candle padronizado e rejeita dados inválidos."""
 
-    candle = Candle(
-        timestamp=timestamp,
-        open=float(open),
-        high=float(high),
-        low=float(low),
-        close=float(close),
-        volume=float(volume),
-    )
+    if not isinstance(timestamp, datetime):
+        raise ValueError("Timestamp inválido.")
+
+    try:
+        candle = Candle(
+            timestamp=timestamp,
+            open=float(open),
+            high=float(high),
+            low=float(low),
+            close=float(close),
+            volume=float(volume),
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Dados de candle inválidos.") from exc
 
     if not candle.is_valid():
         raise ValueError("Dados de candle inválidos.")

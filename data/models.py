@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,15 @@ class Candle:
 
     def is_valid(self) -> bool:
         """Verifica a consistência básica do candle."""
+
+        if not isinstance(self.timestamp, datetime):
+            return False
+
+        values = (self.open, self.high, self.low, self.close, self.volume)
+
+        if not all(isfinite(value) for value in values):
+            return False
+
         if self.open < 0 or self.high < 0 or self.low < 0 or self.close < 0:
             return False
 
