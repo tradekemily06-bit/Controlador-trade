@@ -2,9 +2,29 @@ from .models import AnalysisResult, Signal
 
 
 class SignalEngine:
-    """Núcleo de decisão. Não conhece corretora, plataforma ou API."""
+    """Núcleo de decisão independente de corretora."""
 
-    def evaluate(self, *, score: float, confirmed: bool, symbol=None, timeframe=None):
+    def evaluate(
+        self,
+        *,
+        score: float,
+        confirmed: bool,
+        filters_ok: bool = True,
+        symbol=None,
+        timeframe=None,
+    ) -> AnalysisResult:
+        """Transforma score + filtros + confirmação em uma decisão."""
+
+        if not filters_ok:
+            return AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=score,
+                reason="Filtros de segurança não aprovados.",
+                confirmed=confirmed,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+
         if not confirmed:
             return AnalysisResult(
                 signal=Signal.AGUARDAR,
@@ -16,20 +36,30 @@ class SignalEngine:
             )
 
         if score >= 70:
-            signal = Signal.COMPRA
-            reason = "Condições mínimas de compra atingidas."
-        elif score <= 30:
-            signal = Signal.VENDA
-            reason = "Condições mínimas de venda atingidas."
-        else:
-            signal = Signal.AGUARDAR
-            reason = "Score insuficiente para entrada."
+            return AnalysisResult(
+                signal=Signal.COMPRA,
+                score=score,
+                reason="Score forte e confirmação aprovados para compra.",
+                confirmed=True,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+
+        if score <= 30:
+            return AnalysisResult(
+                signal=Signal.VENDA,
+                score=score,
+                reason="Score forte e confirmação aprovados para venda.",
+                confirmed=True,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
 
         return AnalysisResult(
-            signal=signal,
+            signal=Signal.AGUARDAR,
             score=score,
-            reason=reason,
-            confirmed=confirmed,
+            reason="Score insuficiente para entrada.",
+            confirmed=True,
             symbol=symbol,
             timeframe=timeframe,
         )
