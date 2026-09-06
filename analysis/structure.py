@@ -3,7 +3,7 @@ from data.models import Candle
 
 def structure_score(candles: list[Candle]) -> float:
     """Avalia estrutura simples de topos e fundos recentes."""
-    if len(candles) < 3:
+    if len(candles) < 2:
         return 50.0
 
     previous = candles[-2]
