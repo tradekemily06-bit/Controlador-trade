@@ -1,12 +1,13 @@
 # Controlador Trading
 
-Sistema de análise, decisão, risco, execução e auditoria de operações.
+Sistema de análise, decisão, risco, execução e auditoria.
 
 ## Arquitetura
 
 O núcleo de decisão é independente de corretora/plataforma.
 
 Fluxo:
+
 dados → análise → score/filtros → COMPRA/VENDA/AGUARDAR → risco → execução → auditoria
 
 ## Ambientes
@@ -22,47 +23,18 @@ dados → análise → score/filtros → COMPRA/VENDA/AGUARDAR → risco → exe
 - `audit/` — registros e auditoria
 - `config/` — configurações
 
+## Camada de dados
+
+A camada `data/` recebe, normaliza e valida dados de mercado antes que eles cheguem ao núcleo de decisão.
+
+Ela verifica:
+
+- estrutura OHLC
+- volume
+- valores inválidos
+- ordem cronológica
+- timestamps duplicados
+- intervalo entre candles
+- timeframe
+
 > Esta versão é a fundação arquitetural. A lógica de entrada será construída e validada por etapas.
-echo "===== LOCAL ====="
-pwd
-
-echo ""
-echo "===== ARQUIVOS ====="
-find . -maxdepth 3 -type f -not -path './.git/*' -print | sort
-
-echo ""
-echo "===== PASTAS ====="
-find . -maxdepth 3 -type d -not -path './.git*' -print | sort
-
-echo ""
-echo "===== GIT ====="
-git status --short --branch
-pwd
-echo "=== ARQUIVOS DO PROJETO ==="
-find . -maxdepth 2 -type f -print | sort
-echo "=== TESTE PRINCIPAL ==="
-python -m pytest -q
-echo "=== LOCAL ==="
-pwd
-
-echo "=== STATUS ==="
-git status --short
-
-echo "=== DIFF README ==="
-git diff -- README.md
-
-echo "=== ARQUIVOS ==="
-find . -maxdepth 2 -type f -print | sort
-echo "=== STATUS ==="
-git status --short
-
-echo "=== DIFERENÇA DO README ==="
-git diff -- README.md
-
-echo "=== CONTEÚDO ATUAL ==="
-head -5 README.md
-
-echo "=== VERSÃO DO GITHUB ==="
-git show HEAD:README.md | head -5
-echo "=== TESTE DO SIGNAL ENGINE ==="
-python -m pytest test_signal_engine.py -v
