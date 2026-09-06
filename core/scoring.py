@@ -6,19 +6,8 @@ def calculate_score(
     volume: float = 0,
     confirmation: float = 0,
 ) -> float:
-    """Calcula um score normalizado de 0 a 100.
+    """Calcula score técnico normalizado entre 0 e 100."""
 
-    Pesos iniciais são apenas fundação técnica e deverão ser calibrados
-    com testes/replay antes de qualquer uso operacional.
-    """
-    weights = {
-        "trend": 0.20,
-        "pressure": 0.20,
-        "structure": 0.20,
-        "rejection": 0.15,
-        "volume": 0.10,
-        "confirmation": 0.15,
-    }
     values = {
         "trend": trend,
         "pressure": pressure,
@@ -27,5 +16,20 @@ def calculate_score(
         "volume": volume,
         "confirmation": confirmation,
     }
-    score = sum(values[k] * weights[k] for k in weights)
+
+    weights = {
+        "trend": 0.20,
+        "pressure": 0.20,
+        "structure": 0.20,
+        "rejection": 0.15,
+        "volume": 0.10,
+        "confirmation": 0.15,
+    }
+
+    for name, value in values.items():
+        if not isinstance(value, (int, float)):
+            raise ValueError(f"{name} deve ser numérico.")
+
+    score = sum(values[name] * weights[name] for name in weights)
+
     return max(0.0, min(100.0, score))
