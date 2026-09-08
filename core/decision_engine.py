@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from .market_context import MarketContext, MarketContextResult, MarketDirection
 from .models import AnalysisResult, Signal
+from .operational_state import OperationalState
 from .risk_manager import RiskManager
 
 
@@ -19,7 +20,12 @@ class DecisionResult:
 
 
 class DecisionEngine:
-    """Orquestra sinal, contexto de mercado e gerenciamento de risco."""
+    """
+    Orquestra sinal, contexto de mercado, estado operacional e risco.
+
+    Fail-closed: EXECUTAR só é possível quando todas as condições
+    obrigatórias estão explicitamente aprovadas.
+    """
 
     def __init__(self, risk_manager: RiskManager):
         self.risk_manager = risk_manager
@@ -29,10 +35,25 @@ class DecisionEngine:
         *,
         analysis: AnalysisResult,
         market_context: MarketContextResult | None = None,
-        daily_result=0.0,
-        operations_count=0,
-        consecutive_losses=0,
+        operational_state: OperationalState | None = None,
+        daily_result=None,
+        operations_count=None,
+        consecutive_losses=None,
     ) -> DecisionResult:
+
+        if operational_state is None:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Estado operacional indisponível.",
+            )
+
+        if not isinstance(operational_state, OperationalState):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Estado operacional inválido.",
+            )
 
         if analysis.signal == Signal.AGUARDAR:
             return DecisionResult(
@@ -41,47 +62,42 @@ class DecisionEngine:
                 reason=analysis.reason,
             )
 
-        if market_context is not None:
-            if market_context.context != MarketContext.FAVORAVEL:
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason=(
-                        "Contexto de mercado não favorável "
-                        "para execução."
-                    ),
-                )
+        if market_context is None:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto de mercado indisponível.",
+            )
 
-            if (
-                analysis.signal == Signal.COMPRA
-                and market_context.direction != MarketDirection.ALTA
-            ):
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason=(
-                        "Direção do contexto incompatível "
-                        "com sinal de compra."
-                    ),
-                )
+        if market_context.context != MarketContext.FAVORAVEL:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto de mercado não favorável para execução.",
+            )
 
-            if (
-                analysis.signal == Signal.VENDA
-                and market_context.direction != MarketDirection.BAIXA
-            ):
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason=(
-                        "Direção do contexto incompatível "
-                        "com sinal de venda."
-                    ),
-                )
+        if (
+            analysis.signal == Signal.COMPRA
+            and market_context.direction != MarketDirection.ALTA
+        ):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Direção do contexto incompatível com sinal de compra.",
+            )
+
+        if (
+            analysis.signal == Signal.VENDA
+            and market_context.direction != MarketDirection.BAIXA
+        ):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Direção do contexto incompatível com sinal de venda.",
+            )
 
         risk = self.risk_manager.evaluate(
-            daily_result=daily_result,
-            operations_count=operations_count,
-            consecutive_losses=consecutive_losses,
+            state=operational_state,
         )
 
         if not risk.allowed:
@@ -94,5 +110,5 @@ class DecisionEngine:
         return DecisionResult(
             decision=FinalDecision.EXECUTAR,
             signal=analysis.signal,
-            reason="Sinal, contexto e risco aprovados.",
+            reason="Sinal, contexto, estado operacional e risco aprovados.",
         )
