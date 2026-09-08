@@ -66,9 +66,9 @@ def test_replays_only_history_available_at_each_candle_and_preserves_decisions()
 def test_executes_mixed_buy_and_sell_and_evaluates_outcomes():
     data = candles(
         (100, 100, 99, 100, 1),
-        (100, 100, 99, 100, 1),
-        (100, 100, 99, 100, 1),
-        (100, 100, 99, 100, 1),
+        (100, 101, 100, 101, 1),
+        (101, 101, 99, 100, 1),
+        (100, 100, 100, 100, 1),
     )
 
     def decide(history):
@@ -91,8 +91,8 @@ def test_executes_mixed_buy_and_sell_and_evaluates_outcomes():
         Signal.COMPRA,
         Signal.VENDA,
     ]
-    assert result.backtest.trades[0].result == TradeResult.PENDENTE
-    assert result.backtest.trades[1].result == TradeResult.PENDENTE
+    assert result.backtest.trades[0].result == TradeResult.WIN
+    assert result.backtest.trades[1].result == TradeResult.WIN
 
 
 def test_preserves_ambiguous_and_pending_results():
