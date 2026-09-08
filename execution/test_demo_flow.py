@@ -15,7 +15,7 @@ from execution.paper import PaperExecutor
 def make_state() -> OperationalState:
     return OperationalState(
         balance=1000.0,
-        daily_result=0.0,
+        realized_pnl=0.0,
         trades_today=0,
         consecutive_losses=0,
         market_open=True,
