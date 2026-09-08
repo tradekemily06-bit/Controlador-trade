@@ -62,6 +62,18 @@ def test_separates_waiting_blocked_and_executed():
     assert result.records[2].stage == SimulationStage.EXECUTED
 
 
+def test_aguardar_decision_is_waiting_even_with_signal():
+    def decide(history):
+        return SimulationDecision(Signal.COMPRA, "AGUARDAR", "contexto incompatível")
+
+    result = OperationalSimulator().run(candles=candles(1), decision_function=decide)
+
+    assert result.waiting == 1
+    assert result.blocked == 0
+    assert result.executed == 0
+    assert result.records[0].stage == SimulationStage.WAITING
+
+
 def test_preserves_explainability():
     def decide(history):
         return SimulationDecision(Signal.COMPRA, "EXECUTAR", f"histórico={len(history)}")
@@ -80,3 +92,13 @@ def test_rejects_empty_data():
 def test_rejects_invalid_decision_result():
     with pytest.raises(TypeError, match="SimulationDecision"):
         OperationalSimulator().run(candles=candles(1), decision_function=lambda history: None)
+
+
+def test_rejects_unknown_decision():
+    with pytest.raises(ValueError, match="decisão inválida"):
+        OperationalSimulator().run(
+            candles=candles(1),
+            decision_function=lambda history: SimulationDecision(
+                Signal.COMPRA, "DESCONHECIDA", "teste"
+            ),
+        )
