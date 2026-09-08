@@ -1,7 +1,5 @@
 import math
 
-import pytest
-
 from core.advanced_filters import AdvancedFilters
 
 
@@ -47,7 +45,7 @@ def test_rejection_can_be_weak_without_being_the_only_blocker():
 
 
 def test_rejects_invalid_values_fail_closed():
-    for value in (math.nan, math.inf, -1.0, 101.0, True):
+    for value in (math.nan, math.inf, -1.0, 101.0, True, "100"):
         result = AdvancedFilters().evaluate(**make_values(volume=value))
         assert result.allowed is False
         assert result.reasons == ("volume inválido.",)
@@ -66,8 +64,3 @@ def test_reports_multiple_failed_conditions():
 
     assert result.allowed is False
     assert len(result.reasons) == 5
-
-
-def test_does_not_treat_boolean_as_numeric():
-    with pytest.raises(TypeError):
-        AdvancedFilters().evaluate(**{"trend": 80.0, "pressure": 80.0, "structure": 80.0, "rejection": 60.0, "volume": 70.0, "confirmation": "100"})
