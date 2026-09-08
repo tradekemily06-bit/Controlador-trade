@@ -1,3 +1,5 @@
+from math import isfinite
+
 from .models import AnalysisResult, Signal
 
 
@@ -13,9 +15,29 @@ class SignalEngine:
         symbol=None,
         timeframe=None,
     ) -> AnalysisResult:
-        """Transforma score + filtros + confirmação em uma decisão."""
+        """Transforma score + filtros + confirmação em uma decisão fail-closed."""
 
-        if not filters_ok:
+        if not isinstance(score, (int, float)) or isinstance(score, bool) or not isfinite(score):
+            return AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=score,
+                reason="Score inválido; decisão bloqueada por segurança.",
+                confirmed=confirmed,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+
+        if not 0 <= score <= 100:
+            return AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=score,
+                reason="Score fora do intervalo permitido; decisão bloqueada por segurança.",
+                confirmed=confirmed,
+                symbol=symbol,
+                timeframe=timeframe,
+            )
+
+        if filters_ok is not True:
             return AnalysisResult(
                 signal=Signal.AGUARDAR,
                 score=score,
@@ -25,7 +47,7 @@ class SignalEngine:
                 timeframe=timeframe,
             )
 
-        if not confirmed:
+        if confirmed is not True:
             return AnalysisResult(
                 signal=Signal.AGUARDAR,
                 score=score,
