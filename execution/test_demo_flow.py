@@ -25,6 +25,7 @@ def make_state() -> OperationalState:
 def make_context() -> MarketContextResult:
     return MarketContextResult(
         context=MarketContext.FAVORAVEL,
+        score=90.0,
         direction=MarketDirection.ALTA,
         reason="Contexto favorável.",
     )
@@ -130,6 +131,7 @@ def test_demo_flow_does_not_execute_when_context_is_unfavorable():
 
     context = MarketContextResult(
         context=MarketContext.DESFAVORAVEL,
+        score=20.0,
         direction=MarketDirection.ALTA,
         reason="Contexto desfavorável.",
     )
