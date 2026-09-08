@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run P1.9 robustness tests
+        run: python -m pytest -q core/test_strategy_robustness.py
+
+      - name: Run full test suite
+        run: python -m pytest -q
+
+      - name: Compile project
+        run: python -m compileall -q core data execution audit analysis
