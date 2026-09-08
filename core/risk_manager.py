@@ -69,26 +69,19 @@ class RiskManager:
         operations_count=_UNSET,
         consecutive_losses=_UNSET,
     ):
-        """
-        Evaluate risk from an explicit OperationalState.
+        """Evaluate risk from an explicit OperationalState.
 
         Legacy arguments are accepted only when all three are explicitly
         supplied. Missing information is never converted into approval.
         """
-
         if state is None:
             legacy_supplied = (
                 daily_result is not _UNSET
                 and operations_count is not _UNSET
                 and consecutive_losses is not _UNSET
             )
-
             if not legacy_supplied:
-                return RiskDecision(
-                    False,
-                    "Estado operacional indisponível.",
-                )
-
+                return RiskDecision(False, "Estado operacional indisponível.")
             try:
                 state = OperationalState(
                     realized_pnl=daily_result,
@@ -96,16 +89,10 @@ class RiskManager:
                     consecutive_losses=consecutive_losses,
                 )
             except (TypeError, ValueError):
-                return RiskDecision(
-                    False,
-                    "Estado operacional inválido.",
-                )
+                return RiskDecision(False, "Estado operacional inválido.")
 
         if not isinstance(state, OperationalState):
-            return RiskDecision(
-                False,
-                "Estado operacional inválido.",
-            )
+            return RiskDecision(False, "Estado operacional inválido.")
 
         if not state.risk_fields_available():
             return RiskDecision(
@@ -113,46 +100,25 @@ class RiskManager:
                 "Informações obrigatórias de risco indisponíveis.",
             )
 
-        if (
-            self.daily_loss_limit != 0
-            and state.realized_pnl is None
-        ):
-            return RiskDecision(
-                False,
-                "Resultado diário indisponível.",
-            )
+        if self.daily_loss_limit != 0 and state.realized_pnl is None:
+            return RiskDecision(False, "Resultado diário indisponível.")
 
-        if (
-            self.max_operations != 0
-            and state.trades_today >= self.max_operations
-        ):
-            return RiskDecision(
-                False,
-                "Limite de operações atingido.",
-            )
+        if self.max_operations != 0 and state.trades_today >= self.max_operations:
+            return RiskDecision(False, "Limite de operações atingido.")
 
         if (
             self.max_consecutive_losses != 0
             and state.consecutive_losses >= self.max_consecutive_losses
         ):
-            return RiskDecision(
-                False,
-                "Limite de perdas consecutivas atingido.",
-            )
+            return RiskDecision(False, "Limite de perdas consecutivas atingido.")
 
         if (
             self.daily_loss_limit != 0
             and state.realized_pnl <= -abs(self.daily_loss_limit)
         ):
-            return RiskDecision(
-                False,
-                "Limite de perda diária atingido.",
-            )
+            return RiskDecision(False, "Limite de perda diária atingido.")
 
-        return RiskDecision(
-            True,
-            "Risco dentro dos limites configurados.",
-        )
+        return RiskDecision(True, "Risco dentro dos limites configurados.")
 
     def can_execute(
         self,
@@ -162,12 +128,66 @@ class RiskManager:
         operations_count=_UNSET,
         consecutive_losses=_UNSET,
     ):
-        return self.evaluate(
-            state=state,
-            daily_result=daily_result,
-            operations_count=operations_count,
-            consecutive_losses=consecutive_losses,
-        ).allowed
+        """Compatibility API for the pre-P0.3 scalar risk checks.
+
+        The explicit ``evaluate(state=...)`` path remains fail-closed. This
+        legacy helper evaluates only the legacy values that were supplied,
+        preserving the public behavior of older callers without pretending
+        that omitted operational state is known.
+        """
+        if state is not None:
+            return self.evaluate(state=state).allowed
+
+        supplied_any = any(
+            value is not _UNSET
+            for value in (daily_result, operations_count, consecutive_losses)
+        )
+        if not supplied_any:
+            return False
+
+        if daily_result is not _UNSET:
+            try:
+                if (
+                    isinstance(daily_result, bool)
+                    or not isinstance(daily_result, (int, float))
+                    or not math.isfinite(float(daily_result))
+                ):
+                    return False
+            except (TypeError, ValueError):
+                return False
+            if (
+                self.daily_loss_limit != 0
+                and daily_result <= -abs(self.daily_loss_limit)
+            ):
+                return False
+
+        if operations_count is not _UNSET:
+            if (
+                isinstance(operations_count, bool)
+                or not isinstance(operations_count, int)
+                or operations_count < 0
+            ):
+                return False
+            if (
+                self.max_operations != 0
+                and operations_count >= self.max_operations
+            ):
+                return False
+
+        if consecutive_losses is not _UNSET:
+            if (
+                isinstance(consecutive_losses, bool)
+                or not isinstance(consecutive_losses, int)
+                or consecutive_losses < 0
+            ):
+                return False
+            if (
+                self.max_consecutive_losses != 0
+                and consecutive_losses >= self.max_consecutive_losses
+            ):
+                return False
+
+        return True
 
     @staticmethod
     def calculate_position_risk(*, account_balance, risk_percent):
@@ -185,8 +205,6 @@ class RiskManager:
             or not math.isfinite(float(risk_percent))
             or not 0 <= risk_percent <= 100
         ):
-            raise ValueError(
-                "risk_percent deve ser um número entre 0 e 100."
-            )
+            raise ValueError("risk_percent deve ser um número entre 0 e 100.")
 
         return account_balance * (risk_percent / 100.0)
