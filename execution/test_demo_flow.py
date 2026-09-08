@@ -8,6 +8,7 @@ from core.market_context import (
 from core.models import AnalysisResult, Signal
 from core.operational_state import OperationalState
 from core.risk_manager import RiskManager
+from core.signal_quality import SignalLevel
 from execution.demo_flow import DemoFlow
 from execution.paper import PaperExecutor
 
@@ -73,6 +74,8 @@ def test_demo_flow_executes_when_decision_is_approved():
     assert result.decision.decision == FinalDecision.EXECUTAR
     assert result.execution is not None
     assert result.execution.accepted is True
+    assert result.quality.actionable is True
+    assert result.quality.level == SignalLevel.FORTE
     assert len(executor.executions()) == 1
 
     event_types = [event.event_type for event in logger.events()]
@@ -82,6 +85,9 @@ def test_demo_flow_executes_when_decision_is_approved():
         AuditEventType.DECISION,
         AuditEventType.EXECUTION,
     ]
+
+    assert logger.events()[0].data["quality_level"] == "FORTE"
+    assert logger.events()[1].data["quality_score"] == 80.0
 
 
 def test_demo_flow_does_not_execute_when_decision_is_aguardar():
@@ -98,6 +104,8 @@ def test_demo_flow_does_not_execute_when_decision_is_aguardar():
 
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None
+    assert result.quality.actionable is False
+    assert result.quality.level == SignalLevel.NENHUMA
     assert executor.executions() == ()
 
     event_types = [event.event_type for event in logger.events()]
@@ -123,6 +131,7 @@ def test_demo_flow_does_not_execute_without_operational_state():
 
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None
+    assert result.quality.level == SignalLevel.FORTE
     assert executor.executions() == ()
 
 
@@ -147,4 +156,5 @@ def test_demo_flow_does_not_execute_when_context_is_unfavorable():
 
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None
+    assert result.quality.level == SignalLevel.FORTE
     assert executor.executions() == ()
