@@ -102,3 +102,48 @@ def test_rejects_unknown_decision():
                 Signal.COMPRA, "DESCONHECIDA", "teste"
             ),
         )
+
+
+def test_rejects_out_of_order_candles():
+    data = candles(3)
+    data[2] = Candle(
+        timestamp=data[0].timestamp - timedelta(minutes=1),
+        open=102,
+        high=103,
+        low=101,
+        close=102,
+        volume=1,
+    )
+
+    with pytest.raises(ValueError, match="ordem cronológica"):
+        OperationalSimulator().run(
+            candles=data,
+            decision_function=lambda history: SimulationDecision(
+                Signal.AGUARDAR, "AGUARDAR", "teste"
+            ),
+        )
+
+
+def test_exposes_laboratory_metrics():
+    def decide(history):
+        index = len(history) - 1
+        if index == 0:
+            return SimulationDecision(Signal.AGUARDAR, "AGUARDAR", "aguardar")
+        if index == 1:
+            return SimulationDecision(Signal.COMPRA, "BLOQUEAR", "bloqueada")
+        return SimulationDecision(Signal.VENDA, "EXECUTAR", "executada")
+
+    result = OperationalSimulator().run(candles=candles(), decision_function=decide)
+    metrics = result.metrics
+
+    assert metrics.total_candles == 4
+    assert metrics.buy_signals == 1
+    assert metrics.sell_signals == 2
+    assert metrics.waiting_signals == 1
+    assert metrics.approved == 2
+    assert metrics.blocked == 1
+    assert metrics.waiting == 1
+    assert metrics.executed == 2
+    assert metrics.signal_rate == 0.75
+    assert metrics.approval_rate == 0.5
+    assert metrics.execution_rate == 0.5
