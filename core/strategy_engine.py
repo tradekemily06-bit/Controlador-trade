@@ -44,7 +44,11 @@ class StrategyEngine:
         }
 
         for name, value in values.items():
-            if not isinstance(value, (int, float)) or not isfinite(value):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not isfinite(value)
+            ):
                 raise ValueError(f"{name} deve ser numérico e finito.")
             if not 0 <= value <= 100:
                 raise ValueError(f"{name} deve estar entre 0 e 100.")
