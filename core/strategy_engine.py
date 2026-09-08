@@ -34,6 +34,12 @@ class StrategyEngine:
         self.signal_engine = signal_engine or SignalEngine()
 
     def evaluate(self, data: StrategyInput) -> AnalysisResult:
+        if not isinstance(data.confirmed, bool):
+            raise ValueError("confirmed deve ser booleano.")
+
+        if not isinstance(data.filters_ok, bool):
+            raise ValueError("filters_ok deve ser booleano.")
+
         values = {
             "trend": data.trend,
             "pressure": data.pressure,
