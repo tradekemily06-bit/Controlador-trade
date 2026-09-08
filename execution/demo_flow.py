@@ -7,6 +7,7 @@ from core.decision_engine import DecisionEngine, FinalDecision, DecisionResult
 from core.market_context import MarketContextResult
 from core.models import AnalysisResult
 from core.operational_state import OperationalState
+from core.signal_quality import SignalQuality, SignalQualityEvaluator
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -15,10 +16,11 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 class DemoFlowResult:
     decision: DecisionResult
     execution: ExecutionResult | None
+    quality: SignalQuality
 
 
 class DemoFlow:
-    """Orquestra análise, decisão, execução DEMO e auditoria."""
+    """Orquestra análise, decisão, qualidade, execução DEMO e auditoria."""
 
     def __init__(
         self,
@@ -26,10 +28,12 @@ class DemoFlow:
         decision_engine: DecisionEngine,
         paper_executor: PaperExecutor,
         audit_logger: AuditLogger,
+        quality_evaluator: SignalQualityEvaluator | None = None,
     ) -> None:
         self.decision_engine = decision_engine
         self.paper_executor = paper_executor
         self.audit_logger = audit_logger
+        self.quality_evaluator = quality_evaluator or SignalQualityEvaluator()
 
     def run(
         self,
@@ -41,6 +45,8 @@ class DemoFlow:
         amount: float,
         duration_seconds: int,
     ) -> DemoFlowResult:
+        quality = self.quality_evaluator.evaluate(analysis)
+
         self.audit_logger.record(
             AuditEvent(
                 event_type=AuditEventType.ANALYSIS,
@@ -49,6 +55,9 @@ class DemoFlow:
                     "signal": analysis.signal.value,
                     "score": analysis.score,
                     "symbol": symbol,
+                    "quality_score": quality.score,
+                    "quality_level": quality.level.value,
+                    "actionable": quality.actionable,
                 },
             )
         )
@@ -67,6 +76,8 @@ class DemoFlow:
                     "decision": decision.decision,
                     "signal": decision.signal.value,
                     "reason": decision.reason,
+                    "quality_level": quality.level.value,
+                    "quality_score": quality.score,
                 },
             )
         )
@@ -79,12 +90,14 @@ class DemoFlow:
                     data={
                         "decision": decision.decision,
                         "reason": decision.reason,
+                        "quality_level": quality.level.value,
                     },
                 )
             )
             return DemoFlowResult(
                 decision=decision,
                 execution=None,
+                quality=quality,
             )
 
         request = ExecutionRequest(
@@ -105,6 +118,8 @@ class DemoFlow:
                     "accepted": execution.accepted,
                     "external_id": execution.external_id,
                     "message": execution.message,
+                    "quality_level": quality.level.value,
+                    "quality_score": quality.score,
                 },
             )
         )
@@ -112,4 +127,5 @@ class DemoFlow:
         return DemoFlowResult(
             decision=decision,
             execution=execution,
+            quality=quality,
         )
