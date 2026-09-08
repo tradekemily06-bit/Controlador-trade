@@ -14,8 +14,8 @@ def snapshot(decision: str = "EXECUTAR", signal: str = "COMPRA") -> DecisionSnap
         signal=signal,
         analysis_score=8.0,
         confirmed=True,
-        quality_score=0.8,
-        quality_level="ALTA",
+        quality_score=80.0,
+        quality_level="FORTE",
         actionable=True,
         decision=decision,
         decision_reason="contexto favorável e risco aprovado",
@@ -40,8 +40,8 @@ def record(ts: datetime, result: str = "PENDENTE", signal: Signal = Signal.COMPR
         result=result,
         symbol="TEST",
         timeframe="5m",
-        quality_score=0.8,
-        quality_level="ALTA",
+        quality_score=80.0,
+        quality_level="FORTE",
         entry_conditions=("confirmação", "contexto favorável"),
     )
 
@@ -93,7 +93,7 @@ def test_memory_rejects_out_of_order_records_and_reports_metrics():
 
 def test_memory_rejects_invalid_entry_conditions():
     with pytest.raises(MemoryValidationError):
-        record(datetime(2026, 1, 1)).__class__(
+        OperationMemoryRecord(
             timestamp=datetime(2026, 1, 1),
             signal=Signal.COMPRA,
             score=8,
