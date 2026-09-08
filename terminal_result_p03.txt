@@ -1,0 +1,351 @@
+===== P0.3 — TESTE COMPLETO =====
+Data: Tue Sep  8 19:52:07 UTC 2026
+
+===== GIT STATUS =====
+?? core/historical_backtest.py
+?? h
+?? terminal_result_p03.txt
+?? test_historical_backtest.py
+
+===== COMMIT =====
+7e606ff Add terminal verification result
+
+===== PYTEST =====
+.....................F.F...............FFF.FFFF....F.................... [ 42%]
+........................................................F..FF.....F..... [ 84%]
+..........................                                               [100%]
+=================================== FAILURES ===================================
+___________________ test_buy_with_favorable_context_executes ___________________
+
+    def test_buy_with_favorable_context_executes():
+        context = MarketContextEngine().evaluate_from_candles(
+            candles=candles_alta()
+        )
+    
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=80,
+            reason="Sinal confirmado.",
+            confirmed=True,
+        )
+    
+        result = DecisionEngine(RiskManager()).evaluate(
+            analysis=analysis,
+            market_context=context,
+        )
+    
+>       assert result.decision == FinalDecision.EXECUTAR
+E       AssertionError: assert 'AGUARDAR' == 'EXECUTAR'
+E         
+E         - EXECUTAR
+E         + AGUARDAR
+
+test_core_integration.py:38: AssertionError
+__________________________ test_risk_blocks_execution __________________________
+
+    def test_risk_blocks_execution():
+        context = MarketContextEngine().evaluate(
+            trend_strength=100,
+            volatility_quality=100,
+            liquidity_quality=100,
+            direction=MarketDirection.ALTA,
+        )
+    
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=90,
+            reason="Sinal confirmado.",
+            confirmed=True,
+        )
+    
+        result = DecisionEngine(
+            RiskManager(daily_loss_limit=100)
+        ).evaluate(
+            analysis=analysis,
+            market_context=context,
+            daily_result=-100,
+        )
+    
+>       assert result.decision == FinalDecision.BLOQUEAR
+E       AssertionError: assert 'AGUARDAR' == 'BLOQUEAR'
+E         
+E         - BLOQUEAR
+E         + AGUARDAR
+
+test_core_integration.py:87: AssertionError
+____________________ test_executa_compra_com_risco_aprovado ____________________
+
+    def test_executa_compra_com_risco_aprovado():
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=80,
+            reason="Score forte.",
+            confirmed=True,
+        )
+        result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+            analysis=analysis,
+            daily_result=-20,
+        )
+>       assert result.decision == FinalDecision.EXECUTAR
+E       AssertionError: assert 'AGUARDAR' == 'EXECUTAR'
+E         
+E         - EXECUTAR
+E         + AGUARDAR
+
+test_decision_engine.py:17: AssertionError
+____________________ test_executa_venda_com_risco_aprovado _____________________
+
+    def test_executa_venda_com_risco_aprovado():
+        analysis = AnalysisResult(
+            signal=Signal.VENDA,
+            score=20,
+            reason="Score forte.",
+            confirmed=True,
+        )
+        result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+            analysis=analysis,
+            daily_result=-20,
+        )
+>       assert result.decision == FinalDecision.EXECUTAR
+E       AssertionError: assert 'AGUARDAR' == 'EXECUTAR'
+E         
+E         - EXECUTAR
+E         + AGUARDAR
+
+test_decision_engine.py:32: AssertionError
+________________________ test_bloqueia_sinal_por_risco _________________________
+
+    def test_bloqueia_sinal_por_risco():
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=90,
+            reason="Score forte.",
+            confirmed=True,
+        )
+        result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+            analysis=analysis,
+            daily_result=-100,
+        )
+>       assert result.decision == FinalDecision.BLOQUEAR
+E       AssertionError: assert 'AGUARDAR' == 'BLOQUEAR'
+E         
+E         - BLOQUEAR
+E         + AGUARDAR
+
+test_decision_engine.py:47: AssertionError
+____________________ test_bloqueia_por_limite_de_operacoes _____________________
+
+    def test_bloqueia_por_limite_de_operacoes():
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=85,
+            reason="Score forte.",
+            confirmed=True,
+        )
+        result = DecisionEngine(RiskManager(max_operations=5)).evaluate(
+            analysis=analysis,
+            operations_count=5,
+        )
+>       assert result.decision == FinalDecision.BLOQUEAR
+E       AssertionError: assert 'AGUARDAR' == 'BLOQUEAR'
+E         
+E         - BLOQUEAR
+E         + AGUARDAR
+
+test_decision_engine.py:74: AssertionError
+____________________ test_bloqueia_por_perdas_consecutivas _____________________
+
+    def test_bloqueia_por_perdas_consecutivas():
+        analysis = AnalysisResult(
+            signal=Signal.VENDA,
+            score=15,
+            reason="Score forte.",
+            confirmed=True,
+        )
+        result = DecisionEngine(RiskManager(max_consecutive_losses=3)).evaluate(
+            analysis=analysis,
+            consecutive_losses=3,
+        )
+>       assert result.decision == FinalDecision.BLOQUEAR
+E       AssertionError: assert 'AGUARDAR' == 'BLOQUEAR'
+E         
+E         - BLOQUEAR
+E         + AGUARDAR
+
+test_decision_engine.py:88: AssertionError
+______________ test_executa_compra_com_contexto_favoravel_na_alta ______________
+
+    def test_executa_compra_com_contexto_favoravel_na_alta():
+        from core.market_context import (
+            MarketContext,
+            MarketContextResult,
+            MarketDirection,
+        )
+    
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=80,
+            reason="Score forte.",
+            confirmed=True,
+        )
+    
+        context = MarketContextResult(
+            context=MarketContext.FAVORAVEL,
+            score=85,
+            reason="Ambiente favorável.",
+            direction=MarketDirection.ALTA,
+        )
+    
+        result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+            analysis=analysis,
+            market_context=context,
+            daily_result=-20,
+        )
+    
+>       assert result.decision == FinalDecision.EXECUTAR
+E       AssertionError: assert 'AGUARDAR' == 'EXECUTAR'
+E         
+E         - EXECUTAR
+E         + AGUARDAR
+
+test_decision_engine.py:118: AssertionError
+______________ test_executa_venda_com_contexto_favoravel_na_baixa ______________
+
+    def test_executa_venda_com_contexto_favoravel_na_baixa():
+        from core.market_context import (
+            MarketContext,
+            MarketContextResult,
+            MarketDirection,
+        )
+    
+        analysis = AnalysisResult(
+            signal=Signal.VENDA,
+            score=20,
+            reason="Score forte.",
+            confirmed=True,
+        )
+    
+        context = MarketContextResult(
+            context=MarketContext.FAVORAVEL,
+            score=85,
+            reason="Ambiente favorável.",
+            direction=MarketDirection.BAIXA,
+        )
+    
+        result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+            analysis=analysis,
+            market_context=context,
+            daily_result=-20,
+        )
+    
+>       assert result.decision == FinalDecision.EXECUTAR
+E       AssertionError: assert 'AGUARDAR' == 'EXECUTAR'
+E         
+E         - EXECUTAR
+E         + AGUARDAR
+
+test_decision_engine.py:148: AssertionError
+_______________ test_risco_bloqueia_mesmo_com_contexto_favoravel _______________
+
+    def test_risco_bloqueia_mesmo_com_contexto_favoravel():
+        from core.market_context import (
+            MarketContext,
+            MarketContextResult,
+            MarketDirection,
+        )
+    
+        analysis = AnalysisResult(
+            signal=Signal.COMPRA,
+            score=90,
+            reason="Score forte.",
+            confirmed=True,
+        )
+    
+        context = MarketContextResult(
+            context=MarketContext.FAVORAVEL,
+            score=90,
+            reason="Ambiente favorável.",
+            direction=MarketDirection.ALTA,
+        )
+    
+        result = DecisionEngine(
+            RiskManager(daily_loss_limit=100)
+        ).evaluate(
+            analysis=analysis,
+            market_context=context,
+            daily_result=-100,
+        )
+    
+>       assert result.decision == FinalDecision.BLOQUEAR
+E       AssertionError: assert 'AGUARDAR' == 'BLOQUEAR'
+E         
+E         - BLOQUEAR
+E         + AGUARDAR
+
+test_decision_engine.py:296: AssertionError
+________________________ test_permite_dentro_do_limite _________________________
+
+    def test_permite_dentro_do_limite():
+        manager = RiskManager(daily_loss_limit=100)
+>       assert manager.can_execute(daily_result=-50)
+E       assert False
+E        +  where False = can_execute(daily_result=-50)
+E        +    where can_execute = <core.risk_manager.RiskManager object at 0x73b6c27c0770>.can_execute
+
+test_risk_manager.py:8: AssertionError
+____________________________ test_limite_operacoes _____________________________
+
+    def test_limite_operacoes():
+        manager = RiskManager(max_operations=5)
+>       assert manager.can_execute(operations_count=4)
+E       assert False
+E        +  where False = can_execute(operations_count=4)
+E        +    where can_execute = <core.risk_manager.RiskManager object at 0x73b6c279dca0>.can_execute
+
+test_risk_manager.py:23: AssertionError
+_______________________ test_limite_perdas_consecutivas ________________________
+
+    def test_limite_perdas_consecutivas():
+        manager = RiskManager(max_consecutive_losses=3)
+>       assert manager.can_execute(consecutive_losses=2)
+E       assert False
+E        +  where False = can_execute(consecutive_losses=2)
+E        +    where can_execute = <core.risk_manager.RiskManager object at 0x73b6c279daf0>.can_execute
+
+test_risk_manager.py:29: AssertionError
+___________________ test_sem_limite_de_operacoes_quando_zero ___________________
+
+    def test_sem_limite_de_operacoes_quando_zero():
+        manager = RiskManager(max_operations=0)
+>       assert manager.can_execute(operations_count=1000)
+E       assert False
+E        +  where False = can_execute(operations_count=1000)
+E        +    where can_execute = <core.risk_manager.RiskManager object at 0x73b6c279e9c0>.can_execute
+
+test_risk_manager.py:70: AssertionError
+=========================== short test summary info ============================
+FAILED test_core_integration.py::test_buy_with_favorable_context_executes - A...
+FAILED test_core_integration.py::test_risk_blocks_execution - AssertionError:...
+FAILED test_decision_engine.py::test_executa_compra_com_risco_aprovado - Asse...
+FAILED test_decision_engine.py::test_executa_venda_com_risco_aprovado - Asser...
+FAILED test_decision_engine.py::test_bloqueia_sinal_por_risco - AssertionErro...
+FAILED test_decision_engine.py::test_bloqueia_por_limite_de_operacoes - Asser...
+FAILED test_decision_engine.py::test_bloqueia_por_perdas_consecutivas - Asser...
+FAILED test_decision_engine.py::test_executa_compra_com_contexto_favoravel_na_alta
+FAILED test_decision_engine.py::test_executa_venda_com_contexto_favoravel_na_baixa
+FAILED test_decision_engine.py::test_risco_bloqueia_mesmo_com_contexto_favoravel
+FAILED test_risk_manager.py::test_permite_dentro_do_limite - assert False
+FAILED test_risk_manager.py::test_limite_operacoes - assert False
+FAILED test_risk_manager.py::test_limite_perdas_consecutivas - assert False
+FAILED test_risk_manager.py::test_sem_limite_de_operacoes_quando_zero - asser...
+14 failed, 156 passed in 0.31s
+PYTEST_EXIT=1
+
+===== COMPILEALL =====
+Can't list 'execution'
+Can't list 'audit'
+Can't list 'config'
+COMPILE_EXIT=0
+
+===== RESULTADO =====
+P0.3 AINDA POSSUI FALHAS
