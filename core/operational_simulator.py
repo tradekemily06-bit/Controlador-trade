@@ -15,6 +15,12 @@ class SimulationStage(str):
     EXECUTED = "EXECUTED"
 
 
+class SimulationDecisionValue(str):
+    EXECUTAR = "EXECUTAR"
+    BLOQUEAR = "BLOQUEAR"
+    AGUARDAR = "AGUARDAR"
+
+
 @dataclass(frozen=True)
 class SimulationDecision:
     signal: Signal
@@ -58,20 +64,26 @@ class OperationalSimulator:
             raise ValueError("É necessário fornecer candles.")
 
         records: list[SimulationRecord] = []
+        valid_decisions = {
+            SimulationDecisionValue.EXECUTAR,
+            SimulationDecisionValue.BLOQUEAR,
+            SimulationDecisionValue.AGUARDAR,
+        }
+
         for index in range(len(candles)):
             history = candles[: index + 1]
             result = decision_function(history)
             if not isinstance(result, SimulationDecision):
                 raise TypeError("decision_function deve retornar SimulationDecision.")
+            if result.decision not in valid_decisions:
+                raise ValueError("decision_function retornou decisão inválida.")
 
-            if result.signal is Signal.AGUARDAR:
+            if result.decision == SimulationDecisionValue.AGUARDAR:
                 stage = SimulationStage.WAITING
-            elif result.decision == "EXECUTAR":
+            elif result.decision == SimulationDecisionValue.EXECUTAR:
                 stage = SimulationStage.EXECUTED
-            elif result.decision == "BLOQUEAR":
-                stage = SimulationStage.BLOCKED
             else:
-                stage = SimulationStage.SIGNAL
+                stage = SimulationStage.BLOCKED
 
             records.append(
                 SimulationRecord(
@@ -89,8 +101,8 @@ class OperationalSimulator:
             records=records,
             total_candles=len(candles),
             signals=sum(r.signal is not Signal.AGUARDAR for r in records),
-            approved=sum(r.decision == "EXECUTAR" for r in records),
-            blocked=sum(r.decision == "BLOQUEAR" for r in records),
-            waiting=sum(r.signal is Signal.AGUARDAR for r in records),
+            approved=sum(r.decision == SimulationDecisionValue.EXECUTAR for r in records),
+            blocked=sum(r.decision == SimulationDecisionValue.BLOQUEAR for r in records),
+            waiting=sum(r.decision == SimulationDecisionValue.AGUARDAR for r in records),
             executed=sum(r.stage == SimulationStage.EXECUTED for r in records),
         )
