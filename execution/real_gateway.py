@@ -80,8 +80,6 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
-            # Persist reservation BEFORE external dispatch. The ledger also serializes
-            # read/modify/write so concurrent processes cannot reserve the same ID.
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
@@ -109,6 +107,16 @@ class RealExecutionGateway:
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
+
+        # A REAL acceptance without a durable broker/exchange reference is ambiguous.
+        # The order may already exist externally, so it must be reconciled instead of
+        # being treated as a confirmed acceptance.
+        if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
             self._ledger.mark_accepted(request_id)
