@@ -2,7 +2,7 @@ from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
-from execution.ports import ExecutionMode, ExecutionRequest
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
@@ -81,3 +81,51 @@ def test_gateway_rejects_empty_request_id():
     result = gateway.execute("   ", request())
 
     assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_fails_closed_when_executor_raises():
+    class BrokenExecutor:
+        def execute(self, _request):
+            raise RuntimeError("falha simulada")
+
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch())
+
+    result = gateway.execute("req-1", request())
+    retry = gateway.execute("req-1", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert retry.status is GatewayStatus.EXECUTOR_ERROR
+
+
+def test_gateway_rejects_invalid_executor_result():
+    class InvalidExecutor:
+        def execute(self, _request):
+            return "not-an-execution-result"
+
+    gateway = ExecutionGateway(InvalidExecutor(), KillSwitch())
+
+    result = gateway.execute("req-1", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+
+
+def test_gateway_requires_executor():
+    try:
+        ExecutionGateway(None, KillSwitch())
+    except ValueError as exc:
+        assert "executor" in str(exc)
+    else:
+        raise AssertionError("gateway deveria exigir executor")
+
+
+def test_executor_rejection_is_not_reported_as_accepted():
+    class RejectingExecutor:
+        def execute(self, _request):
+            return ExecutionResult(accepted=False, message="rejeitado")
+
+    gateway = ExecutionGateway(RejectingExecutor(), KillSwitch())
+
+    result = gateway.execute("req-1", request())
+
+    assert result.status is GatewayStatus.EXECUTION_REJECTED
+    assert not result.accepted
