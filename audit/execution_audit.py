@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from core.operational_safety_store import OperationalSafetyStore
 from execution.execution_lifecycle import ExecutionLifecycleState
 
 
@@ -23,17 +24,43 @@ class ExecutionAuditEvent:
         if not isinstance(self.message, str) or not self.message.strip():
             raise ValueError("message é obrigatório.")
 
+    def as_dict(self) -> dict[str, object]:
+        return {"request_id": self.request_id, "state": self.state.value, "timestamp": self.timestamp.isoformat(), "message": self.message}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "ExecutionAuditEvent":
+        if not isinstance(data, dict):
+            raise ValueError("evento de auditoria inválido.")
+        try:
+            return cls(
+                request_id=str(data["request_id"]),
+                state=ExecutionLifecycleState(str(data["state"])),
+                timestamp=datetime.fromisoformat(str(data["timestamp"])),
+                message=str(data["message"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("evento de auditoria persistido inválido.") from exc
+
 
 class ExecutionAuditLog:
-    """In-memory immutable-event view; recording an event has no execution side effect."""
+    """Immutable execution-audit view backed by the existing safety store when provided."""
 
-    def __init__(self) -> None:
+    def __init__(self, safety_store: OperationalSafetyStore | None = None) -> None:
+        if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
+            raise TypeError("safety_store inválido.")
+        self.safety_store = safety_store
         self._events: list[ExecutionAuditEvent] = []
+        if self.safety_store is not None:
+            self._events = [ExecutionAuditEvent.from_dict(item) for item in self.safety_store.load_execution_audit()]
 
     def append(self, event: ExecutionAuditEvent) -> None:
         if not isinstance(event, ExecutionAuditEvent):
             raise ValueError("evento de auditoria inválido.")
+        if self._events and event.timestamp < self._events[-1].timestamp:
+            raise ValueError("eventos de auditoria devem ser cronológicos.")
         self._events.append(event)
+        if self.safety_store is not None:
+            self.safety_store.save_execution_audit(tuple(item.as_dict() for item in self._events))
 
     def events(self) -> tuple[ExecutionAuditEvent, ...]:
         return tuple(self._events)
