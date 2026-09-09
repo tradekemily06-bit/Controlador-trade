@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from core.p41_controlled_automation import AutomationAuthorization
+from core.p41_controlled_automation import AutomationDecision
 
 
 @dataclass(frozen=True)
@@ -21,22 +21,19 @@ class AutomationCycleResult:
 
 
 class AutomationCycleOrchestrator:
-    """Turns a P41 authorization into an explicit, side-effect-free cycle request."""
+    """Turns a P41 decision into an explicit, side-effect-free cycle request."""
 
     def request_cycle(
         self,
-        authorization: AutomationAuthorization,
+        decision: AutomationDecision,
         *,
-        cycle_id: str,
         requested_at: datetime,
     ) -> AutomationCycleResult:
-        if not isinstance(authorization, AutomationAuthorization):
-            return AutomationCycleResult(False, None, "invalid automation authorization")
-        if not isinstance(cycle_id, str) or not cycle_id.strip():
-            return AutomationCycleResult(False, None, "invalid cycle id")
-        if not isinstance(requested_at, datetime) or requested_at.tzinfo is None:
+        if not isinstance(decision, AutomationDecision):
+            return AutomationCycleResult(False, None, "invalid automation decision")
+        if not isinstance(requested_at, datetime) or requested_at.tzinfo is None or requested_at.utcoffset() is None:
             return AutomationCycleResult(False, None, "requested_at must be timezone-aware")
-        if not authorization.authorized:
+        if not decision.allowed:
             return AutomationCycleResult(False, None, "automation cycle not authorized")
-        request = AutomationCycleRequest(cycle_id=cycle_id.strip(), requested_at=requested_at, mode="DEMO")
+        request = AutomationCycleRequest(cycle_id=decision.cycle_id, requested_at=requested_at, mode="DEMO")
         return AutomationCycleResult(True, request, "automation cycle authorized")
