@@ -16,6 +16,7 @@ class RuntimeConfig:
     amount: float
     duration_seconds: int
     mode: ExecutionMode = ExecutionMode.DEMO
+    real_enabled: bool = False
     data_path: Path | None = None
     memory_path: Path | None = None
     safety_path: Path | None = None
@@ -34,8 +35,10 @@ class RuntimeConfig:
             raise ValueError("duration_seconds deve ser um inteiro positivo.")
         if not isinstance(self.mode, ExecutionMode):
             raise ValueError("modo de execução inválido.")
-        if self.mode is ExecutionMode.REAL:
-            raise ValueError("execução REAL permanece bloqueada nesta etapa.")
+        if not isinstance(self.real_enabled, bool):
+            raise ValueError("real_enabled deve ser booleano.")
+        if self.mode is ExecutionMode.REAL and not self.real_enabled:
+            raise ValueError("execução REAL exige habilitação explícita.")
         for name in ("data_path", "memory_path", "safety_path", "ledger_path", "lifecycle_path", "checkpoint_path"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, Path):
