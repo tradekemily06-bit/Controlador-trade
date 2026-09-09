@@ -6,24 +6,26 @@ from core.decision_snapshot import DecisionSnapshot
 from core.models import Signal
 from core.operation_memory_store import OperationMemoryStore
 from core.persistent_operational_recorder import PersistentOperationalRecorder
-from core.signal_quality import SignalLevel, SignalQuality
 
 
 def snapshot() -> DecisionSnapshot:
     return DecisionSnapshot(
         signal="COMPRA",
         analysis_score=82.0,
-        analysis_reason="tendência confirmada",
         confirmed=True,
-        symbol="TEST",
-        timeframe="5m",
         quality_score=88.0,
         quality_level="FORTE",
-        quality_actionable=True,
+        actionable=True,
         decision="EXECUTAR",
         decision_reason="contexto e risco favoráveis",
         market_context="ALTA",
-        operational_state="ATIVO",
+        market_direction="COMPRA",
+        market_score=80.0,
+        operational_state_available=True,
+        trades_today=1,
+        consecutive_losses=0,
+        symbol="TEST",
+        timeframe="5m",
     )
 
 
