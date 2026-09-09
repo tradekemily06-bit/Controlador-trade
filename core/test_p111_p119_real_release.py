@@ -29,6 +29,14 @@ class FakeAdapter:
         return ExecutionResult(True, "fake real execution accepted", "external-1")
 
 
+class NoExternalIdAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(True, "accepted but reference missing", None)
+
+
 class UnknownAdapter:
     def is_available(self):
         return True
@@ -239,3 +247,19 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
                              authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
+
+
+def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = NoExternalIdAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(broker="fake", request_id="missing-id", request=_request(),
+                             authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
