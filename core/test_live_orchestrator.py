@@ -78,7 +78,7 @@ def test_orchestrator_never_executes_an_order():
 
 
 def test_orchestrator_rejects_empty_feed_before_analysis():
-    with pytest.raises(ValueError, match="vazios"):
+    with pytest.raises(ValueError, match="no candles"):
         make_orchestrator([]).evaluate(
             MarketDataRequest("TEST", "1m", 3),
             operational_state=state(),
