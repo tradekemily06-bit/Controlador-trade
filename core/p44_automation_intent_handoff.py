@@ -37,6 +37,8 @@ class AutomationIntentHandoffBoundary:
             reasons.extend(admission.reasons or ("automation admission blocked",))
         elif admission.request is None:
             reasons.append("approved automation admission has no request")
+        elif admission.request.mode != "DEMO":
+            reasons.append("only DEMO cycle requests can enter automation handoff")
 
         if not isinstance(intent, ExecutionIntent):
             reasons.append("execution intent is invalid")
