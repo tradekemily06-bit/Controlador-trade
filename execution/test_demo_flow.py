@@ -148,7 +148,7 @@ def test_demo_flow_uses_demo_execution_mode():
     result = run_flow(flow)
     assert result.execution_result is not None and result.execution_result.gateway is not None
     assert result.execution_result.gateway.execution is not None
-    assert executor.executions()[0].request.request_id if hasattr(executor.executions()[0].request, "request_id") else "demo-flow-1"
+    assert len(executor.executions()) == 1
     assert executor.executions()[0].request.mode.value == "DEMO"
     assert executor.executions()[0].request.symbol == "TEST"
-    assert len(executor.executions()) == 1
+    assert executor.executions()[0].request.signal == Signal.COMPRA
