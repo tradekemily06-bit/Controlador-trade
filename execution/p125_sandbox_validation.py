@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from execution.p121_external_order_reconciliation import ExternalOrderStatus
+from core.p121_external_order_reconciliation import ExternalOrderStatus
 from execution.p123_broker_order import BrokerOrderRequest, BrokerOrderResult
 
 
