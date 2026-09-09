@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol, Sequence
 
 from data.models import Candle
-from data.normalizer import normalize_candles
+from data.normalizer import normalize_candle
 from data.validator import validate_candles
 
 
@@ -59,22 +59,27 @@ class BrokerMarketDataBoundary:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
-        raw = self._provider.fetch_market_data(request)
-        if raw is None:
-            raise ValueError("provider retornou None")
-
-        candles = tuple(raw)
-        if not candles:
+        raw = tuple(self._provider.fetch_market_data(request))
+        if not raw:
             raise ValueError("provider não retornou candles")
 
-        normalized = tuple(normalize_candles(candles))
-        validate_candles(normalized)
+        normalized = tuple(
+            normalize_candle(
+                timestamp=c.timestamp,
+                open=c.open,
+                high=c.high,
+                low=c.low,
+                close=c.close,
+                volume=c.volume,
+            )
+            for c in raw
+        )
+        if not validate_candles(list(normalized)):
+            raise ValueError("provider retornou sequência de candles inválida")
 
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
 
-        # The provider may return malformed data with a valid-looking sequence;
-        # the existing validator remains the single integrity gate.
         return BrokerMarketDataSnapshot(
             symbol=request.symbol.strip(),
             timeframe=request.timeframe.strip(),
