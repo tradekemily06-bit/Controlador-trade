@@ -17,6 +17,7 @@ class GatewayStatus(str, Enum):
     BLOCKED = "BLOCKED"
     DUPLICATE = "DUPLICATE"
     EXECUTION_REJECTED = "EXECUTION_REJECTED"
+    EXECUTOR_ERROR = "EXECUTOR_ERROR"
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,8 @@ class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
     def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None) -> None:
+        if executor is None:
+            raise ValueError("executor é obrigatório.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -46,27 +49,28 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
         event_time = timestamp or datetime.now(timezone.utc)
+        audit_record = None
+        if snapshot is not None and self._recorder is not None:
+            audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
+
         if not self._kill_switch.allows_execution():
-            if snapshot is not None and self._recorder is not None:
-                self._recorder.record_decision(snapshot, timestamp=event_time)
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
-        audit_record = None
-        if snapshot is not None and self._recorder is not None:
-            audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
-
         try:
             result = self._executor.execute(request)
         except Exception as exc:
-            return GatewayResult(GatewayStatus.EXECUTION_REJECTED, f"executor falhou; execução não confirmada: {exc}")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou com segurança: {type(exc).__name__}: {exc}")
+
+        if not isinstance(result, ExecutionResult):
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou um resultado inválido.")
+
+        self._processed_request_ids.add(request_id)
 
         if not result.accepted:
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
-
-        self._processed_request_ids.add(request_id)
 
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
