@@ -24,7 +24,7 @@ def make_state() -> OperationalState:
 
 
 def make_context() -> MarketContextResult:
-    return MarketContextResult(MarketContext.FAVORAVEL, 90.0, MarketDirection.ALTA, "Contexto favorável.")
+    return MarketContextResult(MarketContext.FAVORAVEL, 90.0, "Contexto favorável.", MarketDirection.ALTA)
 
 
 def make_analysis(signal: Signal = Signal.COMPRA) -> AnalysisResult:
@@ -93,7 +93,7 @@ def test_demo_flow_does_not_execute_without_operational_state():
 
 def test_demo_flow_does_not_execute_when_context_is_unfavorable():
     flow, _, executor = make_flow()
-    context = MarketContextResult(MarketContext.DESFAVORAVEL, 20.0, MarketDirection.ALTA, "Contexto desfavorável.")
+    context = MarketContextResult(MarketContext.DESFAVORAVEL, 20.0, "Contexto desfavorável.", MarketDirection.ALTA)
     result = run_flow(flow, market_context=context)
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None and result.execution_result is None
