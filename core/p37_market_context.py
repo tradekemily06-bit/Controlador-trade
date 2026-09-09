@@ -37,6 +37,8 @@ class MarketContextAggregator:
     ) -> MarketContextSnapshot:
         if not isinstance(context, MarketContext):
             raise ValueError("context is invalid")
+        if any(not isinstance(event, NewsEvent) for event in context.events):
+            raise ValueError("context contains invalid news events")
 
         requested = None
         if symbols is not None:
@@ -49,16 +51,15 @@ class MarketContextAggregator:
                 raise ValueError("symbols must not contain duplicates")
             requested = normalized
 
-        available = set()
-        for event in context.events:
-            available.update(event.symbols)
-
+        events = tuple(sorted(context.events, key=self._sort_key))
+        available = {symbol for event in events for symbol in event.symbols}
         target_symbols = requested if requested is not None else tuple(sorted(available))
-        summaries = tuple(
-            self._summarize(symbol, context.events)
-            for symbol in target_symbols
-        )
+        summaries = tuple(self._summarize(symbol, events) for symbol in target_symbols)
         return MarketContextSnapshot(summaries)
+
+    @staticmethod
+    def _sort_key(event: NewsEvent) -> tuple:
+        return (event.published_at, event.source, event.title, event.symbols, event.impact.value)
 
     @staticmethod
     def _summarize(symbol: str, events: tuple[NewsEvent, ...]) -> SymbolMarketContext:
