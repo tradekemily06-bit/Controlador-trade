@@ -12,7 +12,7 @@ from execution.ports import ExecutionMode
 
 
 def intent():
-    return ExecutionIntent("req-30", "EURUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, datetime(2026,1,1,tzinfo=timezone.utc))
+    return ExecutionIntent("req-30", "EURUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
 def config():
@@ -20,11 +20,11 @@ def config():
 
 
 def market():
-    return MarketDataIntegrityReport(MarketDataHealth.HEALTHY, 0, False, None)
+    return MarketDataIntegrityReport(MarketDataHealth.HEALTHY, 1, None, 0, False, "healthy")
 
 
 def recovery():
-    return RecoveryAssessment(RecoveryState.FRESH, (), (), (), ())
+    return RecoveryAssessment(RecoveryState.FRESH, None, (), (), "fresh")
 
 
 def test_ready_requires_all_safety_dependencies_and_intent():
