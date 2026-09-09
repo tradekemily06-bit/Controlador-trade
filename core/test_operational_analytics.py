@@ -63,8 +63,8 @@ def test_snapshot_respects_inclusive_period():
     snapshot = OperationalAnalytics(memory).snapshot(start=start, end=end)
 
     assert snapshot.total == 2
-    assert snapshot.wins == 2
-    assert snapshot.losses == 0
+    assert snapshot.wins == 1
+    assert snapshot.losses == 1
 
 
 def test_invalid_period_is_rejected():
