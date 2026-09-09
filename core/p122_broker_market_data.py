@@ -59,7 +59,10 @@ class BrokerMarketDataBoundary:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
-        raw = tuple(self._provider.fetch_market_data(request))
+        raw_result = self._provider.fetch_market_data(request)
+        if raw_result is None:
+            raise ValueError("provider retornou None")
+        raw = tuple(raw_result)
         if not raw:
             raise ValueError("provider não retornou candles")
 
