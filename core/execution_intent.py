@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from core.models import Signal
-from execution.ports import ExecutionMode
+from execution.ports import ExecutionMode, ExecutionRequest
 
 
 @dataclass(frozen=True)
@@ -40,10 +40,8 @@ class ExecutionIntent:
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at inválido.")
 
-    def as_execution_request(self):
+    def as_execution_request(self) -> ExecutionRequest:
         """Build the existing port DTO without invoking any execution adapter."""
-        from execution.ports import ExecutionRequest
-
         return ExecutionRequest(
             symbol=self.symbol,
             signal=self.signal,
