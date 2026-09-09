@@ -11,7 +11,7 @@ from core.models import AnalysisResult, Signal
 from core.signal_quality import SignalLevel, SignalQuality
 from data.feed import MarketDataResult
 from execution.gateway import ExecutionGateway, GatewayStatus
-from execution.paper import PaperExecution
+from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode
 
 
@@ -33,7 +33,7 @@ def executable_orchestration() -> OrchestrationResult:
         symbol="EURUSD",
         timeframe="5m",
     )
-    quality = SignalQuality(score=90.0, level=SignalLevel.FORTE, actionable=True, reason="teste")
+    quality = SignalQuality(score=90.0, level=SignalLevel.FORTE, actionable=True)
     decision = DecisionResult(FinalDecision.EXECUTAR, Signal.COMPRA, "aprovado")
     snapshot = DecisionSnapshot.from_results(
         analysis=analysis,
@@ -93,7 +93,7 @@ def test_coordinator_forwards_plan_to_gateway():
 
 
 def test_coordinator_integrates_with_demo_gateway():
-    gateway = ExecutionGateway(PaperExecution(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
     coordinator = ExecutionCoordinator(gateway)
     orchestration = executable_orchestration()
     plan = coordinator.build_plan(
