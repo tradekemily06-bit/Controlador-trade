@@ -69,5 +69,5 @@ def test_feed_rejects_duplicate_timestamps():
 def test_feed_validates_before_applying_limit():
     data = candles(3)
     data[-1] = Candle(data[-1].timestamp, 1, 0, 2, 1, 1)
-    with pytest.raises(ValueError, match="invalid candle sequence"):
+    with pytest.raises(ValueError, match="Dados de candle inválidos"):
         MarketDataFeed(Provider(data)).fetch(MarketDataRequest("EURUSD", "1m", 2))
