@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -27,12 +28,28 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
+        if not isinstance(ledger, ExecutionLedger):
+            raise ValueError("ledger é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
-        self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        self._processed_request_ids: set[str] = set(ledger.records())
+
+    @staticmethod
+    def _valid_request(request: ExecutionRequest) -> bool:
+        if not isinstance(request, ExecutionRequest):
+            return False
+        if request.mode is not ExecutionMode.REAL:
+            return False
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            return False
+        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+            return False
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+            return False
+        return True
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
@@ -45,24 +62,65 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        if request.mode is not ExecutionMode.REAL:
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "gateway REAL exige request em modo REAL.")
+        if not self._valid_request(request):
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if not isinstance(broker, str) or not broker.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+
+        current_status = self._ledger.status(request_id)
+        if current_status is not None:
+            self._processed_request_ids.add(request_id)
+            if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+                )
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
+
+        try:
+            # Persist reservation BEFORE external dispatch. The ledger also serializes
+            # read/modify/write so concurrent processes cannot reserve the same ID.
+            self._ledger.reserve(request_id)
+            self._processed_request_ids.add(request_id)
+        except (OSError, ValueError) as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+
         try:
             result = self._gateway.execute(broker, request)
         except Exception as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
-        if result.execution is None:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
-        if not result.execution.accepted:
-            return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
-        if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+
+        if result.execution is None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+
+        if not result.execution.accepted:
+            try:
+                self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
-        self._processed_request_ids.add(request_id)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
+
+        try:
+            self._ledger.mark_accepted(request_id)
+        except (OSError, ValueError) as exc:
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+
+    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
+        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        if self._ledger.status(request_id) not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
+            raise ValueError("request_id não está em estado incerto reconciliável.")
+        self._ledger.reconcile(request_id, executed=executed)
