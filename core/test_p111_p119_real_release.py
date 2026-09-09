@@ -188,3 +188,54 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     assert result.status == RealGatewayStatus.UNKNOWN
     gateway.reconcile_unknown("unknown-2", executed=True)
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("crashed")
+
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(broker="fake", request_id="crashed", request=_request(),
+                             authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 0
+    gateway.reconcile_unknown("crashed", executed=False)
+    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    first = ExecutionLedger(path)
+    second = ExecutionLedger(path)
+    first.reserve("same-id")
+
+    try:
+        second.reserve("same-id")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("concurrent/stale ledgers must not reserve the same REAL request_id")
+
+
+def test_real_gateway_rejects_malformed_request(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
+
+    result = gateway.execute(broker="fake", request_id="bad", request=malformed,
+                             authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
