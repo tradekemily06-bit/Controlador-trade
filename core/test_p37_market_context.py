@@ -41,20 +41,21 @@ def test_requested_symbols_are_normalized_and_order_is_explicit():
     assert snapshot.symbols[1].event_count == 1
 
 
-def test_events_remain_deterministically_ordered_from_p36_context():
+def test_aggregator_enforces_deterministic_event_order():
     first = make_event("A", ("BTCUSD",))
     second = make_event("B", ("BTCUSD",))
     context = MarketContext((second, first))
     snapshot = MarketContextAggregator().aggregate(context)
 
-    # Aggregator does not silently reorder or rewrite an already supplied context.
-    assert snapshot.symbols[0].events == (second, first)
+    assert snapshot.symbols[0].events == (first, second)
 
 
 def test_invalid_context_and_symbols_fail_closed():
     aggregator = MarketContextAggregator()
     with pytest.raises(ValueError):
         aggregator.aggregate("invalid")
+    with pytest.raises(ValueError):
+        aggregator.aggregate(MarketContext(("invalid",)))
     with pytest.raises(ValueError):
         aggregator.aggregate(MarketContext(()), symbols=(" ",))
     with pytest.raises(ValueError):
