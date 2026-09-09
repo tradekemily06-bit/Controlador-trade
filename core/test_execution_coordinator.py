@@ -3,15 +3,16 @@ from datetime import datetime, timezone
 import pytest
 
 from core.decision_engine import DecisionResult, FinalDecision
+from core.decision_snapshot import DecisionSnapshot
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult
+from core.kill_switch import KillSwitch
 from core.models import AnalysisResult, Signal
 from core.signal_quality import SignalLevel, SignalQuality
-from data.feed import MarketDataResult, MarketDataRequest
+from data.feed import MarketDataResult
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecution
 from execution.ports import ExecutionMode
-from core.decision_snapshot import DecisionSnapshot
 
 
 class FakeGateway:
@@ -42,9 +43,7 @@ def executable_orchestration() -> OrchestrationResult:
         operational_state=None,
     )
     return OrchestrationResult(
-        market_data=MarketDataResult(
-            candles=(), source="test", received_at=datetime.now(timezone.utc)
-        ),
+        market_data=MarketDataResult(candles=(), source="test", received_at=datetime.now(timezone.utc)),
         analysis=analysis,
         quality=quality,
         decision=decision,
@@ -54,12 +53,8 @@ def executable_orchestration() -> OrchestrationResult:
 
 
 def test_build_plan_only_allows_executable_decision():
-    orchestration = executable_orchestration()
     plan = ExecutionCoordinator.build_plan(
-        orchestration,
-        request_id="req-1",
-        amount=10.0,
-        duration_seconds=60,
+        executable_orchestration(), request_id="req-1", amount=10.0, duration_seconds=60
     )
     assert isinstance(plan, ExecutionPlan)
     assert plan.request.signal is Signal.COMPRA
@@ -68,7 +63,7 @@ def test_build_plan_only_allows_executable_decision():
 
 def test_build_plan_rejects_non_executable_decision():
     orchestration = executable_orchestration()
-    orchestration = OrchestrationResult(
+    non_executable = OrchestrationResult(
         market_data=orchestration.market_data,
         analysis=orchestration.analysis,
         quality=orchestration.quality,
@@ -78,10 +73,7 @@ def test_build_plan_rejects_non_executable_decision():
     )
     with pytest.raises(ValueError, match="EXECUTAR"):
         ExecutionCoordinator.build_plan(
-            orchestration,
-            request_id="req-2",
-            amount=10.0,
-            duration_seconds=60,
+            non_executable, request_id="req-2", amount=10.0, duration_seconds=60
         )
 
 
@@ -90,26 +82,22 @@ def test_coordinator_forwards_plan_to_gateway():
     coordinator = ExecutionCoordinator(fake)
     orchestration = executable_orchestration()
     plan = coordinator.build_plan(
-        orchestration,
-        request_id="req-3",
-        amount=10.0,
-        duration_seconds=60,
+        orchestration, request_id="req-3", amount=10.0, duration_seconds=60
     )
-    result = coordinator.execute_plan(plan, orchestration=orchestration, entry_conditions=("teste",))
+    result = coordinator.execute_plan(
+        plan, orchestration=orchestration, entry_conditions=("teste",)
+    )
     assert result == "executed"
     assert fake.calls[0][0][0] == "req-3"
     assert fake.calls[0][1]["snapshot"] is orchestration.snapshot
 
 
 def test_coordinator_integrates_with_demo_gateway():
-    gateway = ExecutionGateway(PaperExecution(), __import__("core.kill_switch", fromlist=["KillSwitch"]).KillSwitch())
+    gateway = ExecutionGateway(PaperExecution(), KillSwitch())
     coordinator = ExecutionCoordinator(gateway)
     orchestration = executable_orchestration()
     plan = coordinator.build_plan(
-        orchestration,
-        request_id="req-4",
-        amount=10.0,
-        duration_seconds=60,
+        orchestration, request_id="req-4", amount=10.0, duration_seconds=60
     )
     result = coordinator.execute_plan(plan, orchestration=orchestration)
     assert result.status is GatewayStatus.ACCEPTED
