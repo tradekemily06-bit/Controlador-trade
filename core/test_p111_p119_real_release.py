@@ -67,7 +67,8 @@ def test_p111_p116_p117_p119_positive_flow():
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry))
     request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
-    result = gateway.execute(broker="fake", request=request, authorization=auth, admission=p117, safety=safety)
+    result = gateway.execute(broker="fake", request_id="req", request=request,
+                             authorization=auth, admission=p117, safety=safety)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
 
@@ -119,6 +120,7 @@ def test_real_gateway_blocks_without_active_authorization():
         broker_available=True,
     )
     request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
-    result = gateway.execute(broker="fake", request=request, authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="blocked", request=request,
+                             authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
