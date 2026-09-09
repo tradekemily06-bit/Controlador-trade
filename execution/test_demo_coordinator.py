@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from core.demo_readiness import DemoReadiness
 from core.execution_intent import ExecutionIntent
+from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrityReport
@@ -38,7 +38,7 @@ def intent():
     return ExecutionIntent("req-31", "EURUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
-def coordinator():
+def make_coordinator():
     executor = FakeExecutor()
     gateway = ExecutionGateway(executor, KillSwitch())
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=KillSwitch()))
@@ -46,8 +46,8 @@ def coordinator():
 
 
 def test_ready_demo_reaches_gateway_once():
-    coordinator, executor = coordinator()
-    result = coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent())
+    demo_coordinator, executor = make_coordinator()
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent())
     assert result.readiness.ready
     assert result.gateway is not None
     assert result.gateway.status is GatewayStatus.ACCEPTED
@@ -56,17 +56,17 @@ def test_ready_demo_reaches_gateway_once():
 
 
 def test_unready_market_never_calls_executor():
-    coordinator, executor = coordinator()
+    demo_coordinator, executor = make_coordinator()
     bad_market = MarketDataIntegrityReport(MarketDataHealth.STALE, 1, None, 0, True, "stale")
-    result = coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent())
+    result = demo_coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent())
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
 
 
 def test_missing_intent_never_calls_executor():
-    coordinator, executor = coordinator()
-    result = coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None)
+    demo_coordinator, executor = make_coordinator()
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None)
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
