@@ -56,27 +56,22 @@ def test_p62_rejects_mismatched_artifacts_and_reapplication():
     evaluation = AdaptationEvaluationBoundary().evaluate(prop, status=EvaluationStatus.APPROVED, rationale="approved")
     with pytest.raises(ValueError):
         ControlledAdaptationBoundary().apply(prop, evaluation, application_id="")
+
+    other_knowledge = TrustedKnowledgeBoundary().promote(
+        LearningValidationBoundary().validate(
+            LearningHypothesisBoundary().propose(
+                LearningEvidence("c2", "WIN", 9.0), hypothesis_id="other2", statement="s"
+            ),
+            test_id="t2", status=ValidationStatus.VALIDATED, sample_size=2, observation="o"
+        ),
+        knowledge_id="k2", statement="s"
+    )
+    other_memory = KnowledgeMemoryBoundary().record(other_knowledge, memory_id="m2")
+    other_audit = MemoryAuditBoundary().audit(other_memory)
+    other_run = KnowledgeLabBoundary().run(other_audit, other_memory, lab_id="lab2", scenario="s")
     mismatched = AdaptationEvaluationBoundary().evaluate(
-        AdaptationProposalBoundary().propose(
-            KnowledgeLabBoundary().run(
-                MemoryAuditBoundary().audit(KnowledgeMemoryBoundary().record(
-                    TrustedKnowledgeBoundary().promote(
-                        LearningValidationBoundary().validate(
-                            LearningHypothesisBoundary().propose(LearningEvidence("c", "WIN", 9.0), hypothesis_id="other", statement="s"),
-                            test_id="t", status=ValidationStatus.VALIDATED, sample_size=2, observation="o"
-                        ), knowledge_id="k", statement="s"
-                    ), memory_id="m"
-                )),
-                KnowledgeMemoryBoundary().record(
-                    TrustedKnowledgeBoundary().promote(
-                        LearningValidationBoundary().validate(
-                            LearningHypothesisBoundary().propose(LearningEvidence("c2", "WIN", 9.0), hypothesis_id="other2", statement="s"),
-                            test_id="t2", status=ValidationStatus.VALIDATED, sample_size=2, observation="o"
-                        ), knowledge_id="k2", statement="s"
-                    ), memory_id="m2"
-                ), lab_id="lab2", scenario="s"
-            ), proposal_id="other-proposal", rationale="other"
-        ), status=EvaluationStatus.APPROVED, rationale="approved"
+        AdaptationProposalBoundary().propose(other_run, proposal_id="other-proposal", rationale="other"),
+        status=EvaluationStatus.APPROVED, rationale="approved"
     )
     with pytest.raises(ValueError):
         ControlledAdaptationBoundary().apply(prop, mismatched, application_id="bad")
