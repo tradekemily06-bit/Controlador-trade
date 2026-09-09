@@ -8,7 +8,6 @@ from core.market_context import MarketContext, MarketContextResult, MarketDirect
 from core.operational_state import OperationalState
 from core.signal_quality import SignalQualityEvaluator
 from core.risk_manager import RiskManager
-from core.models import Signal
 from data.feed import MarketDataFeed, MarketDataRequest
 from data.models import Candle
 from core.live_orchestrator import TradingOrchestrator
@@ -22,7 +21,7 @@ class Provider:
         return self.candles
 
 
-def candles():
+def make_candles():
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     return [
         Candle(base, 100, 101, 99, 100, 10),
@@ -31,7 +30,7 @@ def candles():
     ]
 
 
-def orchestrator(data):
+def make_orchestrator(data):
     feed = MarketDataFeed(Provider(data), source="test")
     return TradingOrchestrator(
         feed=feed,
@@ -42,7 +41,12 @@ def orchestrator(data):
 
 
 def favorable():
-    return MarketContextResult(MarketContext.FAVORAVEL, MarketDirection.ALTA, 1.0)
+    return MarketContextResult(
+        context=MarketContext.FAVORAVEL,
+        score=100.0,
+        reason="teste",
+        direction=MarketDirection.ALTA,
+    )
 
 
 def state():
@@ -50,7 +54,7 @@ def state():
 
 
 def test_orchestrator_preserves_full_pipeline_without_execution():
-    result = orchestrator(candles()).evaluate(
+    result = make_orchestrator(make_candles()).evaluate(
         MarketDataRequest("TEST", "1m", 3),
         operational_state=state(),
         market_context=favorable(),
@@ -64,7 +68,7 @@ def test_orchestrator_preserves_full_pipeline_without_execution():
 
 
 def test_orchestrator_never_executes_an_order():
-    result = orchestrator(candles()).evaluate(
+    result = make_orchestrator(make_candles()).evaluate(
         MarketDataRequest("TEST", "1m", 3),
         operational_state=None,
         market_context=None,
@@ -75,7 +79,7 @@ def test_orchestrator_never_executes_an_order():
 
 def test_orchestrator_rejects_empty_feed_before_analysis():
     with pytest.raises(ValueError, match="vazios"):
-        orchestrator([]).evaluate(
+        make_orchestrator([]).evaluate(
             MarketDataRequest("TEST", "1m", 3),
             operational_state=state(),
             market_context=favorable(),
@@ -83,7 +87,7 @@ def test_orchestrator_rejects_empty_feed_before_analysis():
 
 
 def test_orchestrator_uses_feed_limit_after_validation():
-    result = orchestrator(candles()).evaluate(
+    result = make_orchestrator(make_candles()).evaluate(
         MarketDataRequest("TEST", "1m", 2),
         operational_state=state(),
         market_context=favorable(),
