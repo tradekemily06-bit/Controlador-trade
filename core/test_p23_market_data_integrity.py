@@ -56,9 +56,8 @@ def test_future_timestamp_is_rejected():
 def test_timezone_mismatch_is_rejected():
     base = datetime(2026, 1, 1, tzinfo=timezone.utc)
     data = (candle_at(base, 0),)
-    with pytest.raises(ValueError):
-        # A mismatched timezone regime is represented by a naive now.
-        MarketDataIntegrity().assess(data, now=base.replace(tzinfo=None))
+    report = MarketDataIntegrity().assess(data, now=base.replace(tzinfo=None))
+    assert report.health is MarketDataHealth.INVALID
 
 
 def test_invalid_interval_configuration():
