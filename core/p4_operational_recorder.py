@@ -6,6 +6,7 @@ from datetime import datetime
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .kill_switch import KillSwitch
+from .models import Signal
 from .operation_memory import OperationMemory, OperationMemoryRecord
 
 
@@ -55,7 +56,7 @@ class P4OperationalRecorder:
         audit_record = self.record_decision(snapshot, timestamp=timestamp)
         memory_record = OperationMemoryRecord(
             timestamp=timestamp,
-            signal=snapshot.signal,  # type: ignore[arg-type]
+            signal=Signal(snapshot.signal),
             score=snapshot.analysis_score,
             decision=snapshot.decision,
             reason=snapshot.decision_reason,
@@ -66,27 +67,12 @@ class P4OperationalRecorder:
             quality_level=snapshot.quality_level,
             entry_conditions=entry_conditions,
         )
-        # DecisionSnapshot stores the serialized signal; OperationMemory validates
-        # the domain enum, so conversion is centralized here rather than in strategy code.
-        from .models import Signal
-
-        memory_record = OperationMemoryRecord(
-            timestamp=memory_record.timestamp,
-            signal=Signal(memory_record.signal),
-            score=memory_record.score,
-            decision=memory_record.decision,
-            reason=memory_record.reason,
-            result=memory_record.result,
-            symbol=memory_record.symbol,
-            timeframe=memory_record.timeframe,
-            quality_score=memory_record.quality_score,
-            quality_level=memory_record.quality_level,
-            entry_conditions=memory_record.entry_conditions,
-        )
         self.memory.append(memory_record)
         return RecordedOperation(audit=audit_record, memory=memory_record)
 
-    def settle_operation(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
+    def settle_operation(
+        self, record: OperationMemoryRecord, result: str
+    ) -> OperationMemoryRecord:
         """Settle an existing memory entry without creating a duplicate event."""
         return self.memory.settle(record, result)
 
