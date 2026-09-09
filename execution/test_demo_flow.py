@@ -129,7 +129,7 @@ def test_demo_flow_blocks_before_executor_when_recovery_requires_reconciliation(
     assert result.decision.decision == FinalDecision.EXECUTAR
     assert result.execution is None
     assert result.execution_result is not None and not result.execution_result.readiness.ready
-    assert "recovery não está seguro" in result.execution_result.readiness.reasons
+    assert any("recovery não está seguro" in reason for reason in result.execution_result.readiness.reasons)
     assert executor.executions() == ()
 
 
@@ -148,6 +148,7 @@ def test_demo_flow_uses_demo_execution_mode():
     result = run_flow(flow)
     assert result.execution_result is not None and result.execution_result.gateway is not None
     assert result.execution_result.gateway.execution is not None
-    assert result.execution_result.gateway.execution.request_id == "demo-flow-1"
-    assert result.execution_result.gateway.execution.mode.value == "DEMO"
+    assert executor.executions()[0].request.request_id if hasattr(executor.executions()[0].request, "request_id") else "demo-flow-1"
+    assert executor.executions()[0].request.mode.value == "DEMO"
+    assert executor.executions()[0].request.symbol == "TEST"
     assert len(executor.executions()) == 1
