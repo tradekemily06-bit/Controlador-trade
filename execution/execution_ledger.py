@@ -75,6 +75,14 @@ class ExecutionLedger:
         self._states[request_id] = ExecutionLedgerStatus.RESERVED
         self._write()
 
+    def record(self, request_id: str) -> None:
+        """Backward-compatible terminal record for existing DEMO infrastructure."""
+        self._validate_id(request_id)
+        if request_id in self._states:
+            return
+        self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+        self._write()
+
     def mark_accepted(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
 
