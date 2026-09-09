@@ -43,14 +43,14 @@ def make_recovery() -> RecoveryAssessment:
     return RecoveryAssessment(RecoveryState.FRESH, None, (), (), "fresh")
 
 
-def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor]:
+def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor, KillSwitch]:
     logger = AuditLogger()
     executor = PaperExecutor()
     kill_switch = KillSwitch()
     gateway = ExecutionGateway(executor, kill_switch)
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
-    return DemoFlow(decision_engine=DecisionEngine(RiskManager()), demo_coordinator=coordinator, audit_logger=logger, request_id_factory=lambda: "demo-flow-1", clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc)), logger, executor
+    return DemoFlow(decision_engine=DecisionEngine(RiskManager()), demo_coordinator=coordinator, audit_logger=logger, request_id_factory=lambda: "demo-flow-1", clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc)), logger, executor, kill_switch
 
 
 def run_flow(flow: DemoFlow, *, analysis: AnalysisResult | None = None, **overrides):
@@ -60,7 +60,7 @@ def run_flow(flow: DemoFlow, *, analysis: AnalysisResult | None = None, **overri
 
 
 def test_demo_flow_executes_through_coordinator():
-    flow, logger, executor = make_flow()
+    flow, logger, executor, _ = make_flow()
     result = run_flow(flow)
     assert result.decision.decision == FinalDecision.EXECUTAR
     assert result.execution is not None and result.execution.accepted
@@ -73,7 +73,7 @@ def test_demo_flow_executes_through_coordinator():
 
 
 def test_demo_flow_does_not_execute_when_decision_is_aguardar():
-    flow, logger, executor = make_flow()
+    flow, logger, executor, _ = make_flow()
     result = run_flow(flow, analysis=make_analysis(Signal.AGUARDAR))
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None and result.execution_result is None
@@ -83,7 +83,7 @@ def test_demo_flow_does_not_execute_when_decision_is_aguardar():
 
 
 def test_demo_flow_does_not_execute_without_operational_state():
-    flow, _, executor = make_flow()
+    flow, _, executor, _ = make_flow()
     result = run_flow(flow, operational_state=None)
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None and result.execution_result is None
@@ -92,7 +92,7 @@ def test_demo_flow_does_not_execute_without_operational_state():
 
 
 def test_demo_flow_does_not_execute_when_context_is_unfavorable():
-    flow, _, executor = make_flow()
+    flow, _, executor, _ = make_flow()
     context = MarketContextResult(MarketContext.DESFAVORAVEL, 20.0, "Contexto desfavorável.", MarketDirection.ALTA)
     result = run_flow(flow, market_context=context)
     assert result.decision.decision == FinalDecision.AGUARDAR
@@ -102,7 +102,7 @@ def test_demo_flow_does_not_execute_when_context_is_unfavorable():
 
 
 def test_demo_flow_blocks_before_executor_when_market_is_not_healthy():
-    flow, _, executor = make_flow()
+    flow, _, executor, _ = make_flow()
     stale = MarketDataIntegrityReport(MarketDataHealth.STALE, 1, None, 0, True, "stale")
     result = run_flow(flow, market_data=stale)
     assert result.decision.decision == FinalDecision.EXECUTAR
@@ -111,8 +111,40 @@ def test_demo_flow_blocks_before_executor_when_market_is_not_healthy():
     assert executor.executions() == ()
 
 
+def test_demo_flow_blocks_before_executor_when_kill_switch_is_active():
+    flow, _, executor, kill_switch = make_flow()
+    kill_switch.activate("teste P32")
+    result = run_flow(flow)
+    assert result.decision.decision == FinalDecision.EXECUTAR
+    assert result.execution is None
+    assert result.execution_result is not None and not result.execution_result.readiness.ready
+    assert "kill switch ativo" in result.execution_result.readiness.reasons
+    assert executor.executions() == ()
+
+
+def test_demo_flow_blocks_before_executor_when_recovery_requires_reconciliation():
+    flow, _, executor, _ = make_flow()
+    recovery = RecoveryAssessment(RecoveryState.REQUIRES_RECONCILIATION, None, (), ("req-1",), "UNKNOWN requer reconciliação")
+    result = run_flow(flow, recovery=recovery)
+    assert result.decision.decision == FinalDecision.EXECUTAR
+    assert result.execution is None
+    assert result.execution_result is not None and not result.execution_result.readiness.ready
+    assert "recovery não está seguro" in result.execution_result.readiness.reasons
+    assert executor.executions() == ()
+
+
+def test_demo_flow_blocks_before_executor_when_config_is_invalid():
+    flow, _, executor, _ = make_flow()
+    result = run_flow(flow, config=object())
+    assert result.decision.decision == FinalDecision.EXECUTAR
+    assert result.execution is None
+    assert result.execution_result is not None and not result.execution_result.readiness.ready
+    assert "configuração inválida" in result.execution_result.readiness.reasons
+    assert executor.executions() == ()
+
+
 def test_demo_flow_uses_demo_execution_mode():
-    flow, _, executor = make_flow()
+    flow, _, executor, _ = make_flow()
     result = run_flow(flow)
     assert result.execution_result is not None and result.execution_result.gateway is not None
     assert result.execution_result.gateway.execution is not None
