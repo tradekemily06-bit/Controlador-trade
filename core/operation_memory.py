@@ -67,6 +67,32 @@ class OperationMemory:
             raise MemoryValidationError("registros de memória devem ser cronológicos.")
         self._records.append(record)
 
+    def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
+        """Replace one pending entry with its validated final result."""
+        if result not in _VALID_RESULTS - {"PENDENTE"}:
+            raise MemoryValidationError("resultado final inválido.")
+        try:
+            index = self._records.index(record)
+        except ValueError as exc:
+            raise MemoryValidationError("registro não encontrado na memória.") from exc
+        if self._records[index].result != "PENDENTE":
+            raise MemoryValidationError("somente registros pendentes podem ser liquidados.")
+        updated = OperationMemoryRecord(
+            timestamp=record.timestamp,
+            signal=record.signal,
+            score=record.score,
+            decision=record.decision,
+            reason=record.reason,
+            result=result,
+            symbol=record.symbol,
+            timeframe=record.timeframe,
+            quality_score=record.quality_score,
+            quality_level=record.quality_level,
+            entry_conditions=record.entry_conditions,
+        )
+        self._records[index] = updated
+        return updated
+
     def records(self) -> tuple[OperationMemoryRecord, ...]:
         return tuple(self._records)
 
@@ -101,6 +127,15 @@ class OperationMemory:
                 "losses": sum(r.result == "LOSS" for r in items),
                 "win_rate": (sum(r.result == "WIN" for r in items) / len(items)) if items else None,
             }
+        quality = {}
+        for level in {r.quality_level for r in completed if r.quality_level is not None}:
+            items = [r for r in completed if r.quality_level == level]
+            quality[level] = {
+                "total": len(items),
+                "wins": sum(r.result == "WIN" for r in items),
+                "losses": sum(r.result == "LOSS" for r in items),
+                "win_rate": (sum(r.result == "WIN" for r in items) / len(items)) if items else None,
+            }
         current_streak = 0
         max_loss_streak = 0
         for record in completed:
@@ -117,6 +152,7 @@ class OperationMemory:
             "loss_streak": current_streak,
             "max_loss_streak": max_loss_streak,
             "direction": direction,
+            "quality": quality,
             "decision_distribution": {
                 decision: sum(r.decision == decision for r in self._records)
                 for decision in ("EXECUTAR", "BLOQUEAR", "AGUARDAR")
