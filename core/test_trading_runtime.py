@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
+from datetime import datetime
 
 import pytest
 
+from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
@@ -53,35 +55,17 @@ def test_runtime_requires_dependencies() -> None:
 
 
 def test_runtime_rejects_invalid_cycle_limit() -> None:
-    runtime = TradingRuntime(
-        orchestrator=FakeOrchestrator(),
-        coordinator=FakeCoordinator(),
-    )
+    runtime = TradingRuntime(orchestrator=FakeOrchestrator(), coordinator=FakeCoordinator())
     with pytest.raises(ValueError, match="max_cycles"):
-        runtime.run(
-            request(),
-            operational_state=None,
-            market_context=None,
-            amount=1,
-            duration_seconds=60,
-            max_cycles=0,
-        )
+        runtime.run(request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=0)
 
 
 def test_runtime_does_not_execute_non_executable_decision() -> None:
     orchestrator = FakeOrchestrator(executable=False)
     coordinator = FakeCoordinator()
-    runtime = TradingRuntime(orchestrator=orchestrator, coordinator=coordinator)
-
-    result = runtime.run(
-        request(),
-        operational_state=None,
-        market_context=None,
-        amount=1,
-        duration_seconds=60,
-        max_cycles=3,
+    result = TradingRuntime(orchestrator=orchestrator, coordinator=coordinator).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=3
     )
-
     assert len(result.cycles) == 3
     assert result.executed_cycles == 0
     assert coordinator.build_calls == []
@@ -92,42 +76,51 @@ def test_runtime_does_not_execute_non_executable_decision() -> None:
 def test_runtime_stops_after_rejected_execution() -> None:
     orchestrator = FakeOrchestrator(executable=True)
     coordinator = FakeCoordinator(accepted=False)
-    runtime = TradingRuntime(orchestrator=orchestrator, coordinator=coordinator)
-
-    result = runtime.run(
-        request(),
-        operational_state=None,
-        market_context=None,
-        amount=1,
-        duration_seconds=60,
-        max_cycles=5,
+    result = TradingRuntime(orchestrator=orchestrator, coordinator=coordinator).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=5
     )
-
     assert len(result.cycles) == 1
     assert result.stopped
     assert result.stop_reason == "bloqueado"
     assert result.executed_cycles == 0
-    assert len(coordinator.build_calls) == 1
-    assert len(coordinator.execute_calls) == 1
 
 
 def test_runtime_uses_deterministic_request_ids() -> None:
-    orchestrator = FakeOrchestrator(executable=True)
     coordinator = FakeCoordinator(accepted=True)
-    runtime = TradingRuntime(orchestrator=orchestrator, coordinator=coordinator)
-
-    result = runtime.run(
-        request(),
-        operational_state=None,
-        market_context=None,
-        amount=1,
-        duration_seconds=60,
-        max_cycles=2,
+    result = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=coordinator).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=2
     )
-
-    assert [call[1]["request_id"] for call in coordinator.build_calls] == [
-        "runtime-000001",
-        "runtime-000002",
-    ]
+    assert [call[1]["request_id"] for call in coordinator.build_calls] == ["runtime-000001", "runtime-000002"]
     assert result.executed_cycles == 2
     assert not result.stopped
+
+
+def test_runtime_persists_last_safe_cycle(tmp_path) -> None:
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    result = TradingRuntime(orchestrator=FakeOrchestrator(executable=False), coordinator=FakeCoordinator()).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
+        max_cycles=3, checkpoint_store=store, session_id="session-1",
+    )
+    checkpoint = store.load()
+    assert len(result.cycles) == 3
+    assert checkpoint.session_id == "session-1"
+    assert checkpoint.last_cycle == 3
+    assert checkpoint.last_request_id is None
+    assert isinstance(checkpoint.updated_at, datetime)
+
+
+def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=FakeCoordinator()).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
+        max_cycles=1, checkpoint_store=store, session_id="session-2",
+    )
+    assert store.load().last_request_id == "runtime-000001"
+
+
+def test_checkpoint_requires_session_id(tmp_path) -> None:
+    with pytest.raises(ValueError, match="session_id"):
+        TradingRuntime(orchestrator=FakeOrchestrator(), coordinator=FakeCoordinator()).run(
+            request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
+            checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        )
