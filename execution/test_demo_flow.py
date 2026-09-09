@@ -20,7 +20,7 @@ from execution.paper import PaperExecutor
 
 
 def make_state() -> OperationalState:
-    return OperationalState(1000.0, 0.0, 0, 0, True)
+    return OperationalState(balance=1000.0, realized_pnl=0.0, trades_today=0, consecutive_losses=0, market_open=True)
 
 
 def make_context() -> MarketContextResult:
@@ -50,31 +50,11 @@ def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor]:
     gateway = ExecutionGateway(executor, kill_switch)
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
-    return (
-        DemoFlow(
-            decision_engine=DecisionEngine(RiskManager()),
-            demo_coordinator=coordinator,
-            audit_logger=logger,
-            request_id_factory=lambda: "demo-flow-1",
-            clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc),
-        ),
-        logger,
-        executor,
-    )
+    return DemoFlow(decision_engine=DecisionEngine(RiskManager()), demo_coordinator=coordinator, audit_logger=logger, request_id_factory=lambda: "demo-flow-1", clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc)), logger, executor
 
 
-def run_flow(flow: DemoFlow, *, analysis: AnalysisResult = None, **overrides):
-    values = {
-        "analysis": analysis or make_analysis(),
-        "market_context": make_context(),
-        "operational_state": make_state(),
-        "symbol": "TEST",
-        "amount": 10.0,
-        "duration_seconds": 60,
-        "config": make_config(),
-        "market_data": make_market(),
-        "recovery": make_recovery(),
-    }
+def run_flow(flow: DemoFlow, *, analysis: AnalysisResult | None = None, **overrides):
+    values = {"analysis": analysis or make_analysis(), "market_context": make_context(), "operational_state": make_state(), "symbol": "TEST", "amount": 10.0, "duration_seconds": 60, "config": make_config(), "market_data": make_market(), "recovery": make_recovery()}
     values.update(overrides)
     return flow.run(**values)
 
@@ -86,8 +66,7 @@ def test_demo_flow_executes_through_coordinator():
     assert result.execution is not None and result.execution.accepted
     assert result.quality.actionable and result.quality.level == SignalLevel.FORTE
     assert len(executor.executions()) == 1
-    assert result.execution_result is not None and result.execution_result.gateway is not None
-    assert result.execution_result.gateway.accepted
+    assert result.execution_result is not None and result.execution_result.gateway is not None and result.execution_result.gateway.accepted
     assert [event.event_type for event in logger.events()] == [AuditEventType.ANALYSIS, AuditEventType.DECISION, AuditEventType.EXECUTION]
     assert logger.events()[0].data["quality_level"] == "FORTE"
     assert logger.events()[1].data["quality_score"] == 80.0
