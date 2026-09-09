@@ -4,7 +4,7 @@ from core.p74_next_cycle_handoff import NextCycleHandoff
 from core.p75_handoff_validation import HandoffValidationBoundary, HandoffValidationStatus
 from core.p76_cycle_context import NextCycleContextBoundary
 from core.p77_context_audit import ContextAuditBoundary, ContextAuditStatus
-from core.p78_hypothesis_preparation import HypothesisPreparationBoundary
+from core.p78_hypothesis_preparation import HypothesisPreparationBoundary, PreparedHypothesis
 from core.p79_validation_admission import ValidationAdmissionBoundary
 
 
@@ -29,7 +29,7 @@ def test_p75_to_p79_preserve_boundary_and_provenance():
     assert admission.hypothesis_id == "hyp"
     assert admission.context_id == "ctx"
     assert admission.handoff_id == "h"
-    assert admission.validated is not True
+    assert admission.status == "ADMITTED"
     assert admission.real_execution_allowed is False
     with pytest.raises(Exception):
         admission.status = "BLOCKED"
@@ -56,8 +56,7 @@ def test_p77_requires_complete_context():
     context = NextCycleContextBoundary().create(
         HandoffValidationBoundary().validate(
             handoff(), status=HandoffValidationStatus.VERIFIED, rationale="verified"
-        ),
-        context_id="ctx", context="x"
+        ), context_id="ctx", context="x"
     )
     with pytest.raises(ValueError):
         ContextAuditBoundary().audit(context, status=ContextAuditStatus.BLOCKED, rationale="")
@@ -77,7 +76,6 @@ def test_p78_requires_auditable_context():
 
 
 def test_p79_requires_unvalidated_hypothesis():
-    from core.p78_hypothesis_preparation import PreparedHypothesis
     with pytest.raises(ValueError):
         ValidationAdmissionBoundary().admit(
             PreparedHypothesis("h", "c", "x", "statement", validated=True),
