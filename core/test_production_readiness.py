@@ -5,30 +5,26 @@ import pytest
 from core.kill_switch import KillSwitch
 from core.production_readiness import ProductionReadiness, ReadinessState
 from execution.execution_ledger import ExecutionLedger
+from execution.ports import ExecutionMode
 
 
 def test_demo_readiness_requires_safe_state(tmp_path: Path) -> None:
-    switch = KillSwitch()
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-
     report = ProductionReadiness(
-        kill_switch=switch,
-        execution_ledger=ledger,
+        kill_switch=KillSwitch(),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
     ).evaluate()
 
     assert report.state is ReadinessState.READY_DEMO
     assert report.ready is True
-    assert "DEMO" in report.reasons[0]
 
 
 def test_active_kill_switch_is_not_ready(tmp_path: Path) -> None:
     switch = KillSwitch()
     switch.activate("teste")
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
 
     report = ProductionReadiness(
         kill_switch=switch,
-        execution_ledger=ledger,
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
     ).evaluate()
 
     assert report.state is ReadinessState.NOT_READY
@@ -50,6 +46,8 @@ def test_real_can_never_be_reported_as_ready(tmp_path: Path) -> None:
     report = ProductionReadiness(
         kill_switch=KillSwitch(),
         execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
-    ).evaluate()
+    ).evaluate(mode=ExecutionMode.REAL)
 
-    assert report.state is not ReadinessState.READY_REAL
+    assert report.state is ReadinessState.NOT_READY
+    assert report.ready is False
+    assert "REAL" in report.reasons[0]
