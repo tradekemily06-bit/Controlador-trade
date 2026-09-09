@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol, Sequence
 
 from data.models import Candle
-from data.normalizer import normalize_candles
+from data.normalizer import normalize_candle
 from data.validator import validate_candles
 
 
@@ -50,12 +50,22 @@ class MarketDataFeed:
     def fetch(self, request: MarketDataRequest, received_at: datetime | None = None) -> MarketDataResult:
         if not isinstance(request, MarketDataRequest):
             raise TypeError("request must be MarketDataRequest")
-        raw = self._provider.fetch(request)
-        candles = tuple(raw)
-        if not candles:
+        raw = tuple(self._provider.fetch(request))
+        if not raw:
             raise ValueError("provider returned no candles")
-        normalized = tuple(normalize_candles(candles))
-        validate_candles(normalized)
+        normalized = tuple(
+            normalize_candle(
+                timestamp=c.timestamp,
+                open=c.open,
+                high=c.high,
+                low=c.low,
+                close=c.close,
+                volume=c.volume,
+            )
+            for c in raw
+        )
+        if not validate_candles(list(normalized)):
+            raise ValueError("provider returned invalid candle sequence")
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
         return MarketDataResult(
