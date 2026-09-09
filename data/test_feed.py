@@ -57,3 +57,17 @@ def test_feed_rejects_non_chronological_data():
     data[1], data[2] = data[2], data[1]
     with pytest.raises(ValueError):
         MarketDataFeed(Provider(data)).fetch(MarketDataRequest("EURUSD", "1m", 3))
+
+
+def test_feed_rejects_duplicate_timestamps():
+    data = candles(3)
+    data[2] = Candle(data[1].timestamp, 102, 103, 101, 102.5, 10)
+    with pytest.raises(ValueError, match="invalid candle sequence"):
+        MarketDataFeed(Provider(data)).fetch(MarketDataRequest("EURUSD", "1m", 3))
+
+
+def test_feed_validates_before_applying_limit():
+    data = candles(3)
+    data[-1] = Candle(data[-1].timestamp, 1, 0, 2, 1, 1)
+    with pytest.raises(ValueError, match="invalid candle sequence"):
+        MarketDataFeed(Provider(data)).fetch(MarketDataRequest("EURUSD", "1m", 2))
