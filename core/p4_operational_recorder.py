@@ -51,9 +51,16 @@ class P4OperationalRecorder:
         timestamp: datetime,
         result: str = "PENDENTE",
         entry_conditions: tuple[str, ...] = (),
+        audit_record: DecisionAuditRecord | None = None,
     ) -> RecordedOperation:
-        """Audit first, then persist the corresponding operation memory."""
-        audit_record = self.record_decision(snapshot, timestamp=timestamp)
+        """Audit first, then persist memory; reuse an existing audit when supplied."""
+        if audit_record is None:
+            audit_record = self.record_decision(snapshot, timestamp=timestamp)
+        elif audit_record.snapshot != snapshot:
+            raise OperationalRecorderError(
+                "audit_record não corresponde ao snapshot da operação."
+            )
+
         memory_record = OperationMemoryRecord(
             timestamp=timestamp,
             signal=Signal(snapshot.signal),
