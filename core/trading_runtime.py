@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Callable
 
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
+from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
 
@@ -28,21 +30,13 @@ class RuntimeResult:
 
     @property
     def executed_cycles(self) -> int:
-        return sum(
-            c.execution is not None and c.execution.accepted
-            for c in self.cycles
-        )
+        return sum(c.execution is not None and c.execution.accepted for c in self.cycles)
 
 
 class TradingRuntime:
     """Executa ciclos controlados do ecossistema sem conhecer corretoras."""
 
-    def __init__(
-        self,
-        *,
-        orchestrator: TradingOrchestrator,
-        coordinator: ExecutionCoordinator,
-    ) -> None:
+    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator) -> None:
         if orchestrator is None:
             raise ValueError("orchestrator é obrigatório.")
         if coordinator is None:
@@ -66,9 +60,15 @@ class TradingRuntime:
         operations_count=None,
         consecutive_losses=None,
         entry_conditions: tuple[str, ...] = (),
+        checkpoint_store: RuntimeCheckpointStore | None = None,
+        session_id: str | None = None,
     ) -> RuntimeResult:
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
+        if checkpoint_store is not None and not isinstance(checkpoint_store, RuntimeCheckpointStore):
+            raise ValueError("checkpoint_store inválido.")
+        if checkpoint_store is not None and (not isinstance(session_id, str) or not session_id.strip()):
+            raise ValueError("session_id é obrigatório quando checkpoint_store é usado.")
         if request_id_factory is None:
             request_id_factory = lambda index: f"runtime-{index:06d}"
 
@@ -89,10 +89,12 @@ class TradingRuntime:
             )
             plan = None
             execution_result = None
+            request_id = None
             if orchestration.executable:
+                request_id = request_id_factory(index)
                 plan = self.coordinator.build_plan(
                     orchestration,
-                    request_id=request_id_factory(index),
+                    request_id=request_id,
                     amount=amount,
                     duration_seconds=duration_seconds,
                 )
@@ -101,13 +103,17 @@ class TradingRuntime:
                     orchestration=orchestration,
                     entry_conditions=entry_conditions,
                 )
-            cycles.append(
-                RuntimeCycle(
-                    orchestration=orchestration,
-                    plan=plan,
-                    execution=execution_result,
+            cycles.append(RuntimeCycle(orchestration=orchestration, plan=plan, execution=execution_result))
+
+            if checkpoint_store is not None:
+                checkpoint_store.save(
+                    RuntimeCheckpoint(
+                        session_id=session_id,
+                        last_cycle=index,
+                        last_request_id=request_id,
+                        updated_at=datetime.now(timezone.utc),
+                    )
                 )
-            )
 
             if execution_result is not None and not execution_result.accepted:
                 stopped = True
