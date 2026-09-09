@@ -58,10 +58,11 @@ class OperationalSafetyStore:
         state = data.get("state")
         timestamp = data.get("timestamp")
         message = data.get("message")
+        valid_states = {"PENDING", "ACCEPTED", "REJECTED", "UNKNOWN"}
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id da auditoria de execução é obrigatório.")
-        if not isinstance(state, str) or not state.strip():
-            raise ValueError("estado da auditoria de execução é obrigatório.")
+        if not isinstance(state, str) or state not in valid_states:
+            raise ValueError("estado da auditoria de execução inválido.")
         if not isinstance(timestamp, str) or not timestamp.strip():
             raise ValueError("timestamp da auditoria de execução é obrigatório.")
         try:
