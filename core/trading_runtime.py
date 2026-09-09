@@ -5,6 +5,7 @@ from typing import Callable
 
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
+from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
 
 
@@ -14,7 +15,7 @@ class RuntimeCycle:
 
     orchestration: OrchestrationResult
     plan: ExecutionPlan | None
-    execution = None
+    execution: GatewayResult | None
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,10 @@ class RuntimeResult:
 
     @property
     def executed_cycles(self) -> int:
-        return sum(c.plan is not None and c.execution is not None and c.execution.accepted for c in self.cycles)
+        return sum(
+            c.execution is not None and c.execution.accepted
+            for c in self.cycles
+        )
 
 
 class TradingRuntime:
@@ -63,8 +67,8 @@ class TradingRuntime:
         consecutive_losses=None,
         entry_conditions: tuple[str, ...] = (),
     ) -> RuntimeResult:
-        if max_cycles <= 0:
-            raise ValueError("max_cycles deve ser positivo.")
+        if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
+            raise ValueError("max_cycles deve ser um inteiro positivo.")
         if request_id_factory is None:
             request_id_factory = lambda index: f"runtime-{index:06d}"
 
@@ -97,9 +101,13 @@ class TradingRuntime:
                     orchestration=orchestration,
                     entry_conditions=entry_conditions,
                 )
-            cycle = RuntimeCycle(orchestration=orchestration, plan=plan)
-            object.__setattr__(cycle, "execution", execution_result)
-            cycles.append(cycle)
+            cycles.append(
+                RuntimeCycle(
+                    orchestration=orchestration,
+                    plan=plan,
+                    execution=execution_result,
+                )
+            )
 
             if execution_result is not None and not execution_result.accepted:
                 stopped = True
