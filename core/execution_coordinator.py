@@ -52,6 +52,7 @@ class ExecutionCoordinator:
                 amount=amount,
                 duration_seconds=duration_seconds,
                 mode=mode,
+                request_id=request_id,
             ),
         )
 
