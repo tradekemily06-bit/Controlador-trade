@@ -6,7 +6,7 @@ def test_outcome_updates_only_selected_record():
     record = service.analyze({"score": 85, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     updated = service.record_outcome(record.decision_id, "WIN")
     assert updated.outcome == "WIN"
-    assert updated.signal == record.signal.value
+    assert updated.signal == record.signal
     assert service.statistics()["wins"] == 1
 
 
