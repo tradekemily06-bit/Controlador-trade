@@ -1,48 +1,33 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#090b10">
-  <title>Controlador Trading</title>
-  <style>
-    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f4f6f8;background:#090b10}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#182033 0,#090b10 42%);min-height:100vh}.app{max-width:980px;margin:auto;padding:18px 14px 92px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.brand{font-weight:800;font-size:20px}.sub{font-size:12px;color:#8d96a6;margin-top:3px}.pill{border:1px solid #263044;border-radius:999px;padding:7px 10px;font-size:11px;color:#aab5c8;background:#101521}.hero{margin-top:18px;border:1px solid #20283a;border-radius:22px;padding:18px;background:linear-gradient(145deg,#111725,#0d111a)}.hero h1{font-size:28px;margin:0 0 7px}.hero p{color:#98a2b4;margin:0;line-height:1.5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.card{border:1px solid #20283a;border-radius:18px;background:#0f141e;padding:15px}.wide{grid-column:1/-1}.label{font-size:11px;color:#7f899b;text-transform:uppercase;letter-spacing:.08em}.value{font-size:24px;font-weight:800;margin-top:6px}.signal{font-size:30px;margin-top:8px}.buy{color:#58d68d}.sell{color:#ff7676}.wait{color:#ffd166}.muted{color:#8f99aa;font-size:13px;line-height:1.45}.bar{height:9px;background:#20283a;border-radius:99px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;width:50%;background:#e9edf2;border-radius:99px}.row{display:flex;gap:10px;align-items:center;justify-content:space-between}.controls{display:grid;gap:10px;margin-top:12px}.controls label{font-size:13px;color:#b9c2d0}.controls input[type=number],.controls select{width:100%;background:#0a0e15;color:#f4f6f8;border:1px solid #293246;border-radius:12px;padding:11px}.check{display:flex;gap:8px;align-items:center}.check input{accent-color:#fff}.btn{width:100%;border:0;border-radius:13px;padding:13px;font-weight:800;background:#f2f4f7;color:#0b0e13}.nav{position:fixed;bottom:0;left:0;right:0;background:#0a0d13ee;border-top:1px solid #20283a;backdrop-filter:blur(12px);padding:10px;display:flex;justify-content:center;gap:10px}.nav span{font-size:11px;color:#9099aa;padding:7px 9px}.nav .active{color:#fff}.status{display:flex;align-items:center;gap:7px;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:#58d68d}.danger{color:#ff9b9b}.section{margin-top:24px;font-size:14px;font-weight:800;color:#dfe4ec}@media(min-width:720px){.app{padding-top:28px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.wide{grid-column:span 2}}
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#090b10">
+<title>Controlador Trading</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color:#f4f6f8;background:#090b10}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#182033,#090b10 42%);min-height:100vh}.app{max-width:980px;margin:auto;padding:18px 14px 90px}.top,.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.brand{font-weight:800;font-size:20px}.sub,.muted{color:#8f99aa;font-size:13px;line-height:1.45}.pill{border:1px solid #263044;border-radius:999px;padding:7px 10px;font-size:11px;color:#aab5c8;background:#101521}.hero,.card{border:1px solid #20283a;border-radius:18px;background:#0f141e;padding:15px}.hero{margin-top:18px;background:linear-gradient(145deg,#111725,#0d111a)}.hero h1{font-size:30px;margin:6px 0}.label{font-size:11px;color:#7f899b;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.wide{grid-column:1/-1}.value{font-size:24px;font-weight:800;margin-top:6px}.signal{font-size:30px}.buy{color:#58d68d}.sell{color:#ff7676}.wait{color:#ffd166}.bar{height:9px;background:#20283a;border-radius:99px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;width:50%;background:#e9edf2;border-radius:99px}.controls{display:grid;gap:10px;margin-top:12px}.controls label{font-size:13px;color:#b9c2d0}.controls input,.controls select{width:100%;background:#0a0e15;color:#f4f6f8;border:1px solid #293246;border-radius:12px;padding:11px}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}.btn{width:100%;border:0;border-radius:13px;padding:13px;font-weight:800;background:#f2f4f7;color:#0b0e13}.btn.alt{background:#20283a;color:#f4f6f8}.list{display:grid;gap:8px;margin-top:10px}.item{padding:10px;border:1px solid #20283a;border-radius:12px;background:#0a0e15}.status{display:flex;align-items:center;gap:7px;font-size:12px;margin-top:12px}.dot{width:8px;height:8px;border-radius:50%;background:#58d68d}.danger{color:#ff9b9b}.ok{color:#58d68d}.section{margin-top:24px;font-size:14px;font-weight:800;color:#dfe4ec}.nav{position:fixed;bottom:0;left:0;right:0;background:#0a0d13ee;border-top:1px solid #20283a;backdrop-filter:blur(12px);padding:10px;display:flex;justify-content:center;gap:8px}.nav span{font-size:11px;color:#9099aa;padding:7px}.nav .active{color:#fff}@media(min-width:720px){.app{padding-top:28px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.wide{grid-column:span 2}}
+</style>
 </head>
-<body>
-<main class="app">
-  <header class="top"><div><div class="brand">Controlador Trading</div><div class="sub">Ecossistema de decisão • mobile-first</div></div><div class="pill">SIMULAÇÃO</div></header>
-  <section class="hero"><div class="label">Painel</div><h1 id="headline">AGUARDAR</h1><p id="reason">Aguardando confirmação no fechamento.</p><div class="status" style="margin-top:14px"><i class="dot"></i><span>Motor de decisão online</span></div></section>
-  <div class="section">Visão geral</div>
-  <section class="grid">
-    <article class="card"><div class="label">Força</div><div class="value" id="score">50/100</div><div class="bar"><i id="scorebar"></i></div><div class="muted">Score do núcleo, não garantia de resultado.</div></article>
-    <article class="card"><div class="label">Ativo</div><div class="value" id="symbol">EURUSD</div><div class="muted" id="timeframe">5 minutos</div></article>
-    <article class="card"><div class="label">Execução</div><div class="value" style="font-size:18px">BLOQUEADA</div><div class="muted">Nenhuma ordem é enviada por esta tela.</div></article>
-  </section>
-  <div class="section">Laboratório de decisão</div>
-  <section class="grid">
-    <article class="card wide">
-      <div class="label">Teste rápido</div>
-      <div class="controls">
-        <label>Score <input id="scoreInput" type="number" min="0" max="100" value="50"></label>
-        <label>Ativo <input id="symbolInput" type="text" value="EURUSD"></label>
-        <label>Timeframe <select id="tfInput"><option>5m</option><option>1m</option><option>15m</option><option>1h</option></select></label>
-        <label class="check"><input id="confirmedInput" type="checkbox"> Candle fechado/confirmado</label>
-        <label class="check"><input id="filtersInput" type="checkbox" checked> Filtros de segurança aprovados</label>
-        <button class="btn" id="analyze">ANALISAR</button>
-      </div>
-    </article>
-    <article class="card"><div class="label">Próximas áreas</div><div class="muted" style="margin-top:9px">Operação<br>Análise<br>Memória<br>Replay / Simulador<br>Estatísticas<br>Notícias<br>Risco e segurança<br>Conexões</div></article>
-  </section>
-  <div class="section">Regra de segurança</div>
-  <section class="card"><div class="row"><strong>REAL</strong><span class="danger">DESABILITADO</span></div><p class="muted">A interface atual é deliberadamente segura: ela chama o núcleo de decisão, mas não autoriza execução real.</p></section>
-</main>
-<nav class="nav"><span class="active">Painel</span><span>Análise</span><span>Laboratório</span><span>Memória</span><span>Config.</span></nav>
+<body><main class="app">
+<header class="top"><div><div class="brand">Controlador Trading</div><div class="sub">Ecossistema de decisão • mobile-first</div></div><div class="pill">SIMULAÇÃO</div></header>
+<section class="hero"><div class="label">Painel conectado</div><h1 id="headline" class="signal wait">AGUARDAR</h1><p id="reason">Aguardando confirmação no fechamento.</p><div class="status"><i class="dot"></i><span id="engineStatus">Motor de decisão online</span></div></section>
+<div class="section">Visão geral</div><section class="grid">
+<article class="card"><div class="label">Força</div><div class="value" id="score">50/100</div><div class="bar"><i id="scorebar"></i></div><div class="muted">Score do núcleo, não garantia.</div></article>
+<article class="card"><div class="label">Ativo</div><div class="value" id="symbol">EURUSD</div><div class="muted" id="timeframe">5m</div></article>
+<article class="card"><div class="label">Execução</div><div class="value" style="font-size:18px">BLOQUEADA</div><div class="muted">REAL permanece desabilitado.</div></article>
+</section>
+<div class="section">Laboratório</div><section class="grid">
+<article class="card wide"><div class="label">Analisar e registrar na memória</div><div class="controls">
+<label>Score <input id="scoreInput" type="number" min="0" max="100" value="85"></label><label>Ativo <input id="symbolInput" value="EURUSD"></label><label>Timeframe <select id="tfInput"><option>5m</option><option>1m</option><option>15m</option><option>1h</option></select></label><label class="check"><input id="confirmedInput" type="checkbox" checked> Candle fechado/confirmado</label><label class="check"><input id="filtersInput" type="checkbox" checked> Filtros aprovados</label><button class="btn" id="analyze">ANALISAR</button></div></article>
+<article class="card"><div class="label">Replay</div><p class="muted">Executa uma sequência de cenários pelo mesmo núcleo e registra cada decisão.</p><button class="btn alt" id="replay">RODAR REPLAY</button><div id="replayResult" class="list"></div></article>
+</section>
+<div class="section">Memória & Estatísticas</div><section class="grid"><article class="card"><div class="label">Decisões</div><div class="value" id="total">0</div><div class="muted">registradas nesta sessão</div></article><article class="card"><div class="label">Acionáveis</div><div class="value" id="actionable">0</div><div class="muted">COMPRA/VENDA confirmadas</div></article><article class="card"><div class="label">Win rate</div><div class="value" id="winrate">0%</div><div class="muted">após resultados fechados</div></article><article class="card wide"><div class="label">Últimas decisões</div><div id="memory" class="list"><div class="muted">Nenhuma decisão registrada.</div></div></article></section>
+<div class="section">Conexões e segurança</div><section class="card"><div class="row"><strong>REAL</strong><span class="danger">DESABILITADO</span></div><div id="connections" class="list"></div><p class="muted">A conexão operacional do MT5 DEMO ainda depende de um terminal MT5 compatível em runtime. O Android sozinho não fornece essa ponte Python.</p></section>
+</main><nav class="nav"><span class="active">Painel</span><span>Análise</span><span>Replay</span><span>Memória</span><span>Config.</span></nav>
 <script>
-const $=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function render(d){$('headline').textContent=d.signal;$('headline').className='signal '+(d.signal==='COMPRA'?'buy':d.signal==='VENDA'?'sell':'wait');$('reason').textContent=d.reason;$('score').textContent=String(d.score)+'/100';$('scorebar').style.width=Math.max(0,Math.min(100,Number(d.score)||0))+'%';$('symbol').textContent=d.symbol||'—';$('timeframe').textContent=d.timeframe||'—';}
-$('analyze').onclick=async()=>{const payload={score:Number($('scoreInput').value),symbol:$('symbolInput').value,timeframe:$('tfInput').value,confirmed:$('confirmedInput').checked,filters_ok:$('filtersInput').checked};try{const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.error||'Falha');render(d)}catch(e){$('reason').textContent='Falha ao consultar o núcleo: '+e.message}};
-render({signal:'AGUARDAR',score:50,reason:'Aguardando confirmação no fechamento.',symbol:'EURUSD',timeframe:'5m'});
-</script>
-</body>
-</html>
+async function refresh(){const [s,m,st]=await Promise.all([fetch('/api/status').then(r=>r.json()),fetch('/api/memory?limit=8').then(r=>r.json()),fetch('/api/statistics').then(r=>r.json())]);$('engineStatus').textContent=s.decision_engine==='ONLINE'?'Motor de decisão online':'Motor indisponível';$('total').textContent=st.total;$('actionable').textContent=st.actionable;$('winrate').textContent=Number(st.win_rate).toFixed(1)+'%';$('memory').innerHTML=m.records.length?m.records.map(x=>`<div class="item"><b>${esc(x.signal)}</b> • ${esc(x.score)}/100<br><span class="muted">${esc(x.symbol||'—')} · ${esc(x.timeframe||'—')} · ${esc(x.reason)}</span></div>`).join(''):'<div class="muted">Nenhuma decisão registrada.</div>';$('connections').innerHTML=Object.entries(s).map(([k,v])=>`<div class="row item"><span>${esc(k)}</span><b class="${String(v).includes('PENDENTE')||v==='DESABILITADO'?'danger':'ok'}">${esc(v)}</b></div>`).join('');}
+$('analyze').onclick=async()=>{try{const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({score:Number($('scoreInput').value),symbol:$('symbolInput').value,timeframe:$('tfInput').value,confirmed:$('confirmedInput').checked,filters_ok:$('filtersInput').checked})});const d=await r.json();if(!r.ok)throw Error(d.error);render(d);await refresh()}catch(e){$('reason').textContent='Falha: '+e.message}};
+$('replay').onclick=async()=>{const r=await fetch('/api/replay',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cases:[{score:85,confirmed:true,filters_ok:true,symbol:'EURUSD',timeframe:'5m'},{score:55,confirmed:true,filters_ok:true,symbol:'EURUSD',timeframe:'5m'},{score:20,confirmed:true,filters_ok:true,symbol:'EURUSD',timeframe:'5m'}]})});const d=await r.json();$('replayResult').innerHTML=d.results.map(x=>`<div class="item"><b>#${x.step} ${esc(x.signal)}</b> · ${esc(x.score)}/100<br><span class="muted">${esc(x.reason)}</span></div>`).join('');await refresh()};
+refresh();
+</script></body></html>
