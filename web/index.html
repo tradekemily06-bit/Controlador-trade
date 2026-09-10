@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b10">
+  <title>Controlador Trading</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f4f6f8;background:#090b10}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#182033 0,#090b10 42%);min-height:100vh}.app{max-width:980px;margin:auto;padding:18px 14px 92px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center}.brand{font-weight:800;font-size:20px}.sub{font-size:12px;color:#8d96a6;margin-top:3px}.pill{border:1px solid #263044;border-radius:999px;padding:7px 10px;font-size:11px;color:#aab5c8;background:#101521}.hero{margin-top:18px;border:1px solid #20283a;border-radius:22px;padding:18px;background:linear-gradient(145deg,#111725,#0d111a)}.hero h1{font-size:28px;margin:0 0 7px}.hero p{color:#98a2b4;margin:0;line-height:1.5}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.card{border:1px solid #20283a;border-radius:18px;background:#0f141e;padding:15px}.wide{grid-column:1/-1}.label{font-size:11px;color:#7f899b;text-transform:uppercase;letter-spacing:.08em}.value{font-size:24px;font-weight:800;margin-top:6px}.signal{font-size:30px;margin-top:8px}.buy{color:#58d68d}.sell{color:#ff7676}.wait{color:#ffd166}.muted{color:#8f99aa;font-size:13px;line-height:1.45}.bar{height:9px;background:#20283a;border-radius:99px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;width:50%;background:#e9edf2;border-radius:99px}.row{display:flex;gap:10px;align-items:center;justify-content:space-between}.controls{display:grid;gap:10px;margin-top:12px}.controls label{font-size:13px;color:#b9c2d0}.controls input[type=number],.controls select{width:100%;background:#0a0e15;color:#f4f6f8;border:1px solid #293246;border-radius:12px;padding:11px}.check{display:flex;gap:8px;align-items:center}.check input{accent-color:#fff}.btn{width:100%;border:0;border-radius:13px;padding:13px;font-weight:800;background:#f2f4f7;color:#0b0e13}.nav{position:fixed;bottom:0;left:0;right:0;background:#0a0d13ee;border-top:1px solid #20283a;backdrop-filter:blur(12px);padding:10px;display:flex;justify-content:center;gap:10px}.nav span{font-size:11px;color:#9099aa;padding:7px 9px}.nav .active{color:#fff}.status{display:flex;align-items:center;gap:7px;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:#58d68d}.danger{color:#ff9b9b}.section{margin-top:24px;font-size:14px;font-weight:800;color:#dfe4ec}@media(min-width:720px){.app{padding-top:28px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.wide{grid-column:span 2}}
+  </style>
+</head>
+<body>
+<main class="app">
+  <header class="top"><div><div class="brand">Controlador Trading</div><div class="sub">Ecossistema de decisão • mobile-first</div></div><div class="pill">SIMULAÇÃO</div></header>
+  <section class="hero"><div class="label">Painel</div><h1 id="headline">AGUARDAR</h1><p id="reason">Aguardando confirmação no fechamento.</p><div class="status" style="margin-top:14px"><i class="dot"></i><span>Motor de decisão online</span></div></section>
+  <div class="section">Visão geral</div>
+  <section class="grid">
+    <article class="card"><div class="label">Força</div><div class="value" id="score">50/100</div><div class="bar"><i id="scorebar"></i></div><div class="muted">Score do núcleo, não garantia de resultado.</div></article>
+    <article class="card"><div class="label">Ativo</div><div class="value" id="symbol">EURUSD</div><div class="muted" id="timeframe">5 minutos</div></article>
+    <article class="card"><div class="label">Execução</div><div class="value" style="font-size:18px">BLOQUEADA</div><div class="muted">Nenhuma ordem é enviada por esta tela.</div></article>
+  </section>
+  <div class="section">Laboratório de decisão</div>
+  <section class="grid">
+    <article class="card wide">
+      <div class="label">Teste rápido</div>
+      <div class="controls">
+        <label>Score <input id="scoreInput" type="number" min="0" max="100" value="50"></label>
+        <label>Ativo <input id="symbolInput" type="text" value="EURUSD"></label>
+        <label>Timeframe <select id="tfInput"><option>5m</option><option>1m</option><option>15m</option><option>1h</option></select></label>
+        <label class="check"><input id="confirmedInput" type="checkbox"> Candle fechado/confirmado</label>
+        <label class="check"><input id="filtersInput" type="checkbox" checked> Filtros de segurança aprovados</label>
+        <button class="btn" id="analyze">ANALISAR</button>
+      </div>
+    </article>
+    <article class="card"><div class="label">Próximas áreas</div><div class="muted" style="margin-top:9px">Operação<br>Análise<br>Memória<br>Replay / Simulador<br>Estatísticas<br>Notícias<br>Risco e segurança<br>Conexões</div></article>
+  </section>
+  <div class="section">Regra de segurança</div>
+  <section class="card"><div class="row"><strong>REAL</strong><span class="danger">DESABILITADO</span></div><p class="muted">A interface atual é deliberadamente segura: ela chama o núcleo de decisão, mas não autoriza execução real.</p></section>
+</main>
+<nav class="nav"><span class="active">Painel</span><span>Análise</span><span>Laboratório</span><span>Memória</span><span>Config.</span></nav>
+<script>
+const $=id=>document.getElementById(id);
+function render(d){$('headline').textContent=d.signal;$('headline').className='signal '+(d.signal==='COMPRA'?'buy':d.signal==='VENDA'?'sell':'wait');$('reason').textContent=d.reason;$('score').textContent=String(d.score)+'/100';$('scorebar').style.width=Math.max(0,Math.min(100,Number(d.score)||0))+'%';$('symbol').textContent=d.symbol||'—';$('timeframe').textContent=d.timeframe||'—';}
+$('analyze').onclick=async()=>{const payload={score:Number($('scoreInput').value),symbol:$('symbolInput').value,timeframe:$('tfInput').value,confirmed:$('confirmedInput').checked,filters_ok:$('filtersInput').checked};try{const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const d=await r.json();if(!r.ok)throw new Error(d.error||'Falha');render(d)}catch(e){$('reason').textContent='Falha ao consultar o núcleo: '+e.message}};
+render({signal:'AGUARDAR',score:50,reason:'Aguardando confirmação no fechamento.',symbol:'EURUSD',timeframe:'5m'});
+</script>
+</body>
+</html>
