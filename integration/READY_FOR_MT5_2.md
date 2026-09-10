@@ -1,0 +1,1 @@
+Software boundary is ready. Runtime validation remains pending until a compatible MetaTrader 5 terminal is available to the Python adapter. Execution remains fail-closed and DEMO-only.
