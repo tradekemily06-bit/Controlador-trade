@@ -46,6 +46,7 @@ class EcosystemService:
         return {
             "mode": "SIMULACAO",
             "execution_allowed": False,
+            "execution": "bloqueada_por_padrao",
             "decision_engine": "ONLINE",
             "memory": "ONLINE",
             "replay": "ONLINE",
