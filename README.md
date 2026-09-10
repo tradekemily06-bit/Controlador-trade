@@ -23,12 +23,20 @@ dados → análise → score/filtros → COMPRA/VENDA/AGUARDAR → risco → exe
 - `audit/` — registros e auditoria
 - `config/` — configurações
 - `analysis/` — análise e validação
+- `integration/` — orquestração do ecossistema, notícias e integrações
+- `web/` — shell mobile-first
 
 ## Segurança de execução
 
 O gateway mantém kill switch, idempotência, estados explícitos de execução e tratamento fail-closed para situações ambíguas.
 
 Nenhuma senha, token, refresh token ou client secret de corretora deve ser persistido no repositório.
+
+## Ecossistema
+
+O shell mobile-first já expõe Painel, Análise, Replay, Memória, Estatísticas, Risco, Notícias e Conexões por APIs internas. A execução permanece bloqueada por padrão.
+
+O estado operacional consolidado está em `OPERATIONAL_READINESS.md`.
 
 ## Integração DEMO
 
@@ -42,4 +50,4 @@ A validação de execução Python contra uma conta IC Markets DEMO ainda requer
 
 A parte de software necessária para a integração IC Markets MT5 DEMO está em encerramento técnico. A próxima validação operacional é: terminal MT5 compatível → preflight → símbolo/cotação → `order_check()` → ordem DEMO controlada → confirmação → fechamento → reconciliação.
 
-Consulte `PROJECT_COMPLETION_STATUS.md` e `execution/MT5_DEMO_RUNBOOK.md` para os critérios e a sequência operacional.
+Consulte `PROJECT_COMPLETION_STATUS.md`, `OPERATIONAL_READINESS.md` e `execution/MT5_DEMO_RUNBOOK.md` para os critérios e a sequência operacional.
