@@ -1,0 +1,1 @@
+Execution remains fail-closed until the MT5 DEMO runtime validation is evidenced end-to-end.
