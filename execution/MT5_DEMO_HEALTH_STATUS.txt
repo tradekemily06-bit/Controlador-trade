@@ -1,0 +1,1 @@
+Read-only MT5 DEMO preflight added and covered by tests. It verifies terminal initialization and DEMO account mode, then shuts down. It does not send orders.
