@@ -13,7 +13,7 @@ dados → análise → score/filtros → COMPRA/VENDA/AGUARDAR → risco → exe
 ## Ambientes
 
 - DEMO: ambiente de desenvolvimento e validação
-- REAL: camada controlada e separada, condicionada à validação e reconciliação da execução externa
+- REAL: camada controlada e separada, bloqueada até validação operacional e reconciliação suficientes
 
 ## Estrutura
 
@@ -32,10 +32,14 @@ Nenhuma senha, token, refresh token ou client secret de corretora deve ser persi
 
 ## Integração DEMO
 
-A integração cTrader DEMO está preparada por boundaries independentes do núcleo. A camada específica da IC Markets permanece bloqueada enquanto a aplicação cTrader Open API estiver pendente de aprovação.
+A primeira integração operacional escolhida é **IC Markets MT5 DEMO**. O adapter, o preflight somente leitura, os testes de segurança e o runbook já estão no projeto.
+
+A integração cTrader DEMO permanece isolada como futura alternativa e não bloqueia o caminho MT5.
+
+A validação de execução Python contra uma conta IC Markets DEMO ainda requer um terminal MetaTrader 5 compatível com o pacote oficial `MetaTrader5`. O MT5 Android não substitui esse terminal para a comunicação Python.
 
 ## Estado do projeto
 
-O projeto está em fase de encerramento técnico. Não são criadas novas etapas apenas para prolongar o desenvolvimento. A validação automatizada final deve ser executada no ambiente de execução do projeto; depois dela, ficam apenas a dependência externa da Open API e correções de defeitos reais encontrados no uso DEMO.
+A parte de software necessária para a integração IC Markets MT5 DEMO está em encerramento técnico. A próxima validação operacional é: terminal MT5 compatível → preflight → símbolo/cotação → `order_check()` → ordem DEMO controlada → confirmação → fechamento → reconciliação.
 
-Consulte `PROJECT_COMPLETION_STATUS.md` para o estado de conclusão e as pendências externas.
+Consulte `PROJECT_COMPLETION_STATUS.md` e `execution/MT5_DEMO_RUNBOOK.md` para os critérios e a sequência operacional.
