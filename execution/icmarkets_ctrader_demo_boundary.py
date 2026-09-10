@@ -56,7 +56,7 @@ class ICMarketsCTraderDemoBoundary:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "requisição de execução inválida")
         if request.mode is not ExecutionMode.DEMO:
-            return ExecutionResult(False, "IC Markets DEMO rejeita modo diferente de DEMO")
+            return ExecutionResult(False, "IC Markets DEMO aceita somente DEMO")
         if not request.request_id:
             return ExecutionResult(False, "request_id obrigatório")
         if not self.is_available():
