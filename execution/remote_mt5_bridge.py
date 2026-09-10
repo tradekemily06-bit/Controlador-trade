@@ -3,11 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from execution.ports import ExecutionRequest, ExecutionResult
-
-
-class RemoteBridgeError(RuntimeError):
-    """Raised when the remote MT5 bridge cannot safely be used."""
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 @dataclass(frozen=True)
@@ -18,12 +14,7 @@ class BridgeHealth:
 
 
 class RemoteMT5Bridge(Protocol):
-    """Transport boundary for a cloud-hosted MT5 terminal.
-
-    The Controlador Trading process never receives broker credentials here.
-    A separate bridge process owns the local MetaTrader 5 terminal and exposes
-    only authenticated, DEMO-scoped operations to the ecosystem.
-    """
+    """Transport boundary for a cloud-hosted MT5 terminal."""
 
     def health(self) -> BridgeHealth: ...
 
@@ -37,8 +28,7 @@ class SafeRemoteMT5Executor:
         self._bridge = bridge
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
-        # REAL is intentionally impossible through this boundary.
-        if request.mode.value != "DEMO":
+        if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
 
         health = self._bridge.health()
