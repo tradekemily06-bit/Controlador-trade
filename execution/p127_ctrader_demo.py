@@ -44,12 +44,14 @@ class CTraderDemoAdapter:
             return ExecutionResult(False, "cTrader DEMO adapter rejeita modo diferente de DEMO")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não gera ordem")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id obrigatório para execução DEMO")
         if not self.is_available():
             return ExecutionResult(False, "transporte cTrader DEMO indisponível")
 
         try:
             broker_order = BrokerOrderBoundary.from_signal(
-                request_id=f"ctrader-demo:{request.symbol}:{request.signal.value}",
+                request_id=request.request_id,
                 symbol=request.symbol,
                 signal=request.signal,
                 amount=request.amount,
