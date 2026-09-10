@@ -1,0 +1,15 @@
+IC Markets MT5 DEMO implementation status
+
+Software boundary: implemented.
+DEMO-only enforcement: implemented.
+AGUARDAR blocking: implemented.
+DEMO-account verification: implemented.
+order_check before order_send: implemented.
+Read-only health preflight: implemented.
+Portable safety tests: implemented.
+Credentials in repository: not used.
+REAL execution: blocked.
+cTrader approval as a blocker: removed from development path.
+Live/real-money validation: not performed and not enabled.
+
+Remaining external validation requires a Windows environment with a running MT5 terminal and a valid IC Markets DEMO account. This is operational validation, not a reason to redesign the project core.
