@@ -48,4 +48,5 @@ class ExecutionIntent:
             amount=self.amount,
             duration_seconds=self.duration_seconds,
             mode=self.mode,
+            request_id=self.request_id,
         )
