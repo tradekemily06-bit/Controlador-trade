@@ -1,0 +1,1 @@
+MT5 DEMO software boundary complete. REAL execution remains disabled. External operational validation requires a compatible Windows MT5 terminal and a valid IC Markets DEMO account.
