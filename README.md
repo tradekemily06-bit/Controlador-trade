@@ -12,29 +12,30 @@ dados → análise → score/filtros → COMPRA/VENDA/AGUARDAR → risco → exe
 
 ## Ambientes
 
-- DEMO: primeiro ambiente de testes
-- REAL: ambiente posterior, usando a mesma lógica do núcleo
+- DEMO: ambiente de desenvolvimento e validação
+- REAL: camada controlada e separada, condicionada à validação e reconciliação da execução externa
 
 ## Estrutura
 
 - `core/` — cérebro do sistema
 - `data/` — entrada e normalização de dados
-- `execution/` — adaptadores de execução
+- `execution/` — contratos, gateway e adaptadores de execução
 - `audit/` — registros e auditoria
 - `config/` — configurações
+- `analysis/` — análise e validação
 
-## Camada de dados
+## Segurança de execução
 
-A camada `data/` recebe, normaliza e valida dados de mercado antes que eles cheguem ao núcleo de decisão.
+O gateway mantém kill switch, idempotência, estados explícitos de execução e tratamento fail-closed para situações ambíguas.
 
-Ela verifica:
+Nenhuma senha, token, refresh token ou client secret de corretora deve ser persistido no repositório.
 
-- estrutura OHLC
-- volume
-- valores inválidos
-- ordem cronológica
-- timestamps duplicados
-- intervalo entre candles
-- timeframe
+## Integração DEMO
 
-> Esta versão é a fundação arquitetural. A lógica de entrada será construída e validada por etapas.
+A integração cTrader DEMO está preparada por boundaries independentes do núcleo. A camada específica da IC Markets permanece bloqueada enquanto a aplicação cTrader Open API estiver pendente de aprovação.
+
+## Estado do projeto
+
+O projeto está em fase de encerramento técnico. Não são criadas novas etapas apenas para prolongar o desenvolvimento. A validação automatizada final deve ser executada no ambiente de execução do projeto; depois dela, ficam apenas a dependência externa da Open API e correções de defeitos reais encontrados no uso DEMO.
+
+Consulte `PROJECT_COMPLETION_STATUS.md` para o estado de conclusão e as pendências externas.
