@@ -1,0 +1,1 @@
+Final software gate: the internal ecosystem is ready for external MT5 DEMO runtime validation. Until that runtime validation is completed, execution remains fail-closed and REAL remains disabled.
