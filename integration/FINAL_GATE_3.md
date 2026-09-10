@@ -1,0 +1,1 @@
+External runtime pending: Python must connect to a compatible MetaTrader 5 terminal, confirm DEMO, validate symbol and quote, pass order_check, send one controlled DEMO order, confirm it, close it, and reconcile it. Any ambiguity blocks execution.
