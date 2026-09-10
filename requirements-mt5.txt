@@ -1,0 +1,3 @@
+# Optional execution runtime for IC Markets MT5 DEMO.
+# Install only in a Windows runtime with MetaTrader 5 terminal available.
+MetaTrader5
