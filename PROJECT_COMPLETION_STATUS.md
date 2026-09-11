@@ -46,10 +46,14 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 - Dependabot para dependências Python e GitHub Actions.
 - Dependência futura do cTrader isolada do ambiente base, evitando que uma integração não utilizada enfraqueça a auditoria de segurança do núcleo.
 - Nenhuma credencial de conta deve ser persistida no repositório.
+- Trilha de auditoria HTTP bounded e privacy-conscious.
+- Persistência opcional da trilha de auditoria em SQLite, com retenção limitada e fallback em memória.
 
 ## Validação de segurança SaaS
 
 A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suíte completa, `pip-audit` e compilação concluíram com sucesso.
+
+A trilha de auditoria registra metadados mínimos e não armazena IP bruto, credenciais, tokens ou corpos de requisição. SQLite é uma opção de persistência para uma instância; armazenamento centralizado e durável para múltiplas instâncias continua pertencendo à infraestrutura de produção.
 
 Essa camada é uma proteção de boundary HTTP e **não é, sozinha, um sistema completo de SaaS multiusuário**. Autenticação, autorização, isolamento por tenant/usuário, sessões persistentes, gestão de segredos e terminação HTTPS continuam pertencendo à próxima camada de infraestrutura/identidade de produção.
 
