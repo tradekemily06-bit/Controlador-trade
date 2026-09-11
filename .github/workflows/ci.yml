@@ -36,3 +36,6 @@ jobs:
 
       - name: Compile project
         run: python -m compileall -q core data execution audit analysis
+
+      - name: Build production container
+        run: docker build --tag controlador-trade:ci .
