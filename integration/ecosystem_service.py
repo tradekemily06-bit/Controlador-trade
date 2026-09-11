@@ -66,6 +66,7 @@ class EcosystemService:
                 "max_operations": self.risk.max_operations,
                 "max_consecutive_losses": self.risk.max_consecutive_losses,
             },
+            "news_provider": "UNCONFIGURED",
         }
 
     def news_status(self, limit: int = 10) -> dict[str, Any]:
