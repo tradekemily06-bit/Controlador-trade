@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
-from analysis.statistics import summarize, summarize_periods
+from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -52,6 +52,7 @@ class EcosystemService:
         return {
             **asdict(summarize(self.memory)),
             "periods": summarize_periods(self.memory),
+            "breakdowns": summarize_breakdowns(self.memory),
         }
 
     def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
