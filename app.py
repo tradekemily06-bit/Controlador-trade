@@ -4,6 +4,7 @@ import json
 import os
 from http import HTTPStatus
 from pathlib import Path
+from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from integration.ecosystem_service import EcosystemService
@@ -28,6 +29,22 @@ def _read_json(environ) -> dict:
     return data
 
 
+def _query_limit(environ, default: int, maximum: int = 100) -> int:
+    values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("limit")
+    if not values or values[-1] == "":
+        return default
+    limit = int(values[-1])
+    if not 1 <= limit <= maximum:
+        raise ValueError(f"limit deve estar entre 1 e {maximum}")
+    return limit
+
+
+def _file_response(start_response, path: Path, content_type: str) -> list[bytes]:
+    body = path.read_bytes()
+    start_response("200 OK", [("Content-Type", content_type), ("Content-Length", str(len(body)))])
+    return [body]
+
+
 def application(environ, start_response):
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
@@ -45,9 +62,7 @@ def application(environ, start_response):
                 raise ValueError("cases deve ser uma lista")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False})
         if path == "/api/memory" and method == "GET":
-            query = environ.get("QUERY_STRING") or "limit=50"
-            limit = int(query.split("limit=")[-1].split("&")[0])
-            return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(limit)})
+            return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))})
         if path == "/api/statistics" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics())
         if path == "/api/outcome" and method == "POST":
@@ -57,15 +72,13 @@ def application(environ, start_response):
         if path == "/api/risk" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status())
         if path == "/api/news" and method == "GET":
-            query = environ.get("QUERY_STRING") or "limit=10"
-            limit = int(query.split("limit=")[-1].split("&")[0])
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(limit))
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)))
         if path == "/api/connections" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.connections())
         if path in {"/", "/index.html"} and method == "GET":
-            body = (WEB_DIR / "index.html").read_bytes()
-            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(body)))])
-            return [body]
+            return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8")
+        if path == "/manifest.webmanifest" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8")
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": f"Entrada inválida: {exc}"})
     start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
