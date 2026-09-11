@@ -33,3 +33,14 @@ def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
             mt5.shutdown()
         except Exception:
             pass
+
+
+if __name__ == "__main__":
+    try:
+        import MetaTrader5 as mt5
+    except Exception as exc:
+        print(f"MetaTrader5 indisponível: {exc}")
+    else:
+        result = check_mt5_demo_health(mt5)
+        print(result.message)
+        print(f"available={result.available} demo_account={result.demo_account}")
