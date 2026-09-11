@@ -96,6 +96,7 @@ class EcosystemService:
             "execution": "bloqueada_por_padrao",
             "decision_engine": "ONLINE",
             "memory": "ONLINE",
+            "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
             "replay": "ONLINE",
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
