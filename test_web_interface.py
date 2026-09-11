@@ -36,7 +36,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
             "Controlador Trading",
             'id="painel"',
             'id="analise"',
-            'id="replay"',
+            'id="laboratorio"',
             'id="memoria"',
             'id="risco"',
             'id="conexoes"',
