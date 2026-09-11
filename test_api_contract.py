@@ -6,7 +6,7 @@ from app import application
 
 
 class ApiContractTests(unittest.TestCase):
-    def request(self, path, method="GET", payload=None):
+    def request(self, path, method="GET", payload=None, query=""):
         body = b""
         if payload is not None:
             body = json.dumps(payload).encode("utf-8")
@@ -19,7 +19,7 @@ class ApiContractTests(unittest.TestCase):
         environ = {
             "REQUEST_METHOD": method,
             "PATH_INFO": path,
-            "QUERY_STRING": "",
+            "QUERY_STRING": query,
             "CONTENT_TYPE": "application/json" if payload is not None else "",
             "CONTENT_LENGTH": str(len(body)),
             "wsgi.input": io.BytesIO(body),
@@ -38,6 +38,27 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertEqual(payload["real"], "DESABILITADO")
         self.assertEqual(payload["ic_markets_mt5_demo"], "DEMO_VALIDADO")
+
+    def test_web_manifest_is_served(self):
+        status, headers, payload = self.request_raw("/manifest.webmanifest")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("application/manifest+json", headers["Content-Type"])
+        manifest = json.loads(payload)
+        self.assertEqual(manifest["name"], "Controlador Trading")
+        self.assertEqual(manifest["display"], "standalone")
+
+    def test_query_limits_are_parsed_and_hardened(self):
+        status, _, payload = self.request("/api/memory", query="limit=1")
+        self.assertEqual(status, "200 OK")
+        self.assertLessEqual(len(payload["records"]), 1)
+
+        status, _, payload = self.request("/api/news", query="limit=abc")
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("error", payload)
+
+        status, _, payload = self.request("/api/memory", query="limit=0")
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("error", payload)
 
     def test_replay_records_multiple_cases(self):
         status, _, payload = self.request(
@@ -75,12 +96,12 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("error", payload)
 
     def test_unknown_route_is_not_found(self):
-        status, headers, body = self._raw_request("/api/does-not-exist")
+        status, headers, body = self.request_raw("/api/does-not-exist")
         self.assertEqual(status, "404 Not Found")
         self.assertIn("text/plain", headers["Content-Type"])
         self.assertEqual(body, b"Not Found")
 
-    def _raw_request(self, path, method="GET"):
+    def request_raw(self, path, method="GET"):
         captured = {}
 
         def start_response(status, headers):
