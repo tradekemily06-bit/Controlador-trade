@@ -2,7 +2,7 @@
 
 ## Estado atual
 
-O núcleo técnico, as fronteiras de execução e a interface do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
+O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
 
 A validação operacional DEMO foi executada com sucesso em ambiente compatível com MetaTrader 5: preflight, `order_check()`, primeira ordem controlada, confirmação do identificador externo, fechamento explícito e reconciliação foram concluídos sem habilitar REAL.
 
@@ -37,8 +37,21 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 - APIs de status, análise, replay, memória, estatísticas, risco, notícias/contexto e conexões.
 - Manifest web servido pelo aplicativo.
 - Contratos automatizados para a interface e APIs.
-- CI configurada para executar a suíte de testes e compilação do projeto.
+- CI configurada para executar a suíte de testes, auditoria de dependências e compilação do projeto.
+- Rate limiting por cliente no boundary HTTP.
+- Limite de payload JSON de 256 KiB.
+- Request ID para rastreabilidade.
+- Security headers e CSP básica.
+- Erros HTTP sem exposição de detalhes internos.
+- Dependabot para dependências Python e GitHub Actions.
+- Dependência futura do cTrader isolada do ambiente base, evitando que uma integração não utilizada enfraqueça a auditoria de segurança do núcleo.
 - Nenhuma credencial de conta deve ser persistida no repositório.
+
+## Validação de segurança SaaS
+
+A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suíte completa, `pip-audit` e compilação concluíram com sucesso.
+
+Essa camada é uma proteção de boundary HTTP e **não é, sozinha, um sistema completo de SaaS multiusuário**. Autenticação, autorização, isolamento por tenant/usuário, sessões persistentes, gestão de segredos e terminação HTTPS continuam pertencendo à próxima camada de infraestrutura/identidade de produção.
 
 ## Validação de dispositivo
 
@@ -52,6 +65,10 @@ REAL permanece bloqueado. A existência do adapter DEMO não autoriza execução
 
 cTrader permanece como alternativa futura e não bloqueia o projeto. A aprovação/autenticação do cTrader não é requisito para o funcionamento do caminho IC Markets MT5 DEMO.
 
+## Próxima expansão real
+
+Se o ecossistema for transformado em SaaS multiusuário de produção, a próxima expansão genuína é conectar uma camada de identidade/autorização de produção e isolamento persistente de dados. Essa camada deve usar um provedor de identidade e um armazenamento apropriado, com autorização por usuário/tenant e sessões seguras, em vez de uma autenticação improvisada dentro do servidor mínimo atual.
+
 ## Regra de encerramento
 
-Não criar novas etapas apenas para prolongar o projeto. A parte de software necessária para o núcleo, a integração IC Markets MT5 DEMO e a interface atual do ecossistema está concluída. Novas alterações devem ser motivadas por um defeito concreto, uma necessidade funcional real ou uma expansão funcional real.
+Não criar novas etapas apenas para prolongar o projeto. Novas alterações devem ser motivadas por um defeito concreto, uma necessidade funcional real ou uma expansão funcional real.
