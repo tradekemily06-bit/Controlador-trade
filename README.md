@@ -34,6 +34,10 @@ Nenhuma senha, token, refresh token ou client secret de corretora deve ser persi
 
 O boundary HTTP possui rate limiting, limite de payload, request IDs, security headers, CSP e auditoria de eventos sem armazenamento do IP bruto ou do corpo da requisição. A trilha pode permanecer em memória ou, quando `CONTROLADOR_SECURITY_AUDIT_DB` é configurado, usar SQLite com retenção limitada para sobreviver a reinícios de uma instância. Falhas de persistência não derrubam o aplicativo. Armazenamento centralizado para múltiplas instâncias continua sendo responsabilidade da infraestrutura de produção.
 
+## Memória de decisões
+
+A memória de decisões funciona em memória por padrão. Para uma instalação que precise sobreviver a reinícios, `CONTROLADOR_DECISION_DB` habilita persistência opcional em SQLite. As decisões e suas atualizações de resultado são restauradas na inicialização e falhas de armazenamento são tratadas de forma fail-soft. A persistência não autoriza execução REAL e não substitui o futuro isolamento de dados por usuário/tenant.
+
 ## Integração DEMO
 
 A primeira integração operacional escolhida é **IC Markets MT5 DEMO**. O adapter, o preflight somente leitura, os testes de segurança, o runbook e o fluxo controlado de primeira ordem já estão no projeto.
