@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
-from analysis.statistics import summarize
+from analysis.statistics import summarize, summarize_periods
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -49,7 +49,10 @@ class EcosystemService:
         raise ValueError("decision_id não encontrado")
 
     def statistics(self) -> dict[str, Any]:
-        return asdict(summarize(self.memory))
+        return {
+            **asdict(summarize(self.memory)),
+            "periods": summarize_periods(self.memory),
+        }
 
     def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
         if limit < 1:
