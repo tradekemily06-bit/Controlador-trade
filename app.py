@@ -8,21 +8,32 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from integration.ecosystem_service import EcosystemService
+from security import MAX_BODY_BYTES, SECURITY
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 SERVICE = EcosystemService()
 
 
-def _json_response(start_response, status: HTTPStatus, payload: dict) -> list[bytes]:
+def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str) -> list[bytes]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    start_response(f"{status.value} {status.phrase}", [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))])
+    headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))]
+    headers.extend(SECURITY.headers(request_id))
+    start_response(f"{status.value} {status.phrase}", headers)
     return [body]
 
 
 def _read_json(environ) -> dict:
-    length = int(environ.get("CONTENT_LENGTH") or "0")
+    raw_length = environ.get("CONTENT_LENGTH") or "0"
+    try:
+        length = int(raw_length)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("content-length inválido") from exc
+    if length < 0 or length > MAX_BODY_BYTES:
+        raise ValueError("payload excede o limite permitido")
     raw = environ["wsgi.input"].read(length)
+    if len(raw) > MAX_BODY_BYTES:
+        raise ValueError("payload excede o limite permitido")
     data = json.loads(raw or b"{}")
     if not isinstance(data, dict):
         raise ValueError("payload deve ser um objeto JSON")
@@ -39,49 +50,68 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
-def _file_response(start_response, path: Path, content_type: str) -> list[bytes]:
+def _file_response(start_response, path: Path, content_type: str, request_id: str) -> list[bytes]:
     body = path.read_bytes()
-    start_response("200 OK", [("Content-Type", content_type), ("Content-Length", str(len(body)))])
+    headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
+    headers.extend(SECURITY.headers(request_id))
+    start_response("200 OK", headers)
     return [body]
 
 
 def application(environ, start_response):
+    request_id = SECURITY.request_id()
+    if not SECURITY.allow(environ):
+        return _json_response(
+            start_response,
+            HTTPStatus.TOO_MANY_REQUESTS,
+            {"error": "Limite de requisições excedido", "request_id": request_id},
+            request_id,
+        )
+
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
     try:
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()})
+            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id)
         if path == "/api/status" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status())
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
-            return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False})
+            return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False}, request_id)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
                 raise ValueError("cases deve ser uma lista")
-            return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False})
+            return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id)
         if path == "/api/memory" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))})
+            return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id)
         if path == "/api/statistics" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics())
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(), request_id)
         if path == "/api/outcome" and method == "POST":
             data = _read_json(environ)
             record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")))
-            return _json_response(start_response, HTTPStatus.OK, record.to_dict())
+            return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id)
         if path == "/api/risk" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status())
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id)
         if path == "/api/news" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)))
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id)
         if path == "/api/connections" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.connections())
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id)
         if path in {"/", "/index.html"} and method == "GET":
-            return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8")
+            return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id)
         if path == "/manifest.webmanifest" and method == "GET":
-            return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8")
-    except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": f"Entrada inválida: {exc}"})
-    start_response("404 Not Found", [("Content-Type", "text/plain; charset=utf-8")])
+            return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return _json_response(
+            start_response,
+            HTTPStatus.BAD_REQUEST,
+            {"error": "Entrada inválida", "request_id": request_id},
+            request_id,
+        )
+
+    headers = [("Content-Type", "text/plain; charset=utf-8")]
+    headers.extend(SECURITY.headers(request_id))
+    start_response("404 Not Found", headers)
     return [b"Not Found"]
 
 
