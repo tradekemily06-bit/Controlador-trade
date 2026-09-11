@@ -80,7 +80,7 @@ def summarize_periods(
 
 
 def summarize_breakdowns(records: Iterable[DecisionRecord]) -> dict[str, dict[str, dict[str, object]]]:
-    """Summarize outcomes by symbol and timeframe for learning and audit."""
+    """Summarize outcomes by symbol, timeframe, signal and score band for learning/audit."""
     items = list(records)
 
     def grouped(key: str) -> dict[str, dict[str, object]]:
@@ -91,7 +91,26 @@ def summarize_breakdowns(records: Iterable[DecisionRecord]) -> dict[str, dict[st
             groups.setdefault(label, []).append(record)
         return {label: asdict(summarize(group)) for label, group in sorted(groups.items())}
 
+    def score_band(score: float) -> str:
+        value = max(0.0, min(100.0, float(score)))
+        if value < 50:
+            return "0-49"
+        if value < 70:
+            return "50-69"
+        if value < 85:
+            return "70-84"
+        return "85-100"
+
+    score_groups: dict[str, list[DecisionRecord]] = {}
+    for record in items:
+        score_groups.setdefault(score_band(record.score), []).append(record)
+
     return {
         "symbols": grouped("symbol"),
         "timeframes": grouped("timeframe"),
+        "signals": grouped("signal"),
+        "score_bands": {
+            label: asdict(summarize(group))
+            for label, group in sorted(score_groups.items())
+        },
     }
