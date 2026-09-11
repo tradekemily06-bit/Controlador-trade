@@ -40,16 +40,33 @@ A validação operacional DEMO já foi concluída: uma ordem controlada de EURUS
 
 A integração cTrader DEMO permanece isolada como futura alternativa e não bloqueia o caminho MT5.
 
-## Interface do ecossistema
+## Interface completa do ecossistema
 
-A interface web responsiva já integra Painel, Análise, Replay, Memória, Estatísticas, Risco, Notícias/Contexto e Conexões. O manifest web é servido pelo próprio aplicativo e os endpoints possuem contratos automatizados. A interface permanece em SIMULAÇÃO e não autoriza execução REAL.
+A interface web responsiva integra os módulos:
 
-Para validação local, execute `python app.py` em um ambiente Python compatível e abra o endereço exibido pelo servidor. A validação visual em celular/notebook continua sendo uma verificação de uso da interface, não uma autorização de execução financeira.
+- Painel operacional e decisão COMPRA/VENDA/AGUARDAR;
+- Operação e estado fail-closed;
+- Análise com score, ativo, timeframe, confirmação de candle e filtros;
+- leitura técnica com os conceitos de tendência, estrutura, suporte/resistência, topos/fundos, volume, rompimento, pullback, pavio/rejeição, retirada de pavio, vela comando/força, GAB, DDT, pressão alta/baixa e taxa dívida;
+- Laboratório & Replay;
+- área de treinamento visual e análise de material fornecido;
+- Memória, estatísticas e feedback WIN/LOSS/DRAW/OPEN/VOID;
+- Risk Gate e proteções;
+- Notícias & Contexto com boundary seguro e sem notícias inventadas;
+- Configurações locais de preferência;
+- Conexões, auditoria e segurança;
+- navegação mobile-first para celular e notebook.
+
+A interface continua em SIMULAÇÃO/DEMO e não possui caminho visual para habilitar REAL. As preferências salvas pela interface são locais ao navegador e não alteram a autorização de execução.
+
+O manifest web é servido pelo próprio aplicativo e os endpoints possuem contratos automatizados.
+
+## Validação
+
+Para validação local, execute `python app.py` em um ambiente Python compatível e abra o endereço exibido pelo servidor. A suíte de testes cobre a interface e seus contratos; a verificação visual em dispositivos reais é uma validação de uso, não uma autorização de execução financeira.
 
 ## Estado do projeto
 
-O software necessário para o núcleo, as fronteiras de execução DEMO, a integração IC Markets MT5 DEMO e a interface responsiva está implementado e coberto pela suíte de testes/CI. REAL permanece bloqueado.
+O software necessário para o núcleo, as fronteiras de execução DEMO, a integração IC Markets MT5 DEMO e a interface atual do ecossistema está implementado e coberto pela suíte de testes/CI. REAL permanece bloqueado.
 
 Novos trabalhos devem ser motivados por uma necessidade concreta, defeito encontrado na validação ou expansão funcional real; não devem criar P-steps artificiais apenas para prolongar o projeto.
-
-Consulte `PROJECT_COMPLETION_STATUS.md` e `execution/MT5_DEMO_RUNBOOK.md` para critérios operacionais e segurança.
