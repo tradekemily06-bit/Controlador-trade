@@ -77,3 +77,21 @@ def summarize_periods(
         "weekly": _bucket(items, week_start, week_start + timedelta(days=7)),
         "monthly": _bucket(items, month_start, next_month),
     }
+
+
+def summarize_breakdowns(records: Iterable[DecisionRecord]) -> dict[str, dict[str, dict[str, object]]]:
+    """Summarize outcomes by symbol and timeframe for learning and audit."""
+    items = list(records)
+
+    def grouped(key: str) -> dict[str, dict[str, object]]:
+        groups: dict[str, list[DecisionRecord]] = {}
+        for record in items:
+            value = getattr(record, key)
+            label = str(value or "UNKNOWN")
+            groups.setdefault(label, []).append(record)
+        return {label: asdict(summarize(group)) for label, group in sorted(groups.items())}
+
+    return {
+        "symbols": grouped("symbol"),
+        "timeframes": grouped("timeframe"),
+    }
