@@ -1,6 +1,6 @@
 # Publicação do painel web
 
-O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O serviço aceita a variável de ambiente `PORT` e pode ser executado em um container Docker.
+O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O serviço pode ser hospedado como uma aplicação WSGI Python.
 
 ## Segurança
 
@@ -9,8 +9,22 @@ O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O ser
 - REAL permanece desabilitado.
 - Nenhuma credencial de corretora deve ser colocada no repositório.
 
-## Hospedagem
+## Hospedagem recomendada para o primeiro teste
 
-O `Dockerfile` expõe a porta definida pela variável `PORT` (7860 por padrão). A hospedagem escolhida deve executar um serviço web Docker e encaminhar a porta pública para essa porta interna.
+Para um teste pelo celular, PythonAnywhere oferece uma conta Beginner gratuita com uma aplicação web em `seu-usuario.pythonanywhere.com`. O arquivo `deployment/pythonanywhere_wsgi.py` já existe para servir de entrada WSGI.
 
-Depois do deploy, a página inicial é `/` e o health check é `/api/health`.
+Fluxo:
+
+1. Criar a conta gratuita.
+2. Abrir um console Bash.
+3. Clonar este repositório na pasta `~/Controlador-trade`.
+4. Na aba Web, criar uma aplicação Python/Manual.
+5. Apontar o arquivo WSGI para `~/Controlador-trade/deployment/pythonanywhere_wsgi.py`.
+6. Recarregar a aplicação.
+7. Abrir o endereço público fornecido pelo PythonAnywhere.
+
+O health check fica em `/api/health`.
+
+## Alternativa Docker
+
+O `Dockerfile` mantém uma opção de hospedagem Docker futura e usa a variável `PORT` (7860 por padrão). Isso não é necessário para o primeiro teste.
