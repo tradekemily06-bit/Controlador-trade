@@ -4,7 +4,7 @@
 
 O núcleo técnico e as fronteiras de execução do projeto estão concluídos no `main`. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
 
-A conta DEMO da IC Markets já pode ser conectada ao aplicativo MT5 no celular, mas a validação do adapter Python ainda depende de um **terminal MetaTrader 5 compatível com o pacote oficial MetaTrader5**. Essa etapa é operacional e não exige alterar o núcleo do projeto.
+A validação operacional DEMO foi executada com sucesso em ambiente compatível com MetaTrader 5: preflight, `order_check()`, primeira ordem controlada, confirmação do identificador externo, fechamento explícito e reconciliação foram concluídos sem habilitar REAL.
 
 ## Concluído
 
@@ -16,38 +16,30 @@ A conta DEMO da IC Markets já pode ser conectada ao aplicativo MT5 no celular, 
 - Reconciliação externa.
 - Validações de segurança antes de qualquer uso REAL.
 - Boundary cTrader DEMO/OAuth preservada como integração futura, sem bloquear o projeto.
-- Boundary específica para IC Markets cTrader preservada como futura.
 - Adapter IC Markets MT5 DEMO.
 - Preflight somente leitura para confirmar disponibilidade e conta DEMO.
 - Testes de segurança do adapter e do preflight.
 - Runbook para a primeira conexão MT5 DEMO.
+- Primeira ordem DEMO controlada em EURUSD, 0,01 lote, COMPRA, confirmada e depois fechada de forma controlada.
+- Interface web responsiva para celular e notebook.
+- APIs de status, análise, replay, memória, estatísticas, risco, notícias/contexto e conexões.
+- Manifest web servido pelo aplicativo.
+- Contratos automatizados para a interface e APIs.
 - CI configurada para executar a suíte de testes e compilação do projeto.
 - Nenhuma credencial de conta deve ser persistida no repositório.
 
-## Pendência operacional real
+## Validação visual restante
 
-Ainda não foi comprovada uma execução do adapter Python contra um terminal MT5 real conectado à conta IC Markets DEMO. O MT5 Android conectado no celular confirma a conta/plataforma do lado do usuário, mas não substitui o terminal MT5 que o pacote Python usa para comunicação entre processos.
-
-Quando houver acesso a um ambiente compatível, a sequência será:
-
-1. iniciar o terminal MT5;
-2. confirmar conta IC Markets DEMO;
-3. executar o preflight somente leitura;
-4. confirmar símbolo e cotação;
-5. validar volume mínimo/step;
-6. executar `order_check()`;
-7. somente se aprovado, enviar uma ordem DEMO controlada;
-8. registrar o identificador externo;
-9. reconciliar com a auditoria local;
-10. fechar a posição DEMO explicitamente;
-11. reconciliar novamente.
-
-Nenhuma senha, token ou credencial deve ser colocada no GitHub ou no chat.
+A parte de software da interface está implementada e testada por contrato. A única validação que depende do dispositivo do usuário é abrir a interface em um navegador e confirmar visualmente o comportamento responsivo no notebook e no celular. Isso é validação de uso da interface, não uma pendência de arquitetura ou de execução DEMO.
 
 ## REAL
 
-REAL permanece bloqueado. A existência do adapter DEMO não autoriza execução financeira real. A passagem para REAL exige validação operacional, reconciliação e critérios de segurança adicionais.
+REAL permanece bloqueado. A existência do adapter DEMO não autoriza execução financeira real. Nenhum componente da interface, memória, replay, notícias, aprendizado ou análise pode habilitar REAL.
+
+## cTrader
+
+cTrader permanece como alternativa futura e não bloqueia o projeto. A aprovação/autenticação do cTrader não é requisito para o funcionamento do caminho IC Markets MT5 DEMO.
 
 ## Regra de encerramento
 
-Não criar novas etapas apenas para prolongar o projeto. A parte de software necessária para a integração IC Markets MT5 DEMO está encerrada. O único bloqueio restante desta integração é a validação operacional no terminal MT5 compatível. Defeitos encontrados nessa validação devem gerar correções específicas; não devem gerar novos P-steps artificiais.
+Não criar novas etapas apenas para prolongar o projeto. A parte de software necessária para o núcleo, a integração IC Markets MT5 DEMO e a interface atual está concluída. Novas alterações devem ser motivadas por um defeito concreto, uma necessidade funcional real ou uma validação de uso que encontre um problema.
