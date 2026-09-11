@@ -53,10 +53,17 @@ class EcosystemService:
         raise ValueError("decision_id não encontrado")
 
     def statistics(self) -> dict[str, Any]:
+        breakdowns = summarize_breakdowns(self.memory)
         return {
             **asdict(summarize(self.memory)),
             "periods": summarize_periods(self.memory),
-            "breakdowns": summarize_breakdowns(self.memory),
+            "breakdowns": {
+                **breakdowns,
+                "by_symbol": breakdowns["symbols"],
+                "by_timeframe": breakdowns["timeframes"],
+                "by_signal": breakdowns["signals"],
+                "by_score_band": breakdowns["score_bands"],
+            },
         }
 
     def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
