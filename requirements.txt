@@ -1,2 +1,9 @@
 ctrader-open-api
 pytest
+
+# Security floors for transitive dependencies used by the optional cTrader SDK.
+protobuf>=6.33.5
+twisted>=26.4.0
+cryptography>=49.0.0
+pyOpenSSL>=26.0.0
+requests>=2.34.2
