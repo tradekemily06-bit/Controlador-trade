@@ -29,6 +29,7 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 - Laboratório & Replay.
 - Área de treinamento visual e análise de material fornecido.
 - Memória, estatísticas e feedback WIN/LOSS/DRAW/OPEN/VOID.
+- Persistência opcional da memória de decisões em SQLite, com restauração na inicialização e atualização persistente de outcomes.
 - Risk Gate e proteções visíveis.
 - Notícias & Contexto com boundary seguro e sem dados inventados.
 - Configurações locais de preferência.
@@ -56,6 +57,10 @@ A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suí
 A trilha de auditoria registra metadados mínimos e não armazena IP bruto, credenciais, tokens ou corpos de requisição. SQLite é uma opção de persistência para uma instância; armazenamento centralizado e durável para múltiplas instâncias continua pertencendo à infraestrutura de produção.
 
 Essa camada é uma proteção de boundary HTTP e **não é, sozinha, um sistema completo de SaaS multiusuário**. Autenticação, autorização, isolamento por tenant/usuário, sessões persistentes, gestão de segredos e terminação HTTPS continuam pertencendo à próxima camada de infraestrutura/identidade de produção.
+
+## Memória persistente de decisões
+
+A memória continua funcionando sem configuração externa. Quando `CONTROLADOR_DECISION_DB` aponta para um arquivo SQLite gravável, decisões e outcomes sobrevivem ao reinício do processo. Falhas de persistência são tratadas de forma fail-soft e não habilitam execução financeira. Essa persistência local não substitui o futuro isolamento por usuário/tenant em uma implantação SaaS multiusuário.
 
 ## Validação de dispositivo
 
