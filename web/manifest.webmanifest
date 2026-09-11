@@ -1,0 +1,11 @@
+{
+  "name": "Controlador Trading",
+  "short_name": "Controlador",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "description": "Ecossistema de análise, decisão, risco, memória e replay de trading.",
+  "icons": []
+}
