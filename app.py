@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from http import HTTPStatus
 from pathlib import Path
 from wsgiref.simple_server import make_server
@@ -71,9 +72,10 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
-def run(host: str = "0.0.0.0", port: int = 8000) -> None:
-    with make_server(host, port, application) as server:
-        print(f"Controlador Trading em http://{host}:{port}")
+def run(host: str = "0.0.0.0", port: int | None = None) -> None:
+    selected_port = port or int(os.environ.get("PORT", "8000"))
+    with make_server(host, selected_port, application) as server:
+        print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
 
