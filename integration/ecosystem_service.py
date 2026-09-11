@@ -4,6 +4,7 @@ from dataclasses import asdict
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
+from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
@@ -13,9 +14,10 @@ from integration.news_provider import UnconfiguredNewsProvider
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None) -> None:
         self.engine = engine or SignalEngine()
-        self.memory: list[DecisionRecord] = []
+        self.store = decision_store or DecisionStore()
+        self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
 
@@ -29,6 +31,7 @@ class EcosystemService:
         )
         record = DecisionRecord.from_analysis(result)
         self.memory.append(record)
+        self.store.save(record)
         return record
 
     def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -45,6 +48,7 @@ class EcosystemService:
             if record.decision_id == decision_id:
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
+                self.store.save(updated)
                 return updated
         raise ValueError("decision_id não encontrado")
 
