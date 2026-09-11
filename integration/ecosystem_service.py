@@ -58,13 +58,27 @@ class EcosystemService:
 
     def risk_status(self) -> dict[str, Any]:
         decision = self.risk.evaluate()
-        return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}}
+        return {
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+            "configured_limits": {
+                "daily_loss_limit": self.risk.daily_loss_limit,
+                "max_operations": self.risk.max_operations,
+                "max_consecutive_losses": self.risk.max_consecutive_losses,
+            },
+        }
 
     def news_status(self, limit: int = 10) -> dict[str, Any]:
         return {"provider": "UNCONFIGURED", "live": False, "items": [asdict(item) for item in self.news.latest(limit=limit)]}
 
     def connections(self) -> dict[str, Any]:
-        return {"decision_core": "ONLINE", "execution_gateway": "ONLINE", "ic_markets_mt5_demo": "VALIDACAO_OPERACIONAL_PENDENTE", "cTrader": "FUTURO_NAO_BLOQUEANTE", "real": "DESABILITADO"}
+        return {
+            "decision_core": "ONLINE",
+            "execution_gateway": "ONLINE",
+            "ic_markets_mt5_demo": "DEMO_VALIDADO",
+            "cTrader": "FUTURO_NAO_BLOQUEANTE",
+            "real": "DESABILITADO",
+        }
 
     def system_status(self) -> dict[str, Any]:
         return {
@@ -77,6 +91,6 @@ class EcosystemService:
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
             "news": "AGUARDANDO_FONTE",
-            "mt5_demo": "VALIDACAO_OPERACIONAL_PENDENTE",
+            "mt5_demo": "DEMO_VALIDADO",
             "real": "DESABILITADO",
         }
