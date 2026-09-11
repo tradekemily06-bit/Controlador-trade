@@ -30,4 +30,4 @@ def test_system_status_has_safe_gates():
     assert status["mode"] == "SIMULACAO"
     assert status["execution_allowed"] is False
     assert status["real"] == "DESABILITADO"
-    assert status["mt5_demo"] == "VALIDACAO_OPERACIONAL_PENDENTE"
+    assert status["mt5_demo"] == "DEMO_VALIDADO"
