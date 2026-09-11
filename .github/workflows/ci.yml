@@ -26,5 +26,10 @@ jobs:
       - name: Run full test suite
         run: python -m pytest -q
 
+      - name: Dependency security audit
+        run: |
+          python -m pip install --upgrade pip-audit
+          python -m pip_audit -r requirements.txt
+
       - name: Compile project
         run: python -m compileall -q core data execution audit analysis
