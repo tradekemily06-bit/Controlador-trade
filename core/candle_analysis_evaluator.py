@@ -37,9 +37,10 @@ def evaluate_candle_snapshot(snapshot: BrokerMarketDataSnapshot) -> AnalysisResu
     close_position = latest.close_position
     bullish = latest.direction == "ALTA"
     bearish = latest.direction == "BAIXA"
-    confirmation = previous is not None and (
-        (bullish and latest.close_position > previous.close_position)
-        or (bearish and latest.close_position < previous.close_position)
+    previous_candle = candles[-2] if len(candles) >= 2 else None
+    confirmation = previous_candle is not None and (
+        (bullish and candles[-1].close > previous_candle.close)
+        or (bearish and candles[-1].close < previous_candle.close)
     )
 
     body_strength = min(100.0, body_ratio * 100.0)
