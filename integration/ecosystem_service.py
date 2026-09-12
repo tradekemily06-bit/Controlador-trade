@@ -11,6 +11,7 @@ from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.request_context import ProductionRequestContext, require_production_context
+from storage.production_boundary import ProductionStoragePolicy
 
 
 class EcosystemService:
@@ -23,6 +24,11 @@ class EcosystemService:
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
+        self.production_storage = ProductionStoragePolicy(
+            provider_configured=bool(self.store.database_path),
+            tenant_scoped=bool(self.store.database_path),
+            durable=bool(self.store.database_path),
+        )
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         """Return trusted production scope or fail closed before protected operations."""
@@ -111,6 +117,7 @@ class EcosystemService:
             "decision_engine": "ONLINE",
             "memory": "ONLINE",
             "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
+            "production_storage": self.production_storage.status(),
             "replay": "ONLINE",
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
