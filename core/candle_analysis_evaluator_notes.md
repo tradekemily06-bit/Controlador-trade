@@ -1,1 +1,0 @@
-The deterministic candle evaluator is intended for DEMO/read-only analysis. It consumes completed validated candles and emits AnalysisResult without execution side effects.
