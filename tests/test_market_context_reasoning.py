@@ -39,7 +39,7 @@ def test_reasoning_combines_observations_without_trade_signal():
 def test_reasoning_preserves_mixed_context():
     observation = observe_general_market_context([
         candle(100, 105, 99, 104, 10, 0),
-        candle(104, 109, 100, 101, 20, 1),
+        candle(104, 109, 98, 101, 20, 1),
     ])
 
     context = reason_market_context(observation)
