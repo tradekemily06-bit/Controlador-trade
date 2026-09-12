@@ -21,36 +21,16 @@ class MT5InstrumentStatus:
 
 CRYPTO_KEYWORDS = frozenset(
     {
-        "BTC",
-        "ETH",
-        "LTC",
-        "ADA",
-        "SOL",
-        "XRP",
-        "DOGE",
-        "BNB",
-        "DOT",
-        "LINK",
-        "XLM",
-        "UNI",
-        "XTZ",
-        "BCH",
-        "DSH",
-        "AVX",
-        "KSM",
-        "GLM",
-        "MTC",
-        "XMR",
-        "TRX",
+        "BTC", "ETH", "LTC", "ADA", "SOL", "XRP", "DOGE", "BNB", "DOT",
+        "LINK", "XLM", "UNI", "XTZ", "BCH", "DSH", "AVX", "KSM", "GLM",
+        "MTC", "XMR", "TRX",
     }
 )
 
 
 def _asset_class(symbol: str) -> str:
     upper = symbol.upper()
-    if any(token in upper for token in CRYPTO_KEYWORDS):
-        return "crypto"
-    return "other"
+    return "crypto" if any(token in upper for token in CRYPTO_KEYWORDS) else "other"
 
 
 def _has_open_session(mt5: Any, symbol: str, now: datetime) -> bool | None:
@@ -59,11 +39,8 @@ def _has_open_session(mt5: Any, symbol: str, now: datetime) -> bool | None:
     if not callable(session_fn):
         return None
 
-    weekday = now.weekday()  # Python: Monday=0; MT5: Monday=1 ... Sunday=0.
-    mt5_day = (weekday + 1) % 7
-    now_seconds = (
-        now.hour * 3600 + now.minute * 60 + now.second
-    )
+    mt5_day = (now.weekday() + 1) % 7  # MT5: Sunday=0, Monday=1 ... Saturday=6.
+    now_seconds = now.hour * 3600 + now.minute * 60 + now.second
 
     for index in range(32):
         try:
@@ -101,6 +78,14 @@ def discover_mt5_instruments(
 
     current = now or datetime.now(timezone.utc)
     result: list[MT5InstrumentStatus] = []
+    disabled_modes = {
+        value
+        for value in (
+            getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", None),
+            getattr(mt5, "SYMBOL_TRADE_MODE_CLOSEONLY", None),
+        )
+        if value is not None
+    }
 
     for item in symbols:
         symbol = str(getattr(item, "name", "")).strip()
@@ -120,13 +105,8 @@ def discover_mt5_instruments(
         )
         session_open = _has_open_session(mt5, symbol, current)
         trade_mode = getattr(info, "trade_mode", None)
-        disabled = trade_mode in {
-            getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", object()),
-            getattr(mt5, "SYMBOL_TRADE_MODE_CLOSEONLY", object()),
-        }
-        tradeable = not disabled and quote_available
-        if session_open is False:
-            tradeable = False
+        disabled = trade_mode in disabled_modes
+        tradeable = not disabled and quote_available and session_open is not False
 
         if session_open is False:
             state, reason = "CLOSED", "sessão de negociação fechada"
@@ -137,18 +117,15 @@ def discover_mt5_instruments(
         else:
             state, reason = "OPEN", "símbolo disponível para análise"
 
-        upper = symbol.upper()
-        weekend_capable = _asset_class(symbol) == "crypto" and any(
-            token in upper for token in CRYPTO_KEYWORDS
-        )
+        asset_class = _asset_class(symbol)
         result.append(
             MT5InstrumentStatus(
                 symbol=symbol,
-                asset_class=_asset_class(symbol),
+                asset_class=asset_class,
                 visible=visible,
                 tradeable=tradeable,
                 quote_available=quote_available,
-                weekend_capable=weekend_capable,
+                weekend_capable=asset_class == "crypto",
                 state=state,
                 reason=reason,
             )
