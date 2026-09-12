@@ -57,7 +57,14 @@ def analyze_ranked_mt5_assets(
         analyses.append(MT5AssetAnalysis(candidate=candidate, result=result))
 
     def priority(item: MT5AssetAnalysis) -> tuple[int, float, int]:
-        actionable = item.result.signal in {Signal.COMPRA, Signal.VENDA}
-        return (0 if actionable else 1, -float(item.result.score), item.candidate.rank)
+        signal = item.result.signal
+        if signal is Signal.COMPRA:
+            strength = float(item.result.score)
+        elif signal is Signal.VENDA:
+            strength = 100.0 - float(item.result.score)
+        else:
+            strength = 0.0
+        actionable = signal in {Signal.COMPRA, Signal.VENDA}
+        return (0 if actionable else 1, -strength, item.candidate.rank)
 
     return tuple(sorted(analyses, key=priority))
