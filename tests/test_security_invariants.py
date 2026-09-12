@@ -1,5 +1,5 @@
-from integration.ecosystem_service import EcosystemService
 from core.market_context_reasoning import reason_market_context
+from integration.ecosystem_service import EcosystemService
 
 
 def test_real_execution_is_disabled_even_when_system_is_healthy():
@@ -23,10 +23,11 @@ def test_unknown_component_state_is_promoted_to_critical_health():
 
 def test_production_boundary_failure_is_visible_as_critical_health(monkeypatch):
     service = EcosystemService()
+    policy_type = type(service.production_storage)
     monkeypatch.setattr(
-        service.production_storage,
+        policy_type,
         "status",
-        lambda: {"state": "UNSAFE_TENANT_SCOPE"},
+        lambda self: {"state": "UNSAFE_TENANT_SCOPE"},
     )
 
     status = service.system_status()
@@ -44,15 +45,3 @@ def test_market_context_cannot_emit_operational_decision_fields():
     context = reason_market_context(None)
 
     assert context is None
-
-    if context is not None:
-        forbidden = {
-            "signal",
-            "decision",
-            "score",
-            "entry",
-            "confidence",
-            "risk",
-            "execution",
-        }
-        assert forbidden.isdisjoint(context.__dataclass_fields__)
