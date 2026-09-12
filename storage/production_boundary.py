@@ -57,6 +57,12 @@ class ProductionStoragePolicy:
             return False
         return bool(authenticated and tenant_id and tenant_id.strip())
 
+    def authorize_read(self, *, authenticated: bool, tenant_id: str | None) -> bool:
+        """Permit production reads only with identity and an explicit tenant."""
+        if not self.required:
+            return True
+        return bool(authenticated and self.provider_configured and self.durable and self.tenant_scoped and tenant_id and tenant_id.strip())
+
 
 class UnconfiguredProductionStore:
     """Explicit fail-closed placeholder until deployment provides a real store."""
