@@ -133,6 +133,9 @@ class EcosystemService:
         }
 
     def system_status(self) -> dict[str, Any]:
+        production_storage = self.production_storage.status()
+        production_gate = self.production_gate.status()
+        identity = self.identity.status()
         components = {
             "decision_engine": "ONLINE",
             "memory": "ONLINE",
@@ -143,6 +146,10 @@ class EcosystemService:
             "mt5_demo": "DEMO_VALIDADO",
             "real": "DESABILITADO",
             "saas": "FOUNDATION",
+            "production_storage": str(production_storage["state"]),
+            "production_operation_gate": str(production_gate["storage_state"]),
+            "trusted_identity_provider": str(identity["trusted_identity_provider"]),
+            "tenant_isolation": str(identity["tenant_isolation"]),
         }
         alerts = build_health_alerts(components)
         return {
@@ -150,10 +157,10 @@ class EcosystemService:
             "execution_allowed": False,
             "execution": "bloqueada_por_padrao",
             "components": components,
-            "health": "WARNING" if alerts else "OK",
+            "health": "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK"),
             "alerts": [alert.to_dict() for alert in alerts],
             "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
-            "production_storage": self.production_storage.status(),
-            "production_operation_gate": self.production_gate.status(),
-            **self.identity.status(),
+            "production_storage": production_storage,
+            "production_operation_gate": production_gate,
+            **identity,
         }
