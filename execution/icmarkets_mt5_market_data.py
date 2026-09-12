@@ -88,6 +88,9 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             candles: list[Candle] = []
             for rate in rates:
                 timestamp = datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc)
+                volume = rate["tick_volume"]
+                if volume is None:
+                    volume = rate["real_volume"]
                 candles.append(
                     normalize_candle(
                         timestamp=timestamp,
@@ -95,7 +98,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
                         high=rate["high"],
                         low=rate["low"],
                         close=rate["close"],
-                        volume=rate.get("tick_volume", rate.get("real_volume", 0)),
+                        volume=volume,
                     )
                 )
 
