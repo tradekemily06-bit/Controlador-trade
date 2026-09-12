@@ -9,6 +9,7 @@ from analysis.statistics import summarize, summarize_breakdowns, summarize_perio
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
+from security.identity_boundary import IdentityPolicy
 
 
 class EcosystemService:
@@ -20,6 +21,7 @@ class EcosystemService:
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
+        self.identity = IdentityPolicy()
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(
@@ -110,4 +112,5 @@ class EcosystemService:
             "news": "AGUARDANDO_FONTE",
             "mt5_demo": "DEMO_VALIDADO",
             "real": "DESABILITADO",
+            **self.identity.status(),
         }
