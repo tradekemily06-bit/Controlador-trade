@@ -1,0 +1,1 @@
+Security is an ecosystem-wide invariant covering core, data, memory, risk, identity, SaaS, broker integration, execution, health, and audit.
