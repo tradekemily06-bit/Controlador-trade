@@ -1,0 +1,1 @@
+Security validation scope: execution isolation, identity and tenant boundaries, fail-closed behavior, health severity, and separation between market-context reasoning and operational decisions. This scope applies across the complete ecosystem.
