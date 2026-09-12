@@ -1,6 +1,8 @@
 from integration.ecosystem_service import EcosystemService
 import pytest
 
+from storage.production_boundary import ProductionStoragePolicy
+
 
 def test_analyze_is_recorded_and_execution_stays_blocked():
     service = EcosystemService()
@@ -32,6 +34,7 @@ def test_system_status_has_safe_gates():
     assert status["execution_allowed"] is False
     assert status["real"] == "DESABILITADO"
     assert status["mt5_demo"] == "DEMO_VALIDADO"
+    assert status["production_operation_gate"]["authorized"] is False
 
 
 def test_production_context_requires_subject_and_tenant():
@@ -53,3 +56,26 @@ def test_production_context_normalizes_trusted_scope():
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
     assert context.is_valid() is True
+
+
+def test_production_operation_requires_ready_storage():
+    service = EcosystemService()
+
+    with pytest.raises(PermissionError, match="storage is not ready"):
+        service.authorize_production_operation(subject_id="user-a", tenant_id="tenant-a")
+
+
+def test_production_operation_accepts_explicit_ready_storage():
+    service = EcosystemService(
+        production_storage=ProductionStoragePolicy(
+            provider_configured=True,
+            tenant_scoped=True,
+            durable=True,
+        )
+    )
+
+    context = service.authorize_production_operation(subject_id="user-a", tenant_id="tenant-a")
+
+    assert context.subject_id == "user-a"
+    assert context.tenant_id == "tenant-a"
+    assert service.system_status()["real"] == "DESABILITADO"
