@@ -1,1 +1,0 @@
-The evaluator is read-only and broker-independent. It consumes validated completed candles and returns AnalysisResult. It cannot place or alter orders.
