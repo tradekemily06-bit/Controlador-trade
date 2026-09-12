@@ -1,0 +1,1 @@
+The security boundary must remain independent of any single provider, broker, SaaS component, or UI.
