@@ -1,7 +1,7 @@
 import io
 import unittest
 
-from security import MAX_BODY_BYTES, SecurityGuard
+from security_guard import MAX_BODY_BYTES, SecurityGuard
 
 
 class SecurityGuardTests(unittest.TestCase):
