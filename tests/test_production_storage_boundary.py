@@ -8,6 +8,7 @@ def test_storage_policy_reports_unconfigured_state():
     assert policy.status()["state"] == "NOT_CONFIGURED"
     assert policy.status()["tenant_scope"] == "ENFORCED"
     assert policy.authorize_write(authenticated=True, tenant_id="tenant-1") is False
+    assert policy.authorize_read(authenticated=True, tenant_id="tenant-1") is False
 
 
 def test_storage_policy_requires_identity_and_tenant_when_ready():
@@ -19,8 +20,19 @@ def test_storage_policy_requires_identity_and_tenant_when_ready():
     )
     assert policy.status()["state"] == "READY"
     assert policy.authorize_write(authenticated=True, tenant_id="tenant-1") is True
+    assert policy.authorize_read(authenticated=True, tenant_id="tenant-1") is True
     assert policy.authorize_write(authenticated=False, tenant_id="tenant-1") is False
+    assert policy.authorize_read(authenticated=False, tenant_id="tenant-1") is False
     assert policy.authorize_write(authenticated=True, tenant_id=" ") is False
+    assert policy.authorize_read(authenticated=True, tenant_id=" ") is False
+
+
+def test_storage_policy_rejects_unsafe_or_non_durable_provider():
+    assert ProductionStoragePolicy(provider_configured=True, tenant_scoped=False, durable=True).status()["state"] == "UNSAFE_TENANT_SCOPE"
+    assert ProductionStoragePolicy(provider_configured=True, tenant_scoped=True, durable=False).status()["state"] == "NOT_DURABLE"
+    assert ProductionStoragePolicy(provider_configured=False, tenant_scoped=True, durable=True).authorize_read(
+        authenticated=True, tenant_id="tenant-1"
+    ) is False
 
 
 def test_unconfigured_store_fails_closed():
