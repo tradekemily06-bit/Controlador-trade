@@ -28,7 +28,7 @@ class ApiContractTests(unittest.TestCase):
         return captured["status"], captured["headers"], json.loads(response)
 
     def test_read_endpoints_are_available_and_safe(self):
-        for path in ("/api/health", "/api/status", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections"):
+        for path in ("/api/health", "/api/status", "/api/saas/status", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections"):
             status, headers, payload = self.request(path)
             self.assertEqual(status, "200 OK", path)
             self.assertIn("application/json", headers["Content-Type"])
@@ -38,6 +38,19 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status, "200 OK")
         self.assertEqual(payload["real"], "DESABILITADO")
         self.assertEqual(payload["ic_markets_mt5_demo"], "DEMO_VALIDADO")
+
+    def test_saas_status_is_explicitly_provider_neutral_and_fail_closed(self):
+        status, _, payload = self.request("/api/saas/status")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["runtime"], "FOUNDATION")
+        self.assertTrue(payload["provider_neutral"])
+        self.assertFalse(payload["paid_dependency_required"])
+        self.assertEqual(payload["tenant_scoped_access"], "BOUNDARY_READY")
+        self.assertEqual(payload["authentication_provider"], "NOT_CONFIGURED")
+        self.assertEqual(payload["billing"], "OUTSIDE_CORE")
+        self.assertEqual(payload["dashboard_onboarding"], "NOT_CONFIGURED")
+        self.assertEqual(payload["real_execution"], "DISABLED")
+        self.assertEqual(payload["identity"]["real_execution"], "DISABLED")
 
     def test_web_manifest_is_served(self):
         status, headers, payload = self.request_raw("/manifest.webmanifest")
