@@ -118,6 +118,23 @@ class EcosystemService:
             "real": "DESABILITADO",
         }
 
+    def saas_status(self) -> dict[str, Any]:
+        """Expose the provider-neutral SaaS boundary without pretending it is production-authenticated."""
+        identity_status = self.identity.status()
+        production_storage_status = self.production_storage.status()
+        return {
+            "runtime": "FOUNDATION",
+            "provider_neutral": True,
+            "paid_dependency_required": False,
+            "tenant_scoped_access": "BOUNDARY_READY",
+            "identity": identity_status,
+            "production_storage": production_storage_status,
+            "authentication_provider": "NOT_CONFIGURED",
+            "billing": "OUTSIDE_CORE",
+            "dashboard_onboarding": "NOT_CONFIGURED",
+            "real_execution": "DISABLED",
+        }
+
     def system_status(self) -> dict[str, Any]:
         return {
             "mode": "SIMULACAO",
