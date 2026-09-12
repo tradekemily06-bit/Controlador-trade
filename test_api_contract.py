@@ -60,6 +60,21 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertIn("error", payload)
 
+    def test_analyze_exposes_stable_presentation_and_security_contract(self):
+        status, _, payload = self.request(
+            "/api/analyze",
+            method="POST",
+            payload={"score": 90, "symbol": "EURUSD", "timeframe": "5m", "confirmed": True, "filters_ok": True},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["signal"], "COMPRA")
+        self.assertEqual(payload["presentation"]["status"], "BUY")
+        self.assertEqual(payload["presentation"]["label"], "COMPRA")
+        self.assertEqual(payload["presentation"]["color"], "green")
+        self.assertTrue(payload["security"]["real_blocked"])
+        self.assertTrue(payload["execution_allowed"] is False)
+        self.assertIn("decision_id", payload)
+
     def test_replay_records_multiple_cases(self):
         status, _, payload = self.request(
             "/api/replay",
