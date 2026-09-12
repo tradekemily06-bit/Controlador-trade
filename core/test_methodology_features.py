@@ -31,6 +31,8 @@ def test_extracts_body_and_wicks_without_inventing_signal():
     assert features.close_position == pytest.approx(10 / 12)
     assert features.has_no_wicks is False
     assert features.wick_symmetry == pytest.approx(1.0)
+    assert features.dominant_wick == "BOTH_EQUAL"
+    assert features.wick_to_body_ratio == pytest.approx(4 / 8)
 
 
 def test_identifies_a_candle_without_wicks():
@@ -41,6 +43,23 @@ def test_identifies_a_candle_without_wicks():
     assert features.has_no_lower_wick is True
     assert features.has_no_wicks is True
     assert features.body_ratio == pytest.approx(1.0)
+    assert features.dominant_wick == "NONE"
+    assert features.wick_to_body_ratio == pytest.approx(0.0)
+
+
+def test_exposes_dominant_upper_and_lower_wick_without_a_threshold():
+    upper = extract_candle_features(candle(100, 115, 99, 105))
+    lower = extract_candle_features(candle(100, 106, 90, 105))
+
+    assert upper.dominant_wick == "UPPER"
+    assert lower.dominant_wick == "LOWER"
+
+
+def test_zero_body_keeps_wick_body_ratio_undefined():
+    features = extract_candle_features(candle(100, 110, 90, 100))
+
+    assert features.body_size == 0
+    assert features.wick_to_body_ratio is None
 
 
 def test_same_direction_only_accepts_non_neutral_candles():
