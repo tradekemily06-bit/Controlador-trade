@@ -1,0 +1,1 @@
+The tenant audit boundary requires a trusted tenant identifier for every write and read. It never derives tenant identity from untrusted HTTP input. Authentication, identity-provider integration, and durable multi-instance storage remain outside this module.
