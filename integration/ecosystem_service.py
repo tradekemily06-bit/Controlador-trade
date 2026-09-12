@@ -10,6 +10,7 @@ from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
+from security.request_context import ProductionRequestContext, require_production_context
 
 
 class EcosystemService:
@@ -22,6 +23,10 @@ class EcosystemService:
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
+
+    def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
+        """Return trusted production scope or fail closed before protected operations."""
+        return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(
