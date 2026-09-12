@@ -37,12 +37,26 @@ class SecurityGuardTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             SecurityGuard(window=0)
 
-    def test_security_headers_are_present(self):
+    def test_script_nonce_is_random_and_usable(self):
+        guard = SecurityGuard()
+        first = guard.script_nonce()
+        second = guard.script_nonce()
+        self.assertTrue(first)
+        self.assertNotEqual(first, second)
+        headers = dict(SecurityGuard.headers("abc123", script_nonce=first))
+        csp = headers["Content-Security-Policy"]
+        self.assertIn(f"'nonce-{first}'", csp)
+        self.assertIn("script-src 'self'", csp)
+
+    def test_security_headers_without_nonce_remain_strict(self):
         headers = dict(SecurityGuard.headers("abc123"))
+        csp = headers["Content-Security-Policy"]
         self.assertEqual(headers["X-Request-ID"], "abc123")
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(headers["X-Frame-Options"], "DENY")
-        self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
+        self.assertIn("script-src 'self'", csp)
+        self.assertNotIn("'unsafe-inline'", csp)
+        self.assertIn("frame-ancestors 'none'", csp)
         self.assertEqual(headers["Cache-Control"], "no-store")
 
     def test_body_limit_is_explicit(self):
