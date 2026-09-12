@@ -152,12 +152,22 @@ class EcosystemService:
             "tenant_isolation": str(identity["tenant_isolation"]),
         }
         alerts = build_health_alerts(components)
+        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
         return {
             "mode": "SIMULACAO",
             "execution_allowed": False,
             "execution": "bloqueada_por_padrao",
+            "decision_engine": components["decision_engine"],
+            "memory": components["memory"],
+            "replay": components["replay"],
+            "statistics": components["statistics"],
+            "risk_gate": components["risk_gate"],
+            "news": components["news"],
+            "mt5_demo": components["mt5_demo"],
+            "real": components["real"],
+            "saas": components["saas"],
             "components": components,
-            "health": "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK"),
+            "health": health,
             "alerts": [alert.to_dict() for alert in alerts],
             "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
             "production_storage": production_storage,
