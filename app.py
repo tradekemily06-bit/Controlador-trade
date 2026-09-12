@@ -8,7 +8,7 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from integration.ecosystem_service import EcosystemService
-from security import MAX_BODY_BYTES, SECURITY
+from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent

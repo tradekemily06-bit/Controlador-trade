@@ -39,3 +39,38 @@ jobs:
 
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
+
+      - name: Smoke test production container health
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs controlador-trade-ci || true
+            docker rm -f controlador-trade-ci || true
+          }
+          trap cleanup EXIT
+
+          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
+
+          for attempt in {1..30}; do
+            if python - <<'PY'
+          import json
+          import urllib.request
+
+          with urllib.request.urlopen("http://127.0.0.1:7860/api/health", timeout=3) as response:
+              if response.status != 200:
+                  raise SystemExit(1)
+              payload = json.loads(response.read().decode("utf-8"))
+
+          if payload.get("ok") is not True:
+              raise SystemExit(1)
+          PY
+            then
+              echo "Container health endpoint is ready."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Container health endpoint did not become ready."
+          exit 1
