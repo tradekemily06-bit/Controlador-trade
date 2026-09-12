@@ -1,4 +1,5 @@
 from integration.ecosystem_service import EcosystemService
+import pytest
 
 
 def test_analyze_is_recorded_and_execution_stays_blocked():
@@ -31,3 +32,24 @@ def test_system_status_has_safe_gates():
     assert status["execution_allowed"] is False
     assert status["real"] == "DESABILITADO"
     assert status["mt5_demo"] == "DEMO_VALIDADO"
+
+
+def test_production_context_requires_subject_and_tenant():
+    service = EcosystemService()
+
+    with pytest.raises(PermissionError):
+        service.require_production_context(subject_id=None, tenant_id="tenant-a")
+
+    with pytest.raises(PermissionError):
+        service.require_production_context(subject_id="user-a", tenant_id=None)
+
+
+def test_production_context_normalizes_trusted_scope():
+    context = EcosystemService().require_production_context(
+        subject_id="  user-a  ",
+        tenant_id="  tenant-a  ",
+    )
+
+    assert context.subject_id == "user-a"
+    assert context.tenant_id == "tenant-a"
+    assert context.is_valid() is True
