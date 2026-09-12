@@ -6,6 +6,7 @@ from typing import Any, Iterable
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
+from core.ecosystem_health import build_health_alerts
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -30,17 +31,13 @@ class EcosystemService:
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
-        # Production readiness is an explicit deployment boundary. Local SQLite
-        # persistence must never be treated as tenant-scoped durable production storage.
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
-        """Return trusted production scope or fail closed before protected operations."""
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
 
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
-        """Authorize a protected production operation without authorizing REAL trading."""
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
@@ -120,7 +117,6 @@ class EcosystemService:
         }
 
     def saas_status(self) -> dict[str, Any]:
-        """Expose the provider-neutral SaaS boundary without pretending it is production-authenticated."""
         identity_status = self.identity.status()
         production_storage_status = self.production_storage.status()
         return {
@@ -137,20 +133,44 @@ class EcosystemService:
         }
 
     def system_status(self) -> dict[str, Any]:
-        return {
-            "mode": "SIMULACAO",
-            "execution_allowed": False,
-            "execution": "bloqueada_por_padrao",
+        production_storage = self.production_storage.status()
+        production_gate = self.production_gate.status()
+        identity = self.identity.status()
+        components = {
             "decision_engine": "ONLINE",
             "memory": "ONLINE",
-            "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
-            "production_storage": self.production_storage.status(),
-            "production_operation_gate": self.production_gate.status(),
             "replay": "ONLINE",
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
             "news": "AGUARDANDO_FONTE",
             "mt5_demo": "DEMO_VALIDADO",
             "real": "DESABILITADO",
-            **self.identity.status(),
+            "saas": "FOUNDATION",
+            "production_storage": str(production_storage["state"]),
+            "production_operation_gate": str(production_gate["storage_state"]),
+            "trusted_identity_provider": str(identity["trusted_identity_provider"]),
+            "tenant_isolation": str(identity["tenant_isolation"]),
+        }
+        alerts = build_health_alerts(components)
+        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
+        return {
+            "mode": "SIMULACAO",
+            "execution_allowed": False,
+            "execution": "bloqueada_por_padrao",
+            "decision_engine": components["decision_engine"],
+            "memory": components["memory"],
+            "replay": components["replay"],
+            "statistics": components["statistics"],
+            "risk_gate": components["risk_gate"],
+            "news": components["news"],
+            "mt5_demo": components["mt5_demo"],
+            "real": components["real"],
+            "saas": components["saas"],
+            "components": components,
+            "health": health,
+            "alerts": [alert.to_dict() for alert in alerts],
+            "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
+            "production_storage": production_storage,
+            "production_operation_gate": production_gate,
+            **identity,
         }
