@@ -115,6 +115,7 @@ class EcosystemService:
             "execution_gateway": "ONLINE",
             "ic_markets_mt5_demo": "DEMO_VALIDADO",
             "cTrader": "FUTURO_NAO_BLOQUEANTE",
+            "saas": self.saas_status()["runtime"],
             "real": "DESABILITADO",
         }
 
