@@ -1,0 +1,1 @@
+Security applies across core, data, memory, risk, identity, SaaS, broker integration, execution, health monitoring, and audit boundaries.
