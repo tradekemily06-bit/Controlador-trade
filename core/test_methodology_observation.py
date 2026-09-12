@@ -24,6 +24,9 @@ def test_observation_exposes_latest_and_previous_candle_facts():
     assert observation.latest.lower_wick == 1
     assert observation.previous is not None
     assert observation.same_direction is True
+    assert observation.patterns.latest_is_careca is False
+    assert observation.patterns.two_same_direction_without_wicks is False
+    assert observation.patterns.previous_wick_symmetry == 1.0
 
 
 def test_observation_is_empty_for_no_candles():

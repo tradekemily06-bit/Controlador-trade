@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from data.models import Candle
 
 from .methodology_features import CandleFeatures, extract_candle_features, same_direction
+from .methodology_patterns import MethodologyPatternObservation, observe_patterns
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class MethodologyObservation:
     latest: CandleFeatures
     previous: CandleFeatures | None
     same_direction: bool
+    patterns: MethodologyPatternObservation
 
 
 def observe_candles(candles: list[Candle]) -> MethodologyObservation | None:
@@ -30,4 +32,5 @@ def observe_candles(candles: list[Candle]) -> MethodologyObservation | None:
         latest=latest,
         previous=previous,
         same_direction=previous is not None and same_direction(previous, latest),
+        patterns=observe_patterns(latest, previous),
     )
