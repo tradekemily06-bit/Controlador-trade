@@ -60,8 +60,11 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
     body = path.read_bytes()
+    script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
+    if script_nonce:
+        body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id))
+    headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
     _audit(environ, request_id, 200)
     return [body]
