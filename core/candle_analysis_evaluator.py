@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .methodology_observation import observe_candles
 from .models import AnalysisResult, Signal
 from .p122_broker_market_data import BrokerMarketDataSnapshot
 from .signal_engine import SignalEngine
@@ -8,7 +9,8 @@ from .signal_engine import SignalEngine
 def evaluate_candle_snapshot(snapshot: BrokerMarketDataSnapshot) -> AnalysisResult:
     """Evaluate completed candles conservatively without broker side effects."""
     candles = snapshot.candles
-    if not candles:
+    observation = observe_candles(list(candles))
+    if observation is None:
         return AnalysisResult(
             Signal.AGUARDAR,
             0,
@@ -18,9 +20,9 @@ def evaluate_candle_snapshot(snapshot: BrokerMarketDataSnapshot) -> AnalysisResu
             snapshot.timeframe,
         )
 
-    latest = candles[-1]
-    previous = candles[-2] if len(candles) >= 2 else None
-    candle_range = latest.high - latest.low
+    latest = observation.latest
+    previous = observation.previous
+    candle_range = latest.range_size
     if candle_range <= 0:
         return AnalysisResult(
             Signal.AGUARDAR,
@@ -31,13 +33,14 @@ def evaluate_candle_snapshot(snapshot: BrokerMarketDataSnapshot) -> AnalysisResu
             snapshot.timeframe,
         )
 
-    body_ratio = abs(latest.close - latest.open) / candle_range
-    close_position = (latest.close - latest.low) / candle_range
-    bullish = latest.close > latest.open
-    bearish = latest.close < latest.open
-    confirmation = previous is not None and (
-        (bullish and latest.close > previous.close)
-        or (bearish and latest.close < previous.close)
+    body_ratio = latest.body_ratio
+    close_position = latest.close_position
+    bullish = latest.direction == "ALTA"
+    bearish = latest.direction == "BAIXA"
+    previous_candle = candles[-2] if len(candles) >= 2 else None
+    confirmation = previous_candle is not None and (
+        (bullish and candles[-1].close > previous_candle.close)
+        or (bearish and candles[-1].close < previous_candle.close)
     )
 
     body_strength = min(100.0, body_ratio * 100.0)
