@@ -36,6 +36,9 @@ class SecurityGuard:
     def request_id(self) -> str:
         return secrets.token_hex(16)
 
+    def script_nonce(self) -> str:
+        return secrets.token_urlsafe(24)
+
     def client_key(self, environ) -> str:
         # Reverse proxies must be configured explicitly before trusting forwarded IPs.
         return str(environ.get("REMOTE_ADDR") or "unknown")[:128]
@@ -68,14 +71,15 @@ class SecurityGuard:
         return True
 
     @staticmethod
-    def headers(request_id: str) -> list[tuple[str, str]]:
+    def headers(request_id: str, script_nonce: str | None = None) -> list[tuple[str, str]]:
+        script_policy = "'self'" if not script_nonce else f"'self' 'nonce-{script_nonce}'"
         return [
             ("X-Request-ID", request_id),
             ("X-Content-Type-Options", "nosniff"),
             ("X-Frame-Options", "DENY"),
             ("Referrer-Policy", "no-referrer"),
             ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
-            ("Content-Security-Policy", "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"),
+            ("Content-Security-Policy", f"default-src 'self'; script-src {script_policy}; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"),
             ("Cache-Control", "no-store"),
         ]
 
