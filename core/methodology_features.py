@@ -27,10 +27,20 @@ class CandleFeatures:
     has_no_lower_wick: bool
     has_no_wicks: bool
     wick_symmetry: float
+    dominant_wick: str
+    wick_to_body_ratio: float | None
 
 
 def _clamp_unit(value: float) -> float:
     return max(0.0, min(1.0, value))
+
+
+def _dominant_wick(upper_wick: float, lower_wick: float) -> str:
+    if upper_wick == 0 and lower_wick == 0:
+        return "NONE"
+    if upper_wick == lower_wick:
+        return "BOTH_EQUAL"
+    return "UPPER" if upper_wick > lower_wick else "LOWER"
 
 
 def extract_candle_features(candle: Candle) -> CandleFeatures:
@@ -58,6 +68,8 @@ def extract_candle_features(candle: Candle) -> CandleFeatures:
             has_no_lower_wick=True,
             has_no_wicks=True,
             wick_symmetry=1.0,
+            dominant_wick="NONE",
+            wick_to_body_ratio=None,
         )
 
     body_size = abs(candle.close - candle.open)
@@ -78,6 +90,8 @@ def extract_candle_features(candle: Candle) -> CandleFeatures:
     smaller_wick = min(upper_wick, lower_wick)
     larger_wick = max(upper_wick, lower_wick)
     wick_symmetry = 1.0 if larger_wick == 0 else smaller_wick / larger_wick
+    total_wick = upper_wick + lower_wick
+    wick_to_body_ratio = total_wick / body_size if body_size > 0 else None
 
     return CandleFeatures(
         direction=direction,
@@ -93,6 +107,8 @@ def extract_candle_features(candle: Candle) -> CandleFeatures:
         has_no_lower_wick=lower_wick == 0,
         has_no_wicks=upper_wick == 0 and lower_wick == 0,
         wick_symmetry=wick_symmetry,
+        dominant_wick=_dominant_wick(upper_wick, lower_wick),
+        wick_to_body_ratio=wick_to_body_ratio,
     )
 
 
