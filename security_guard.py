@@ -8,6 +8,7 @@ from dataclasses import dataclass
 MAX_BODY_BYTES = 256 * 1024
 RATE_LIMIT_REQUESTS = 60
 RATE_LIMIT_WINDOW_SECONDS = 60
+MAX_TRACKED_CLIENTS = 10_000
 
 
 @dataclass
@@ -24,6 +25,10 @@ class SecurityGuard:
     """
 
     def __init__(self, limit: int = RATE_LIMIT_REQUESTS, window: int = RATE_LIMIT_WINDOW_SECONDS) -> None:
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit must be a positive integer")
+        if not isinstance(window, int) or isinstance(window, bool) or window < 1:
+            raise ValueError("window must be a positive integer")
         self.limit = limit
         self.window = window
         self._buckets: dict[str, _Bucket] = defaultdict(lambda: _Bucket(deque()))
@@ -35,15 +40,31 @@ class SecurityGuard:
         # Reverse proxies must be configured explicitly before trusting forwarded IPs.
         return str(environ.get("REMOTE_ADDR") or "unknown")[:128]
 
+    def _prune(self, cutoff: float) -> None:
+        stale = [
+            key
+            for key, bucket in self._buckets.items()
+            if not bucket.timestamps or bucket.timestamps[-1] <= cutoff
+        ]
+        for key in stale:
+            self._buckets.pop(key, None)
+
+    def _bound_clients(self) -> None:
+        while len(self._buckets) > MAX_TRACKED_CLIENTS:
+            self._buckets.pop(next(iter(self._buckets)))
+
     def allow(self, environ, now: float | None = None) -> bool:
         current = time.monotonic() if now is None else now
-        bucket = self._buckets[self.client_key(environ)]
         cutoff = current - self.window
+        self._prune(cutoff)
+        key = self.client_key(environ)
+        bucket = self._buckets[key]
         while bucket.timestamps and bucket.timestamps[0] <= cutoff:
             bucket.timestamps.popleft()
         if len(bucket.timestamps) >= self.limit:
             return False
         bucket.timestamps.append(current)
+        self._bound_clients()
         return True
 
     @staticmethod
