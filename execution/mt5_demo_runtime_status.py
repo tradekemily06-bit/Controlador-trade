@@ -9,8 +9,9 @@ def mt5_demo_runtime_status(mt5: Any = None) -> dict[str, object]:
     """Return truthful MT5 DEMO runtime state without placing an order.
 
     A configured/validated DEMO boundary is not the same thing as a currently
-    reachable MT5 terminal. When no runtime module is supplied, the result is
-    explicitly reported as NOT_CHECKED rather than inferred as connected.
+    reachable MT5 terminal. When no runtime module is supplied, an unavailable
+    MetaTrader5 dependency is reported explicitly rather than inferred as
+    connected.
     """
     if mt5 is None:
         try:
