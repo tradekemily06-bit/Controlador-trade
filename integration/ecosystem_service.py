@@ -17,18 +17,21 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None) -> None:
+    def __init__(
+        self,
+        engine: SignalEngine | None = None,
+        decision_store: DecisionStore | None = None,
+        production_storage: ProductionStoragePolicy | None = None,
+    ) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
-        self.production_storage = ProductionStoragePolicy(
-            provider_configured=bool(self.store.database_path),
-            tenant_scoped=bool(self.store.database_path),
-            durable=bool(self.store.database_path),
-        )
+        # Production readiness is an explicit deployment boundary. Local SQLite
+        # persistence must never be treated as tenant-scoped durable production storage.
+        self.production_storage = production_storage or ProductionStoragePolicy()
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         """Return trusted production scope or fail closed before protected operations."""
