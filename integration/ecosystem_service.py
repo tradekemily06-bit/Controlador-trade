@@ -10,6 +10,7 @@ from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
+from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
 from storage.production_boundary import ProductionStoragePolicy
 
@@ -32,10 +33,15 @@ class EcosystemService:
         # Production readiness is an explicit deployment boundary. Local SQLite
         # persistence must never be treated as tenant-scoped durable production storage.
         self.production_storage = production_storage or ProductionStoragePolicy()
+        self.production_gate = ProductionOperationGate(self.production_storage)
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         """Return trusted production scope or fail closed before protected operations."""
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+
+    def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
+        """Authorize a protected production operation without authorizing REAL trading."""
+        return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(
@@ -121,6 +127,7 @@ class EcosystemService:
             "memory": "ONLINE",
             "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
             "production_storage": self.production_storage.status(),
+            "production_operation_gate": self.production_gate.status(),
             "replay": "ONLINE",
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
