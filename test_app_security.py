@@ -3,7 +3,7 @@ import json
 import unittest
 
 from app import application
-from security import MAX_BODY_BYTES
+from security_guard import MAX_BODY_BYTES
 
 
 class AppSecurityTests(unittest.TestCase):
