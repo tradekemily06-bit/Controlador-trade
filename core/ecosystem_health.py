@@ -18,9 +18,27 @@ def build_health_alerts(components: dict[str, str]) -> list[HealthAlert]:
     alerts: list[HealthAlert] = []
     for component, status in components.items():
         normalized = str(status).upper()
-        if normalized in {"ONLINE", "DEMO_VALIDADO", "DISABLED", "DESABILITADO", "FOUNDATION"}:
+        if normalized in {
+            "ONLINE",
+            "DEMO_VALIDADO",
+            "DISABLED",
+            "DESABILITADO",
+            "FOUNDATION",
+            "OPTIONAL",
+            "READY",
+            "ENFORCED",
+            "DURABLE",
+            "BOUNDARY_READY",
+        }:
             continue
-        if normalized in {"WARNING", "AGUARDANDO_FONTE", "NOT_CONFIGURED", "FUTURO_NAO_BLOQUEANTE"}:
+        if normalized in {
+            "WARNING",
+            "AGUARDANDO_FONTE",
+            "NOT_CONFIGURED",
+            "FUTURO_NAO_BLOQUEANTE",
+            "REQUIRED",
+            "DEPLOYMENT_BOUNDARY",
+        }:
             alerts.append(HealthAlert(component, "WARNING", normalized, f"{component}: {normalized}"))
             continue
         alerts.append(HealthAlert(component, "CRITICAL", normalized, f"{component}: {normalized}"))
