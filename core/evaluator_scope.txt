@@ -1,0 +1,1 @@
+DEMO/read-only. Completed candles only. No order placement, modification, or closing. REAL remains blocked.
