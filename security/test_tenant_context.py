@@ -29,14 +29,14 @@ class TenantContextTests(unittest.TestCase):
             )
         )
 
-    def test_builder_returns_immutable_tenant_scoped_context(self):
+    def test_builder_returns_canonical_immutable_context(self):
         context = build_trusted_tenant_context(
             authenticated=True, tenant_id=" tenant-1 ", subject_id=" user-1 "
         )
-        self.assertEqual(context.tenant_id, " tenant-1 ")
-        self.assertEqual(context.subject_id, " user-1 ")
+        self.assertEqual(context.tenant_id, "tenant-1")
+        self.assertEqual(context.subject_id, "user-1")
         self.assertEqual(context.key, "tenant:tenant-1:subject:user-1")
-        with self.assertRaises(Exception):
+        with self.assertRaises((AttributeError, TypeError)):
             context.tenant_id = "other"  # type: ignore[misc]
 
 
