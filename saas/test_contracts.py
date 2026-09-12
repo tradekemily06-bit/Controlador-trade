@@ -16,6 +16,11 @@ def test_tenant_context_requires_subject_and_tenant():
         TenantContext(subject_id="user", tenant_id="").validate()
 
 
+def test_tenant_context_rejects_invalid_role():
+    with pytest.raises(ValueError):
+        TenantContext("user", "tenant", "OWNER").validate()
+
+
 def test_authorization_is_tenant_and_role_scoped():
     plan = PlanDefinition(
         name="owner-test",
@@ -44,3 +49,23 @@ def test_missing_identity_fails_closed():
 
     assert not policy.authorize(None, Entitlement.ANALYSIS, plan)
     assert not policy.authorize(TenantContext("", "tenant"), Entitlement.ANALYSIS, plan)
+
+
+def test_plan_rejects_invalid_configuration():
+    with pytest.raises(ValueError):
+        PlanDefinition(name="", entitlements=frozenset())
+    with pytest.raises(ValueError):
+        PlanDefinition(name="bad", limits={"analysis": -1})
+    with pytest.raises(ValueError):
+        PlanDefinition(name="bad", limits={"analysis": True})
+
+
+def test_plan_limits_and_policy_are_immutable_at_runtime():
+    limits = {"analysis": 10}
+    plan = PlanDefinition(name="safe", limits=limits)
+    limits["analysis"] = 0
+    assert plan.limit_for("analysis") == 10
+
+    policy = SaaSAuthorizationPolicy()
+    with pytest.raises(TypeError):
+        policy.role_entitlements[SaaSRole.MEMBER] = frozenset()
