@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from core.candle_analysis_evaluator import evaluate_candle_snapshot
 from core.models import Signal
