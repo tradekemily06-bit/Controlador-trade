@@ -106,6 +106,26 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
         if path == "/api/connections" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
+        if path == "/api/learning" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.learning_summary(), request_id, environ)
+        if path == "/api/learning/resources" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"resources": SERVICE.learning_resources_view(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/resources" and method == "POST":
+            resource = SERVICE.add_learning_resource(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"resource": {**resource.__dict__, "content_type": resource.content_type.value, "status": resource.status.value}, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/observations" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/observations" and method == "POST":
+            observation = SERVICE.add_learning_observation(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"observation": observation.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
+        if path == "/api/learning/activities" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"activities": SERVICE.learning_activities_view(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/activities" and method == "POST":
+            activity = SERVICE.add_learning_activity(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/attempts" and method == "POST":
+            attempt = SERVICE.add_learning_attempt(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
@@ -122,7 +142,7 @@ def application(environ, start_response):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
