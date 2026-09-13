@@ -218,6 +218,38 @@ class EcosystemService:
             "real_execution": "DISABLED",
         }
 
+    def operational_observability(self) -> dict[str, Any]:
+        """Read-only operational safety state; never executes or mutates runtime state."""
+        return {
+            "execution": {
+                "allowed": False,
+                "mode": "DEMO",
+                "state": "BLOCKED_BY_DEFAULT",
+                "real": "DISABLED",
+            },
+            "reconciliation": {
+                "state": "NOT_REQUIRED",
+                "pending_request_ids": [],
+                "unknown_request_ids": [],
+            },
+            "recovery": {
+                "state": "NOT_CONFIGURED",
+                "can_resume": False,
+                "message": "observabilidade operacional sem runtime persistido configurado",
+            },
+            "kill_switch": {
+                "state": "NOT_CONFIGURED",
+                "enabled": False,
+                "reason": None,
+            },
+            "market_data": {
+                "health": "NOT_CONFIGURED",
+                "stale": False,
+                "gap_count": 0,
+                "message": "nenhuma fonte de candles foi conectada ao serviço de aplicação",
+            },
+        }
+
     def system_status(self) -> dict[str, Any]:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
@@ -260,5 +292,6 @@ class EcosystemService:
             "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
             "production_storage": production_storage,
             "production_operation_gate": production_gate,
+            "operational_observability": self.operational_observability(),
             **identity,
         }
