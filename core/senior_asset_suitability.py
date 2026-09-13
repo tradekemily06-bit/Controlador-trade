@@ -52,12 +52,7 @@ class SeniorAssetAssessment:
 
 
 def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessment:
-    """Assess whether an asset deserves analysis attention from current evidence.
-
-    This is intentionally conservative. Missing material evidence cannot be
-    silently converted into a positive score. Thresholds for trading itself do
-    not live here; execution remains behind the existing risk/security gates.
-    """
+    """Assess whether an asset deserves analysis attention from current evidence."""
     evidence: list[str] = []
     gaps = list(observation.unresolved_questions)
 
@@ -79,6 +74,10 @@ def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessm
             AssetSuitability.UNAVAILABLE, ("sessão fechada",), tuple(gaps),
             "A sessão atual está fechada.",
         )
+    if observation.session_open is None:
+        gaps.append("estado da sessão não confirmado")
+    else:
+        evidence.append("sessão aberta confirmada")
 
     if observation.data_quality_ok is False:
         gaps.append("qualidade de dados inadequada")
@@ -90,7 +89,7 @@ def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessm
     if observation.quote_fresh is False:
         gaps.append("cotação não está fresca")
     elif observation.quote_fresh is True:
-        evidence.append("cotação fresca")
+        evidence.append("cotação com marca temporal observada")
     else:
         gaps.append("frescura da cotação não confirmada")
 
