@@ -12,6 +12,7 @@ from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
 from execution.demo_flow import DemoFlow
@@ -29,6 +30,21 @@ def make_context() -> MarketContextResult:
 
 def make_analysis(signal: Signal = Signal.COMPRA) -> AnalysisResult:
     return AnalysisResult(signal, 90.0, "Sinal confirmado.", True, "TEST", "5m")
+
+
+def make_senior_context() -> SeniorContextCycle:
+    return SeniorContextCycle(
+        cycle_id="demo-test-cycle",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=None,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=SeniorContextQuality.COMPLETE,
+        execution_authorized=False,
+    )
 
 
 def make_config() -> RuntimeConfig:
@@ -54,7 +70,7 @@ def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor, KillSwitch]:
 
 
 def run_flow(flow: DemoFlow, *, analysis: AnalysisResult | None = None, **overrides):
-    values = {"analysis": analysis or make_analysis(), "market_context": make_context(), "operational_state": make_state(), "symbol": "TEST", "amount": 10.0, "duration_seconds": 60, "config": make_config(), "market_data": make_market(), "recovery": make_recovery()}
+    values = {"analysis": analysis or make_analysis(), "market_context": make_context(), "operational_state": make_state(), "senior_context": make_senior_context(), "symbol": "TEST", "amount": 10.0, "duration_seconds": 60, "config": make_config(), "market_data": make_market(), "recovery": make_recovery()}
     values.update(overrides)
     return flow.run(**values)
 
@@ -70,6 +86,15 @@ def test_demo_flow_executes_through_coordinator():
     assert [event.event_type for event in logger.events()] == [AuditEventType.ANALYSIS, AuditEventType.DECISION, AuditEventType.EXECUTION]
     assert logger.events()[0].data["quality_level"] == "FORTE"
     assert logger.events()[1].data["quality_score"] == 80.0
+
+
+def test_demo_flow_does_not_execute_without_senior_context():
+    flow, _, executor, _ = make_flow()
+    result = run_flow(flow, senior_context=None)
+    assert result.decision.decision == FinalDecision.AGUARDAR
+    assert result.execution is None and result.execution_result is None
+    assert executor.executions() == ()
+    assert "Contexto sênior" in result.decision.reason
 
 
 def test_demo_flow_does_not_execute_when_decision_is_aguardar():
