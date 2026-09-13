@@ -57,15 +57,15 @@ class LearningAssessment:
 def assess_learning(
     knowledge_id: str,
     kind: KnowledgeKind,
-    evidence: Iterable[MarketEvidence],
+    evidence: Iterable[MarketEvidence] = (),
     questions: Iterable[str] = (),
 ) -> LearningAssessment:
-    """Compare a hypothesis/knowledge item with observed evidence.
+    """Compare knowledge or a hypothesis with observed evidence.
 
-    This deliberately does not encode trading concepts as fixed rules. It only
-    aggregates evidence supplied by the analysis layer and preserves uncertainty.
-    Promotion to validated knowledge must happen through the ecosystem tests and
-    validation pipeline, while execution remains separately gated.
+    The input is intentionally extensible: user knowledge, system knowledge and
+    discoveries can all be assessed without making the user's concepts a closed
+    rule set. Evidence is classified conservatively and promotion still requires
+    the ecosystem's existing validation/memory pipeline. Execution remains separate.
     """
     items = tuple(evidence)
     supporting = tuple(e.evidence_id for e in items if e.status is EvidenceStatus.SUPPORTED)
@@ -81,7 +81,6 @@ def assess_learning(
     else:
         conclusion = EvidenceStatus.INSUFFICIENT
 
-    # Learning never skips the ecosystem's validation/tests or memory layer.
     return LearningAssessment(
         knowledge_id=knowledge_id,
         kind=kind,
