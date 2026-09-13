@@ -29,9 +29,10 @@ def test_gap_snapshot_is_not_safe_for_analysis():
     assert report.gap_count == 1
 
 
-def test_unknown_timeframe_does_not_invent_interval():
+def test_unknown_timeframe_is_not_safe_for_analysis():
     report = MarketDataRuntimeIntegrity().assess(
         snapshot(timeframe="unknown"),
         now=datetime(2026, 1, 1, 0, 15, tzinfo=timezone.utc),
     )
-    assert report.health is MarketDataHealth.HEALTHY
+    assert report.health is MarketDataHealth.UNKNOWN
+    assert report.safe_for_analysis is False
