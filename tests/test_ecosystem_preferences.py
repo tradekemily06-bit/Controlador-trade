@@ -27,3 +27,10 @@ def test_preferences_cannot_enable_real_or_autonomous_operation():
         store.update(real_execution_enabled=True)
     with pytest.raises(ValueError):
         store.update(autonomous_operation_enabled=True)
+
+
+def test_preferences_cannot_disable_critical_notifications():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError):
+        store.update_notifications(critical_enabled=False)
+    assert store.preferences.notifications.critical_enabled is True
