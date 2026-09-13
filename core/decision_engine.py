@@ -25,9 +25,11 @@ class DecisionEngine:
     """
     Orquestra sinal, contexto de mercado, contexto sênior, estado operacional e risco.
 
-    Fail-closed: EXECUTAR em uma rota contextual só é possível quando todas
-    as condições obrigatórias estão explicitamente aprovadas. A análise
-    legada permanece compatível para cenários que não executam operações.
+    Fail-closed: uma decisão EXECUTAR exige contexto sênior completo. O
+    contexto sênior não concede autoridade; ele apenas comprova que a leitura
+    contextual obrigatória foi concluída antes dos gates de risco e execução.
+    A análise legada permanece compatível para cenários que não executam
+    operações: sinais sem contexto sênior ficam em AGUARDAR.
     """
 
     def __init__(self, risk_manager: RiskManager):
@@ -66,25 +68,35 @@ class DecisionEngine:
                 reason=analysis.reason,
             )
 
-        if senior_context is not None:
-            if not isinstance(senior_context, SeniorContextCycle):
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason="Contexto sênior inválido.",
-                )
-            if senior_context.execution_authorized:
-                return DecisionResult(
-                    decision=FinalDecision.BLOQUEAR,
-                    signal=analysis.signal,
-                    reason="O ciclo sênior não pode conceder autoridade de execução.",
-                )
-            if senior_context.quality is not SeniorContextQuality.COMPLETE:
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason="Contexto sênior incompleto ou requer reavaliação.",
-                )
+        # A partir daqui existe intenção operacional. Nenhuma intenção pode
+        # alcançar EXECUTAR sem a leitura sênior integrada e completa.
+        if senior_context is None:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior obrigatório antes de qualquer decisão de execução.",
+            )
+
+        if not isinstance(senior_context, SeniorContextCycle):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior inválido.",
+            )
+
+        if senior_context.execution_authorized:
+            return DecisionResult(
+                decision=FinalDecision.BLOQUEAR,
+                signal=analysis.signal,
+                reason="O ciclo sênior não pode conceder autoridade de execução.",
+            )
+
+        if senior_context.quality is not SeniorContextQuality.COMPLETE:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior incompleto ou requer reavaliação.",
+            )
 
         if market_context is None:
             return DecisionResult(
@@ -122,31 +134,19 @@ class DecisionEngine:
 
         risk = self.risk_manager.evaluate(state=operational_state)
 
-        if senior_context is not None:
-            senior_risk = self.senior_risk_gate.evaluate(
-                senior_risk=senior_context.risk_assessment,
-                operational_risk=risk,
-            )
-            if not senior_risk.allowed:
-                return DecisionResult(
-                    decision=FinalDecision.BLOQUEAR,
-                    signal=analysis.signal,
-                    reason=senior_risk.reason,
-                )
-        elif not risk.allowed:
+        senior_risk = self.senior_risk_gate.evaluate(
+            senior_risk=senior_context.risk_assessment,
+            operational_risk=risk,
+        )
+        if not senior_risk.allowed:
             return DecisionResult(
                 decision=FinalDecision.BLOQUEAR,
                 signal=analysis.signal,
-                reason=risk.reason,
+                reason=senior_risk.reason,
             )
 
         return DecisionResult(
             decision=FinalDecision.EXECUTAR,
             signal=analysis.signal,
-            reason=(
-                "Sinal, contexto sênior, contexto de mercado, estado operacional e "
-                "risco sênior/operacional aprovados."
-                if senior_context is not None
-                else "Sinal, contexto de mercado, estado operacional e risco aprovados."
-            ),
+            reason="Sinal, contexto sênior, contexto de mercado, estado operacional e risco sênior/operacional aprovados.",
         )
