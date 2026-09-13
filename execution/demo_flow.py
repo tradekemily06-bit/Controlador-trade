@@ -15,6 +15,7 @@ from core.p23_market_data_integrity import MarketDataIntegrityReport
 from core.recovery_coordinator import RecoveryAssessment
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalQuality, SignalQualityEvaluator
+from core.senior_context_cycle import SeniorContextCycle
 from execution.demo_coordinator import DemoExecutionCoordinator, DemoExecutionResult
 from execution.ports import ExecutionMode, ExecutionResult
 
@@ -28,7 +29,7 @@ class DemoFlowResult:
 
 
 class DemoFlow:
-    """Orquestra análise, decisão, prontidão DEMO, execução e auditoria."""
+    """Orquestra análise, contexto sênior, decisão, prontidão DEMO, execução e auditoria."""
 
     def __init__(self, *, decision_engine: DecisionEngine, demo_coordinator: DemoExecutionCoordinator, audit_logger: AuditLogger, quality_evaluator: SignalQualityEvaluator | None = None, request_id_factory: Callable[[], str] | None = None, clock: Callable[[], datetime] | None = None) -> None:
         self.decision_engine = decision_engine
@@ -38,12 +39,12 @@ class DemoFlow:
         self.request_id_factory = request_id_factory or (lambda: str(uuid4()))
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def run(self, *, analysis: AnalysisResult, market_context: MarketContextResult | None, operational_state: OperationalState | None, symbol: str, amount: float, duration_seconds: int, config: RuntimeConfig, market_data: MarketDataIntegrityReport, recovery: RecoveryAssessment) -> DemoFlowResult:
+    def run(self, *, analysis: AnalysisResult, market_context: MarketContextResult | None, operational_state: OperationalState | None, senior_context: SeniorContextCycle | None, symbol: str, amount: float, duration_seconds: int, config: RuntimeConfig, market_data: MarketDataIntegrityReport, recovery: RecoveryAssessment) -> DemoFlowResult:
         quality = self.quality_evaluator.evaluate(analysis)
         self.audit_logger.record(AuditEvent(event_type=AuditEventType.ANALYSIS, message="Análise recebida pelo fluxo DEMO.", data={"signal": analysis.signal.value, "score": analysis.score, "symbol": symbol, "quality_score": quality.score, "quality_level": quality.level.value, "actionable": quality.actionable}))
 
-        decision = self.decision_engine.evaluate(analysis=analysis, market_context=market_context, operational_state=operational_state)
-        self.audit_logger.record(AuditEvent(event_type=AuditEventType.DECISION, message="Decisão registrada.", data={"decision": decision.decision, "signal": decision.signal.value, "reason": decision.reason, "quality_level": quality.level.value, "quality_score": quality.score}))
+        decision = self.decision_engine.evaluate(analysis=analysis, market_context=market_context, operational_state=operational_state, senior_context=senior_context)
+        self.audit_logger.record(AuditEvent(event_type=AuditEventType.DECISION, message="Decisão registrada.", data={"decision": decision.decision, "signal": decision.signal.value, "reason": decision.reason, "quality_level": quality.level.value, "quality_score": quality.score, "senior_context_supplied": senior_context is not None}))
 
         if decision.decision != FinalDecision.EXECUTAR:
             self.audit_logger.record(AuditEvent(event_type=AuditEventType.RISK, message="Execução não autorizada.", data={"decision": decision.decision, "reason": decision.reason, "quality_level": quality.level.value}))
