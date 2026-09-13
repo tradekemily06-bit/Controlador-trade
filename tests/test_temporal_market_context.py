@@ -1,16 +1,21 @@
+from datetime import datetime, timedelta
+
 from core.temporal_market_context import TemporalMarketContextEngine
 from data.models import Candle
 
 
-def candle(open_: float, high: float, low: float, close: float) -> Candle:
-    return Candle(open=open_, high=high, low=low, close=close)
+_BASE_TIME = datetime(2026, 1, 1)
+
+
+def candle(index: int, open_: float, high: float, low: float, close: float) -> Candle:
+    return Candle(timestamp=_BASE_TIME + timedelta(minutes=index), open=open_, high=high, low=low, close=close)
 
 
 def test_history_present_and_future_are_kept_separate():
     result = TemporalMarketContextEngine().analyze([
-        candle(100, 102, 99, 101),
-        candle(101, 104, 100, 103),
-        candle(103, 106, 102, 105),
+        candle(0, 100, 102, 99, 101),
+        candle(1, 101, 104, 100, 103),
+        candle(2, 103, 106, 102, 105),
     ])
 
     assert result.historical
@@ -23,8 +28,8 @@ def test_history_present_and_future_are_kept_separate():
 
 def test_future_is_conditional_not_claimed_as_prediction():
     result = TemporalMarketContextEngine().analyze([
-        candle(100, 101, 99, 100.5),
-        candle(100.5, 103, 100, 102.5),
+        candle(0, 100, 101, 99, 100.5),
+        candle(1, 100.5, 103, 100, 102.5),
     ])
 
     assert result.scenarios
