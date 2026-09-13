@@ -25,7 +25,6 @@ def test_curriculum_covers_user_requested_financial_domains():
         CurriculumDomain.FINANCIAL_SYSTEM,
         CurriculumDomain.FIXED_INCOME,
         CurriculumDomain.EQUITIES,
-        CurriculumDomain.FUNDS_ETFS,
         CurriculumDomain.DERIVATIVES,
         CurriculumDomain.TECHNICAL_ANALYSIS,
         CurriculumDomain.FUNDAMENTAL_ANALYSIS,
@@ -41,6 +40,11 @@ def test_curriculum_covers_user_requested_financial_domains():
         CurriculumDomain.CAREER_AND_PROFESSIONAL_PRACTICE,
     }
     assert expected <= domains
+
+    equity = curriculum.get("FM-04")
+    assert "FIIs" in equity.topics
+    assert "ETFs" in equity.topics
+    assert "fundos" in equity.topics
 
 
 def test_each_module_has_senior_depth_and_never_authorizes_execution():
