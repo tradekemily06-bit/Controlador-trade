@@ -60,7 +60,7 @@ def test_orchestrator_keeps_missing_risk_context_in_reassessment():
     assert cycle.quality is SeniorContextQuality.REASSESS
     assert cycle.risk_assessment.status.value == "INSUFFICIENT"
     assert cycle.execution_authorized is False
-    assert any("risco" in question.lower() for question in cycle.unresolved_questions)
+    assert any("risk" in question.lower() for question in cycle.unresolved_questions)
 
 
 def test_orchestrator_rejects_invalid_or_unsorted_market_data():
