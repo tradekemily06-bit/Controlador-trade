@@ -34,6 +34,10 @@ class FakeMT5:
         self.calls.append(("symbol_select", symbol, enabled))
         return True
 
+    def symbol_info(self, symbol):
+        self.calls.append(("symbol_info", symbol))
+        return SimpleNamespace(volume_min=0.01, volume_max=100.0, volume_step=0.01)
+
     def symbol_info_tick(self, symbol):
         self.calls.append(("symbol_info_tick", symbol))
         return SimpleNamespace(ask=100.0, bid=99.0)

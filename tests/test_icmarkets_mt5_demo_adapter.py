@@ -14,10 +14,11 @@ class FakeMT5:
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
 
-    def __init__(self, *, demo=True, order_ok=True, send_ok=True):
+    def __init__(self, *, demo=True, order_ok=True, send_ok=True, external_id=True):
         self.demo = demo
         self.order_ok = order_ok
         self.send_ok = send_ok
+        self.external_id = external_id
         self.shutdown_calls = 0
         self.sent = []
 
@@ -33,6 +34,9 @@ class FakeMT5:
     def symbol_select(self, symbol, enable):
         return True
 
+    def symbol_info(self, symbol):
+        return SimpleNamespace(volume_min=0.01, volume_max=100.0, volume_step=0.01)
+
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(ask=1.1002, bid=1.1000)
 
@@ -43,19 +47,19 @@ class FakeMT5:
         self.sent.append(payload)
         return SimpleNamespace(
             retcode=self.TRADE_RETCODE_DONE if self.send_ok else 10006,
-            order=123456,
-            deal=654321,
+            order=123456 if self.external_id else None,
+            deal=654321 if self.external_id else None,
         )
 
     def last_error(self):
         return (0, "ok")
 
 
-def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
+def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, amount=0.01):
     return ExecutionRequest(
         symbol="EURUSD",
         signal=signal,
-        amount=0.01,
+        amount=amount,
         duration_seconds=60,
         mode=mode,
         request_id="test-1",
@@ -105,3 +109,37 @@ def test_order_check_blocks_send():
 
     assert result.accepted is False
     assert fake.sent == []
+
+
+def test_volume_below_symbol_minimum_is_blocked():
+    fake = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.001))
+
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_volume_not_aligned_to_symbol_step_is_blocked():
+    fake = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.015))
+
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_invalid_price_is_blocked():
+    fake = FakeMT5()
+    fake.symbol_info_tick = lambda symbol: SimpleNamespace(ask=0.0, bid=1.1000)
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_missing_external_id_is_not_confirmed():
+    fake = FakeMT5(external_id=False)
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+
+    assert result.accepted is False
+    assert result.external_id is None
+    assert len(fake.sent) == 1

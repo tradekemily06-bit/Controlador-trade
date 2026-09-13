@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 
 from core.models import Signal
@@ -45,6 +46,7 @@ class ICMarketsMT5DemoAdapter:
         return self._mt5
 
     def is_available(self) -> bool:
+        mt5 = None
         try:
             mt5 = self._module()
             if not mt5.initialize():
@@ -54,9 +56,9 @@ class ICMarketsMT5DemoAdapter:
         except Exception:
             return False
         finally:
-            if self._mt5 is not None:
+            if mt5 is not None:
                 try:
-                    self._mt5.shutdown()
+                    mt5.shutdown()
                 except Exception:
                     pass
 
@@ -65,13 +67,35 @@ class ICMarketsMT5DemoAdapter:
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
+    @staticmethod
+    def _valid_volume(amount: float, symbol_info: Any) -> bool:
+        """Validate MT5 min/max/step constraints without silently rounding size."""
+        if not math.isfinite(amount) or amount <= 0:
+            return False
+
+        minimum = getattr(symbol_info, "volume_min", None)
+        maximum = getattr(symbol_info, "volume_max", None)
+        step = getattr(symbol_info, "volume_step", None)
+        if not all(
+            isinstance(value, (int, float)) and math.isfinite(float(value))
+            for value in (minimum, maximum, step)
+        ):
+            return False
+        if minimum <= 0 or maximum < minimum or step <= 0:
+            return False
+        if amount < minimum or amount > maximum:
+            return False
+
+        steps = (amount - minimum) / step
+        return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
-        if request.amount <= 0:
-            return ExecutionResult(False, "volume/amount deve ser maior que zero.")
+        if not math.isfinite(request.amount) or request.amount <= 0:
+            return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
         mt5 = self._module()
         if not mt5.initialize():
@@ -83,8 +107,15 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
 
             symbol = self.config.symbol or request.symbol
+            if not isinstance(symbol, str) or not symbol.strip():
+                return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
+            symbol = symbol.strip()
             if not mt5.symbol_select(symbol, True):
                 return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
+
+            symbol_info = mt5.symbol_info(symbol)
+            if symbol_info is None or not self._valid_volume(request.amount, symbol_info):
+                return ExecutionResult(False, f"volume inválido para o símbolo {symbol}; ordem bloqueada.")
 
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
@@ -93,6 +124,9 @@ class ICMarketsMT5DemoAdapter:
             is_buy = request.signal is Signal.COMPRA
             order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
             price = tick.ask if is_buy else tick.bid
+            if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
+                return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
+
             payload = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
@@ -120,11 +154,13 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
-            return ExecutionResult(
-                True,
-                "ordem DEMO enviada e confirmada pelo MT5.",
-                str(external_id) if external_id is not None else None,
-            )
+            if external_id is None:
+                return ExecutionResult(
+                    False,
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                )
+
+            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
         finally:
             mt5.shutdown()
 
