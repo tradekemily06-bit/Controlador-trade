@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .general_market_observation import GeneralMarketObservation
+from .market_discovery import discover_market_relationships
 
 
 @dataclass(frozen=True)
@@ -14,6 +15,7 @@ class MarketContextReasoning:
     participation_context: str
     expansion_context: str
     pattern_context: tuple[str, ...]
+    discovered_relationships: tuple[str, ...]
 
 
 def reason_market_context(
@@ -23,6 +25,7 @@ def reason_market_context(
 
     This layer intentionally does not emit COMPRA, VENDA, score, entry,
     confidence, or risk decisions. It also does not invent numeric thresholds.
+    Open-ended relationship discovery is exposed as neutral evidence only.
     """
     if observation is None:
         return None
@@ -88,4 +91,5 @@ def reason_market_context(
         participation_context=participation_context,
         expansion_context=expansion_context,
         pattern_context=tuple(patterns),
+        discovered_relationships=discover_market_relationships(observation),
     )
