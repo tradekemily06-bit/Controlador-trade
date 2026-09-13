@@ -85,7 +85,9 @@ def select_mt5_analysis_candidates(
     decision and never authorizes execution. The full broker universe remains
     available through the discovery layer.
     """
-    assessments = prioritize_mt5_assets(mt5, statuses)
+    status_tuple = tuple(statuses)
+    status_by_symbol = {status.symbol: status for status in status_tuple}
+    assessments = prioritize_mt5_assets(mt5, status_tuple)
     selected = [
         item for item in assessments
         if item.suitability in {AssetSuitability.PRIORITY, AssetSuitability.WATCH}
@@ -98,9 +100,7 @@ def select_mt5_analysis_candidates(
         MT5AssetCandidate(
             symbol=item.symbol,
             asset_class=item.asset_class,
-            weekend_capable=next(
-                status.weekend_capable for status in statuses if status.symbol == item.symbol
-            ),
+            weekend_capable=status_by_symbol[item.symbol].weekend_capable,
             rank=index,
         )
         for index, item in enumerate(selected, start=1)
