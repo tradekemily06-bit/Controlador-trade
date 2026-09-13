@@ -20,7 +20,7 @@ def _tick_evidence(mt5: Any, symbol: str) -> tuple[float | None, bool | None, bo
     ask = getattr(tick, "ask", None)
     spread = None
     if isinstance(bid, (int, float)) and isinstance(ask, (int, float)) and ask >= bid and ask > 0:
-        spread = float(ask - bid)
+        spread = round(float(ask - bid), 10)
 
     timestamp = getattr(tick, "time_msc", None) or getattr(tick, "time", None)
     timestamped = isinstance(timestamp, (int, float)) and timestamp > 0
@@ -55,11 +55,15 @@ def build_asset_suitability_observations(
                 quote_available=status.quote_available,
                 session_open=session_open,
                 weekend_capable=status.weekend_capable,
-                quote_fresh=timestamped if timestamped else None,
+                quote_fresh=None,
+                quote_timestamped=timestamped if timestamped else None,
                 spread_observed=spread,
                 liquidity_observed=liquidity,
                 data_quality_ok=status.quote_available,
-                domain_expertise_available=True,
+                domain_expertise_available=False,
+                unresolved_questions=(
+                    "expertise de domínio requer admissão por teste/validação/memória",
+                ),
             )
         )
     return tuple(observations)
