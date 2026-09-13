@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from core.senior_asset_suitability import AssetSuitabilityObservation, SeniorAssetAssessment, prioritize_assets
@@ -46,13 +45,19 @@ def build_asset_suitability_observations(
     observations: list[AssetSuitabilityObservation] = []
     for status in statuses:
         spread, liquidity, timestamped = _tick_evidence(mt5, status.symbol)
+        if status.state == "OPEN":
+            session_open: bool | None = True
+        elif status.state == "CLOSED":
+            session_open = False
+        else:
+            session_open = None
         observations.append(
             AssetSuitabilityObservation(
                 symbol=status.symbol,
                 asset_class=status.asset_class,
                 tradeable=status.tradeable,
                 quote_available=status.quote_available,
-                session_open=(status.state != "CLOSED"),
+                session_open=session_open,
                 weekend_capable=status.weekend_capable,
                 quote_fresh=timestamped if timestamped else None,
                 spread_observed=spread,
