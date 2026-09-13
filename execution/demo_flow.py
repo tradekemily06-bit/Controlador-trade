@@ -43,7 +43,11 @@ class DemoFlow:
         quality = self.quality_evaluator.evaluate(analysis)
         self.audit_logger.record(AuditEvent(event_type=AuditEventType.ANALYSIS, message="Análise recebida pelo fluxo DEMO.", data={"signal": analysis.signal.value, "score": analysis.score, "symbol": symbol, "quality_score": quality.score, "quality_level": quality.level.value, "actionable": quality.actionable}))
 
-        decision = self.decision_engine.evaluate(analysis=analysis, market_context=market_context, operational_state=operational_state, senior_context=senior_context)
+        if senior_context is None:
+            decision = DecisionResult(decision=FinalDecision.AGUARDAR, signal=analysis.signal, reason="Contexto sênior obrigatório para o fluxo DEMO.")
+        else:
+            decision = self.decision_engine.evaluate(analysis=analysis, market_context=market_context, operational_state=operational_state, senior_context=senior_context)
+
         self.audit_logger.record(AuditEvent(event_type=AuditEventType.DECISION, message="Decisão registrada.", data={"decision": decision.decision, "signal": decision.signal.value, "reason": decision.reason, "quality_level": quality.level.value, "quality_score": quality.score, "senior_context_supplied": senior_context is not None}))
 
         if decision.decision != FinalDecision.EXECUTAR:
