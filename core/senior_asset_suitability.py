@@ -30,10 +30,11 @@ class AssetSuitabilityObservation:
     session_open: bool | None
     weekend_capable: bool
     quote_fresh: bool | None = None
+    quote_timestamped: bool | None = None
     spread_observed: float | None = None
     liquidity_observed: bool | None = None
     data_quality_ok: bool | None = None
-    domain_expertise_available: bool = True
+    domain_expertise_available: bool = False
     unresolved_questions: tuple[str, ...] = ()
 
 
@@ -52,12 +53,7 @@ class SeniorAssetAssessment:
 
 
 def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessment:
-    """Assess whether an asset deserves analysis attention from current evidence.
-
-    This is intentionally conservative. Missing material evidence cannot be
-    silently converted into a positive score. Thresholds for trading itself do
-    not live here; execution remains behind the existing risk/security gates.
-    """
+    """Assess whether an asset deserves analysis attention from current evidence."""
     evidence: list[str] = []
     gaps = list(observation.unresolved_questions)
 
@@ -79,6 +75,10 @@ def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessm
             AssetSuitability.UNAVAILABLE, ("sessão fechada",), tuple(gaps),
             "A sessão atual está fechada.",
         )
+    if observation.session_open is None:
+        gaps.append("estado da sessão não confirmado")
+    else:
+        evidence.append("sessão aberta confirmada")
 
     if observation.data_quality_ok is False:
         gaps.append("qualidade de dados inadequada")
@@ -90,7 +90,10 @@ def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessm
     if observation.quote_fresh is False:
         gaps.append("cotação não está fresca")
     elif observation.quote_fresh is True:
-        evidence.append("cotação fresca")
+        evidence.append("frescura da cotação confirmada")
+    elif observation.quote_timestamped is True:
+        gaps.append("frescura da cotação ainda não foi calculada")
+        evidence.append("cotação com marca temporal observada")
     else:
         gaps.append("frescura da cotação não confirmada")
 
@@ -102,9 +105,9 @@ def assess_asset(observation: AssetSuitabilityObservation) -> SeniorAssetAssessm
         gaps.append("liquidez não confirmada")
 
     if not observation.domain_expertise_available:
-        gaps.append("expertise do domínio ainda requer validação")
+        gaps.append("expertise do domínio ainda requer validação/teste/memória")
     else:
-        evidence.append("expertise de domínio disponível")
+        evidence.append("expertise de domínio validada")
 
     if observation.spread_observed is not None:
         evidence.append("spread observado")
