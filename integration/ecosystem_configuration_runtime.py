@@ -49,8 +49,32 @@ class ConfiguredEcosystemService(EcosystemService):
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
 
+    def _notification_visible(self, item: EcosystemNotification) -> bool:
+        prefs = self.preferences.preferences.notifications
+        if item.severity is NotificationSeverity.CRITICAL:
+            return True
+        if item.severity is NotificationSeverity.INFO:
+            return prefs.info_enabled
+        if not prefs.important_enabled:
+            return False
+        category_enabled = {
+            NotificationKind.SYSTEM_UPDATE: prefs.system_updates_enabled,
+            NotificationKind.SECURITY: prefs.security_enabled,
+            NotificationKind.MARKET: prefs.market_enabled,
+            NotificationKind.RISK: prefs.risk_enabled,
+            NotificationKind.CONNECTION: prefs.connection_enabled,
+            NotificationKind.EXECUTION: prefs.execution_enabled,
+            NotificationKind.LEARNING: prefs.learning_enabled,
+            NotificationKind.RECOVERY: prefs.recovery_enabled,
+        }[item.kind]
+        return category_enabled
+
+    def _visible_notifications(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
+        events = self.notifications.visible(include_info=include_info)
+        return tuple(item for item in events if self._notification_visible(item))
+
     def notification_summary(self) -> dict[str, Any]:
-        visible = self.notifications.visible(include_info=False)
+        visible = self._visible_notifications(include_info=False)
         return {
             "count": len(visible),
             "critical_count": len(self.notifications.critical()),
