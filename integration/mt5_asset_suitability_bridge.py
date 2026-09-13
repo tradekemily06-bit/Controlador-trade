@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from core.senior_asset_suitability import AssetSuitabilityObservation, SeniorAssetAssessment, prioritize_assets
+from core.senior_asset_suitability import AssetSuitability, AssetSuitabilityObservation, SeniorAssetAssessment, prioritize_assets
+from execution.mt5_asset_selector import MT5AssetCandidate
 from execution.mt5_instrument_universe import MT5InstrumentStatus
 
 
@@ -36,12 +37,7 @@ def build_asset_suitability_observations(
     mt5: Any,
     statuses: Iterable[MT5InstrumentStatus],
 ) -> tuple[AssetSuitabilityObservation, ...]:
-    """Translate broker observations into the senior suitability boundary.
-
-    The bridge deliberately records timestamp presence rather than claiming a
-    quote is fresh. A freshness threshold must come from the broker/data-quality
-    contract instead of being silently invented here.
-    """
+    """Translate broker observations into the senior suitability boundary."""
     observations: list[AssetSuitabilityObservation] = []
     for status in statuses:
         spread, liquidity, timestamped = _tick_evidence(mt5, status.symbol)
@@ -75,3 +71,37 @@ def prioritize_mt5_assets(
 ) -> tuple[SeniorAssetAssessment, ...]:
     """Prioritize the complete observed broker universe for analysis attention."""
     return prioritize_assets(build_asset_suitability_observations(mt5, statuses))
+
+
+def select_mt5_analysis_candidates(
+    mt5: Any,
+    statuses: Iterable[MT5InstrumentStatus],
+    *,
+    limit: int | None = None,
+) -> tuple[MT5AssetCandidate, ...]:
+    """Convert senior attention priority into read-only analysis candidates.
+
+    This is an attention/analysis boundary only. It never produces a trading
+    decision and never authorizes execution. The full broker universe remains
+    available through the discovery layer.
+    """
+    assessments = prioritize_mt5_assets(mt5, statuses)
+    selected = [
+        item for item in assessments
+        if item.suitability in {AssetSuitability.PRIORITY, AssetSuitability.WATCH}
+    ]
+    if limit is not None:
+        if limit < 0:
+            raise ValueError("limit must be non-negative")
+        selected = selected[:limit]
+    return tuple(
+        MT5AssetCandidate(
+            symbol=item.symbol,
+            asset_class=item.asset_class,
+            weekend_capable=next(
+                status.weekend_capable for status in statuses if status.symbol == item.symbol
+            ),
+            rank=index,
+        )
+        for index, item in enumerate(selected, start=1)
+    )
