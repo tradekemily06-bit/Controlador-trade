@@ -10,7 +10,11 @@ class FakeMT5:
     def __init__(self): self.initialized = 0; self.shutdowns = 0
     def symbols_get(self): return (SimpleNamespace(name="BTCUSD"), SimpleNamespace(name="EURUSD"))
     def symbol_info(self, symbol): return SimpleNamespace(name=symbol, visible=True, trade_mode=0)
-    def symbol_info_tick(self, symbol): return SimpleNamespace(bid=100.0, ask=100.1, last=100.05)
+    def symbol_info_tick(self, symbol): return SimpleNamespace(bid=100.0, ask=100.1, last=100.05, time_msc=1_000_000, volume=12, volume_real=12)
+    def symbol_info_session_trade(self, symbol, day, index):
+        if index > 0:
+            return None
+        return SimpleNamespace(**{"from": 0, "to": 86_399})
     def initialize(self): self.initialized += 1; return True
     def account_info(self): return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO)
     def symbol_select(self, symbol, selected): return selected
