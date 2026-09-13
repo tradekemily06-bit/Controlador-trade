@@ -8,15 +8,7 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
-from core.learning_content import (
-    ContentType,
-    LearningActivity,
-    LearningAttempt,
-    LearningObservation,
-    LearningResource,
-    LearningStatus,
-    normalize_tags,
-)
+from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
@@ -199,7 +191,17 @@ class EcosystemService:
         market_data = runtime.market_data.status()
         market_health = str(market_data.get("health"))
         market_blocked = market_health in {"INVALID", "STALE", "GAP", "NOT_CONNECTED"}
-        return {"execution": {"allowed": health.safe_for_execution and not kill.enabled and not market_blocked, "mode": "DEMO", "state": health.state, "real": "DISABLED"}, "reconciliation": runtime.reconciliation.status(), "recovery": recovery, "kill_switch": {"state": kill.state, "enabled": kill.enabled, "reason": kill.reason}, "market_data": market_data}
+        blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
+        return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
+
+    def system_status(self) -> dict[str, Any]:
+        production_storage = self.production_storage.status()
+        production_gate = self.production_gate.status()
+        identity = self.identity.status()
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        alerts = build_health_alerts(components)
+        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
