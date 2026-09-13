@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from data.models import Candle
@@ -21,15 +22,13 @@ def snapshot(*minutes: int, timeframe: str = "1m") -> BrokerMarketDataSnapshot:
 
 
 def test_empty_runtime_is_not_connected_and_not_safe() -> None:
-    state = MarketDataRuntimeState(integrity=__import__("core.market_data_runtime_integrity", fromlist=["MarketDataRuntimeIntegrity"]).MarketDataRuntimeIntegrity())
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     status = state.status()
     assert status["health"] == "NOT_CONNECTED"
     assert status["safe_for_analysis"] is False
 
 
 def test_healthy_snapshot_becomes_safe_for_analysis() -> None:
-    from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
-
     state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     report = state.update(
         snapshot(0, 1, 2),
@@ -42,8 +41,6 @@ def test_healthy_snapshot_becomes_safe_for_analysis() -> None:
 
 
 def test_gap_snapshot_is_not_safe() -> None:
-    from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
-
     state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     report = state.update(
         snapshot(0, 2),
