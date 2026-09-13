@@ -119,26 +119,42 @@ class IntegratedMarketReader:
             "NEUTRAL", liquidity.score / 100.0, "market_environment",
         ))
 
-        apparent_breakout = latest.close > previous.high or latest.close < previous.low
+        # A breakout is an observable excursion beyond the previous range.
+        # Whether it is sustained is assessed separately from the excursion.
+        bullish_excursion = latest.high > previous.high
+        bearish_excursion = latest.low < previous.low
+        apparent_breakout = bullish_excursion or bearish_excursion
         if apparent_breakout:
-            direction = "BUY" if latest.close > previous.high else "SELL"
+            if bullish_excursion and bearish_excursion:
+                direction = "NEUTRAL"
+                breakout_statement = "O candle mais recente excedeu os dois lados do range anterior; o movimento requer reavaliação contextual."
+            elif bullish_excursion:
+                direction = "BUY"
+                breakout_statement = "A máxima mais recente excedeu a máxima anterior; há um rompimento aparente a investigar."
+            else:
+                direction = "SELL"
+                breakout_statement = "A mínima mais recente excedeu para baixo a mínima anterior; há um rompimento aparente a investigar."
+
             observations.append(MarketObservation(
-                "apparent-breakout", "structure",
-                "O fechamento mais recente saiu do range do candle anterior; isso é um rompimento aparente a investigar.",
-                direction, 1.0, "structure_breakout",
+                "apparent-breakout", "structure", breakout_statement,
+                direction, 1.0 if direction != "NEUTRAL" else 0.5, "structure_breakout",
             ))
+
             continuation = (
-                latest.close > latest.open and latest.close > previous.high
-                if direction == "BUY"
-                else latest.close < latest.open and latest.close < previous.low
+                direction == "BUY" and latest.close > previous.high and latest.close > latest.open
+            ) or (
+                direction == "SELL" and latest.close < previous.low and latest.close < latest.open
             )
+            reassessment = not continuation
             observations.append(MarketObservation(
                 "breakout-follow-through" if continuation else "breakout-reassessment",
                 "follow_through",
                 "Há continuidade observável do deslocamento." if continuation else
-                "Não há continuidade suficiente no candle observado; a interpretação precisa ser reavaliada.",
+                "A excursão não apresenta continuidade suficiente no fechamento observado; a interpretação precisa ser reavaliada.",
                 direction if continuation else "NEUTRAL", 1.0, "post_breakout_behavior",
             ))
+        else:
+            reassessment = False
 
         buy = tuple(o.observation_id for o in observations if o.direction == "BUY" and o.strength > 0)
         sell = tuple(o.observation_id for o in observations if o.direction == "SELL" and o.strength > 0)
@@ -152,9 +168,9 @@ class IntegratedMarketReader:
             status = ReadingStatus.INSUFFICIENT
             conflicts = ()
 
-        possible_false_breakout = apparent_breakout and any(
-            o.observation_id == "breakout-reassessment" for o in observations
-        )
+        # This is a reassessment flag, not a claim that a false breakout occurred.
+        # It remains valid even when other observations are directionally conflicting.
+        possible_false_breakout = apparent_breakout and reassessment
         questions = [
             "Quais relações independentes explicam o movimento observado?",
             "O que sustenta a interpretação e o que a contradiz?",
