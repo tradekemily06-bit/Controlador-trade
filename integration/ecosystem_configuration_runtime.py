@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Any
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
-from core.ecosystem_preferences import EcosystemPreferencesStore
+from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from integration.ecosystem_service import EcosystemService
 
 
@@ -29,15 +29,24 @@ class ConfiguredEcosystemService(EcosystemService):
         return result
 
     def update_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self.preferences.update(**payload)
+        changes = dict(payload)
+        if "chart_theme" in changes and isinstance(changes["chart_theme"], str):
+            changes["chart_theme"] = ChartTheme(changes["chart_theme"].upper())
+        self.preferences.update(**changes)
         return self.get_preferences()
 
     def update_candle_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self.preferences.update_candle(**payload)
+        changes = dict(payload)
+        from core.ecosystem_preferences import CandleColorMode, CandleStyle
+        if "style" in changes and isinstance(changes["style"], str):
+            changes["style"] = CandleStyle(changes["style"].upper())
+        if "color_mode" in changes and isinstance(changes["color_mode"], str):
+            changes["color_mode"] = CandleColorMode(changes["color_mode"].upper())
+        self.preferences.update_candle(**changes)
         return self.get_preferences()
 
     def update_notification_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self.preferences.update_notifications(**payload)
+        self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
 
     def notification_summary(self) -> dict[str, Any]:
