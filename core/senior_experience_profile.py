@@ -1,9 +1,11 @@
 """Persistent professional baseline for the ecosystem's senior market role.
 
 The profile is an architectural capability contract, not a claim that a human
-employee exists. The ecosystem starts with a 45-year professional baseline;
+employee exists. The ecosystem starts with a 45+ professional baseline;
 being newly connected to a user is represented separately as onboarding state
-and never resets or reduces the accumulated experience baseline.
+and never resets or reduces accumulated experience. There is deliberately no
+upper experience ceiling: validated knowledge, research and capability can
+continue to grow without being constrained by the initial baseline number.
 """
 from __future__ import annotations
 
@@ -44,6 +46,12 @@ class SeniorExperienceProfile:
         """True only for relationship/onboarding state, never experience state."""
         return self.newly_assigned_to_user
 
+    @property
+    def is_45_plus(self) -> bool:
+        """Expose the baseline as an open-ended 45+ capability, not a ceiling."""
+        self.validate()
+        return self.experience_years >= 45
+
     def professional_posture(self) -> tuple[str, ...]:
         self.validate()
         return (
@@ -53,4 +61,5 @@ class SeniorExperienceProfile:
             "Reassess when assumptions conflict with observed evidence.",
             "Separate professional judgment from authorization to execute.",
             "Keep researching and updating knowledge without silently changing operational rules.",
+            "Continue capability growth without an artificial upper experience limit.",
         )
