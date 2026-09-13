@@ -4,6 +4,7 @@ from core.decision_engine import DecisionEngine, FinalDecision
 from core.operational_state import OperationalState
 from core.market_context import MarketContext, MarketContextResult, MarketDirection
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
 def operational_state(*, realized_pnl=0, trades_today=0, consecutive_losses=0):
@@ -24,13 +25,22 @@ def favorable_context(direction):
 
 
 def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorized=False):
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="test-cycle",
         whole_graph=None,
         temporal_context=None,
         market_reading=None,
         senior_assessment=None,
-        risk_assessment=None,
+        risk_assessment=senior_risk,
         validated_knowledge_ids=(),
         unresolved_questions=(),
         quality=quality,
