@@ -1,7 +1,19 @@
+from datetime import datetime, timedelta, timezone
+
 from integration.ecosystem_service import EcosystemService
 import pytest
 
+from core.senior_risk_reasoning import RiskDomain, RiskObservation
+from data.models import Candle
 from storage.production_boundary import ProductionStoragePolicy
+
+
+def _candles(count=5):
+    base = datetime(2026, 9, 13, tzinfo=timezone.utc)
+    return tuple(
+        Candle(base + timedelta(minutes=i), 100 + i, 102 + i, 99 + i, 101 + i, 1000 + i)
+        for i in range(count)
+    )
 
 
 def test_analyze_is_recorded_and_execution_stays_blocked():
@@ -12,6 +24,43 @@ def test_analyze_is_recorded_and_execution_stays_blocked():
     assert record.is_actionable is True
     assert record.execution_allowed is False
     assert len(service.memory_view()) == 1
+
+
+def test_service_exposes_integrated_senior_context_without_execution_authority():
+    service = EcosystemService()
+    cycle = service.assess_senior_context(
+        context_id="ctx-service-1",
+        candles=_candles(),
+        available_nodes=("price", "structure", "volatility", "liquidity"),
+        observed_nodes=("price", "structure", "volatility", "liquidity"),
+        relationships_reviewed=("price-structure", "structure-volatility", "price-liquidity"),
+        risk_observations=(
+            RiskObservation(RiskDomain.CAPITAL, "Capital observado.", True, ("account",)),
+        ),
+    )
+
+    assert cycle.quality.value == "COMPLETE"
+    assert cycle.whole_graph.complete is True
+    assert cycle.market_reading.observations
+    assert cycle.senior_assessment.questions
+    assert cycle.risk_assessment.questions
+    assert cycle.execution_authorized is False
+    assert cycle.senior_assessment.execution_authorized is False
+    assert cycle.risk_assessment.execution_authorized is False
+
+
+def test_service_keeps_incomplete_senior_context_in_reassessment():
+    cycle = EcosystemService().assess_senior_context(
+        context_id="ctx-service-2",
+        candles=_candles(),
+        available_nodes=("price", "structure"),
+        observed_nodes=("price", "structure"),
+        relationships_reviewed=("price-structure",),
+        available_risk_domains=(RiskDomain.CAPITAL,),
+    )
+
+    assert cycle.quality.value == "REASSESS"
+    assert cycle.execution_authorized is False
 
 
 def test_replay_and_statistics_share_the_same_memory():
