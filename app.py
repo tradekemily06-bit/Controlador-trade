@@ -142,7 +142,7 @@ def application(environ, start_response):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port) as server:
+    with make_server(host, selected_port, application) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
