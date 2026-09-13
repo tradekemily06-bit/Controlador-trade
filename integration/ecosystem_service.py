@@ -16,6 +16,9 @@ from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpe
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
+from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
+from core.senior_risk_reasoning import RiskDomain, RiskObservation
+from data.models import Candle
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
@@ -43,6 +46,7 @@ class EcosystemService:
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
         self.learning_attempts: list[LearningAttempt] = []
+        self.senior_context = SeniorContextOrchestrator()
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -61,6 +65,39 @@ class EcosystemService:
         self.memory.append(record)
         self.store.save(record)
         return record
+
+    def assess_senior_context(
+        self,
+        *,
+        context_id: str,
+        candles: Iterable[Candle],
+        available_nodes: Iterable[str],
+        observed_nodes: Iterable[str],
+        gaps: dict[str, str] | None = None,
+        relationships_reviewed: Iterable[str] = (),
+        risk_observations: Iterable[RiskObservation] = (),
+        validated_knowledge_ids: Iterable[str] = (),
+        available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain),
+    ) -> Any:
+        """Run the senior contextual layer without creating an operation.
+
+        This is deliberately separate from ``analyze`` until the contextual
+        output has its own decision-gate integration and regression coverage.
+        It never converts a score, candle or contextual assessment directly
+        into execution authority.
+        """
+        request = SeniorContextInput(
+            context_id=context_id,
+            candles=tuple(candles),
+            available_nodes=tuple(available_nodes),
+            observed_nodes=tuple(observed_nodes),
+            gaps=dict(gaps or {}),
+            relationships_reviewed=tuple(relationships_reviewed),
+            risk_observations=tuple(risk_observations),
+            validated_knowledge_ids=tuple(validated_knowledge_ids),
+            available_risk_domains=tuple(available_risk_domains),
+        )
+        return self.senior_context.assess(request)
 
     def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
