@@ -10,13 +10,17 @@ from wsgiref.simple_server import make_server
 from core.api_result import serialize_decision_record
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_service import EcosystemService
+from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
-OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR)
+EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
+EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
+EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
+OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = EcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 
 

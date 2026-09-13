@@ -1,0 +1,1 @@
+P127 runtime wiring is explicit and DEMO-only. PAPER remains the default. IC Markets MT5 DEMO is selected only by the explicit execution-provider setting; unsupported values fail closed. No credentials are stored by the application layer and REAL remains blocked by the existing safety boundaries.
