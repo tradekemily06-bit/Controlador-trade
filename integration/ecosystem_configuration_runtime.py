@@ -3,17 +3,16 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from core.ecosystem_notifications import EcosystemNotificationCenter, UpdateKind
+from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import EcosystemPreferencesStore
 from integration.ecosystem_service import EcosystemService
 
 
 class ConfiguredEcosystemService(EcosystemService):
-    """Ecosystem service with user preferences and material notifications wired in.
+    """Ecosystem service with preferences and material notifications wired in.
 
-    Preferences stay presentation/configuration-only: they cannot enable autonomy
-    or REAL execution. Notifications are informational/operational observability
-    and never participate in trading authorization.
+    Preferences remain configuration-only and cannot grant autonomy or REAL
+    execution. Notifications are observability only and never authorize trades.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -53,24 +52,14 @@ class ConfiguredEcosystemService(EcosystemService):
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        item = self.notifications.publish_ecosystem_update(title, message, update_kind=update_kind)
+        notification_id = f"update-{len(self.notifications.all()) + 1}"
+        item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
-        """Route a material runtime event into the notification center.
-
-        The event remains outside decision/execution authorization. Critical
-        notifications are intentionally not suppressible by normal preferences.
-        """
-        from core.ecosystem_notifications import NotificationKind
-
+        """Route a material runtime event into the notification center."""
         notification_kind = NotificationKind(str(kind).upper())
-        item = self.notifications.publish(
-            kind=notification_kind,
-            title=title,
-            message=message,
-            severity=("CRITICAL" if critical else "IMPORTANT"),
-            requires_attention=critical or blocking,
-            blocking=blocking,
-        )
+        severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
+        notification_id = f"event-{len(self.notifications.all()) + 1}"
+        item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
