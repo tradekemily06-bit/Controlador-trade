@@ -3,6 +3,7 @@ from core.risk_manager import RiskManager
 from core.decision_engine import DecisionEngine, FinalDecision
 from core.operational_state import OperationalState
 from core.market_context import MarketContext, MarketContextResult, MarketDirection
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
 
 
 def operational_state(*, realized_pnl=0, trades_today=0, consecutive_losses=0):
@@ -19,6 +20,21 @@ def favorable_context(direction):
         score=85,
         reason="Ambiente favorável.",
         direction=direction,
+    )
+
+
+def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorized=False):
+    return SeniorContextCycle(
+        cycle_id="test-cycle",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=None,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=quality,
+        execution_authorized=execution_authorized,
     )
 
 
@@ -241,3 +257,47 @@ def test_nao_executa_sem_estado_operacional():
         market_context=favorable_context(MarketDirection.ALTA),
     )
     assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_aguarda_quando_contexto_senior_requer_reavaliacao():
+    analysis = AnalysisResult(signal=Signal.COMPRA, score=90, reason="Score forte.", confirmed=True)
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(),
+        senior_context=senior_context(SeniorContextQuality.REASSESS),
+    )
+    assert result.decision == FinalDecision.AGUARDAR
+
+
+def test_contexto_senior_completo_nao_substitui_risco_operacional():
+    analysis = AnalysisResult(signal=Signal.COMPRA, score=90, reason="Score forte.", confirmed=True)
+    result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(realized_pnl=-100),
+        senior_context=senior_context(),
+    )
+    assert result.decision == FinalDecision.BLOQUEAR
+
+
+def test_contexto_senior_completo_passa_para_gates_existentes():
+    analysis = AnalysisResult(signal=Signal.COMPRA, score=90, reason="Score forte.", confirmed=True)
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(),
+        senior_context=senior_context(),
+    )
+    assert result.decision == FinalDecision.EXECUTAR
+
+
+def test_contexto_senior_nunca_pode_conceder_autorizacao():
+    analysis = AnalysisResult(signal=Signal.COMPRA, score=90, reason="Score forte.", confirmed=True)
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(),
+        senior_context=senior_context(execution_authorized=True),
+    )
+    assert result.decision == FinalDecision.BLOQUEAR
