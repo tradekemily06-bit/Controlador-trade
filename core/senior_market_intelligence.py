@@ -56,6 +56,7 @@ DEFAULT_SENIOR_KNOWLEDGE_STANDARD = SeniorKnowledgeStandard(
         "separar confluência independente de repetição do mesmo fenômeno",
         "considerar regime, estrutura, volatilidade, liquidez, fluxo/volume quando disponível e comportamento do preço",
         "considerar contexto macro, notícias e eventos quando forem materialmente relevantes e houver dados confiáveis",
+        "considerar validação antes de promover descoberta, hipótese ou informação externa a conhecimento confiável",
         "tratar risco, execução, qualidade dos dados e segurança como partes da análise profissional",
         "reavaliar a leitura quando novas evidências contradizem ou mudam o contexto",
         "preservar incerteza quando a evidência não sustenta uma conclusão",
