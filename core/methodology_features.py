@@ -1,8 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
-from core.market_data import Candle
+
+class CandleLike(Protocol):
+    timestamp: object
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
 
 @dataclass(frozen=True)
@@ -43,13 +51,38 @@ def _dominant_wick(upper_wick: float, lower_wick: float) -> str:
     return "UPPER" if upper_wick > lower_wick else "LOWER"
 
 
-def extract_candle_features(candle: Candle) -> CandleFeatures:
+def _is_valid_candle(candle: CandleLike) -> bool:
+    """Validate candle geometry without coupling this layer to one candle class."""
+    validator = getattr(candle, "is_valid", None)
+    if callable(validator):
+        return bool(validator())
+
+    values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+    try:
+        if not all(isinstance(value, (int, float)) for value in values):
+            return False
+        if candle.high < candle.low:
+            return False
+        if candle.high < max(candle.open, candle.close):
+            return False
+        if candle.low > min(candle.open, candle.close):
+            return False
+        if candle.volume < 0:
+            return False
+    except (AttributeError, TypeError):
+        return False
+    return True
+
+
+def extract_candle_features(candle: CandleLike) -> CandleFeatures:
     """Extract deterministic geometry from one validated candle.
 
     Ratios are normalized to the candle's total range. A zero/invalid range
     fails closed with neutral zeroed measurements rather than inventing data.
+    The structural validation accepts both the normalized data model and the
+    core market-data candle so analysis remains broker/provider agnostic.
     """
-    if not candle.is_valid():
+    if not _is_valid_candle(candle):
         raise ValueError("candle must be valid")
 
     candle_range = candle.high - candle.low
