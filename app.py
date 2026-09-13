@@ -120,6 +120,25 @@ def application(environ, start_response):
         if path == "/api/learning/resources" and method == "POST":
             resource = SERVICE.add_learning_resource(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"resource": {**resource.__dict__, "content_type": resource.content_type.value, "status": resource.status.value}, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/sources" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"sources": SERVICE.learning_sources_view(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/sources/screen" and method == "POST":
+            source = SERVICE.screen_learning_source(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"source": {**source.__dict__, "source_type": source.source_type.value, "status": source.status.value}, "operation_eligible": False}, request_id, environ)
+        if path == "/api/learning/sources/validate" and method == "POST":
+            data = _read_json(environ)
+            source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
+            if source is None:
+                raise ValueError("source_id não encontrado")
+            updated = SERVICE.validate_learning_source(source, content_verified=bool(data.get("content_verified", False)), security_checked=bool(data.get("security_checked", False)))
+            return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
+        if path == "/api/learning/sources/admit" and method == "POST":
+            data = _read_json(environ)
+            source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
+            if source is None:
+                raise ValueError("source_id não encontrado")
+            updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=bool(data.get("knowledge_validated", False)))
+            return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "POST":
@@ -130,6 +149,9 @@ def application(environ, start_response):
         if path == "/api/learning/activities" and method == "POST":
             activity = SERVICE.add_learning_activity(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/professor/activity" and method == "POST":
+            activity = SERVICE.generate_professor_activity(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
