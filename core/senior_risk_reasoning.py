@@ -105,13 +105,11 @@ class SeniorRiskReasoner:
         if unknown_domains:
             status = RiskKnowledgeStatus.REASSESS
 
-        questions = self._questions(tuple(domain for domain in available if domain not in known_domains))
-        if not questions:
-            questions = (
-                "As premissas de risco continuam válidas depois da mudança mais recente do mercado?",
-                "Qual evidência contradiz a avaliação atual de risco?",
-                "O risco observado é aceitável apenas no cenário atual ou permanece robusto em cenários adversos?",
-            )
+        # Keep the full professional question set visible even when a domain is
+        # already known. A senior assessment does not stop questioning merely
+        # because a fact was observed; the same question may need reassessment
+        # after market, position, or execution conditions change.
+        questions = self._questions(available)
 
         return SeniorRiskAssessment(
             status=status,
