@@ -7,6 +7,8 @@ from core.execution_intent import ExecutionIntent
 from core.runtime_config import RuntimeConfig
 from core.p23_market_data_integrity import MarketDataIntegrityReport
 from core.recovery_coordinator import RecoveryAssessment
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus
 from execution.gateway import ExecutionGateway, GatewayResult
 
 
@@ -40,6 +42,7 @@ class DemoExecutionCoordinator:
         market_data: MarketDataIntegrityReport,
         recovery: RecoveryAssessment,
         intent: ExecutionIntent | None,
+        senior_context: SeniorContextCycle | None,
     ) -> DemoExecutionResult:
         readiness = self.readiness.evaluate(
             config=config,
@@ -48,6 +51,20 @@ class DemoExecutionCoordinator:
             intent=intent,
         )
         if not readiness.ready or intent is None:
+            return DemoExecutionResult(readiness=readiness, gateway=None)
+
+        if not isinstance(senior_context, SeniorContextCycle):
+            return DemoExecutionResult(
+                readiness=readiness,
+                gateway=None,
+            )
+        if senior_context.execution_authorized:
+            return DemoExecutionResult(readiness=readiness, gateway=None)
+        if senior_context.quality is not SeniorContextQuality.COMPLETE:
+            return DemoExecutionResult(readiness=readiness, gateway=None)
+        if senior_context.risk_assessment.execution_authorized:
+            return DemoExecutionResult(readiness=readiness, gateway=None)
+        if senior_context.risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             return DemoExecutionResult(readiness=readiness, gateway=None)
 
         gateway_result = self.gateway.execute(
