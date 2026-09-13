@@ -9,7 +9,7 @@ from wsgiref.simple_server import make_server
 
 from core.api_result import serialize_decision_record
 from core.operational_runtime import build_operational_runtime
-from integration.ecosystem_service import EcosystemService
+from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
@@ -21,7 +21,7 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = EcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -89,6 +89,22 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/preferences" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
+        if path == "/api/preferences" and method == "POST":
+            return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_preferences(_read_json(environ))}, request_id, environ)
+        if path == "/api/preferences/candles" and method == "POST":
+            return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_candle_preferences(_read_json(environ))}, request_id, environ)
+        if path == "/api/preferences/notifications" and method == "POST":
+            return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_notification_preferences(_read_json(environ))}, request_id, environ)
+        if path == "/api/notifications" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.notification_summary(), request_id, environ)
+        if path == "/api/notifications/all" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
+        if path == "/api/updates" and method == "POST":
+            data = _read_json(environ)
+            item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
         if path == "/api/analyze" and method == "POST":
@@ -171,7 +187,7 @@ def application(environ, start_response):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
