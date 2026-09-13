@@ -12,6 +12,7 @@ class MarketDataHealth(str, Enum):
     STALE = "STALE"
     GAP = "GAP"
     INVALID = "INVALID"
+    UNKNOWN = "UNKNOWN"
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,15 @@ class MarketDataIntegrity:
                 gap_count,
                 True,
                 "último candle está desatualizado",
+            )
+        if expected_interval_seconds is None:
+            return MarketDataIntegrityReport(
+                MarketDataHealth.UNKNOWN,
+                len(items),
+                None,
+                gap_count,
+                False,
+                "timeframe sem intervalo conhecido; integridade temporal não pode ser confirmada",
             )
         if gap_count:
             return MarketDataIntegrityReport(
