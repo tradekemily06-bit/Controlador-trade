@@ -6,6 +6,7 @@ from enum import Enum
 from data.models import Candle
 
 from .integrated_market_reading import IntegratedMarketReading, ReadingStatus
+from .senior_experience_profile import SeniorExperienceProfile
 from .temporal_market_context import TemporalMarketContext
 
 
@@ -47,11 +48,18 @@ class SeniorMarketAssessment:
 class SeniorMarketReasoner:
     """Reason like an experienced market professional without rigid rules.
 
-    This layer asks the questions a senior analyst would ask before acting,
-    compares historical context with the present, checks contradictions, and
-    states what should be observed or avoided. It is deliberately downstream
-    of factual/contextual observations and upstream of any operational gate.
+    This layer uses a persistent professional baseline that exists before the
+    first user interaction. Being newly assigned to a user is relationship
+    state only; it does not reset accumulated experience. The reasoner asks
+    the questions a senior analyst would ask before acting, compares
+    historical context with the present, checks contradictions, and states
+    what should be observed or avoided. It remains downstream of factual
+    observations and upstream of every operational gate.
     """
+
+    def __init__(self, experience_profile: SeniorExperienceProfile | None = None) -> None:
+        self.experience_profile = experience_profile or SeniorExperienceProfile()
+        self.experience_profile.validate()
 
     def assess(
         self,
@@ -59,13 +67,14 @@ class SeniorMarketReasoner:
         reading: IntegratedMarketReading,
         temporal: TemporalMarketContext,
     ) -> SeniorMarketAssessment:
+        self.experience_profile.validate()
         if not candles or reading.status is ReadingStatus.INSUFFICIENT:
             return SeniorMarketAssessment(
                 posture=ReasoningPosture.INSUFFICIENT,
                 context_statement="Ainda não há evidência contextual suficiente para uma leitura profissional completa.",
                 observations=(),
-                considerations=("Preservar a incerteza e buscar mais contexto antes de concluir." ,),
-                avoid_assumptions=("Não transformar ausência de evidência em uma direção de mercado." ,),
+                considerations=("Preservar a incerteza e buscar mais contexto antes de concluir.",),
+                avoid_assumptions=("Não transformar ausência de evidência em uma direção de mercado.",),
                 questions=(
                     ProfessionalQuestion("histórico", "O histórico disponível é suficiente para entender de onde o movimento veio?"),
                     ProfessionalQuestion("evidência", "O que ainda falta observar antes de uma conclusão responsável?"),
@@ -118,15 +127,12 @@ class SeniorMarketReasoner:
 
         evidence_for = tuple(reading.supporting)
         evidence_against = tuple(reading.contradicting)
-        uncertainty = tuple(reading.conflicts) + tuple(
-            "O futuro permanece condicional; nenhum cenário é tratado como previsão garantida."
-            for _ in (1,)
-        )
+        uncertainty = tuple(reading.conflicts) + ("O futuro permanece condicional; nenhum cenário é tratado como previsão garantida.",)
 
         context_statement = (
             "Leitura integrada entre histórico, presente e cenários condicionais; "
-            "a experiência é representada por perguntas, comparação de evidências e reavaliação, "
-            "não por uma lista fixa de regras."
+            "a experiência profissional acumulada orienta comparação de evidências, "
+            "contraprovas e reavaliação, sem virar uma lista fixa de regras."
         )
 
         return SeniorMarketAssessment(
