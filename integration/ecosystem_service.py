@@ -7,6 +7,15 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.learning_content import (
+    ContentType,
+    LearningActivity,
+    LearningAttempt,
+    LearningObservation,
+    LearningResource,
+    LearningStatus,
+    normalize_tags,
+)
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -33,6 +42,10 @@ class EcosystemService:
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
+        self.learning_resources: dict[str, LearningResource] = {}
+        self.learning_observations: list[LearningObservation] = []
+        self.learning_activities: dict[str, LearningActivity] = {}
+        self.learning_attempts: list[LearningAttempt] = []
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -90,6 +103,79 @@ class EcosystemService:
             raise ValueError("limit deve ser maior que zero")
         return [item.to_dict() for item in self.memory[-limit:]][::-1]
 
+    def add_learning_resource(self, payload: dict[str, Any]) -> LearningResource:
+        resource = LearningResource(
+            resource_id=str(payload.get("resource_id", "")),
+            title=str(payload.get("title", "")),
+            content_type=ContentType(str(payload.get("content_type", "OTHER")).upper()),
+            source_url=payload.get("source_url"),
+            source_name=payload.get("source_name"),
+            status=LearningStatus(str(payload.get("status", "RECEIVED")).upper()),
+            tags=normalize_tags(tuple(payload.get("tags", ()) or ())),
+        )
+        if resource.resource_id in self.learning_resources:
+            raise ValueError("resource_id já cadastrado")
+        self.learning_resources[resource.resource_id] = resource
+        return resource
+
+    def learning_resources_view(self) -> list[dict[str, Any]]:
+        return [asdict(item) | {"content_type": item.content_type.value, "status": item.status.value} for item in self.learning_resources.values()]
+
+    def add_learning_observation(self, payload: dict[str, Any]) -> LearningObservation:
+        observation = LearningObservation(
+            resource_id=str(payload.get("resource_id", "")),
+            statement=str(payload.get("statement", "")),
+            concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())),
+            evidence=payload.get("evidence"),
+            confidence=payload.get("confidence"),
+            validated=bool(payload.get("validated", False)),
+        )
+        if observation.resource_id not in self.learning_resources:
+            raise ValueError("resource_id não encontrado")
+        self.learning_observations.append(observation)
+        return observation
+
+    def learning_observations_view(self) -> list[dict[str, Any]]:
+        return [asdict(item) for item in self.learning_observations]
+
+    def add_learning_activity(self, payload: dict[str, Any]) -> LearningActivity:
+        activity = LearningActivity(
+            activity_id=str(payload.get("activity_id", "")),
+            prompt=str(payload.get("prompt", "")),
+            expected_concepts=normalize_tags(tuple(payload.get("expected_concepts", ()) or ())),
+            difficulty=str(payload.get("difficulty", "UNSPECIFIED")),
+        )
+        if activity.activity_id in self.learning_activities:
+            raise ValueError("activity_id já cadastrado")
+        self.learning_activities[activity.activity_id] = activity
+        return activity
+
+    def learning_activities_view(self) -> list[dict[str, Any]]:
+        return [asdict(item) for item in self.learning_activities.values()]
+
+    def add_learning_attempt(self, payload: dict[str, Any]) -> LearningAttempt:
+        activity_id = str(payload.get("activity_id", ""))
+        if activity_id not in self.learning_activities:
+            raise ValueError("activity_id não encontrado")
+        attempt = LearningAttempt(
+            activity_id=activity_id,
+            answer=str(payload.get("answer", "")),
+            correct=payload.get("correct"),
+            feedback=str(payload.get("feedback", "")),
+        )
+        self.learning_attempts.append(attempt)
+        return attempt
+
+    def learning_summary(self) -> dict[str, Any]:
+        return {
+            "resources": self.learning_resources_view(),
+            "observations": self.learning_observations_view(),
+            "activities": self.learning_activities_view(),
+            "attempts": [asdict(item) for item in self.learning_attempts],
+            "execution_allowed": False,
+            "learning_authorizes_trading": False,
+        }
+
     def risk_status(self) -> dict[str, Any]:
         decision = self.risk.evaluate()
         return {
@@ -142,6 +228,7 @@ class EcosystemService:
             "replay": "ONLINE",
             "statistics": "ONLINE",
             "risk_gate": "ONLINE",
+            "learning": "ONLINE",
             "news": "AGUARDANDO_FONTE",
             "mt5_demo": "DEMO_VALIDADO",
             "real": "DESABILITADO",
@@ -162,6 +249,7 @@ class EcosystemService:
             "replay": components["replay"],
             "statistics": components["statistics"],
             "risk_gate": components["risk_gate"],
+            "learning": components["learning"],
             "news": components["news"],
             "mt5_demo": components["mt5_demo"],
             "real": components["real"],
