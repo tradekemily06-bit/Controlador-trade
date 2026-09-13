@@ -1,42 +1,56 @@
 """Senior end-to-end contextual cycle boundary.
 
 This layer composes already validated observations without turning the ecosystem
-into a catalogue of rigid trading rules. It is intentionally decision-neutral:
-observation, context, reasoning, validation and memory remain separate from
+into a catalogue of rigid trading rules. It is decision-neutral: observation,
+context, reasoning, validation, memory and risk assessment remain separate from
 execution authority.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Iterable
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
 from core.senior_market_reasoning import SeniorMarketAssessment
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.temporal_market_context import TemporalMarketContext
 from core.whole_graph_observation import WholeGraphObservation, WholeGraphStatus
 
 
+class SeniorContextQuality(str, Enum):
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    REASSESS = "REASSESS"
+
+
 @dataclass(frozen=True)
 class SeniorContextCycle:
-    """Immutable record of one complete senior contextual reasoning cycle."""
+    """Immutable record of one senior contextual reasoning cycle.
+
+    Quality here is epistemic/contextual quality, not permission to trade.
+    """
 
     cycle_id: str
     whole_graph: WholeGraphObservation
     temporal_context: TemporalMarketContext
     market_reading: IntegratedMarketReading
     senior_assessment: SeniorMarketAssessment
+    risk_assessment: SeniorRiskAssessment
     validated_knowledge_ids: tuple[str, ...]
     unresolved_questions: tuple[str, ...]
+    quality: SeniorContextQuality
     execution_authorized: bool = False
 
 
 class SeniorContextCycleBoundary:
-    """Assemble a traceable cycle while failing closed on missing context.
+    """Assemble a traceable senior cycle while failing closed on missing context.
 
-    The boundary does not decide trades and cannot authorize execution. A
-    partial whole-graph observation is preserved, while an insufficient graph
-    prevents the cycle from being represented as complete.
+    A partial graph is preserved explicitly; it is never silently upgraded to
+    complete. Risk reasoning is required for the cycle because risk knowledge
+    is fundamental in both manual and autonomous modes. Neither this boundary
+    nor a risk assessment can authorize execution.
     """
 
     def assemble(
@@ -47,6 +61,7 @@ class SeniorContextCycleBoundary:
         temporal_context: TemporalMarketContext,
         market_reading: IntegratedMarketReading,
         senior_assessment: SeniorMarketAssessment,
+        risk_assessment: SeniorRiskAssessment,
         validated_knowledge_ids: Iterable[str] = (),
     ) -> SeniorContextCycle:
         if not isinstance(cycle_id, str) or not cycle_id.strip():
@@ -59,6 +74,12 @@ class SeniorContextCycleBoundary:
             raise ValueError("market_reading is required")
         if not isinstance(senior_assessment, SeniorMarketAssessment):
             raise ValueError("senior_assessment is required")
+        if not isinstance(risk_assessment, SeniorRiskAssessment):
+            raise ValueError("risk_assessment is required")
+        if senior_assessment.execution_authorized:
+            raise ValueError("senior assessment cannot authorize execution")
+        if risk_assessment.execution_authorized:
+            raise ValueError("risk assessment cannot authorize execution")
 
         knowledge = self._normalize_ids(validated_knowledge_ids)
         questions = tuple(
@@ -69,14 +90,30 @@ class SeniorContextCycleBoundary:
             )
         )
 
-        # An insufficient graph must never be represented as a complete cycle.
         if whole_graph.status is WholeGraphStatus.INSUFFICIENT:
             raise ValueError("insufficient whole-graph context")
+        if market_reading.status is ReadingStatus.INSUFFICIENT:
+            raise ValueError("insufficient market reading")
 
-        # Conflicting/insufficient readings remain unresolved; this is not a
-        # failure of the system but an explicit epistemic state.
         if market_reading.status is not ReadingStatus.SUPPORTED:
-            questions = tuple(dict.fromkeys((*questions, "What evidence is still needed to resolve the reading?")))
+            questions = tuple(
+                dict.fromkeys(
+                    (*questions, "What evidence is still needed to resolve the reading?")
+                )
+            )
+
+        if risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
+            questions = tuple(
+                dict.fromkeys(
+                    (*questions, "What material risk information is still missing or requires reassessment?")
+                )
+            )
+
+        quality = SeniorContextQuality.COMPLETE
+        if whole_graph.status is WholeGraphStatus.PARTIAL:
+            quality = SeniorContextQuality.PARTIAL
+        if market_reading.status is not ReadingStatus.SUPPORTED or risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
+            quality = SeniorContextQuality.REASSESS
 
         return SeniorContextCycle(
             cycle_id=cycle_id.strip(),
@@ -84,8 +121,10 @@ class SeniorContextCycleBoundary:
             temporal_context=temporal_context,
             market_reading=market_reading,
             senior_assessment=senior_assessment,
+            risk_assessment=risk_assessment,
             validated_knowledge_ids=knowledge,
             unresolved_questions=questions,
+            quality=quality,
             execution_authorized=False,
         )
 
