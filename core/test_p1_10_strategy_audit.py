@@ -15,6 +15,7 @@ from core.risk_manager import RiskManager
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
 from execution.demo_flow import DemoFlow
@@ -35,13 +36,22 @@ def make_context(direction=MarketDirection.ALTA, score=100.0):
 
 
 def make_senior_context():
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="p1-10-senior-context",
         whole_graph=None,
         temporal_context=None,
         market_reading=None,
         senior_assessment=None,
-        risk_assessment=None,
+        risk_assessment=senior_risk,
         validated_knowledge_ids=(),
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
