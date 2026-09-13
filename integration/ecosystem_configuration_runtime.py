@@ -24,8 +24,8 @@ class ConfiguredEcosystemService(EcosystemService):
         value = self.preferences.preferences
         result = asdict(value)
         result["chart_theme"] = value.chart_theme.value
-        result["candle_appearance"]["style"] = value.candle_appearance.style.value
-        result["candle_appearance"]["color_mode"] = value.candle_appearance.color_mode.value
+        result["candle"]["style"] = value.candle.style.value
+        result["candle"]["color_mode"] = value.candle.color_mode.value
         return result
 
     def update_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
