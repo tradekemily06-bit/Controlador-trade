@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
 from core.market_context import MarketContextResult
@@ -14,6 +14,8 @@ from core.p78_hypothesis_preparation import HypothesisPreparationBoundary, Prepa
 from core.p79_validation_admission import ValidationAdmission, ValidationAdmissionBoundary
 from core.p80_validation_specification import ValidationSpecification, ValidationSpecificationBoundary
 from core.p81_validation_run import ValidationRun, ValidationRunBoundary
+from core.p82_validation_result import ValidationResult, ValidationResultBoundary, ValidationResultStatus
+from core.p83_validation_decision import ValidationDecision, ValidationDecisionBoundary, ValidationDecisionStatus
 
 
 @dataclass(frozen=True)
@@ -39,9 +41,8 @@ class OperationLearningHandoff:
 class IntegratedLearningCandidate:
     """A reading-derived hypothesis candidate with preserved provenance.
 
-    This is deliberately a hypothesis, not knowledge and not an order signal.
-    Supported readings may enter the existing P78-P81 validation path. Conflicting
-    or insufficient readings remain investigation-only and cannot be admitted.
+    Supported readings may enter P78-P83. The candidate remains learning metadata,
+    never an order signal. Conflicting or insufficient readings remain investigation-only.
     """
 
     cycle_id: str
@@ -53,6 +54,8 @@ class IntegratedLearningCandidate:
     admission: ValidationAdmission | None
     specification: ValidationSpecification | None
     validation_run: ValidationRun | None
+    validation_result: ValidationResult | None = None
+    validation_decision: ValidationDecision | None = None
     execution_authorized: bool = False
 
 
@@ -124,8 +127,6 @@ class IntegratedLearningValidationBoundary:
         if not hypothesis_statement:
             raise ValueError("hypothesis statement is required")
 
-        # Conflict and insufficient evidence are preserved as investigation state;
-        # they are never promoted into the operational validation path.
         if reading.status is not ReadingStatus.SUPPORTED:
             return IntegratedLearningCandidate(
                 cycle_id=cycle_id.strip(),
@@ -172,6 +173,44 @@ class IntegratedLearningValidationBoundary:
             admission=admission,
             specification=specification,
             validation_run=validation_run,
+            execution_authorized=False,
+        )
+
+    def conclude(
+        self,
+        candidate: IntegratedLearningCandidate,
+        *,
+        result_id: str,
+        result_status: ValidationResultStatus,
+        result_rationale: str,
+        decision_id: str,
+        decision_status: ValidationDecisionStatus,
+        decision_rationale: str,
+    ) -> IntegratedLearningCandidate:
+        """Close P81 through P82/P83 without granting operational authority."""
+        if not isinstance(candidate, IntegratedLearningCandidate):
+            raise ValueError("invalid integrated learning candidate")
+        if candidate.validation_run is None:
+            raise ValueError("candidate has no validation run")
+        if candidate.execution_authorized:
+            raise ValueError("execution authorization cannot be introduced here")
+
+        result = ValidationResultBoundary().conclude(
+            candidate.validation_run,
+            result_id=result_id,
+            status=result_status,
+            rationale=result_rationale,
+        )
+        decision = ValidationDecisionBoundary().decide(
+            result,
+            decision_id=decision_id,
+            status=decision_status,
+            rationale=decision_rationale,
+        )
+        return replace(
+            candidate,
+            validation_result=result,
+            validation_decision=decision,
             execution_authorized=False,
         )
 
