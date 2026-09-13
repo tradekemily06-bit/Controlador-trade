@@ -7,6 +7,8 @@ from core.models import AnalysisResult, Signal
 from core.operation_learning_journal import OperationLearningJournal, OperationOutcome
 from core.p50_automation_result_snapshot import AutomationResultSnapshot
 from core.p49_outcome_reconciliation import ReconciliationState
+from core.p82_validation_result import ValidationResultStatus
+from core.p83_validation_decision import ValidationDecisionStatus
 from core.p128_learning_handoff import (
     IntegratedLearningValidationBoundary,
     OperationLearningHandoffBoundary,
@@ -79,7 +81,6 @@ def test_handoff_keeps_result_reading_and_context_together():
     handoff = OperationLearningHandoffBoundary().build(
         snapshot=snapshot, note=note, analysis=analysis, market_context=context
     )
-
     assert handoff.cycle_id == "cycle-128"
     assert handoff.note is note
     assert handoff.analysis is analysis
@@ -94,7 +95,6 @@ def test_unverified_result_cannot_become_learning_evidence():
     handoff = OperationLearningHandoffBoundary().build(
         snapshot=snapshot, note=note, analysis=analysis, market_context=context
     )
-
     assert handoff.evidence is None
     assert handoff.learning_eligible is False
     assert handoff.execution_authorized is False
@@ -109,32 +109,24 @@ def test_outcome_mismatch_is_rejected():
         why_assessment="Não concluído.",
         market_context="Contexto registrado.",
     )
-
     with pytest.raises(ValueError, match="outcome"):
         OperationLearningHandoffBoundary().build(
-            snapshot=snapshot,
-            note=bad_note,
-            analysis=analysis,
-            market_context=context,
+            snapshot=snapshot, note=bad_note, analysis=analysis, market_context=context
         )
 
 
 def test_supported_integrated_reading_enters_existing_validation_path():
     candidate = IntegratedLearningValidationBoundary().prepare(
-        reading=make_reading(),
-        context_audit=make_context_audit(),
-        cycle_id="cycle-128",
-        hypothesis_id="hyp-128",
-        admission_id="admission-128",
-        test_id="test-128",
-        run_id="run-128",
+        reading=make_reading(), context_audit=make_context_audit(), cycle_id="cycle-128",
+        hypothesis_id="hyp-128", admission_id="admission-128", test_id="test-128", run_id="run-128",
     )
-
     assert candidate.hypothesis is not None
     assert candidate.hypothesis.hypothesis_id == "hyp-128"
     assert candidate.admission is not None
     assert candidate.specification is not None
     assert candidate.validation_run is not None
+    assert candidate.validation_result is None
+    assert candidate.validation_decision is None
     assert candidate.specification.hypothesis_id == "hyp-128"
     assert candidate.validation_run.test_id == "test-128"
     assert candidate.validation_run.admission_id == "admission-128"
@@ -143,17 +135,51 @@ def test_supported_integrated_reading_enters_existing_validation_path():
     assert candidate.execution_authorized is False
 
 
+def test_supported_candidate_closes_through_p82_and_p83_without_execution_authority():
+    boundary = IntegratedLearningValidationBoundary()
+    candidate = boundary.prepare(
+        reading=make_reading(), context_audit=make_context_audit(), cycle_id="cycle-close",
+        hypothesis_id="hyp-close", admission_id="admission-close", test_id="test-close", run_id="run-close",
+    )
+    concluded = boundary.conclude(
+        candidate,
+        result_id="result-close",
+        result_status=ValidationResultStatus.POSITIVE,
+        result_rationale="Evidência positiva dentro dos critérios do teste.",
+        decision_id="decision-close",
+        decision_status=ValidationDecisionStatus.VALIDATED,
+        decision_rationale="Resultado positivo; conhecimento pode seguir para a memória/validação superior.",
+    )
+    assert concluded.validation_result is not None
+    assert concluded.validation_result.result_id == "result-close"
+    assert concluded.validation_decision is not None
+    assert concluded.validation_decision.status is ValidationDecisionStatus.VALIDATED
+    assert concluded.execution_authorized is False
+
+
+def test_invalid_p82_p83_pair_is_rejected():
+    boundary = IntegratedLearningValidationBoundary()
+    candidate = boundary.prepare(
+        reading=make_reading(), context_audit=make_context_audit(), cycle_id="cycle-invalid",
+        hypothesis_id="hyp-invalid", admission_id="admission-invalid", test_id="test-invalid", run_id="run-invalid",
+    )
+    with pytest.raises(ValueError, match="only positive"):
+        boundary.conclude(
+            candidate,
+            result_id="result-invalid",
+            result_status=ValidationResultStatus.NEGATIVE,
+            result_rationale="Resultado negativo.",
+            decision_id="decision-invalid",
+            decision_status=ValidationDecisionStatus.VALIDATED,
+            decision_rationale="Tentativa inválida de validar resultado negativo.",
+        )
+
+
 def test_conflicting_reading_remains_investigation_only():
     candidate = IntegratedLearningValidationBoundary().prepare(
-        reading=make_reading(ReadingStatus.CONFLICTING),
-        context_audit=make_context_audit(),
-        cycle_id="cycle-conflict",
-        hypothesis_id="hyp-conflict",
-        admission_id="admission-conflict",
-        test_id="test-conflict",
-        run_id="run-conflict",
+        reading=make_reading(ReadingStatus.CONFLICTING), context_audit=make_context_audit(), cycle_id="cycle-conflict",
+        hypothesis_id="hyp-conflict", admission_id="admission-conflict", test_id="test-conflict", run_id="run-conflict",
     )
-
     assert candidate.hypothesis is None
     assert candidate.admission is None
     assert candidate.specification is None
@@ -163,15 +189,9 @@ def test_conflicting_reading_remains_investigation_only():
 
 def test_insufficient_reading_cannot_be_promoted():
     candidate = IntegratedLearningValidationBoundary().prepare(
-        reading=make_reading(ReadingStatus.INSUFFICIENT),
-        context_audit=make_context_audit(),
-        cycle_id="cycle-insufficient",
-        hypothesis_id="hyp-insufficient",
-        admission_id="admission-insufficient",
-        test_id="test-insufficient",
-        run_id="run-insufficient",
+        reading=make_reading(ReadingStatus.INSUFFICIENT), context_audit=make_context_audit(), cycle_id="cycle-insufficient",
+        hypothesis_id="hyp-insufficient", admission_id="admission-insufficient", test_id="test-insufficient", run_id="run-insufficient",
     )
-
     assert candidate.hypothesis is None
     assert candidate.unanswered_questions
     assert candidate.execution_authorized is False
