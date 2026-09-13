@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from core.execution_intent import ExecutionIntent
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
@@ -7,6 +9,8 @@ from core.models import Signal
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrityReport
 from core.recovery_coordinator import RecoveryAssessment, RecoveryState
 from core.runtime_config import RuntimeConfig
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -38,6 +42,30 @@ def intent():
     return ExecutionIntent("req-31", "EURUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
+def senior_context(quality=SeniorContextQuality.COMPLETE):
+    risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
+    return SeniorContextCycle(
+        cycle_id="demo-coordinator-test",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=risk,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=quality,
+        execution_authorized=False,
+    )
+
+
 def make_coordinator():
     executor = FakeExecutor()
     gateway = ExecutionGateway(executor, KillSwitch())
@@ -47,7 +75,7 @@ def make_coordinator():
 
 def test_ready_demo_reaches_gateway_once():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent())
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context())
     assert result.readiness.ready
     assert result.gateway is not None
     assert result.gateway.status is GatewayStatus.ACCEPTED
@@ -55,10 +83,26 @@ def test_ready_demo_reaches_gateway_once():
     assert executor.calls == 1
 
 
+def test_missing_senior_context_never_calls_executor():
+    demo_coordinator, executor = make_coordinator()
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=None)
+    assert result.gateway is None
+    assert not result.executed
+    assert executor.calls == 0
+
+
+def test_incomplete_senior_context_never_calls_executor():
+    demo_coordinator, executor = make_coordinator()
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context(SeniorContextQuality.REASSESS))
+    assert result.gateway is None
+    assert not result.executed
+    assert executor.calls == 0
+
+
 def test_unready_market_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
     bad_market = MarketDataIntegrityReport(MarketDataHealth.STALE, 1, None, 0, True, "stale")
-    result = demo_coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent())
+    result = demo_coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent(), senior_context=senior_context())
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
@@ -66,7 +110,7 @@ def test_unready_market_never_calls_executor():
 
 def test_missing_intent_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None)
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None, senior_context=senior_context())
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
