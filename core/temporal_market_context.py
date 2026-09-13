@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from enum import Enum
 
 from data.models import Candle
-from .market_direction import MarketDirection
 from .methodology_features import extract_candle_features
 
 
