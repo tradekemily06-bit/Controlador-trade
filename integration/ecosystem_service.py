@@ -16,6 +16,7 @@ from core.learning_content import (
     LearningStatus,
     normalize_tags,
 )
+from core.operational_runtime import OperationalRuntime
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -33,6 +34,7 @@ class EcosystemService:
         engine: SignalEngine | None = None,
         decision_store: DecisionStore | None = None,
         production_storage: ProductionStoragePolicy | None = None,
+        operational_runtime: OperationalRuntime | None = None,
     ) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
@@ -42,6 +44,7 @@ class EcosystemService:
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
+        self.operational_runtime = operational_runtime
         self.learning_resources: dict[str, LearningResource] = {}
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
@@ -219,34 +222,56 @@ class EcosystemService:
         }
 
     def operational_observability(self) -> dict[str, Any]:
-        """Read-only operational safety state; never executes or mutates runtime state."""
+        """Read-only snapshot of the same runtime state used by the DEMO gateway."""
+        runtime = self.operational_runtime
+        if runtime is None:
+            return {
+                "execution": {"allowed": False, "mode": "DEMO", "state": "NOT_CONNECTED", "real": "DISABLED"},
+                "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []},
+                "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"},
+                "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None},
+                "market_data": {"health": "NOT_CONNECTED", "stale": None, "gap_count": None, "message": "fonte de candles ainda não conectada ao runtime"},
+            }
+
+        health = runtime.health.assess()
+        recovery = runtime.recovery.assess()
+        kill = runtime.kill_switch.state
+        blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED"
         return {
             "execution": {
                 "allowed": False,
                 "mode": "DEMO",
-                "state": "BLOCKED_BY_DEFAULT",
+                "state": "BLOCKED" if blocked else "READY_DEMO",
                 "real": "DISABLED",
             },
             "reconciliation": {
-                "state": "NOT_REQUIRED",
-                "pending_request_ids": [],
-                "unknown_request_ids": [],
+                "state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED",
+                "pending_request_ids": list(recovery.pending_request_ids),
+                "unknown_request_ids": list(recovery.unknown_request_ids),
             },
             "recovery": {
-                "state": "NOT_CONFIGURED",
-                "can_resume": False,
-                "message": "observabilidade operacional sem runtime persistido configurado",
+                "state": recovery.state.value,
+                "can_resume": recovery.can_resume,
+                "message": recovery.message,
             },
             "kill_switch": {
-                "state": "NOT_CONFIGURED",
-                "enabled": False,
-                "reason": None,
+                "state": "ACTIVE" if kill.enabled else "CLEAR",
+                "enabled": kill.enabled,
+                "reason": kill.reason,
+            },
+            "runtime_health": {
+                "state": health.state.value,
+                "ledger_entries": health.ledger_entries,
+                "pending_executions": health.pending_executions,
+                "unknown_executions": health.unknown_executions,
+                "recovery_state": health.recovery_state.value,
+                "message": health.message,
             },
             "market_data": {
-                "health": "NOT_CONFIGURED",
-                "stale": False,
-                "gap_count": 0,
-                "message": "nenhuma fonte de candles foi conectada ao serviço de aplicação",
+                "health": "NOT_CONNECTED",
+                "stale": None,
+                "gap_count": None,
+                "message": "integridade de candles depende da fonte de mercado conectada ao runtime",
             },
         }
 

@@ -8,13 +8,16 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from core.api_result import serialize_decision_record
+from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_service import EcosystemService
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
-SERVICE = EcosystemService()
+RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
+OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR)
+SERVICE = EcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 
 
 def _audit(environ, request_id: str, status: int) -> None:
