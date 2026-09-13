@@ -62,10 +62,9 @@ def assess_learning(
 ) -> LearningAssessment:
     """Compare knowledge or a hypothesis with observed evidence.
 
-    The input is intentionally extensible: user knowledge, system knowledge and
-    discoveries can all be assessed without making the user's concepts a closed
-    rule set. Evidence is classified conservatively and promotion still requires
-    the ecosystem's existing validation/memory pipeline. Execution remains separate.
+    The evidence layer is deliberately open-ended: observations may come from
+    user knowledge, system knowledge, or discoveries. It does not encode a
+    closed catalogue of market patterns and it never grants execution authority.
     """
     items = tuple(evidence)
     supporting = tuple(e.evidence_id for e in items if e.status is EvidenceStatus.SUPPORTED)
