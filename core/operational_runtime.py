@@ -13,6 +13,7 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
+from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
 
 
@@ -30,8 +31,8 @@ class OperationalRuntime:
     market_data: MarketDataRuntimeState
 
 
-def build_operational_runtime(root: str | Path) -> OperationalRuntime:
-    """Compose one shared runtime; construction has no broker side effects."""
+def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
+    """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
     kill_switch = KillSwitch()
     ledger = ExecutionLedger(root / "execution-ledger.json")
@@ -51,7 +52,7 @@ def build_operational_runtime(root: str | Path) -> OperationalRuntime:
         recovery=recovery,
     )
     gateway = ExecutionGateway(
-        PaperExecutor(),
+        executor or PaperExecutor(),
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
