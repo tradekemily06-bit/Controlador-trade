@@ -105,7 +105,7 @@ class SeniorContextCycleBoundary:
         if risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             questions = tuple(
                 dict.fromkeys(
-                    (*questions, "What material risk information is still missing or requires reassessment?")
+                    (*questions, "What material risk information is still missing or requires reassessment (risk)?")
                 )
             )
 
