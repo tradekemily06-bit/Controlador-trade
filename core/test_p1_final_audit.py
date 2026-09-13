@@ -6,6 +6,8 @@ from core.models import AnalysisResult, Signal
 from core.operational_state import OperationalState
 from core.risk_manager import RiskManager
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
 def operational_state() -> OperationalState:
@@ -36,6 +38,30 @@ def favorable_up_context():
     )
 
 
+def make_senior_context():
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
+    return SeniorContextCycle(
+        cycle_id="p1-final-audit-senior-context",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=senior_risk,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=SeniorContextQuality.COMPLETE,
+        execution_authorized=False,
+    )
+
+
 def test_p1_final_audit_actionable_path_is_consistent():
     analysis = confirmed_buy()
     quality = SignalQualityEvaluator().evaluate(analysis)
@@ -43,6 +69,7 @@ def test_p1_final_audit_actionable_path_is_consistent():
         analysis=analysis,
         market_context=favorable_up_context(),
         operational_state=operational_state(),
+        senior_context=make_senior_context(),
     )
 
     assert quality.actionable is True

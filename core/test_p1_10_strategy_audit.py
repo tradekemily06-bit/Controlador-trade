@@ -14,6 +14,8 @@ from core.recovery_coordinator import RecoveryAssessment, RecoveryState
 from core.risk_manager import RiskManager
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
 from execution.demo_flow import DemoFlow
@@ -31,6 +33,30 @@ def make_state(*, trades_today=0, consecutive_losses=0, realized_pnl=0.0):
 
 def make_context(direction=MarketDirection.ALTA, score=100.0):
     return MarketContextResult(context=MarketContext.FAVORAVEL, score=score, reason="Contexto favorável para teste.", direction=direction)
+
+
+def make_senior_context():
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
+    return SeniorContextCycle(
+        cycle_id="p1-10-senior-context",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=senior_risk,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=SeniorContextQuality.COMPLETE,
+        execution_authorized=False,
+    )
 
 
 def make_config():
@@ -63,7 +89,7 @@ def make_demo_flow(risk_manager=None):
 
 
 def test_full_executable_path_reaches_execute():
-    decision = DecisionEngine(RiskManager()).evaluate(analysis=make_analysis(), market_context=make_context(), operational_state=make_state())
+    decision = DecisionEngine(RiskManager()).evaluate(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(), senior_context=make_senior_context())
     assert decision.decision == FinalDecision.EXECUTAR
     assert decision.signal == Signal.COMPRA
 
@@ -87,7 +113,7 @@ def test_incompatible_direction_never_executes():
 
 
 def test_risk_limit_blocks_execution():
-    decision = DecisionEngine(RiskManager(max_operations=3)).evaluate(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(trades_today=3))
+    decision = DecisionEngine(RiskManager(max_operations=3)).evaluate(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(trades_today=3), senior_context=make_senior_context())
     assert decision.decision == FinalDecision.BLOQUEAR
     assert "Limite de operações" in decision.reason
 
@@ -104,7 +130,7 @@ def test_decision_snapshot_preserves_final_factors():
     quality = SignalQualityEvaluator().evaluate(analysis)
     state = make_state()
     context = make_context()
-    decision = DecisionEngine(RiskManager()).evaluate(analysis=analysis, market_context=context, operational_state=state)
+    decision = DecisionEngine(RiskManager()).evaluate(analysis=analysis, market_context=context, operational_state=state, senior_context=make_senior_context())
     snapshot = DecisionSnapshot.from_results(analysis=analysis, quality=quality, decision=decision, market_context=context, operational_state=state)
     assert snapshot.signal == "COMPRA"
     assert snapshot.analysis_score == 100.0
@@ -118,7 +144,7 @@ def test_decision_snapshot_preserves_final_factors():
 
 def test_demo_flow_executes_only_after_final_approval():
     flow, logger, executor = make_demo_flow()
-    result = flow.run(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(), symbol="BTCUSD", amount=10.0, duration_seconds=60, config=make_config(), market_data=make_market(), recovery=make_recovery())
+    result = flow.run(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(), senior_context=make_senior_context(), symbol="BTCUSD", amount=10.0, duration_seconds=60, config=make_config(), market_data=make_market(), recovery=make_recovery())
     assert result.decision.decision == FinalDecision.EXECUTAR
     assert result.execution is not None and result.execution.accepted
     assert result.quality.level == SignalLevel.FORTE
@@ -128,7 +154,7 @@ def test_demo_flow_executes_only_after_final_approval():
 
 def test_demo_flow_does_not_execute_when_risk_blocks():
     flow, logger, executor = make_demo_flow(RiskManager(max_operations=1))
-    result = flow.run(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(trades_today=1), symbol="BTCUSD", amount=10.0, duration_seconds=60, config=make_config(), market_data=make_market(), recovery=make_recovery())
+    result = flow.run(analysis=make_analysis(), market_context=make_context(), operational_state=make_state(trades_today=1), senior_context=make_senior_context(), symbol="BTCUSD", amount=10.0, duration_seconds=60, config=make_config(), market_data=make_market(), recovery=make_recovery())
     assert result.decision.decision == FinalDecision.BLOQUEAR
     assert result.execution is None
     assert executor.executions() == ()

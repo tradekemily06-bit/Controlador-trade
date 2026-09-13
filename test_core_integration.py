@@ -7,6 +7,8 @@ from core.models import AnalysisResult, Signal
 from core.operational_state import OperationalState
 from core.risk_manager import RiskManager
 from core.market_data import Candle
+from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
 def candles_alta():
@@ -26,6 +28,30 @@ def state(*, realized_pnl=0, trades_today=0, consecutive_losses=0):
     )
 
 
+def senior_context():
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
+    return SeniorContextCycle(
+        cycle_id="core-integration-senior-context",
+        whole_graph=None,
+        temporal_context=None,
+        market_reading=None,
+        senior_assessment=None,
+        risk_assessment=senior_risk,
+        validated_knowledge_ids=(),
+        unresolved_questions=(),
+        quality=SeniorContextQuality.COMPLETE,
+        execution_authorized=False,
+    )
+
+
 def test_buy_with_favorable_context_executes():
     context = MarketContextEngine().evaluate_from_candles(
         candles=candles_alta()
@@ -40,6 +66,7 @@ def test_buy_with_favorable_context_executes():
         analysis=analysis,
         market_context=context,
         operational_state=state(),
+        senior_context=senior_context(),
     )
     assert result.decision == FinalDecision.EXECUTAR
 
