@@ -28,9 +28,61 @@ CRYPTO_KEYWORDS = frozenset(
 )
 
 
-def _asset_class(symbol: str) -> str:
+def _path_and_description(info: Any) -> str:
+    return " ".join(
+        str(getattr(info, field, "") or "")
+        for field in ("path", "description", "name")
+    ).upper()
+
+
+def _asset_class(mt5: Any, symbol: str, info: Any) -> str:
+    """Classify from broker metadata first, with conservative fallbacks.
+
+    The broker's own symbol metadata is authoritative when it exposes a
+    calculation mode/path. Symbol-name heuristics are only a fallback and
+    never create a tradeable instrument by themselves.
+    """
+    text = _path_and_description(info)
     upper = symbol.upper()
-    return "crypto" if any(token in upper for token in CRYPTO_KEYWORDS) else "other"
+
+    path_tokens = (
+        ("crypto", ("CRYPTO", "CRYPT", "DIGITAL ASSET")),
+        ("forex", ("FOREX", "FX", "CURRENCIES")),
+        ("index", ("INDEX", "INDICES", "INDICE")),
+        ("stock", ("STOCK", "SHARES", "EQUITIES", "EQUITY")),
+        ("bond", ("BOND", "BONDS", "FIXED INCOME")),
+        ("futures", ("FUTURE", "FUTURES")),
+        ("commodity", ("COMMOD", "METAL", "ENERGY", "OIL", "GAS", "GOLD", "SILVER")),
+    )
+    for asset_class, tokens in path_tokens:
+        if any(token in text for token in tokens):
+            return asset_class
+
+    calc_mode = getattr(info, "trade_calc_mode", None)
+    calc_map = {
+        getattr(mt5, "SYMBOL_CALC_MODE_FOREX", object()): "forex",
+        getattr(mt5, "SYMBOL_CALC_MODE_FOREX_NO_LEVERAGE", object()): "forex",
+        getattr(mt5, "SYMBOL_CALC_MODE_FUTURES", object()): "futures",
+        getattr(mt5, "SYMBOL_CALC_MODE_CFDINDEX", object()): "index",
+        getattr(mt5, "SYMBOL_CALC_MODE_EXCH_STOCKS", object()): "stock",
+        getattr(mt5, "SYMBOL_CALC_MODE_EXCH_STOCKS_MOEX", object()): "stock",
+        getattr(mt5, "SYMBOL_CALC_MODE_CFD_BONDS", object()): "bond",
+        getattr(mt5, "SYMBOL_CALC_MODE_EXCH_BONDS", object()): "bond",
+        getattr(mt5, "SYMBOL_CALC_MODE_EXCH_FUTURES", object()): "futures",
+        getattr(mt5, "SYMBOL_CALC_MODE_EXCH_FUTURES_FORTS", object()): "futures",
+    }
+    if calc_mode in calc_map:
+        return calc_map[calc_mode]
+
+    if any(token in text for token in CRYPTO_KEYWORDS) or any(token in upper for token in CRYPTO_KEYWORDS):
+        return "crypto"
+
+    if any(token in upper for token in ("XAU", "XAG", "XPT", "XPD", "WTI", "BRENT", "NGAS")):
+        return "commodity"
+
+    # A conservative fallback keeps the universe complete without pretending
+    # to know an instrument's class when broker metadata is insufficient.
+    return "other"
 
 
 def _has_open_session(mt5: Any, symbol: str, now: datetime) -> bool | None:
@@ -60,13 +112,36 @@ def _has_open_session(mt5: Any, symbol: str, now: datetime) -> bool | None:
     return False
 
 
+def _has_weekend_session(mt5: Any, symbol: str) -> bool | None:
+    """Detect whether the broker exposes a Saturday or Sunday trade session."""
+    session_fn = getattr(mt5, "symbol_info_session_trade", None)
+    if not callable(session_fn):
+        return None
+
+    for mt5_day in (0, 6):  # Sunday and Saturday in MT5 convention.
+        for index in range(32):
+            try:
+                session = session_fn(symbol, mt5_day, index)
+            except Exception:
+                return None
+            if session is None:
+                break
+            return True
+    return False
+
+
 def discover_mt5_instruments(
     mt5: Any,
     *,
     now: datetime | None = None,
     include_invisible: bool = False,
 ) -> tuple[MT5InstrumentStatus, ...]:
-    """Discover the broker's current MT5 symbol universe without trading."""
+    """Discover the broker's current MT5 symbol universe without trading.
+
+    No static asset list is imposed: every symbol returned by the broker is
+    inspected. Visibility, quote and session state determine eligibility;
+    broker metadata determines the asset class whenever possible.
+    """
     symbols = mt5.symbols_get()
     if symbols is None:
         return ()
@@ -99,8 +174,7 @@ def discover_mt5_instruments(
             getattr(tick, field, 0) for field in ("bid", "ask", "last")
         )
         session_open = _has_open_session(mt5, symbol, current)
-        trade_mode = getattr(info, "trade_mode", None)
-        disabled = trade_mode in disabled_modes
+        disabled = getattr(info, "trade_mode", None) in disabled_modes
         tradeable = not disabled and quote_available and session_open is not False
 
         if session_open is False:
@@ -112,7 +186,13 @@ def discover_mt5_instruments(
         else:
             state, reason = "OPEN", "símbolo disponível para análise"
 
-        asset_class = _asset_class(symbol)
+        asset_class = _asset_class(mt5, symbol, info)
+        weekend_session = _has_weekend_session(mt5, symbol)
+        weekend_capable = (
+            weekend_session
+            if weekend_session is not None
+            else asset_class == "crypto"
+        )
         result.append(
             MT5InstrumentStatus(
                 symbol=symbol,
@@ -120,7 +200,7 @@ def discover_mt5_instruments(
                 visible=visible,
                 tradeable=tradeable,
                 quote_available=quote_available,
-                weekend_capable=asset_class == "crypto",
+                weekend_capable=weekend_capable,
                 state=state,
                 reason=reason,
             )
