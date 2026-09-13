@@ -27,9 +27,10 @@ class DecisionEngine:
 
     Fail-closed: uma decisão EXECUTAR exige contexto sênior completo. O
     contexto sênior não concede autoridade; ele apenas comprova que a leitura
-    contextual obrigatória foi concluída antes dos gates de risco e execução.
-    A análise legada permanece compatível para cenários que não executam
-    operações: sinais sem contexto sênior ficam em AGUARDAR.
+    contextual obrigatória foi concluída antes dos gates finais de risco e
+    execução. Gates determinísticos anteriores continuam podendo explicar
+    primeiro por que uma operação não é elegível; isso preserva diagnóstico,
+    auditoria e compatibilidade dos contratos legados sem abrir um bypass.
     """
 
     def __init__(self, risk_manager: RiskManager):
@@ -68,36 +69,6 @@ class DecisionEngine:
                 reason=analysis.reason,
             )
 
-        # A partir daqui existe intenção operacional. Nenhuma intenção pode
-        # alcançar EXECUTAR sem a leitura sênior integrada e completa.
-        if senior_context is None:
-            return DecisionResult(
-                decision=FinalDecision.AGUARDAR,
-                signal=analysis.signal,
-                reason="Contexto sênior obrigatório antes de qualquer decisão de execução.",
-            )
-
-        if not isinstance(senior_context, SeniorContextCycle):
-            return DecisionResult(
-                decision=FinalDecision.AGUARDAR,
-                signal=analysis.signal,
-                reason="Contexto sênior inválido.",
-            )
-
-        if senior_context.execution_authorized:
-            return DecisionResult(
-                decision=FinalDecision.BLOQUEAR,
-                signal=analysis.signal,
-                reason="O ciclo sênior não pode conceder autoridade de execução.",
-            )
-
-        if senior_context.quality is not SeniorContextQuality.COMPLETE:
-            return DecisionResult(
-                decision=FinalDecision.AGUARDAR,
-                signal=analysis.signal,
-                reason="Contexto sênior incompleto ou requer reavaliação.",
-            )
-
         if market_context is None:
             return DecisionResult(
                 decision=FinalDecision.AGUARDAR,
@@ -132,7 +103,46 @@ class DecisionEngine:
                 reason="Direção do contexto incompatível com sinal de venda.",
             )
 
+        # Operational risk is still evaluated independently. A risk block is
+        # never converted into execution merely because senior context exists.
         risk = self.risk_manager.evaluate(state=operational_state)
+        if not risk.allowed:
+            return DecisionResult(
+                decision=FinalDecision.BLOQUEAR,
+                signal=analysis.signal,
+                reason=risk.reason,
+            )
+
+        # At this point the legacy gates say the operation is otherwise
+        # actionable. Only now may it reach the mandatory senior-context gate.
+        # Missing/incomplete context therefore cannot bypass to EXECUTAR.
+        if senior_context is None:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior obrigatório antes de qualquer decisão de execução.",
+            )
+
+        if not isinstance(senior_context, SeniorContextCycle):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior inválido.",
+            )
+
+        if senior_context.execution_authorized:
+            return DecisionResult(
+                decision=FinalDecision.BLOQUEAR,
+                signal=analysis.signal,
+                reason="O ciclo sênior não pode conceder autoridade de execução.",
+            )
+
+        if senior_context.quality is not SeniorContextQuality.COMPLETE:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior incompleto ou requer reavaliação.",
+            )
 
         senior_risk = self.senior_risk_gate.evaluate(
             senior_risk=senior_context.risk_assessment,
