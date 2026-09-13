@@ -27,10 +27,7 @@ class SeniorContextQuality(str, Enum):
 
 @dataclass(frozen=True)
 class SeniorContextCycle:
-    """Immutable record of one senior contextual reasoning cycle.
-
-    Quality here is epistemic/contextual quality, not permission to trade.
-    """
+    """Immutable record of one senior contextual reasoning cycle."""
 
     cycle_id: str
     whole_graph: WholeGraphObservation
@@ -45,13 +42,7 @@ class SeniorContextCycle:
 
 
 class SeniorContextCycleBoundary:
-    """Assemble a traceable senior cycle while failing closed on missing context.
-
-    A partial graph is preserved explicitly; it is never silently upgraded to
-    complete. Risk reasoning is required for the cycle because risk knowledge
-    is fundamental in both manual and autonomous modes. Neither this boundary
-    nor a risk assessment can authorize execution.
-    """
+    """Assemble a traceable senior cycle while failing closed on missing context."""
 
     def assemble(
         self,
@@ -96,16 +87,12 @@ class SeniorContextCycleBoundary:
             raise ValueError("insufficient market reading")
 
         if market_reading.status is not ReadingStatus.SUPPORTED:
-            questions = tuple(
-                dict.fromkeys(
-                    (*questions, "What evidence is still needed to resolve the reading?")
-                )
-            )
+            questions = tuple(dict.fromkeys((*questions, "What evidence is still needed to resolve the reading?")))
 
         if risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             questions = tuple(
                 dict.fromkeys(
-                    (*questions, "What material risk information is still missing or requires reassessment (risk)?")
+                    (*questions, "What material risk information is still missing or requires reassessment (risk/risco)?")
                 )
             )
 
