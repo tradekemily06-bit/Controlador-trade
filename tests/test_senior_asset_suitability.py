@@ -68,6 +68,24 @@ def test_bad_data_blocks_priority():
     assert "qualidade de dados inadequada" in result.gaps
 
 
+def test_unvalidated_domain_expertise_cannot_produce_priority():
+    observation = AssetSuitabilityObservation(
+        **{**complete().__dict__, "domain_expertise_available": False}
+    )
+    result = assess_asset(observation)
+    assert result.suitability is not AssetSuitability.PRIORITY
+    assert any("expertise do domínio" in gap for gap in result.gaps)
+
+
+def test_timestamp_does_not_claim_freshness_without_freshness_validation():
+    observation = AssetSuitabilityObservation(
+        **{**complete().__dict__, "quote_fresh": None, "quote_timestamped": True}
+    )
+    result = assess_asset(observation)
+    assert result.suitability is not AssetSuitability.PRIORITY
+    assert "frescura da cotação ainda não foi calculada" in result.gaps
+
+
 def test_prioritization_does_not_prefer_crypto_or_weekend_by_class():
     forex = complete("EURUSD")
     crypto = AssetSuitabilityObservation(
