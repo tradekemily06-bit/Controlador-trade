@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.kill_switch import KillSwitch
+from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
+from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
@@ -25,6 +27,7 @@ class OperationalRuntime:
     recovery: RecoveryCoordinator
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
+    market_data: MarketDataRuntimeState
 
 
 def build_operational_runtime(root: str | Path) -> OperationalRuntime:
@@ -53,6 +56,7 @@ def build_operational_runtime(root: str | Path) -> OperationalRuntime:
         ledger=ledger,
         lifecycle=lifecycle,
     )
+    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -61,4 +65,5 @@ def build_operational_runtime(root: str | Path) -> OperationalRuntime:
         recovery=recovery,
         health=health,
         gateway=gateway,
+        market_data=market_data,
     )
