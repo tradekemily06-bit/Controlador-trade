@@ -32,6 +32,8 @@ def test_reasoning_combines_observations_without_trade_signal():
     assert context.expansion_context == "RANGE_EXPANDING"
     assert "DIRECTION_STREAK_PRESENT" in context.pattern_context
     assert "RANGE_AND_VOLUME_EXPANSION" in context.pattern_context
+    assert "RANGE_CHANGE=UP" in context.discovered_relationships
+    assert any(item.startswith("COMBINATION[") for item in context.discovered_relationships)
     assert not hasattr(context, "signal")
     assert not hasattr(context, "score")
 
