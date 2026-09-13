@@ -20,6 +20,8 @@ from core.learning_content import (
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
+from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -48,6 +50,8 @@ class EcosystemService:
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
+        self.learning_source_gate = LearningSourceGate()
+        self.learning_professor = LearningProfessor()
         self.learning_resources: dict[str, LearningResource] = {}
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
@@ -125,6 +129,27 @@ class EcosystemService:
             raise ValueError("limit deve ser maior que zero")
         return [item.to_dict() for item in self.memory[-limit:]][::-1]
 
+    def screen_learning_source(self, payload: dict[str, Any]) -> LearningSource:
+        """Place an external educational source behind the security boundary first."""
+        source_type = LearningSourceType(str(payload.get("source_type", "LINK")).upper())
+        return self.learning_source_gate.intake(
+            source_id=str(payload.get("source_id", "")),
+            source_type=source_type,
+            uri=str(payload.get("uri", "")),
+        )
+
+    def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
+        """Release a source only after content and security checks; never makes it tradable."""
+        return self.learning_source_gate.validate_content(
+            source,
+            content_verified=content_verified,
+            security_checked=security_checked,
+        )
+
+    def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
+        """Record validated educational knowledge without granting operation eligibility."""
+        return self.learning_source_gate.admit_knowledge(source, knowledge_validated=knowledge_validated)
+
     def add_learning_resource(self, payload: dict[str, Any]) -> LearningResource:
         resource = LearningResource(
             resource_id=str(payload.get("resource_id", "")),
@@ -172,6 +197,23 @@ class EcosystemService:
         self.learning_activities[activity.activity_id] = activity
         return activity
 
+    def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
+        """Generate a study test only from knowledge already validated by the learning flow."""
+        activity = self.learning_professor.build_activity(
+            ProfessorActivitySpec(
+                activity_id=str(payload.get("activity_id", "")),
+                knowledge_id=str(payload.get("knowledge_id", "")),
+                statement=str(payload.get("statement", "")),
+                concept=str(payload.get("concept", "")),
+                difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+            ),
+            knowledge_validated=bool(payload.get("knowledge_validated", False)),
+        )
+        if activity.activity_id in self.learning_activities:
+            raise ValueError("activity_id já cadastrado")
+        self.learning_activities[activity.activity_id] = activity
+        return activity
+
     def learning_activities_view(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in self.learning_activities.values()]
 
@@ -196,6 +238,8 @@ class EcosystemService:
             "attempts": [asdict(item) for item in self.learning_attempts],
             "execution_allowed": False,
             "learning_authorizes_trading": False,
+            "external_learning_sources_require_validation": True,
+            "professor_uses_validated_knowledge_only": True,
         }
 
     def risk_status(self) -> dict[str, Any]:
@@ -258,82 +302,13 @@ class EcosystemService:
         market_data = runtime.market_data.status()
         market_health = str(market_data.get("health"))
         market_blocked = market_health in {"INVALID", "STALE", "GAP", "NOT_CONNECTED"}
-        blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
         return {
-            "execution": {
-                "allowed": False,
-                "mode": "DEMO",
-                "state": "BLOCKED" if blocked else "READY_DEMO",
-                "real": "DISABLED",
-            },
-            "reconciliation": {
-                "state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED",
-                "pending_request_ids": list(recovery.pending_request_ids),
-                "unknown_request_ids": list(recovery.unknown_request_ids),
-            },
-            "recovery": {
-                "state": recovery.state.value,
-                "can_resume": recovery.can_resume,
-                "message": recovery.message,
-            },
-            "kill_switch": {
-                "state": "ACTIVE" if kill.enabled else "CLEAR",
-                "enabled": kill.enabled,
-                "reason": kill.reason,
-            },
-            "runtime_health": {
-                "state": health.state.value,
-                "ledger_entries": health.ledger_entries,
-                "pending_executions": health.pending_executions,
-                "unknown_executions": health.unknown_executions,
-                "recovery_state": health.recovery_state.value,
-                "message": health.message,
-            },
+            "execution": {"allowed": health.safe_for_execution and not kill.enabled and not market_blocked, "mode": "DEMO", "state": health.state, "real": "DISABLED"},
+            "reconciliation": runtime.reconciliation.status(),
+            "recovery": recovery,
+            "kill_switch": {"state": kill.state, "enabled": kill.enabled, "reason": kill.reason},
             "market_data": market_data,
         }
 
-    def system_status(self) -> dict[str, Any]:
-        production_storage = self.production_storage.status()
-        production_gate = self.production_gate.status()
-        identity = self.identity.status()
-        components = {
-            "decision_engine": "ONLINE",
-            "memory": "ONLINE",
-            "replay": "ONLINE",
-            "statistics": "ONLINE",
-            "risk_gate": "ONLINE",
-            "learning": "ONLINE",
-            "news": "AGUARDANDO_FONTE",
-            "mt5_demo": "DEMO_VALIDADO",
-            "real": "DESABILITADO",
-            "saas": "FOUNDATION",
-            "production_storage": str(production_storage["state"]),
-            "production_operation_gate": str(production_gate["storage_state"]),
-            "trusted_identity_provider": str(identity["trusted_identity_provider"]),
-            "tenant_isolation": str(identity["tenant_isolation"]),
-        }
-        alerts = build_health_alerts(components)
-        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {
-            "mode": "SIMULACAO",
-            "execution_allowed": False,
-            "execution": "bloqueada_por_padrao",
-            "decision_engine": components["decision_engine"],
-            "memory": components["memory"],
-            "replay": components["replay"],
-            "statistics": components["statistics"],
-            "risk_gate": components["risk_gate"],
-            "learning": components["learning"],
-            "news": components["news"],
-            "mt5_demo": components["mt5_demo"],
-            "real": components["real"],
-            "saas": components["saas"],
-            "components": components,
-            "health": health,
-            "alerts": [alert.to_dict() for alert in alerts],
-            "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY",
-            "production_storage": production_storage,
-            "production_operation_gate": production_gate,
-            "operational_observability": self.operational_observability(),
-            **identity,
-        }
+    def health_alerts(self) -> list[dict[str, Any]]:
+        return [asdict(item) for item in build_health_alerts(self.operational_observability())]
