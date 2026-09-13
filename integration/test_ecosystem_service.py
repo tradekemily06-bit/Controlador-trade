@@ -37,6 +37,7 @@ def test_service_exposes_integrated_senior_context_without_execution_authority()
         risk_observations=(
             RiskObservation(RiskDomain.CAPITAL, "Capital observado.", True, ("account",)),
         ),
+        available_risk_domains=(RiskDomain.CAPITAL,),
     )
 
     assert cycle.quality.value == "COMPLETE"
