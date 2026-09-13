@@ -17,7 +17,7 @@ def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_p
     assert snapshot["execution"] == {
         "allowed": False,
         "mode": "DEMO",
-        "state": "READY_DEMO",
+        "state": "BLOCKED",
         "real": "DISABLED",
     }
     assert snapshot["recovery"]["state"] == "FRESH"
