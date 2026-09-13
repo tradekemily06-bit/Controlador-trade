@@ -5,6 +5,7 @@ from .models import AnalysisResult, Signal
 from .operational_state import OperationalState
 from .risk_manager import RiskManager
 from .senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from .senior_risk_gate import SeniorRiskGate
 
 
 class FinalDecision(str):
@@ -31,6 +32,7 @@ class DecisionEngine:
 
     def __init__(self, risk_manager: RiskManager):
         self.risk_manager = risk_manager
+        self.senior_risk_gate = SeniorRiskGate()
 
     def evaluate(
         self,
@@ -65,25 +67,31 @@ class DecisionEngine:
                 reason=analysis.reason,
             )
 
-        if senior_context is not None:
-            if not isinstance(senior_context, SeniorContextCycle):
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason="Contexto sênior inválido.",
-                )
-            if senior_context.execution_authorized:
-                return DecisionResult(
-                    decision=FinalDecision.BLOQUEAR,
-                    signal=analysis.signal,
-                    reason="O ciclo sênior não pode conceder autoridade de execução.",
-                )
-            if senior_context.quality is not SeniorContextQuality.COMPLETE:
-                return DecisionResult(
-                    decision=FinalDecision.AGUARDAR,
-                    signal=analysis.signal,
-                    reason="Contexto sênior incompleto ou requer reavaliação.",
-                )
+        if senior_context is None:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior obrigatório para autorização de execução.",
+            )
+
+        if not isinstance(senior_context, SeniorContextCycle):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior inválido.",
+            )
+        if senior_context.execution_authorized:
+            return DecisionResult(
+                decision=FinalDecision.BLOQUEAR,
+                signal=analysis.signal,
+                reason="O ciclo sênior não pode conceder autoridade de execução.",
+            )
+        if senior_context.quality is not SeniorContextQuality.COMPLETE:
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=analysis.signal,
+                reason="Contexto sênior incompleto ou requer reavaliação.",
+            )
 
         if market_context is None:
             return DecisionResult(
@@ -119,19 +127,21 @@ class DecisionEngine:
                 reason="Direção do contexto incompatível com sinal de venda.",
             )
 
-        risk = self.risk_manager.evaluate(
-            state=operational_state,
+        risk = self.risk_manager.evaluate(state=operational_state)
+        senior_risk = self.senior_risk_gate.evaluate(
+            senior_risk=senior_context.risk_assessment,
+            operational_risk=risk,
         )
 
-        if not risk.allowed:
+        if not senior_risk.allowed:
             return DecisionResult(
                 decision=FinalDecision.BLOQUEAR,
                 signal=analysis.signal,
-                reason=risk.reason,
+                reason=senior_risk.reason,
             )
 
         return DecisionResult(
             decision=FinalDecision.EXECUTAR,
             signal=analysis.signal,
-            reason="Sinal, contexto sênior, contexto de mercado, estado operacional e risco aprovados.",
+            reason="Sinal, contexto sênior, contexto de mercado, estado operacional e risco sênior/operacional aprovados.",
         )
