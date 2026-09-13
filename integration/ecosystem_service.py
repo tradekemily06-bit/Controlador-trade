@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
@@ -16,7 +17,9 @@ from core.learning_content import (
     LearningStatus,
     normalize_tags,
 )
+from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from integration.news_provider import UnconfiguredNewsProvider
@@ -55,6 +58,22 @@ class EcosystemService:
 
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
+
+    def update_market_data_snapshot(
+        self,
+        snapshot: BrokerMarketDataSnapshot,
+        *,
+        now: datetime,
+        expected_interval_seconds: int | None = None,
+    ) -> MarketDataRuntimeReport:
+        """Publish an authoritative provider snapshot into the read-only runtime state."""
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        return self.operational_runtime.market_data.update(
+            snapshot,
+            now=now,
+            expected_interval_seconds=expected_interval_seconds,
+        )
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(
@@ -230,13 +249,16 @@ class EcosystemService:
                 "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []},
                 "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"},
                 "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None},
-                "market_data": {"health": "NOT_CONNECTED", "stale": None, "gap_count": None, "message": "fonte de candles ainda não conectada ao runtime"},
+                "market_data": {"health": "NOT_CONNECTED", "safe_for_analysis": False, "source": None, "symbol": None, "timeframe": None, "candle_count": None, "gap_count": None, "stale": None, "message": "fonte de candles ainda não conectada ao runtime"},
             }
 
         health = runtime.health.assess()
         recovery = runtime.recovery.assess()
         kill = runtime.kill_switch.state
-        blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED"
+        market_data = runtime.market_data.status()
+        market_health = str(market_data.get("health"))
+        market_blocked = market_health in {"INVALID", "STALE", "GAP", "NOT_CONNECTED"}
+        blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
         return {
             "execution": {
                 "allowed": False,
@@ -267,12 +289,7 @@ class EcosystemService:
                 "recovery_state": health.recovery_state.value,
                 "message": health.message,
             },
-            "market_data": {
-                "health": "NOT_CONNECTED",
-                "stale": None,
-                "gap_count": None,
-                "message": "integridade de candles depende da fonte de mercado conectada ao runtime",
-            },
+            "market_data": market_data,
         }
 
     def system_status(self) -> dict[str, Any]:
