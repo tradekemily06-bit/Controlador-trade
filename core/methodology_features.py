@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from data.models import Candle
+from core.market_data import Candle
 
 
 @dataclass(frozen=True)
