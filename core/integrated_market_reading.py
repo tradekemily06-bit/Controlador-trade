@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .liquidity_engine import LiquidityEngine
-from .market_data import Candle
+from data.models import Candle
 from .market_direction import MarketDirection
 from .methodology_features import extract_candle_features
 from .trend_engine import TrendEngine
@@ -87,16 +87,14 @@ class IntegratedMarketReader:
             body_direction, latest_features.body_ratio, "candle_behavior",
         ))
 
-        if latest_features.dominant_wick != "none":
+        if latest_features.dominant_wick != "NONE":
+            wick_ratio = latest_features.wick_to_body_ratio or 0.0
             observations.append(MarketObservation(
                 "wick-behavior", "wick",
                 f"O candle mais recente apresenta pavio dominante: {latest_features.dominant_wick}.",
-                "NEUTRAL",
-                latest_features.wick_to_body_ratio / (1.0 + latest_features.wick_to_body_ratio),
-                "wick_behavior",
+                "NEUTRAL", wick_ratio / (1.0 + wick_ratio), "wick_behavior",
             ))
 
-        # Existing context engines are evidence sources, not independent votes.
         if len(candles) >= 3:
             trend = self.trend_engine.evaluate(candles=candles)
             trend_direction = {
@@ -105,11 +103,8 @@ class IntegratedMarketReader:
                 MarketDirection.NEUTRA: "NEUTRAL",
             }[trend.direction]
             observations.append(MarketObservation(
-                "trend-context", "structure",
-                trend.reason,
-                trend_direction,
-                trend.strength / 100.0,
-                "market_structure",
+                "trend-context", "structure", trend.reason,
+                trend_direction, trend.strength / 100.0, "market_structure",
             ))
 
         volatility = self.volatility_engine.evaluate(candles=candles)
@@ -124,8 +119,6 @@ class IntegratedMarketReader:
             "NEUTRAL", liquidity.score / 100.0, "market_environment",
         ))
 
-        # Structural event: a close beyond the immediately preceding range is only
-        # an apparent breakout. Its validity requires subsequent/contextual evidence.
         apparent_breakout = latest.close > previous.high or latest.close < previous.low
         if apparent_breakout:
             direction = "BUY" if latest.close > previous.high else "SELL"
@@ -134,7 +127,6 @@ class IntegratedMarketReader:
                 "O fechamento mais recente saiu do range do candle anterior; isso é um rompimento aparente a investigar.",
                 direction, 1.0, "structure_breakout",
             ))
-
             continuation = (
                 latest.close > latest.open and latest.close > previous.high
                 if direction == "BUY"
@@ -145,14 +137,11 @@ class IntegratedMarketReader:
                 "follow_through",
                 "Há continuidade observável do deslocamento." if continuation else
                 "Não há continuidade suficiente no candle observado; a interpretação precisa ser reavaliada.",
-                direction if continuation else "NEUTRAL",
-                1.0,
-                "post_breakout_behavior",
+                direction if continuation else "NEUTRAL", 1.0, "post_breakout_behavior",
             ))
 
         buy = tuple(o.observation_id for o in observations if o.direction == "BUY" and o.strength > 0)
         sell = tuple(o.observation_id for o in observations if o.direction == "SELL" and o.strength > 0)
-
         if buy and sell:
             status = ReadingStatus.CONFLICTING
             conflicts = ("Há evidências direcionais conflitantes; não transformar quantidade de sinais em decisão.",)
@@ -166,7 +155,6 @@ class IntegratedMarketReader:
         possible_false_breakout = apparent_breakout and any(
             o.observation_id == "breakout-reassessment" for o in observations
         )
-
         questions = [
             "Quais relações independentes explicam o movimento observado?",
             "O que sustenta a interpretação e o que a contradiz?",
@@ -174,9 +162,7 @@ class IntegratedMarketReader:
             "Quais evidências são realmente independentes e quais descrevem o mesmo fenômeno?",
         ]
         if apparent_breakout:
-            questions.append(
-                "O rompimento aparente se sustenta com o comportamento posterior ou há sinais de possível falso rompimento?"
-            )
+            questions.append("O rompimento aparente se sustenta com o comportamento posterior ou há sinais de possível falso rompimento?")
         if status is ReadingStatus.CONFLICTING:
             questions.append("O que explica a divergência entre as evidências antes de qualquer decisão?")
 
