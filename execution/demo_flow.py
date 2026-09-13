@@ -55,7 +55,7 @@ class DemoFlow:
             return DemoFlowResult(decision=decision, execution=None, quality=quality)
 
         intent = ExecutionIntent(request_id=self.request_id_factory(), symbol=symbol, signal=decision.signal, amount=amount, duration_seconds=duration_seconds, mode=ExecutionMode.DEMO, created_at=self.clock())
-        execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent)
+        execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context)
         execution = execution_result.gateway.execution if execution_result.gateway is not None else None
         readiness_message = "; ".join(execution_result.readiness.reasons)
         message = execution.message if execution is not None else readiness_message
