@@ -13,6 +13,7 @@ from core.signal_quality import SignalLevel
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
 from execution.demo_flow import DemoFlow
@@ -33,13 +34,22 @@ def make_analysis(signal: Signal = Signal.COMPRA) -> AnalysisResult:
 
 
 def make_senior_context() -> SeniorContextCycle:
+    senior_risk = SeniorRiskAssessment(
+        status=RiskKnowledgeStatus.ASSESSED,
+        observations=(),
+        material_risks=(),
+        unknowns=(),
+        questions=(),
+        reassessment_triggers=(),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="demo-test-cycle",
         whole_graph=None,
         temporal_context=None,
         market_reading=None,
         senior_assessment=None,
-        risk_assessment=None,
+        risk_assessment=senior_risk,
         validated_knowledge_ids=(),
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
