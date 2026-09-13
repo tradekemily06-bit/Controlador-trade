@@ -1,9 +1,9 @@
 """Prioritized notifications for material ecosystem events.
 
-The center separates important events from technical noise so the main UI can
-stay clean while critical information remains visible and auditable.
+All material events can be recorded; only important/critical events surface by
+default so the operational screen stays clean. Notifications never decide or
+authorize trades.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,6 +26,14 @@ class NotificationKind(str, Enum):
     EXECUTION = "EXECUTION"
     LEARNING = "LEARNING"
     RECOVERY = "RECOVERY"
+
+
+class UpdateKind(str, Enum):
+    ECOSYSTEM = "ECOSYSTEM"
+    SECURITY = "SECURITY"
+    KNOWLEDGE = "KNOWLEDGE"
+    DATA = "DATA"
+    INTEGRATION = "INTEGRATION"
 
 
 @dataclass(frozen=True)
@@ -53,18 +61,17 @@ class EcosystemNotificationCenter:
         self._notifications.append(notification)
         return notification
 
-    def publish_update(self, notification_id: str, title: str, message: str, *, important: bool = True) -> EcosystemNotification:
-        return self.publish(EcosystemNotification(
-            notification_id=notification_id,
-            kind=NotificationKind.SYSTEM_UPDATE,
-            severity=NotificationSeverity.IMPORTANT if important else NotificationSeverity.INFO,
-            title=title,
-            message=message,
-            requires_attention=important,
-        ))
+    def publish_update(self, notification_id: str, title: str, message: str, *, important: bool = True, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> EcosystemNotification:
+        severity = NotificationSeverity.IMPORTANT if important else NotificationSeverity.INFO
+        return self.publish(EcosystemNotification(notification_id, NotificationKind.SYSTEM_UPDATE, severity, title, message, requires_attention=important))
+
+    def publish_ecosystem_update(self, notification_id: str, title: str, message: str) -> EcosystemNotification:
+        return self.publish_update(notification_id, title, message, important=True, update_kind=UpdateKind.ECOSYSTEM)
+
+    def publish_security_update(self, notification_id: str, title: str, message: str, *, blocking: bool = False) -> EcosystemNotification:
+        return self.publish(EcosystemNotification(notification_id, NotificationKind.SECURITY, NotificationSeverity.CRITICAL if blocking else NotificationSeverity.IMPORTANT, title, message, requires_attention=True, blocking=blocking))
 
     def visible(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
-        """Return notifications suitable for the clean main UI."""
         if include_info:
             return tuple(self._notifications)
         return tuple(n for n in self._notifications if n.severity is not NotificationSeverity.INFO)
