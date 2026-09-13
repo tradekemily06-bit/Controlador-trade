@@ -5,7 +5,6 @@ convenience. They never grant execution, risk override, autonomy or security
 permission.
 """
 from __future__ import annotations
-
 from dataclasses import dataclass, replace
 from enum import Enum
 
@@ -111,6 +110,8 @@ class EcosystemPreferencesStore:
             raise ValueError("autonomous operation requires its dedicated authorization flow")
         if value.real_execution_enabled:
             raise ValueError("REAL execution cannot be enabled by preferences")
+        if not value.notifications.critical_enabled:
+            raise ValueError("critical notifications cannot be disabled")
         for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
             if not isinstance(field, str) or not field.startswith("#") or len(field) not in (4, 7):
                 raise ValueError("candle colors must be hex values")
