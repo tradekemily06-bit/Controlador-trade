@@ -56,3 +56,18 @@ def test_interface_wires_existing_safe_apis():
         "/api/news?limit=8",
     ):
         assert marker in HTML
+
+
+def test_interface_surfaces_critical_runtime_observability():
+    for marker in (
+        "id=\"runtimeStatus\"",
+        "id=\"runtimeHealth\"",
+        "id=\"runtimeAlerts\"",
+        "status?.health",
+        "CRITICAL",
+        "WARNING",
+        "SAÚDE INDISPONÍVEL",
+        "Execução permanece bloqueada",
+        "REAL continua desabilitado",
+    ):
+        assert marker in HTML
