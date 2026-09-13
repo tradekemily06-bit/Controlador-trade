@@ -1,7 +1,8 @@
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from data.models import Candle
-from core.general_market_observation import observe_general_market_context
+from core.general_market_observation import GeneralMarketObservation, observe_general_market_context
 from core.market_discovery import discover_market_relationships
 
 
@@ -34,13 +35,17 @@ def test_discovery_exposes_relationships_without_decision_fields():
 
 
 def test_discovery_picks_up_new_observation_fields_without_pattern_registry():
-    observation = observe_general_market_context([
+    @dataclass(frozen=True)
+    class ExtendedObservation(GeneralMarketObservation):
+        future_context: str = "NOVEL_CONTEXT"
+
+    base = observe_general_market_context([
         candle(100, 105, 99, 104, 10, 0),
         candle(104, 108, 103, 107, 15, 1),
     ])
-    object.__setattr__(observation, "future_context", "NOVEL_CONTEXT")
+    extended = ExtendedObservation(**base.__dict__)
 
-    relationships = discover_market_relationships(observation)
+    relationships = discover_market_relationships(extended)
 
     assert "FUTURE_CONTEXT=NOVEL_CONTEXT" in relationships
 
