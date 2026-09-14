@@ -80,7 +80,12 @@ def _utc(value: datetime) -> datetime:
 
 
 def assess_point_value(request: PointValueRequest, *, movement_price_units: Decimal = Decimal("0")) -> PointValueAssessment:
-    """Calculate current monetary movement without creating trading authority."""
+    """Calculate current monetary movement without creating trading authority.
+
+    When multiple monetary-value sources are supplied, all usable sources are
+    reconciled. Concordant sources may be used together; conflicting sources
+    fail closed and require reassessment instead of silently preferring one.
+    """
     reasons: list[str] = []
     try:
         quantity = _decimal(request.quantity)
@@ -135,29 +140,38 @@ def assess_point_value(request: PointValueRequest, *, movement_price_units: Deci
     if request.account_currency.upper() == request.quote_currency.upper() and conversion is not None and conversion != 1:
         reasons.append("same_currency_conversion_must_be_one")
 
-    value_per_price_unit_quote: Decimal | None = None
-    source: PointValueSource | None = None
+    value_candidates: list[tuple[PointValueSource, Decimal]] = []
     if tick_value is not None:
         if tick_size is None or tick_size <= 0:
             reasons.append("tick_size_required_with_tick_value")
         else:
-            value_per_price_unit_quote = tick_value / tick_size
-            source = PointValueSource.BROKER_TICK_VALUE
-    elif explicit_value is not None:
-        value_per_price_unit_quote = explicit_value
-        source = PointValueSource.EXPLICIT_PRICE_UNIT_VALUE
-    elif contract_size is not None:
-        value_per_price_unit_quote = contract_size
-        source = PointValueSource.CONTRACT_SPECIFICATION
-    else:
+            value_candidates.append((PointValueSource.BROKER_TICK_VALUE, tick_value / tick_size))
+    if explicit_value is not None:
+        value_candidates.append((PointValueSource.EXPLICIT_PRICE_UNIT_VALUE, explicit_value))
+    if contract_size is not None:
+        value_candidates.append((PointValueSource.CONTRACT_SPECIFICATION, contract_size))
+
+    source: PointValueSource | None = None
+    value_per_price_unit_quote: Decimal | None = None
+    if not value_candidates:
         reasons.append("broker_value_source_required")
+    else:
+        source = value_candidates[0][0]
+        value_per_price_unit_quote = value_candidates[0][1]
+        if any(candidate_value != value_per_price_unit_quote for _, candidate_value in value_candidates[1:]):
+            reasons.append("conflicting_value_sources")
+            source = None
+            value_per_price_unit_quote = None
+        elif len(value_candidates) > 1:
+            reasons.append("multiple_value_sources_concordant")
 
     if point_size is None:
         point_size = tick_size
     if point_size is None or point_size <= 0:
         reasons.append("point_size_required")
 
-    if reasons or value_per_price_unit_quote is None or point_size is None:
+    blocking_reasons = tuple(reason for reason in reasons if reason != "multiple_value_sources_concordant")
+    if blocking_reasons or value_per_price_unit_quote is None or point_size is None:
         return PointValueAssessment(request.instrument, request.broker, PointValueStatus.REASSESS, source, request.account_currency, request.quote_currency, quantity, price, tick_size, point_size, None, None, None, movement, None, None, conversion, as_of, tuple(dict.fromkeys(reasons)))
 
     conversion = Decimal("1") if request.account_currency.upper() == request.quote_currency.upper() else conversion
@@ -167,4 +181,4 @@ def assess_point_value(request: PointValueRequest, *, movement_price_units: Deci
     value_per_tick = value_per_price_unit * tick_size if tick_size is not None else None
     movement_points = movement / point_size
     movement_money = movement * value_per_price_unit * quantity
-    return PointValueAssessment(request.instrument, request.broker, PointValueStatus.READY, source, request.account_currency, request.quote_currency, quantity, price, tick_size, point_size, value_per_price_unit, value_per_point, value_per_tick, movement, movement_points, movement_money, conversion, as_of, ())
+    return PointValueAssessment(request.instrument, request.broker, PointValueStatus.READY, source, request.account_currency, request.quote_currency, quantity, price, tick_size, point_size, value_per_price_unit, value_per_point, value_per_tick, movement, movement_points, movement_money, conversion, as_of, tuple(dict.fromkeys(reasons)))
