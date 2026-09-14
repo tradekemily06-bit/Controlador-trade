@@ -48,6 +48,17 @@ def test_decision_store_is_optional_and_in_memory_compatible(monkeypatch):
     assert store.load() == []
 
 
+def test_decision_store_fails_closed_in_public_saas_mode(monkeypatch, tmp_path):
+    database = tmp_path / "decisions.sqlite3"
+    store = DecisionStore(str(database))
+    store.save(make_record())
+
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
+    assert DecisionStore(str(database)).load() == []
+    with pytest.raises(RuntimeError, match="local decision store is unavailable"):
+        DecisionStore(str(database)).save(make_record("blocked"))
+
+
 def test_configured_decision_store_fails_closed_when_database_path_is_unavailable(tmp_path):
     blocked = tmp_path / "not-a-directory"
     blocked.write_text("blocked", encoding="utf-8")
