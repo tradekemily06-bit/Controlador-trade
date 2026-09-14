@@ -2,13 +2,14 @@
   "use strict";
   const STORAGE_KEY = "controlador:first-use:onboarding-complete";
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[char]);
-  async function refresh() {
+
+  async function refresh(force = false) {
     const center = document.getElementById("onboardingCenter");
     const steps = document.getElementById("onboardingSteps");
     const completion = document.getElementById("onboardingCompletion");
     const close = document.getElementById("onboardingClose");
     if (!center || !steps || !completion) return;
-    if (localStorage.getItem(STORAGE_KEY) === "true") return;
+    if (!force && localStorage.getItem(STORAGE_KEY) === "true") return;
     try {
       const response = await fetch("/api/onboarding", { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("onboarding indisponível");
@@ -19,8 +20,25 @@
       completion.textContent = escapeHtml(guide.completion_message || "");
       center.classList.remove("hidden");
       close?.addEventListener("click", () => { localStorage.setItem(STORAGE_KEY, "true"); center.classList.add("hidden"); }, { once: true });
-    } catch (_) { center.classList.add("hidden"); }
+    } catch (_) {
+      center.classList.add("hidden");
+    }
   }
-  window.ControladorOnboarding = Object.freeze({ refresh });
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", refresh, { once: true }); else refresh();
+
+  function installReopenControl() {
+    if (document.getElementById("onboardingReopenControl")) return;
+    const config = document.getElementById("config");
+    const grid = config?.nextElementSibling;
+    if (!grid) return;
+    const card = document.createElement("article");
+    card.className = "card wide";
+    card.id = "onboardingReopenControl";
+    card.innerHTML = '<div class="module-title">Modo de Usar</div><div class="muted">Reabra o guia de primeira utilização quando quiser. Ele é apenas educativo e não autoriza execução.</div><button class="btn small alt" id="onboardingReopen" type="button" style="margin-top:10px">ABRIR MODO DE USAR</button>';
+    grid.appendChild(card);
+    document.getElementById("onboardingReopen")?.addEventListener("click", () => refresh(true));
+  }
+
+  window.ControladorOnboarding = Object.freeze({ refresh, reopen: () => refresh(true) });
+  const boot = () => { installReopenControl(); refresh(); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true }); else boot();
 })();
