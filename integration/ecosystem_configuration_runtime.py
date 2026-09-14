@@ -14,6 +14,7 @@ from core.advanced_trading_psychology import AdvancedTradingPsychology, TradingB
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
+from security.http_identity import current_trusted_identity
 
 
 class ConfiguredEcosystemService(EcosystemService):
@@ -28,6 +29,13 @@ class ConfiguredEcosystemService(EcosystemService):
         self.advanced_psychology = AdvancedTradingPsychology()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
+
+    def _owner_context(self, *, subject_id: str | None, tenant_id: str | None):
+        """Resolve explicit trusted ownership, falling back to the HTTP request scope."""
+        identity = current_trusted_identity()
+        if subject_id is None and tenant_id is None and identity is not None:
+            subject_id, tenant_id = identity.subject_id, identity.tenant_id
+        return super()._owner_context(subject_id=subject_id, tenant_id=tenant_id)
 
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
