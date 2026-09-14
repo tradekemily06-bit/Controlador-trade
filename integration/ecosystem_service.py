@@ -59,12 +59,18 @@ class EcosystemService:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
-    def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
-        self.memory.append(record)
-        self.store.save(record)
+        if persist:
+            self._persist_records([record])
         return record
+
+    def _persist_records(self, records: list[DecisionRecord]) -> None:
+        if not records:
+            return
+        self.store.save_many(records)
+        self.memory.extend(records)
 
     def assess_senior_context(
         self,
@@ -79,13 +85,7 @@ class EcosystemService:
         validated_knowledge_ids: Iterable[str] = (),
         available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain),
     ) -> Any:
-        """Run the senior contextual layer without creating an operation.
-
-        This is deliberately separate from ``analyze`` until the contextual
-        output has its own decision-gate integration and regression coverage.
-        It never converts a score, candle or contextual assessment directly
-        into execution authority.
-        """
+        """Run the senior contextual layer without creating an operation."""
         request = SeniorContextInput(
             context_id=context_id,
             candles=tuple(candles),
@@ -100,17 +100,14 @@ class EcosystemService:
         return self.senior_context.assess(request)
 
     def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-        # Validate the complete bounded replay envelope before calling analyze().
-        # analyze() persists each decision, so validating while processing would
-        # allow partial persistence before a later invalid/51st scenario fails.
         from core.replay_policy import prevalidate_replay_cases
 
         accepted_cases = prevalidate_replay_cases(cases)
-        results: list[dict[str, Any]] = []
-        for index, payload in enumerate(accepted_cases, start=1):
-            record = self.analyze(payload)
-            results.append({"step": index, **record.to_dict()})
-        return results
+        records: list[DecisionRecord] = []
+        for payload in accepted_cases:
+            records.append(self.analyze(payload, persist=False))
+        self._persist_records(records)
+        return [{"step": index, **record.to_dict()} for index, record in enumerate(records, start=1)]
 
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
         for index, record in enumerate(self.memory):
@@ -239,10 +236,5 @@ class EcosystemService:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
-        alerts = build_health_alerts(components)
-        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
-
-    def health_alerts(self) -> list[dict[str, Any]]:
-        return [asdict(item) for item in build_health_alerts(self.operational_observability())]
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": production_storage["status"], "production_operation_gate": production_gate, "identity": identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "real": "DESABILITADO", "mt5_demo": "DEMO_VALIDADO", "production_operation_gate": production_gate, "identity": identity, "production_storage": production_storage, "components": components, "health_alerts": build_health_alerts(self)}
