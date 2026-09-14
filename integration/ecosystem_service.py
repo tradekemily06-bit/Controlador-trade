@@ -62,6 +62,11 @@ class EcosystemService:
             return None
         return self.require_production_context(subject_id=subject_id, tenant_id=tenant_id)
 
+    def _scoped_memory(self, owner: ProductionRequestContext | None) -> list[DecisionRecord]:
+        if owner is None:
+            return list(self.memory)
+        return [record for record in self.memory if record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id)]
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
@@ -99,24 +104,30 @@ class EcosystemService:
 
     def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
-        for record in self.memory:
+        for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
-                if owner is not None and not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
+                if owner is None:
+                    if record.subject_id is not None or record.tenant_id is not None:
+                        raise PermissionError("trusted scope is required for owned decision")
+                elif not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
                     raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
                 self.store.save(updated)
-                self.memory[self.memory.index(record)] = updated
+                self.memory[index] = updated
                 return updated
         raise ValueError("decision_id não encontrado")
 
-    def statistics(self) -> dict[str, Any]:
-        breakdowns = summarize_breakdowns(self.memory)
-        return {**asdict(summarize(self.memory)), "periods": summarize_periods(self.memory), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
+    def statistics(self, *, subject_id: str | None = None, tenant_id: str | None = None) -> dict[str, Any]:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        scoped = self._scoped_memory(owner)
+        breakdowns = summarize_breakdowns(scoped)
+        return {**asdict(summarize(scoped)), "periods": summarize_periods(scoped), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
 
-    def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
+    def memory_view(self, limit: int = 50, *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
         if limit < 1:
             raise ValueError("limit deve ser maior que zero")
-        return [item.to_dict() for item in self.memory[-limit:]][::-1]
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        return [item.to_dict() for item in self._scoped_memory(owner)[-limit:]][::-1]
 
     def screen_learning_source(self, payload: dict[str, Any]) -> LearningSource:
         source_type = LearningSourceType(str(payload.get("source_type", "LINK")).upper())
@@ -213,7 +224,7 @@ class EcosystemService:
     def operational_observability(self) -> dict[str, Any]:
         runtime = self.operational_runtime
         if runtime is None:
-            return {"execution": {"allowed": False, "mode": "DEMO", "state": "NOT_CONNECTED", "real": "DISABLED"}, "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []}, "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"}, "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None}, "market_data": {"health": "NOT_CONNECTED", "safe_for_analysis": False, "source": None, "symbol": None, "timeframe": None, "candle_count": None, "gap_count": None, "stale": None, "message": "fonte de candles ainda não conectada ao runtime"}}
+            return {"execution": {"allowed": False, "mode": "DEMO", "state": "NOT_CONNECTED", "real": "DISABLED"}, "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []}, "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"}, "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None}, "market_data": {"health": "NOT_CONNECTED", "safe_for_analysis": False, "source": None, "symbol": None, "timeframe": None, "candle_count": None, "stale": None, "message": "fonte de candles ainda não conectada ao runtime"}}
         health = runtime.health.assess()
         recovery = runtime.recovery.assess()
         kill = runtime.kill_switch.state
