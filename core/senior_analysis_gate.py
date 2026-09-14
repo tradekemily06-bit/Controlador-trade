@@ -1,26 +1,26 @@
-"""Gate contextual entre análise candidata e decisão operacional.
-
-O score legado pode continuar existindo como evidência auxiliar, mas nunca
-pode, sozinho, transformar uma análise em COMPRA/VENDA. A leitura integrada
-precisa sustentar a direção e o ciclo sênior precisa estar completo. Este
-módulo não concede autoridade de execução.
-"""
+"""Gate contextual entre análise candidata e decisão operacional."""
 
 from __future__ import annotations
 
 from core.models import AnalysisResult, Signal
+from core.risk_manager import RiskDecision
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_risk_gate import SeniorRiskGate
 from core.integrated_market_reading import ReadingStatus
 
 
 class SeniorAnalysisGate:
-    """Impede que score/um único subsistema opere isoladamente."""
+    """Impede que score/contexto/risk subsystems operate in isolation."""
+
+    def __init__(self, risk_gate: SeniorRiskGate | None = None) -> None:
+        self.risk_gate = risk_gate or SeniorRiskGate()
 
     def evaluate(
         self,
         *,
         analysis: AnalysisResult,
         senior_context: SeniorContextCycle,
+        operational_risk: RiskDecision | None = None,
     ) -> AnalysisResult:
         if not isinstance(analysis, AnalysisResult):
             raise ValueError("analysis must be AnalysisResult")
@@ -49,12 +49,21 @@ class SeniorAnalysisGate:
         if not supported:
             return self._await(analysis, "A direção candidata não é sustentada pela leitura integrada.")
 
+        if operational_risk is None:
+            return self._await(analysis, "Risco operacional indisponível; análise bloqueada até reavaliação.")
+        gate = self.risk_gate.evaluate(
+            senior_risk=senior_context.risk_assessment,
+            operational_risk=operational_risk,
+        )
+        if not gate.allowed:
+            return self._await(analysis, gate.reason)
+
         return AnalysisResult(
             signal=analysis.signal,
             score=analysis.score,
             reason=(
-                "Análise candidata confirmada pela leitura integrada e pelo ciclo sênior; "
-                "execução continua sujeita aos gates operacionais, de risco e segurança."
+                "Análise candidata confirmada pela leitura integrada e pelos gates "
+                "sênior e de risco operacional; execução continua sujeita aos demais gates."
             ),
             confirmed=analysis.confirmed,
             symbol=analysis.symbol,
