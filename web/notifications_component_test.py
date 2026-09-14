@@ -15,9 +15,12 @@ def test_notification_component_keeps_critical_and_important_visible_without_inf
     assert "IMPORTANT" in JS
 
 
-def test_notification_component_reads_existing_summary_api_only():
+def test_notification_component_uses_summary_then_expands_full_list_on_demand():
     assert "fetch('/api/notifications')" in JS
-    assert "/api/notifications/all" not in JS
+    assert "fetch('/api/notifications/all')" in JS
+    assert "VER TODAS" in JS
+    assert "OCULTAR INFORMATIVAS" in JS
+    assert "infoBox.classList.remove('hidden')" in JS
     assert "/api/updates" not in JS
 
 
