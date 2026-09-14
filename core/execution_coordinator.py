@@ -7,7 +7,6 @@ from core.execution_intent import ExecutionIntent
 from core.execution_intent_admission import ExecutionIntentAdmission
 from core.live_orchestrator import OrchestrationResult
 from core.models import Signal
-from core.senior_context_cycle import SeniorContextCycle
 from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest
 
@@ -45,6 +44,8 @@ class ExecutionCoordinator:
             raise ValueError("somente decisões EXECUTAR podem gerar plano de execução.")
         if mode is not ExecutionMode.DEMO:
             raise ValueError("somente execução DEMO é permitida pelo coordinator nesta etapa.")
+        if orchestration.senior_context is None:
+            raise ValueError("contexto sênior obrigatório antes de criar plano de execução.")
         signal = Signal(orchestration.analysis.signal.value)
         symbol = orchestration.analysis.symbol
         if not symbol:
@@ -66,7 +67,6 @@ class ExecutionCoordinator:
         plan: ExecutionPlan,
         *,
         orchestration: OrchestrationResult,
-        senior_context: SeniorContextCycle | None = None,
         entry_conditions: tuple[str, ...] = (),
     ) -> GatewayResult:
         if not isinstance(plan, ExecutionPlan):
@@ -75,7 +75,7 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, "resultado de orquestração inválido.")
         if orchestration.decision.decision is not FinalDecision.EXECUTAR:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
-        if senior_context is None:
+        if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
         intent = ExecutionIntent(
             request_id=plan.request_id,
@@ -88,7 +88,7 @@ class ExecutionCoordinator:
         )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
-            senior_context=senior_context,
+            senior_context=orchestration.senior_context,
             snapshot=orchestration.snapshot,
             entry_conditions=entry_conditions,
         )
