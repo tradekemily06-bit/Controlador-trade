@@ -27,6 +27,7 @@ class LeverageRequest:
     maximum_loss: Decimal | None
     environment: str = "DEMO"
     point_value_request: PointValueRequest | None = None
+    margin_required: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -68,15 +69,18 @@ def assess_leverage(request: LeverageRequest) -> LeverageAssessment:
         reasons.append("point_value_source_required_for_loss_assessment")
     if request.maximum_loss is None:
         reasons.append("maximum_loss_or_risk_budget_required")
+    if request.margin_required is None:
+        reasons.append("broker_margin_model_required")
     if reasons:
         return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, tuple(reasons), True)
     try:
         stop_distance = _decimal(request.stop_distance)
         maximum_loss = _decimal(request.maximum_loss)
         explicit_value = _decimal(request.value_per_price_unit) if request.value_per_price_unit is not None else None
+        margin = _decimal(request.margin_required)
     except Exception:
         return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, ("invalid_risk_numeric_input",), True)
-    if stop_distance < 0 or maximum_loss < 0 or (explicit_value is not None and explicit_value < 0):
+    if stop_distance < 0 or maximum_loss < 0 or (explicit_value is not None and explicit_value < 0) or margin < 0:
         return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, ("risk_inputs_must_be_non_negative",), True)
 
     value_per_unit = explicit_value
@@ -93,7 +97,6 @@ def assess_leverage(request: LeverageRequest) -> LeverageAssessment:
 
     assert value_per_unit is not None
     exposure = capital * leverage
-    margin = capital
     loss = stop_distance * value_per_unit * quantity
     loss_ratio = loss / capital
     if loss > maximum_loss:
