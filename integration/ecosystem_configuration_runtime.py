@@ -129,12 +129,16 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def psychology_check_in(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Return behavioral self-awareness feedback; never authorizes trading."""
+        if not self.preferences.preferences.psychology_enabled:
+            return {"enabled": False, "flags": [], "risk_level": "DISABLED", "message": "Psicologia do trader está desativada nas preferências.", "suggested_action": None, "trading_authorized": False}
         check_in = PsychologyCheckIn(emotional_state=str(payload.get("emotional_state", "")), urge_to_trade=int(payload.get("urge_to_trade", 0)), recent_losses=int(payload.get("recent_losses", 0)), fatigue=int(payload.get("fatigue", 0)), confidence=int(payload.get("confidence", 0)), rule_adherence=int(payload.get("rule_adherence", 0)))
         assessment = self.psychology.assess(check_in)
-        return {"flags": [flag.value for flag in assessment.flags], "risk_level": assessment.risk_level, "message": assessment.message, "suggested_action": assessment.suggested_action, "trading_authorized": False}
+        return {"enabled": True, "flags": [flag.value for flag in assessment.flags], "risk_level": assessment.risk_level, "message": assessment.message, "suggested_action": assessment.suggested_action, "trading_authorized": False}
 
     def advanced_psychology_assessment(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Assess observable trader behavior with advanced, explainable guardrails."""
+        if not self.preferences.preferences.psychology_enabled:
+            return {"enabled": False, "patterns": [], "severity": "DISABLED", "score": 0, "evidence": [], "intervention": None, "learning_focus": [], "execution_authorized": False}
         observation = BehavioralObservation(
             operations=int(payload.get("operations", 0)),
             losses=int(payload.get("losses", 0)),
@@ -155,4 +159,4 @@ class ConfiguredEcosystemService(EcosystemService):
             recent_loss_streak=int(payload.get("recent_loss_streak", 0)),
         )
         profile = self.advanced_psychology.assess(observation)
-        return {"patterns": [item.value for item in profile.patterns], "severity": profile.severity, "score": profile.score, "evidence": list(profile.evidence), "intervention": profile.intervention, "learning_focus": list(profile.learning_focus), "execution_authorized": False}
+        return {"enabled": True, "patterns": [item.value for item in profile.patterns], "severity": profile.severity, "score": profile.score, "evidence": list(profile.evidence), "intervention": profile.intervention, "learning_focus": list(profile.learning_focus), "execution_authorized": False}
