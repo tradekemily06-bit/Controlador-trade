@@ -8,6 +8,9 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.ecosystem_maintenance import MaintenanceStatus
+from core.ecosystem_notifications import NotificationSeverity
+from core.ecosystem_preferences import EcosystemPreferencesStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
@@ -81,7 +84,6 @@ class EcosystemService:
         self.memory.extend(records)
 
     def assess_senior_context(self, *, context_id: str, candles: Iterable[Candle], available_nodes: Iterable[str], observed_nodes: Iterable[str], gaps: dict[str, str] | None = None, relationships_reviewed: Iterable[str] = (), risk_observations: Iterable[RiskObservation] = (), validated_knowledge_ids: Iterable[str] = (), available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain)) -> Any:
-        """Run the senior contextual layer without creating an operation."""
         request = SeniorContextInput(context_id=context_id, candles=tuple(candles), available_nodes=tuple(available_nodes), observed_nodes=tuple(observed_nodes), gaps=dict(gaps or {}), relationships_reviewed=tuple(relationships_reviewed), risk_observations=tuple(risk_observations), validated_knowledge_ids=tuple(validated_knowledge_ids), available_risk_domains=tuple(available_risk_domains))
         return self.senior_context.assess(request)
 
@@ -102,9 +104,6 @@ class EcosystemService:
                 if owner is not None and not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
                     raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
-                # Durability is authoritative: do not mutate the in-memory view
-                # until the durable write succeeds. Otherwise a storage failure
-                # could expose a result that was never actually persisted.
                 self.store.save(updated)
                 self.memory[self.memory.index(record)] = updated
                 return updated
@@ -228,10 +227,13 @@ class EcosystemService:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage.get("status", production_storage.get("state", "UNKNOWN"))), "production_operation_gate": str(production_gate.get("storage_state", production_gate.get("state", "UNKNOWN"))), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "psychology": "ONLINE" if getattr(self, "preferences", None) is None or self.preferences.preferences.psychology_enabled else "DISABLED", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage.get("status", production_storage.get("state", "UNKNOWN"))), "production_operation_gate": str(production_gate.get("storage_state", production_gate.get("state", "UNKNOWN"))), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        maintenance = self.maintenance.status() if hasattr(self, "maintenance") else {"status": "NOT_CONFIGURED"}
         alerts = build_health_alerts(components)
+        if maintenance.get("status") == MaintenanceStatus.ACTIVE.value:
+            alerts = tuple(alerts) + tuple()
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "psychology": components["psychology"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "maintenance": maintenance, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
