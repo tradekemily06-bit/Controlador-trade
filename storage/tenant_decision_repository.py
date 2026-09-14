@@ -24,7 +24,8 @@ class ProductionTenantDecisionRepository:
 
     Tenant identity is mandatory on every operation. The repository never accepts a
     global decision lookup, so a production caller cannot accidentally cross tenant
-    boundaries by using only a decision id.
+    boundaries by using only a decision id. Records written to this boundary must
+    also carry ownership metadata that matches the trusted tenant context.
     """
 
     def __init__(self, store: ProductionStore) -> None:
@@ -49,10 +50,16 @@ class ProductionTenantDecisionRepository:
             reason=str(payload["reason"]),
             execution_allowed=bool(payload.get("execution_allowed", False)),
             outcome=payload.get("outcome"),
+            subject_id=payload.get("subject_id"),
+            tenant_id=payload.get("tenant_id"),
         )
 
     def save(self, record: DecisionRecord, *, tenant_id: str) -> None:
         tenant = self._validate_tenant(tenant_id)
+        if record.tenant_id != tenant:
+            raise PermissionError("decision tenant does not match trusted tenant context")
+        if not record.subject_id or not record.subject_id.strip():
+            raise PermissionError("decision subject ownership is required")
         self.store.save(record.to_dict(), tenant_id=tenant)
 
     def load(self, decision_id: str, *, tenant_id: str) -> DecisionRecord | None:
@@ -60,10 +67,23 @@ class ProductionTenantDecisionRepository:
         if not isinstance(decision_id, str) or not decision_id.strip():
             raise ValueError("decision_id is required")
         payload = self.store.load(decision_id.strip(), tenant_id=tenant)
-        return None if payload is None else self._to_record(payload)
+        if payload is None:
+            return None
+        record = self._to_record(payload)
+        if record.tenant_id != tenant:
+            raise PermissionError("stored decision tenant does not match trusted tenant context")
+        if not record.subject_id or not record.subject_id.strip():
+            raise PermissionError("stored decision has no trusted subject ownership")
+        return record
 
     def list(self, *, tenant_id: str, limit: int = 100) -> list[DecisionRecord]:
         tenant = self._validate_tenant(tenant_id)
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             raise ValueError("limit must be greater than zero")
-        return [self._to_record(item) for item in self.store.list(tenant_id=tenant, limit=limit)]
+        records = [self._to_record(item) for item in self.store.list(tenant_id=tenant, limit=limit)]
+        for record in records:
+            if record.tenant_id != tenant:
+                raise PermissionError("stored decision tenant does not match trusted tenant context")
+            if not record.subject_id or not record.subject_id.strip():
+                raise PermissionError("stored decision has no trusted subject ownership")
+        return records
