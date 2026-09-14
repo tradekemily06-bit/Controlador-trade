@@ -36,8 +36,9 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
     kill_switch = KillSwitch()
-    maintenance = MaintenanceManager()
+    maintenance = MaintenanceManager(root / "maintenance.json")
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
