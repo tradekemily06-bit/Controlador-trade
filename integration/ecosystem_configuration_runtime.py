@@ -11,10 +11,11 @@ from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.trading_psychology import PsychologyCheckIn, TradingPsychologyGuard
 from core.advanced_trading_psychology import AdvancedTradingPsychology, TradingBehaviorSnapshot
+from core.trading_psychology_history import TradingPsychologyHistory
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
-from security.http_identity import current_trusted_identity
+from security.http_identity import current_trusted_identity, saas_public_mode
 
 
 class ConfiguredEcosystemService(EcosystemService):
@@ -27,6 +28,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self.maintenance = self.operational_runtime.maintenance if self.operational_runtime is not None else MaintenanceManager()
         self.psychology = TradingPsychologyGuard()
         self.advanced_psychology = AdvancedTradingPsychology()
+        self.psychology_history = TradingPsychologyHistory(self.advanced_psychology)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
@@ -36,6 +38,14 @@ class ConfiguredEcosystemService(EcosystemService):
         if subject_id is None and tenant_id is None and identity is not None:
             subject_id, tenant_id = identity.subject_id, identity.tenant_id
         return super()._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+
+    def _psychology_owner(self):
+        identity = current_trusted_identity()
+        if identity is not None:
+            return self._owner_context(subject_id=identity.subject_id, tenant_id=identity.tenant_id)
+        if saas_public_mode():
+            raise PermissionError("trusted scope is required for psychology history")
+        return None
 
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -161,7 +171,15 @@ class ConfiguredEcosystemService(EcosystemService):
             emotional_state=str(payload.get("emotional_state", "")),
         )
         assessment = self.advanced_psychology.assess(snapshot)
-        return {"enabled": True, "patterns": [item.pattern.value for item in assessment.evidence], "risk_level": assessment.risk_level, "score": assessment.score, "evidence": [{"pattern": item.pattern.value, "severity": item.severity, "evidence": list(item.evidence), "recommendation": item.recommendation} for item in assessment.evidence], "recommendations": list(assessment.recommendations), "trading_authorized": False}
+        result = {"enabled": True, "patterns": [item.pattern.value for item in assessment.evidence], "risk_level": assessment.risk_level, "score": assessment.score, "evidence": [{"pattern": item.pattern.value, "severity": item.severity, "evidence": list(item.evidence), "recommendation": item.recommendation} for item in assessment.evidence], "recommendations": list(assessment.recommendations), "trading_authorized": False}
+        if self.preferences.preferences.psychology_data_collection_enabled:
+            owner = self._psychology_owner()
+            history = self._scoped_memory(owner)
+            historical = self.psychology_history.assess_history(history)
+            result["history"] = {"score": historical.score, "risk_level": historical.risk_level, "patterns": [item.pattern.value for item in historical.evidence], "recommendations": list(historical.recommendations), "trading_authorized": False}
+        else:
+            result["history"] = {"enabled": False, "reason": "behavioral data collection is disabled"}
+        return result
 
     def psychology_status(self) -> dict[str, Any]:
         prefs = self.preferences.preferences
