@@ -45,8 +45,14 @@ def _audit(environ, request_id: str, status: int) -> None:
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id))
-    start_response(f"{status.value} {status.phrase}", headers)
+    headers.extend(SECURITY.headers(request_id)); start_response(f"{status.value} {status.phrase}", headers)
+    if environ is not None: _audit(environ, request_id, status.value)
+    return [body]
+
+
+def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
+    headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))]
+    headers.extend(SECURITY.headers(request_id)); start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None: _audit(environ, request_id, status.value)
     return [body]
 
@@ -55,11 +61,11 @@ def _read_json(environ) -> dict:
     raw_length = environ.get("CONTENT_LENGTH") or "0"
     try: length = int(raw_length)
     except (TypeError, ValueError) as exc: raise ValueError("content-length inválido") from exc
-    if length < 0 or length > MAX_BODY_BYTES: raise ValueError("payload excede o limite permitido")
+    if length < 0 or length > MAX_BODY_BYTES: raise ValueError("Entrada inválida: payload excede o limite permitido")
     raw = environ["wsgi.input"].read(length)
-    if len(raw) > MAX_BODY_BYTES: raise ValueError("payload excede o limite permitido")
+    if len(raw) > MAX_BODY_BYTES: raise ValueError("Entrada inválida: payload excede o limite permitido")
     data = json.loads(raw or b"{}")
-    if not isinstance(data, dict): raise ValueError("payload deve ser um objeto JSON")
+    if not isinstance(data, dict): raise ValueError("Entrada inválida: payload deve ser um objeto JSON")
     return data
 
 
@@ -92,8 +98,7 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
 
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
-    body = path.read_bytes()
-    script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
+    body = path.read_bytes(); script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
         if path == WEB_DIR / "index.html":
@@ -107,11 +112,7 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             onboarding_mount = (onboarding_html + onboarding_script).encode("utf-8")
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
-    headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
-    start_response("200 OK", headers)
-    _audit(environ, request_id, 200)
-    return [body]
+    headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]; headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce)); start_response("200 OK", headers); _audit(environ, request_id, 200); return [body]
 
 
 def application(environ, start_response):
@@ -176,7 +177,7 @@ def application(environ, start_response):
         if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json", request_id, environ)
         if path.startswith("/api/") and method in {"GET", "POST"}: return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "Endpoint não encontrado", "request_id": request_id}, request_id, environ)
-        return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "Recurso não encontrado", "request_id": request_id}, request_id, environ)
+        return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
     except Exception as exc:
         status = HTTPStatus.SERVICE_UNAVAILABLE if exc.__class__.__name__ == "PublicSaaSNotReady" else (HTTPStatus.FORBIDDEN if isinstance(exc, PermissionError) else HTTPStatus.BAD_REQUEST)
         return _json_response(start_response, status, {"error": str(exc), "request_id": request_id}, request_id, environ)
