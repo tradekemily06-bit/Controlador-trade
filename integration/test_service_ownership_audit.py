@@ -18,7 +18,7 @@ def test_configured_analyze_preserves_trusted_owner() -> None:
     record = service.analyze({"score": 90}, subject_id="user-a", tenant_id="tenant-a")
     assert record.subject_id == "user-a"
     assert record.tenant_id == "tenant-a"
-    assert record.signal.value == "AGUARDAR"
+    assert record.signal == "AGUARDAR"
 
 
 def test_replay_attaches_one_trusted_owner_to_every_record() -> None:
