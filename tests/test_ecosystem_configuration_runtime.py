@@ -60,4 +60,4 @@ def test_advanced_psychology_is_disabled_without_affecting_execution_safety_cont
 
     assert result["enabled"] is False
     assert result["patterns"] == []
-    assert result["execution_authorized"] is False
+    assert result["trading_authorized"] is False
