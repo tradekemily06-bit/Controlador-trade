@@ -65,6 +65,8 @@ class EcosystemPreferences:
     candle: CandleAppearance = CandleAppearance()
     notifications: NotificationPreferences = NotificationPreferences()
     show_technical_details_by_default: bool = False
+    psychology_enabled: bool = True
+    psychology_data_collection_enabled: bool = True
     autonomous_operation_enabled: bool = False
     real_execution_enabled: bool = False
 
@@ -106,6 +108,10 @@ class EcosystemPreferencesStore:
             raise ValueError("default_symbol is required")
         if not value.default_timeframe.strip():
             raise ValueError("default_timeframe is required")
+        if not isinstance(value.psychology_enabled, bool):
+            raise ValueError("psychology_enabled must be boolean")
+        if not isinstance(value.psychology_data_collection_enabled, bool):
+            raise ValueError("psychology_data_collection_enabled must be boolean")
         if value.autonomous_operation_enabled:
             raise ValueError("autonomous operation requires its dedicated authorization flow")
         if value.real_execution_enabled:
