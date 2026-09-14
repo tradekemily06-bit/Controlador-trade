@@ -22,7 +22,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
-    def analyze(self, payload: dict[str, Any]):
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True):
         """Require senior context and operational risk for actionable analysis."""
         try:
             context_input = SeniorAnalysisBoundary.build_input(payload)
@@ -35,7 +35,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 symbol=payload.get("symbol"),
                 timeframe=payload.get("timeframe"),
             )
-            return self._record_analysis(safe)
+            return self._record_analysis(safe, persist=persist)
 
         senior_context = self.senior_context.assess(context_input)
         candidate = self.engine.evaluate(
@@ -51,13 +51,13 @@ class ConfiguredEcosystemService(EcosystemService):
             senior_context=senior_context,
             operational_risk=operational_risk,
         )
-        return self._record_analysis(gated)
+        return self._record_analysis(gated, persist=persist)
 
-    def _record_analysis(self, result):
+    def _record_analysis(self, result, *, persist: bool = True):
         from analysis.decision_record import DecisionRecord
         record = DecisionRecord.from_analysis(result)
-        self.memory.append(record)
-        self.store.save(record)
+        if persist:
+            self._persist_records([record])
         return record
 
     def get_preferences(self) -> dict[str, Any]:
@@ -88,6 +88,10 @@ class ConfiguredEcosystemService(EcosystemService):
     def update_notification_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
+
+    def _notification_visible(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
+        events = self.notifications.visible(include_info=include_info)
+        return tuple(item for item in events if self._notification_visible(item))
 
     def _notification_visible(self, item: EcosystemNotification) -> bool:
         prefs = self.preferences.preferences.notifications
