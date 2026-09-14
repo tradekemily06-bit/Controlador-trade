@@ -101,6 +101,15 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(all(item["signal"] == "AGUARDAR" for item in payload["results"]))
         self.assertFalse(payload["execution_allowed"])
 
+    def test_replay_case_count_is_bounded(self):
+        status, _, payload = self.request(
+            "/api/replay",
+            method="POST",
+            payload={"cases": [{} for _ in range(51)]},
+        )
+        self.assertEqual(status, "400 Bad Request")
+        self.assertIn("error", payload)
+
     def test_outcome_updates_existing_decision(self):
         status, _, decision = self.request(
             "/api/analyze",
