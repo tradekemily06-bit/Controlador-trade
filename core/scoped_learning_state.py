@@ -1,29 +1,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Generic, TypeVar
 
-
-T = TypeVar("T")
+from core.learning_content import LearningActivity, LearningAttempt, LearningObservation, LearningResource
+from core.p128_learning_source_gate import LearningSource
 
 
 @dataclass
-class LearningScopeBucket(Generic[T]):
-    """In-process scoped bucket used as a safety boundary before durable SaaS storage."""
+class LearningScope:
+    """All user-owned learning state for exactly one tenant+subject pair."""
 
-    values: T
+    sources: dict[str, LearningSource] = field(default_factory=dict)
+    resources: dict[str, LearningResource] = field(default_factory=dict)
+    observations: list[LearningObservation] = field(default_factory=list)
+    activities: dict[str, LearningActivity] = field(default_factory=dict)
+    attempts: list[LearningAttempt] = field(default_factory=list)
 
 
 class ScopedLearningState:
-    """Separates learning state by trusted tenant+subject without changing local mode.
+    """Separates learning state by trusted tenant+subject.
 
-    This is deliberately an isolation layer, not the final durable SaaS data plane.
-    Public SaaS remains fail-closed until a durable shared provider is configured.
+    This is an isolation layer, not the final durable SaaS data plane. Public
+    SaaS remains fail-closed until a durable shared provider is configured.
     """
 
-    def __init__(self, factory):
-        self._factory = factory
-        self._scopes: dict[tuple[str, str], LearningScopeBucket] = {}
+    def __init__(self) -> None:
+        self._scopes: dict[tuple[str, str], LearningScope] = {}
 
     @staticmethod
     def _scope(tenant_id: str | None, subject_id: str | None) -> tuple[str, str] | None:
@@ -35,12 +37,8 @@ class ScopedLearningState:
             raise PermissionError("tenant_id and subject_id are required for scoped learning state")
         return tenant, subject
 
-    def get(self, *, tenant_id: str | None, subject_id: str | None):
+    def get(self, *, tenant_id: str | None, subject_id: str | None) -> LearningScope | None:
         scope = self._scope(tenant_id, subject_id)
         if scope is None:
             return None
-        bucket = self._scopes.get(scope)
-        if bucket is None:
-            bucket = LearningScopeBucket(self._factory())
-            self._scopes[scope] = bucket
-        return bucket.values
+        return self._scopes.setdefault(scope, LearningScope())
