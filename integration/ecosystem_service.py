@@ -213,6 +213,10 @@ class EcosystemService:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        storage_status = production_storage.get("status", production_storage.get("state", "UNKNOWN"))
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": storage_status, "production_operation_gate": production_gate, "identity": identity}
-        return {"mode": "SIMULACAO", "execution_allowed": False, "real": "DESABILITADO", "mt5_demo": "DEMO_VALIDADO", "production_operation_gate": production_gate, "identity": identity, "production_storage": production_storage, "components": components, "health_alerts": build_health_alerts(components)}
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage.get("status", production_storage.get("state", "UNKNOWN"))), "production_operation_gate": str(production_gate.get("storage_state", production_gate.get("state", "UNKNOWN"))), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        alerts = build_health_alerts(components)
+        health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
+
+    def health_alerts(self) -> list[dict[str, Any]]:
+        return [asdict(item) for item in build_health_alerts(self.operational_observability())]
