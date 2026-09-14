@@ -26,8 +26,15 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
-PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
-PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/saas/status"}
+PUBLIC_SAAS_MUTATIONS = {
+    "/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome",
+    "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit",
+    "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts",
+}
+PUBLIC_SAAS_READS = {
+    "/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections",
+    "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/saas/status",
+}
 ADMIN_ONLY_SAAS_MUTATIONS = {"/api/learning/sources/validate", "/api/learning/sources/admit"}
 
 
@@ -38,7 +45,8 @@ def _audit(environ, request_id: str, status: int) -> None:
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id)); start_response(f"{status.value} {status.phrase}", headers)
+    headers.extend(SECURITY.headers(request_id))
+    start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None: _audit(environ, request_id, status.value)
     return [body]
 
@@ -84,7 +92,8 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
 
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
-    body = path.read_bytes(); script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
+    body = path.read_bytes()
+    script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
         if path == WEB_DIR / "index.html":
@@ -98,7 +107,11 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             onboarding_mount = (onboarding_html + onboarding_script).encode("utf-8")
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
-    headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]; headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce)); start_response("200 OK", headers); _audit(environ, request_id, 200); return [body]
+    headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
+    headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
+    start_response("200 OK", headers)
+    _audit(environ, request_id, 200)
+    return [body]
 
 
 def application(environ, start_response):
@@ -161,18 +174,16 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
-        if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
-    except __import__("security.http_identity", fromlist=["PublicSaaSNotReady"]).PublicSaaSNotReady as exc:
-        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc), "request_id": request_id}, request_id, environ)
-    except PermissionError as exc:
-        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
-    headers = [("Content-Type", "text/plain; charset=utf-8")]; headers.extend(SECURITY.headers(request_id)); start_response("404 Not Found", headers); _audit(environ, request_id, 404); return [b"Not Found"]
+        if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json", request_id, environ)
+        if path.startswith("/api/") and method in {"GET", "POST"}: return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "Endpoint não encontrado", "request_id": request_id}, request_id, environ)
+        return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "Recurso não encontrado", "request_id": request_id}, request_id, environ)
+    except Exception as exc:
+        status = HTTPStatus.SERVICE_UNAVAILABLE if exc.__class__.__name__ == "PublicSaaSNotReady" else (HTTPStatus.FORBIDDEN if isinstance(exc, PermissionError) else HTTPStatus.BAD_REQUEST)
+        return _json_response(start_response, status, {"error": str(exc), "request_id": request_id}, request_id, environ)
 
 
-def run(host: str = "0.0.0.0", port: int | None = None) -> None:
-    selected_port = port or int(os.environ.get("PORT", "8000"))
+def run() -> None:
+    host = os.environ.get("CONTROLADOR_HOST", "0.0.0.0"); selected_port = int(os.environ.get("PORT", "7860"))
     with make_server(host, selected_port, application) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}"); server.serve_forever()
 
