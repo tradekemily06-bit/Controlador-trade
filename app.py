@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import os
 from http import HTTPStatus
@@ -67,6 +68,19 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _authorize_internal_update(environ) -> tuple[bool, str]:
+    expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
+    if not expected:
+        return False, "internal update endpoint is not configured"
+    provided = str(environ.get("HTTP_AUTHORIZATION", ""))
+    if not provided.startswith("Bearer "):
+        return False, "internal authorization required"
+    token = provided[7:].strip()
+    if not token or not hmac.compare_digest(token, expected):
+        return False, "internal authorization denied"
+    return True, "authorized"
+
+
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
@@ -118,6 +132,10 @@ def application(environ, start_response):
         if path == "/api/notifications/all" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
         if path == "/api/updates" and method == "POST":
+            authorized, reason = _authorize_internal_update(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "internal update endpoint is not configured" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ)
             item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", "")))
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
