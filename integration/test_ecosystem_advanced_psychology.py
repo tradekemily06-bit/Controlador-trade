@@ -17,7 +17,7 @@ def test_configured_service_exposes_advanced_psychology_without_execution_author
             "plan_adherence": 3,
         }
     )
-    assert "REVENGE_TRADING" in result["patterns"]
+    assert "REVENGE" in result["patterns"]
     assert "RISK_ESCALATION" in result["patterns"]
-    assert result["severity"] == "CRITICAL"
-    assert result["execution_authorized"] is False
+    assert result["risk_level"] == "HIGH"
+    assert result["trading_authorized"] is False
