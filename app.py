@@ -26,8 +26,8 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
-PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
-PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/saas/status"}
+PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
+PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/psychology/status", "/api/saas/status"}
 ADMIN_ONLY_SAAS_MUTATIONS = {"/api/learning/sources/validate", "/api/learning/sources/admit"}
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -122,6 +122,9 @@ def application(environ, start_response):
                 status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "internal update endpoint is not configured" else HTTPStatus.FORBIDDEN; return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ); item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", ""))); return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/psychology/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_status(), request_id, environ)
+        if path == "/api/psychology/check-in" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_check_in(_read_json(environ)), request_id, environ)
+        if path == "/api/psychology/advanced" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.advanced_psychology_assessment(_read_json(environ)), request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
         if path == "/api/replay" and method == "POST":
@@ -170,6 +173,6 @@ def application(environ, start_response):
 
 def run() -> None:
     host = os.environ.get("CONTROLADOR_HOST", "0.0.0.0"); selected_port = int(os.environ.get("PORT", "7860"))
-    with make_server(host, selected_port, application) as server: server.serve_forever()
+    with make_server(host, selected_port) as server: server.serve_forever()
 
 if __name__ == "__main__": run()
