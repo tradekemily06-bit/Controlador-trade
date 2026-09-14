@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.decision_engine import FinalDecision
+from core.execution_intent import ExecutionIntent
+from core.execution_intent_admission import ExecutionIntentAdmission
 from core.live_orchestrator import OrchestrationResult
 from core.models import Signal
+from core.senior_context_cycle import SeniorContextCycle
 from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest
 
@@ -18,7 +21,7 @@ class ExecutionPlan:
 
 
 class ExecutionCoordinator:
-    """Liga a decisão à camada de execução sem criar uma nova estratégia."""
+    """Liga a decisão à admissão de execução sem criar uma nova estratégia."""
 
     def __init__(self, gateway: ExecutionGateway) -> None:
         if gateway is None:
@@ -40,6 +43,8 @@ class ExecutionCoordinator:
             raise ValueError("request_id não pode ser vazio.")
         if orchestration.decision.decision is not FinalDecision.EXECUTAR:
             raise ValueError("somente decisões EXECUTAR podem gerar plano de execução.")
+        if mode is not ExecutionMode.DEMO:
+            raise ValueError("somente execução DEMO é permitida pelo coordinator nesta etapa.")
         signal = Signal(orchestration.analysis.signal.value)
         symbol = orchestration.analysis.symbol
         if not symbol:
@@ -61,14 +66,29 @@ class ExecutionCoordinator:
         plan: ExecutionPlan,
         *,
         orchestration: OrchestrationResult,
+        senior_context: SeniorContextCycle | None = None,
         entry_conditions: tuple[str, ...] = (),
     ) -> GatewayResult:
         if not isinstance(plan, ExecutionPlan):
             return GatewayResult(GatewayStatus.INVALID_REQUEST, "plano de execução inválido.")
-        return self.gateway.execute(
-            plan.request_id,
-            plan.request,
+        if not isinstance(orchestration, OrchestrationResult):
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "resultado de orquestração inválido.")
+        if orchestration.decision.decision is not FinalDecision.EXECUTAR:
+            return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
+        if senior_context is None:
+            return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
+        intent = ExecutionIntent(
+            request_id=plan.request_id,
+            symbol=plan.request.symbol,
+            signal=plan.request.signal,
+            amount=plan.request.amount,
+            duration_seconds=plan.request.duration_seconds,
+            mode=plan.request.mode,
+            created_at=orchestration.timestamp,
+        )
+        return ExecutionIntentAdmission(self.gateway).admit(
+            intent,
+            senior_context=senior_context,
             snapshot=orchestration.snapshot,
-            timestamp=orchestration.timestamp,
             entry_conditions=entry_conditions,
         )
