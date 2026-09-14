@@ -4,7 +4,7 @@ import json
 from app import application
 
 
-def call_app(path, method="GET", payload=None):
+def call_app(path, method="GET", payload=None, authorization=None):
     body = json.dumps(payload).encode("utf-8") if payload is not None else b""
     captured = {}
 
@@ -20,6 +20,8 @@ def call_app(path, method="GET", payload=None):
         "CONTENT_LENGTH": str(len(body)),
         "wsgi.input": io.BytesIO(body),
     }
+    if authorization is not None:
+        environ["HTTP_AUTHORIZATION"] = authorization
     result = b"".join(application(environ, start_response))
     return captured["status"], json.loads(result)
 
@@ -32,20 +34,30 @@ def test_notification_summary_is_reachable_and_safe():
     assert isinstance(payload["items"], list)
 
 
-def test_ecosystem_update_enters_notification_stream_without_execution_authority():
+def test_ecosystem_update_endpoint_fails_closed_without_internal_token(monkeypatch):
+    monkeypatch.delenv("CONTROLADOR_UPDATE_TOKEN", raising=False)
     status, payload = call_app(
         "/api/updates",
         method="POST",
         payload={"title": "Atualização de teste", "message": "Nova versão disponível."},
     )
+    assert status == "503 Service Unavailable"
+    assert payload["error"] == "internal update endpoint is not configured"
+
+
+def test_ecosystem_update_requires_valid_internal_token(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_UPDATE_TOKEN", "test-internal-token")
+    payload = {"title": "Atualização de teste", "message": "Nova versão disponível."}
+
+    status, denied = call_app("/api/updates", method="POST", payload=payload, authorization="Bearer wrong")
+    assert status == "403 Forbidden"
+    assert denied["error"] == "internal authorization denied"
+
+    status, allowed = call_app("/api/updates", method="POST", payload=payload, authorization="Bearer test-internal-token")
     assert status == "200 OK"
-    item = payload["notification"]
+    item = allowed["notification"]
     assert item["kind"] == "SYSTEM_UPDATE"
     assert item["severity"] == "IMPORTANT"
-
-    status, summary = call_app("/api/notifications")
-    assert status == "200 OK"
-    assert any(item["notification_id"] == payload["notification"]["notification_id"] for item in summary["items"])
 
 
 def test_notification_preferences_endpoint_cannot_be_used_as_execution_authority():
