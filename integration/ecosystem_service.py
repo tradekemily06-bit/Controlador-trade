@@ -54,14 +54,22 @@ class EcosystemService:
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
+    def _owner_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext | None:
+        if subject_id is None and tenant_id is None:
+            return None
+        return self.require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
-    def analyze(self, payload: dict[str, Any], *, persist: bool = True) -> DecisionRecord:
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
+        if owner is not None:
+            record = record.with_owner(subject_id=owner.subject_id, tenant_id=owner.tenant_id)
         if persist:
             self._persist_records([record])
         return record
@@ -77,18 +85,22 @@ class EcosystemService:
         request = SeniorContextInput(context_id=context_id, candles=tuple(candles), available_nodes=tuple(available_nodes), observed_nodes=tuple(observed_nodes), gaps=dict(gaps or {}), relationships_reviewed=tuple(relationships_reviewed), risk_observations=tuple(risk_observations), validated_knowledge_ids=tuple(validated_knowledge_ids), available_risk_domains=tuple(available_risk_domains))
         return self.senior_context.assess(request)
 
-    def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    def replay(self, cases: Iterable[dict[str, Any]], *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         from core.replay_policy import prevalidate_replay_cases
         accepted_cases = prevalidate_replay_cases(cases)
         records: list[DecisionRecord] = []
         for payload in accepted_cases:
-            records.append(self.analyze(payload, persist=False))
+            records.append(self.analyze(payload, persist=False, subject_id=owner.subject_id if owner else None, tenant_id=owner.tenant_id if owner else None))
         self._persist_records(records)
         return [{"step": index, **record.to_dict()} for index, record in enumerate(records, start=1)]
 
-    def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+    def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
+                if owner is not None and not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
+                    raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
                 self.store.save(updated)
