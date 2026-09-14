@@ -18,6 +18,7 @@ class DecisionStore:
     """
 
     _COLUMNS = tuple(field.name for field in fields(DecisionRecord))
+    _MIGRATIONS = {"subject_id": "TEXT", "tenant_id": "TEXT"}
 
     def __init__(self, database_path: str | None = None) -> None:
         self.database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_DECISION_DB")
@@ -42,6 +43,10 @@ class DecisionStore:
             ])
             with self._lock, self._connect() as connection:
                 connection.execute(f"CREATE TABLE IF NOT EXISTS decisions ({columns})")
+                existing = {row[1] for row in connection.execute("PRAGMA table_info(decisions)").fetchall()}
+                for name, sql_type in self._MIGRATIONS.items():
+                    if name not in existing:
+                        connection.execute(f"ALTER TABLE decisions ADD COLUMN {name} {sql_type}")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_tenant ON decisions(tenant_id)")
         except (OSError, sqlite3.Error) as exc:
