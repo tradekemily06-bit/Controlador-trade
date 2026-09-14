@@ -43,6 +43,22 @@ PUBLIC_SAAS_MUTATIONS = {
     "/api/learning/professor/activity",
     "/api/learning/attempts",
 }
+PUBLIC_SAAS_READS = {
+    "/api/preferences",
+    "/api/notifications",
+    "/api/notifications/all",
+    "/api/memory",
+    "/api/statistics",
+    "/api/risk",
+    "/api/news",
+    "/api/connections",
+    "/api/learning",
+    "/api/learning/resources",
+    "/api/learning/sources",
+    "/api/learning/observations",
+    "/api/learning/activities",
+    "/api/saas/status",
+}
 ADMIN_ONLY_SAAS_MUTATIONS = {
     "/api/learning/sources/validate",
     "/api/learning/sources/admit",
@@ -104,13 +120,18 @@ def _authorize_internal_update(environ) -> tuple[bool, str]:
 
 
 def _authorize_public_saas_request(environ, path: str, method: str) -> None:
-    """Gate sensitive mutations when this process is explicitly published as SaaS."""
-    if not saas_public_mode() or method != "POST" or path not in PUBLIC_SAAS_MUTATIONS:
+    """Gate sensitive public-SaaS reads and mutations before global state is exposed."""
+    if not saas_public_mode():
         return
-    identity = require_trusted_identity(environ)
-    if path in ADMIN_ONLY_SAAS_MUTATIONS:
-        require_role(identity, "admin")
-    require_tenant_scoped_data_plane()
+    if method == "POST" and path in PUBLIC_SAAS_MUTATIONS:
+        identity = require_trusted_identity(environ)
+        if path in ADMIN_ONLY_SAAS_MUTATIONS:
+            require_role(identity, "admin")
+        require_tenant_scoped_data_plane()
+        return
+    if method == "GET" and path in PUBLIC_SAAS_READS:
+        require_trusted_identity(environ)
+        require_tenant_scoped_data_plane()
 
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
