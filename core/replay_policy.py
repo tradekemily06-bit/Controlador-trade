@@ -4,20 +4,17 @@ from collections.abc import Iterable
 from typing import Any
 
 
-MAX_REPLAY_CASES = 50
-
-
 def prevalidate_replay_cases(cases: Iterable[Any]) -> list[dict[str, Any]]:
-    """Validate the complete replay envelope before any analysis side effect.
+    """Validate every replay case before any analysis side effect.
 
-    The iterable is consumed only through the allowed limit plus one sentinel
-    item. This prevents processing/persisting the first 50 scenarios and only
-    discovering a 51st scenario afterwards.
+    Replay has no artificial scenario-count ceiling. The HTTP/security layer
+    may protect transport resources, but the replay domain itself must not
+    silently truncate or reject a legitimate analysis because of an arbitrary
+    case count. Validation is complete before persistence begins so malformed
+    input can never create a partial replay history.
     """
     accepted: list[dict[str, Any]] = []
     for index, payload in enumerate(cases, start=1):
-        if index > MAX_REPLAY_CASES:
-            raise ValueError(f"replay aceita no máximo {MAX_REPLAY_CASES} cenários")
         if not isinstance(payload, dict):
             raise ValueError(f"cada cenário deve ser um objeto (posição {index})")
         accepted.append(payload)
