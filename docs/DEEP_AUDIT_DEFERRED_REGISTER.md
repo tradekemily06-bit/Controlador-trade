@@ -10,9 +10,9 @@ Este registro existe para impedir que qualquer requisito seja perdido quando uma
 | DEF-02 | `/api/outcome` com propriedade confiável | PENDENTE | carregar decisão no escopo confiável antes de alterar outcome |
 | DEF-03 | Memória/estatísticas/preferências/notificações por usuário/tenant | PENDENTE | eliminar estado global como fonte de verdade em SaaS |
 | DEF-04 | Learning por usuário/tenant e provenance confiável | PENDENTE | ligar identidade e proveniência administrativa ao data plane |
-| DEF-05 | PointValueEngine dinâmico | PRÓXIMO | implementar normalização ponto/tick/pip + conversão monetária + frescor/proveniência |
+| DEF-05 | PointValueEngine dinâmico | EM IMPLEMENTAÇÃO | validar engine, testes, integração com alavancagem e depois integrar operação/risco/sizing/replay |
 | DEF-06 | Revisão do `margin_required` da alavancagem | PENDENTE | usar modelo compatível com especificação real do instrumento/broker; evitar dupla contagem |
-| DEF-07 | Currículo profissional sênior com provenance/validação/testes | PENDENTE | transformar currículo existente em matriz de conhecimento verificável |
+| DEF-07 | Currículo profissional sênior com provenance/validação/testes | EM IMPLEMENTAÇÃO | matriz criada; validar competências com fontes atuais, versões, testes, evidência e ciclos de reavaliação |
 | DEF-08 | Custo de replay sem teto funcional | PENDENTE | proteger CPU/memória/tempo/armazenamento/concorrência sem limitar funcionalidade arbitrariamente |
 | DEF-09 | Rate limit compartilhado multi-réplica | PENDENTE | mover autoridade de anti-abuso para mecanismo compartilhado de produção |
 | DEF-10 | Auditoria/retention compartilhada multi-réplica | PENDENTE | definir armazenamento durável centralizado |
