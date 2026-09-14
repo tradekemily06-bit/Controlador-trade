@@ -4,62 +4,58 @@
 
 O replay é laboratório/análise. Ele nunca pode se transformar em autoridade de execução e não deve permitir que uma requisição parcialmente inválida produza histórico parcialmente gravado.
 
-## Limites já existentes
+## Regra arquitetural sobre capacidade
 
-- O corpo HTTP possui teto global de 256 KiB.
-- `/api/replay` aceita no máximo 50 cenários por requisição.
-- O serviço também aplica o mesmo teto de 50, evitando que um chamador interno contorne o limite HTTP.
-- Cada cenário precisa ser um objeto.
-- A resposta mantém `execution_allowed: false`.
+**O Replay não possui um limite funcional artificial de quantidade de cenários.** O antigo valor 50 foi removido do núcleo, do serviço e da API.
 
-O limite de 50 é uma barreira de quantidade, não um orçamento completo de recursos.
+Capacidade e proteção são conceitos diferentes. O ecossistema pode ter proteções de transporte, memória, concorrência, armazenamento, tempo de execução e infraestrutura quando forem necessárias para preservar disponibilidade e segurança. Essas proteções não podem ser transformadas em um limite arbitrário de cenários, candles, operações ou capacidade funcional.
 
-## Regra de pré-validação — IMPLEMENTADA
+Qualquer proteção futura deve ser baseada no recurso real que está sendo protegido, ser mensurável e permitir continuidade por paginação, streaming, processamento assíncrono ou outra forma adequada quando o volume exceder a capacidade de uma resposta síncrona.
 
-Antes de iniciar qualquer análise que persista memória/decisão, o fluxo agora:
+## Pré-validação
 
-1. consome no máximo 51 itens do iterável recebido;
-2. rejeita quando existe o 51º item;
-3. valida que todos os itens aceitos são objetos;
-4. somente depois inicia as análises e gravações.
+Antes de iniciar qualquer análise que persista memória/decisão, o fluxo valida o envelope recebido e rejeita itens que não sejam objetos. Não existe mais um sentinel de 51º cenário nem uma contagem máxima de cenários.
 
-A mesma política é aplicada no serviço por `core.replay_policy.prevalidate_replay_cases()` e é coberta por testes para o 51º cenário e para um cenário inválido depois de cenários válidos.
+A pré-validação continua sendo importante para impedir que um erro estrutural tardio produza efeitos parciais.
 
-Isso elimina o comportamento perigoso anterior: processar e persistir os primeiros cenários e somente depois descobrir que havia um cenário excedente ou um item inválido mais adiante.
+## Atomicidade do efeito de memória — IMPLEMENTADA
 
-A pré-validação é limitada a 51 itens e não materializa uma entrada arbitrariamente grande.
+O Replay agora executa as análises sem persistência individual. Os `DecisionRecord` são coletados em memória durante a fase de análise e somente depois enviados ao caminho de persistência em lote.
+
+O `DecisionStore` possui `save_many()` e usa uma única transação SQLite para o lote. A memória do serviço também só é atualizada depois que a persistência do lote termina com sucesso.
+
+Assim, uma falha durante a análise não deixa os cenários anteriores do mesmo Replay gravados. Uma falha no armazenamento também não atualiza a memória do serviço como se a gravação tivesse sido concluída.
 
 ## Custo de processamento
 
-A quantidade de cenários não é suficiente para representar custo computacional. O próximo endurecimento deve observar, conforme a implementação do replay evoluir:
+A quantidade de cenários não representa, por si só, o custo computacional. O contrato deve observar, conforme o Replay evoluir:
 
-- tamanho serializado de cada cenário;
-- profundidade/complexidade estrutural da entrada;
-- número de candles ou objetos derivados por cenário;
-- tempo total de processamento;
-- memória usada pelo laboratório;
-- quantidade de registros gerados;
-- cancelamento/aborto seguro;
-- comportamento quando uma análise individual falhar.
+- tamanho real dos dados;
+- profundidade/complexidade estrutural;
+- número de candles e objetos derivados;
+- CPU e tempo de processamento;
+- memória residente;
+- volume de registros produzidos;
+- concorrência;
+- cancelamento e recuperação;
+- armazenamento disponível;
+- comportamento individual de falhas.
 
-Não devem ser introduzidos números arbitrários apenas para satisfazer uma auditoria. Cada teto adicional precisa corresponder a uma propriedade mensurável do runtime.
-
-## Atomicidade do efeito de memória
-
-A correção de pré-validação foi aplicada na fronteira do serviço. O replay ainda reutiliza `analyze()`, que grava cada `DecisionRecord` na memória e no `DecisionStore`, mas agora nenhuma gravação começa enquanto o envelope inteiro, dentro do limite de 50, não estiver validado.
-
-Isso resolve a falha de validação tardia do envelope. Ainda permanece uma questão diferente: se uma análise individual falhar depois que outras já foram persistidas, a semântica de replay parcial precisa ser explicitamente definida ou tornada recuperável antes de considerar o contrato transacional completo.
+Não devem ser introduzidos números arbitrários para satisfazer auditoria. Quando uma proteção de infraestrutura for necessária, ela deve proteger o recurso correspondente e não ser apresentada como limite funcional do ecossistema.
 
 ## Multi-tenant
 
-Em SaaS público, replay não pode reutilizar o `DecisionStore` global. Os registros produzidos precisam nascer com `subject_id` e `tenant_id` vindos da identidade confiável e ser persistidos em repositório tenant-scoped. A identidade não pode vir do payload do navegador.
+Em SaaS público, Replay não pode reutilizar o `DecisionStore` global. Os registros produzidos precisam nascer com `subject_id` e `tenant_id` vindos da identidade confiável e ser persistidos em repositório tenant-scoped. A identidade não pode vir do payload do navegador.
+
+## Segurança operacional
+
+Replay continua sendo somente laboratório/análise. Toda resposta mantém `execution_allowed: false`, e nenhum resultado do Replay pode autorizar REAL.
 
 ## Critério de fechamento desta frente
 
-A auditoria de replay somente será considerada fechada quando:
-
-- o limite de quantidade existir no HTTP e no serviço — **resolvido**;
-- a entrada for pré-validada antes de qualquer efeito persistente — **resolvido**;
-- falha de cenário não produzir uma conclusão enganosa de replay completo — **pendente de semântica de falha individual**;
-- o caminho SaaS estiver ligado a armazenamento tenant-scoped real — **pendente por configuração estrutural de produção**;
-- não houver qualquer caminho do replay para autorização REAL — **mantido bloqueado e coberto pela arquitetura atual**.
+- limite funcional artificial de cenários — **REMOVIDO**;
+- pré-validação estrutural antes de efeitos persistentes — **RESOLVIDO**;
+- falha durante análise não gera persistência parcial — **RESOLVIDO**;
+- falha de armazenamento não apresenta memória como persistida — **RESOLVIDO**;
+- caminho SaaS ligado a armazenamento tenant-scoped real — **pendente por configuração estrutural de produção**;
+- caminho do Replay para autorização REAL — **inexistente/bloqueado pela arquitetura atual**.
