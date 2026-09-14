@@ -81,7 +81,7 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
             notification_mount = notification_html + notification_script
             onboarding_mount = onboarding_html + onboarding_script
-            anchor = b"<div class=\"section\">Visão geral</div>"
+            anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
