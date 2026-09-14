@@ -15,7 +15,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
-from security.http_identity import require_role, require_trusted_identity, saas_public_mode
+from security.http_identity import require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -110,6 +110,7 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
     identity = require_trusted_identity(environ)
     if path in ADMIN_ONLY_SAAS_MUTATIONS:
         require_role(identity, "admin")
+    require_tenant_scoped_data_plane()
 
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
@@ -243,6 +244,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+    except __import__("security.http_identity", fromlist=["PublicSaaSNotReady"]).PublicSaaSNotReady as exc:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
