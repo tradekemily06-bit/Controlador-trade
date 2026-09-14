@@ -38,6 +38,7 @@ class ProductionStoragePolicy:
         else:
             state = "READY"
         return {
+            "status": state,
             "required": self.required,
             "provider": "CONFIGURED" if self.provider_configured else "NOT_CONFIGURED",
             "tenant_scope": "ENFORCED" if self.tenant_scoped else "NOT_ENFORCED",
