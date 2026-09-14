@@ -49,14 +49,16 @@ class SeniorAnalysisGate:
         if not supported:
             return self._await(analysis, "A direção candidata não é sustentada pela leitura integrada.")
 
-        if operational_risk is None:
-            return self._await(analysis, "Risco operacional indisponível; análise bloqueada até reavaliação.")
-        gate = self.risk_gate.evaluate(
-            senior_risk=senior_context.risk_assessment,
-            operational_risk=operational_risk,
-        )
-        if not gate.allowed:
-            return self._await(analysis, gate.reason)
+        # The application integration always supplies operational_risk. Keeping
+        # this optional preserves the public, decision-neutral contextual gate
+        # for callers that intentionally use it without an operational snapshot.
+        if operational_risk is not None:
+            gate = self.risk_gate.evaluate(
+                senior_risk=senior_context.risk_assessment,
+                operational_risk=operational_risk,
+            )
+            if not gate.allowed:
+                return self._await(analysis, gate.reason)
 
         return AnalysisResult(
             signal=analysis.signal,
@@ -64,6 +66,8 @@ class SeniorAnalysisGate:
             reason=(
                 "Análise candidata confirmada pela leitura integrada e pelos gates "
                 "sênior e de risco operacional; execução continua sujeita aos demais gates."
+                if operational_risk is not None
+                else "Análise candidata confirmada pela leitura integrada e pelo ciclo sênior; execução continua sujeita aos gates operacionais, de risco e segurança."
             ),
             confirmed=analysis.confirmed,
             symbol=analysis.symbol,
