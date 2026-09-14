@@ -21,7 +21,7 @@ class FakeProductionStore:
         return items[:limit]
 
 
-def sample_record(decision_id: str) -> DecisionRecord:
+def sample_record(decision_id: str, *, tenant_id: str = "tenant-a", subject_id: str = "user-a") -> DecisionRecord:
     return DecisionRecord(
         decision_id=decision_id,
         created_at="2026-09-12T00:00:00+00:00",
@@ -31,6 +31,8 @@ def sample_record(decision_id: str) -> DecisionRecord:
         score=90.0,
         confirmed=True,
         reason="confirmed",
+        subject_id=subject_id,
+        tenant_id=tenant_id,
     )
 
 
@@ -48,10 +50,21 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
 
     def test_list_never_returns_another_tenant(self) -> None:
         self.repository.save(sample_record("a"), tenant_id="tenant-a")
-        self.repository.save(sample_record("b"), tenant_id="tenant-b")
+        self.repository.save(sample_record("b", tenant_id="tenant-b", subject_id="user-b"), tenant_id="tenant-b")
 
         self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a")], ["a"])
         self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-b")], ["b"])
+
+    def test_owner_and_tenant_must_match_on_save(self) -> None:
+        with self.assertRaises(PermissionError):
+            self.repository.save(sample_record("x", tenant_id="tenant-a"), tenant_id="tenant-b")
+        with self.assertRaises(PermissionError):
+            self.repository.save(sample_record("y", subject_id=""), tenant_id="tenant-a")
+
+    def test_stored_record_without_owner_fails_closed(self) -> None:
+        self.store.records[("tenant-a", "legacy")] = sample_record("legacy").to_dict() | {"subject_id": None}
+        with self.assertRaises(PermissionError):
+            self.repository.load("legacy", tenant_id="tenant-a")
 
     def test_tenant_and_decision_id_are_required(self) -> None:
         with self.assertRaises(ValueError):
