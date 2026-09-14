@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
+from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
@@ -44,6 +45,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        maintenance: MaintenanceManager | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +56,7 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._maintenance = maintenance
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -70,6 +73,9 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
         event_time = timestamp or datetime.now(timezone.utc)
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
+            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
+
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
@@ -117,7 +123,7 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas persistência do ciclo falhou: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
         self._processed_request_ids.add(request_id)
 

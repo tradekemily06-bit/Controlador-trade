@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
@@ -22,6 +23,7 @@ class OperationalRuntime:
     """Single authoritative DEMO runtime state shared by execution and observability."""
 
     kill_switch: KillSwitch
+    maintenance: MaintenanceManager
     execution_ledger: ExecutionLedger
     execution_lifecycle: ExecutionLifecycleStore
     checkpoint_store: RuntimeCheckpointStore
@@ -34,7 +36,9 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
     kill_switch = KillSwitch()
+    maintenance = MaintenanceManager(root / "maintenance.json")
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
@@ -56,10 +60,12 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        maintenance=maintenance,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
         kill_switch=kill_switch,
+        maintenance=maintenance,
         execution_ledger=ledger,
         execution_lifecycle=lifecycle,
         checkpoint_store=checkpoint,

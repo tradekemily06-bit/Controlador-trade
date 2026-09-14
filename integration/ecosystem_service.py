@@ -8,6 +8,9 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.ecosystem_maintenance import MaintenanceStatus
+from core.ecosystem_notifications import NotificationSeverity
+from core.ecosystem_preferences import EcosystemPreferencesStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
@@ -54,66 +57,55 @@ class EcosystemService:
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
+    def _owner_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext | None:
+        if subject_id is None and tenant_id is None:
+            return None
+        return self.require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
-    def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
-        self.memory.append(record)
-        self.store.save(record)
+        if owner is not None:
+            record = record.with_owner(subject_id=owner.subject_id, tenant_id=owner.tenant_id)
+        if persist:
+            self._persist_records([record])
         return record
 
-    def assess_senior_context(
-        self,
-        *,
-        context_id: str,
-        candles: Iterable[Candle],
-        available_nodes: Iterable[str],
-        observed_nodes: Iterable[str],
-        gaps: dict[str, str] | None = None,
-        relationships_reviewed: Iterable[str] = (),
-        risk_observations: Iterable[RiskObservation] = (),
-        validated_knowledge_ids: Iterable[str] = (),
-        available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain),
-    ) -> Any:
-        """Run the senior contextual layer without creating an operation.
+    def _persist_records(self, records: list[DecisionRecord]) -> None:
+        if not records:
+            return
+        self.store.save_many(records)
+        self.memory.extend(records)
 
-        This is deliberately separate from ``analyze`` until the contextual
-        output has its own decision-gate integration and regression coverage.
-        It never converts a score, candle or contextual assessment directly
-        into execution authority.
-        """
-        request = SeniorContextInput(
-            context_id=context_id,
-            candles=tuple(candles),
-            available_nodes=tuple(available_nodes),
-            observed_nodes=tuple(observed_nodes),
-            gaps=dict(gaps or {}),
-            relationships_reviewed=tuple(relationships_reviewed),
-            risk_observations=tuple(risk_observations),
-            validated_knowledge_ids=tuple(validated_knowledge_ids),
-            available_risk_domains=tuple(available_risk_domains),
-        )
+    def assess_senior_context(self, *, context_id: str, candles: Iterable[Candle], available_nodes: Iterable[str], observed_nodes: Iterable[str], gaps: dict[str, str] | None = None, relationships_reviewed: Iterable[str] = (), risk_observations: Iterable[RiskObservation] = (), validated_knowledge_ids: Iterable[str] = (), available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain)) -> Any:
+        request = SeniorContextInput(context_id=context_id, candles=tuple(candles), available_nodes=tuple(available_nodes), observed_nodes=tuple(observed_nodes), gaps=dict(gaps or {}), relationships_reviewed=tuple(relationships_reviewed), risk_observations=tuple(risk_observations), validated_knowledge_ids=tuple(validated_knowledge_ids), available_risk_domains=tuple(available_risk_domains))
         return self.senior_context.assess(request)
 
-    def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for index, payload in enumerate(cases, start=1):
-            if not isinstance(payload, dict):
-                raise ValueError("cada cenário deve ser um objeto")
-            record = self.analyze(payload)
-            results.append({"step": index, **record.to_dict()})
-        return results
+    def replay(self, cases: Iterable[dict[str, Any]], *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        from core.replay_policy import prevalidate_replay_cases
+        accepted_cases = prevalidate_replay_cases(cases)
+        records: list[DecisionRecord] = []
+        for payload in accepted_cases:
+            records.append(self.analyze(payload, persist=False, subject_id=owner.subject_id if owner else None, tenant_id=owner.tenant_id if owner else None))
+        self._persist_records(records)
+        return [{"step": index, **record.to_dict()} for index, record in enumerate(records, start=1)]
 
-    def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
-        for index, record in enumerate(self.memory):
+    def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        for record in self.memory:
             if record.decision_id == decision_id:
+                if owner is not None and not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
+                    raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
-                self.memory[index] = updated
                 self.store.save(updated)
+                self.memory[self.memory.index(record)] = updated
                 return updated
         raise ValueError("decision_id não encontrado")
 
@@ -235,10 +227,13 @@ class EcosystemService:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "psychology": "ONLINE" if getattr(self, "preferences", None) is None or self.preferences.preferences.psychology_enabled else "DISABLED", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage.get("status", production_storage.get("state", "UNKNOWN"))), "production_operation_gate": str(production_gate.get("storage_state", production_gate.get("state", "UNKNOWN"))), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        maintenance = self.maintenance.status() if hasattr(self, "maintenance") else {"status": "NOT_CONFIGURED"}
         alerts = build_health_alerts(components)
+        if maintenance.get("status") == MaintenanceStatus.ACTIVE.value:
+            alerts = tuple(alerts) + tuple()
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "psychology": components["psychology"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "maintenance": maintenance, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]

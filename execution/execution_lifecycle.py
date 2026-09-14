@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -69,8 +70,10 @@ class ExecutionLifecycleStore:
         previous = self._records.get(record.request_id)
         if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
             raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+        candidate = dict(self._records)
+        candidate[record.request_id] = record
+        self._save(candidate)
+        self._records = candidate
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
@@ -85,19 +88,26 @@ class ExecutionLifecycleStore:
             raise ValueError("execução não encontrada.")
         record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
         self._validate(record)
-        self._records[request_id] = record
-        self._save()
+        candidate = dict(self._records)
+        candidate[request_id] = record
+        self._save(candidate)
+        self._records = candidate
         return record
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         return tuple(self._records[key] for key in sorted(self._records))
 
-    def _save(self) -> None:
+    @staticmethod
+    def _serialize(records: dict[str, ExecutionLifecycleRecord]) -> str:
+        return json.dumps([
+            {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
+            for r in (records[key] for key in sorted(records))
+        ], ensure_ascii=False, indent=2, sort_keys=True)
+
+    def _save(self, records: dict[str, ExecutionLifecycleRecord]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
-            ], ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(self._serialize(records), encoding="utf-8")
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temporary, self.path)
