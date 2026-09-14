@@ -11,17 +11,17 @@ Esta auditoria cobre a superfície HTTP atual, mutações de estado, memória/es
 | `/api/health`, `/api/status` | GET | leitura | exposição operacional | aceitável para health; produção deve sanitizar detalhes conforme modelo de usuário |
 | `/api/notifications`, `/api/notifications/all` | GET | leitura | baixa | conteúdo renderizado com escape no frontend |
 | `/api/updates` | POST | mutação interna | alta se exposta | protegido por `CONTROLADOR_UPDATE_TOKEN` e fail-closed quando não configurado |
-| `/api/analyze` | POST | grava decisão/memória | média em API pública | sem autenticação/tenant na borda atual; não concede execução |
-| `/api/replay` | POST | grava decisões na memória atual | média/alta | limite de corpo existe; quantidade de casos ainda deve ser explicitamente limitada em endurecimento futuro |
-| `/api/outcome` | POST | altera resultado de decisão | alta para integridade | endpoint atual não tem identidade/tenant; não concede execução, mas pode corromper estatísticas se publicado como SaaS multiusuário |
-| `/api/preferences*` | POST | mutação de preferências | média | estado atualmente compartilhado pelo processo; precisa de identidade/tenant antes de SaaS multiusuário |
-| `/api/learning/resources` | POST | grava material | média | conteúdo externo permanece sem autoridade de execução |
-| `/api/learning/sources/screen` | POST | cria fonte | média | gate rejeita esquemas diferentes de HTTPS |
-| `/api/learning/sources/validate` | POST | muda fonte para VALIDATED | alta para integridade | atualmente aceita `content_verified` e `security_checked` do chamador; deve ficar atrás de identidade/autorização administrativa em SaaS |
-| `/api/learning/sources/admit` | POST | marca conhecimento validado | alta para integridade | atualmente aceita `knowledge_validated` do chamador; não concede operação, mas precisa de autoridade confiável em SaaS |
-| `/api/learning/observations` | POST | grava observação | média | observação validada exige fonte validada e conhecimento validado |
-| `/api/learning/professor/activity` | POST | gera atividade | média | continua sem autoridade de trading; a validação informada pelo chamador ainda é uma fronteira de confiança |
-| `/api/learning/attempts` | POST | grava tentativa | baixa/média | precisa de escopo por usuário quando houver SaaS multiusuário |
+| `/api/analyze` | POST | grava decisão/memória | média em API pública | em modo SaaS público agora exige identidade confiável e tenant-scoped data plane; como este último ainda não existe, falha fechado |
+| `/api/replay` | POST | grava decisões na memória atual | média/alta | limite explícito de 50 casos por requisição + limite de corpo; ainda depende de tenant-scoped storage para SaaS público |
+| `/api/outcome` | POST | altera resultado de decisão | alta para integridade | protegido pelo gate de identidade em SaaS público, mas propriedade da decisão/tenant ainda precisa ser implementada; sem isso, o modo SaaS público falha fechado |
+| `/api/preferences*` | POST | mutação de preferências | média | identidade + tenant são requisitos de SaaS; modo público falha fechado até existir armazenamento tenant-scoped |
+| `/api/learning/resources` | POST | grava material | média | identidade + tenant são requisitos de SaaS; conteúdo externo permanece sem autoridade de execução |
+| `/api/learning/sources/screen` | POST | cria fonte | média | identidade + tenant são requisitos de SaaS; gate rejeita esquemas diferentes de HTTPS |
+| `/api/learning/sources/validate` | POST | muda fonte para VALIDATED | alta para integridade | modo SaaS exige identidade confiável + papel `admin` e, antes de qualquer estado global, tenant-scoped data plane |
+| `/api/learning/sources/admit` | POST | marca conhecimento validado | alta para integridade | modo SaaS exige identidade confiável + papel `admin` e tenant-scoped data plane |
+| `/api/learning/observations` | POST | grava observação | média | identidade + tenant são requisitos de SaaS; observação validada exige fonte validada e conhecimento validado |
+| `/api/learning/professor/activity` | POST | gera atividade | média | identidade + tenant são requisitos de SaaS; continua sem autoridade de trading |
+| `/api/learning/attempts` | POST | grava tentativa | baixa/média | identidade + tenant são requisitos de SaaS |
 
 ## Achados confirmados
 
@@ -33,33 +33,37 @@ A superfície HTTP não possui rota pública de execução REAL. A camada de exe
 
 As respostas HTTP de aprendizagem continuam explicitando `execution_allowed: false` ou `operation_eligible: false`, e o serviço mantém a regra de que conhecimento externo não concede autoridade de operação.
 
-### 3. Integridade de aprendizagem ainda depende da fronteira de identidade
+### 3. Fronteira provider-neutral de identidade foi introduzida
 
-Os endpoints de validação/admissão aceitam os próprios booleanos de validação no payload. Isso não é um bypass de execução, mas é uma falsificação potencial da proveniência de conhecimento se a API for publicada para terceiros. A correção arquitetural é autenticar/autorizAR a ação de validação, não transformar o booleano em prova de confiança.
+O modo `CONTROLADOR_SAAS_PUBLIC=true` agora exige identidade injetada pelo ambiente WSGI confiável para mutações sensíveis. Cabeçalhos HTTP `X-*` não são tratados como identidade confiável. A camada também separa papel administrativo das ações de validação/admissão de aprendizagem.
 
-### 4. Resultado de operação precisa de identidade/escopo
+### 4. SaaS público falha fechado sem armazenamento tenant-scoped
 
-`/api/outcome` consegue alterar um `decision_id` existente sem exigir identidade ou tenant. Em ambiente local de usuário único isso é funcional; em SaaS multiusuário é uma superfície de corrupção de histórico/estatísticas e precisa ser protegida antes da exposição pública.
+Mesmo uma identidade confiável não libera acesso ao estado atual, porque memória, decisões, preferências e aprendizagem ainda são globais ao processo. O gate de SaaS público exige um data plane tenant-scoped real e retorna indisponibilidade enquanto ele não existir. Isso evita transformar autenticação sem isolamento em falsa segurança multiusuário.
 
-### 5. Replay tem efeito de memória
+### 5. Resultado de operação ainda precisa de propriedade de decisão
 
-`EcosystemService.replay()` usa `analyze()` e, portanto, grava cada cenário na memória/store. Isso é comportamento existente e coberto pelos testes, mas significa que replay não é uma operação puramente de leitura. O limite de corpo HTTP não substitui um limite explícito de quantidade de casos/custo computacional. Esse endurecimento deve ser feito sem quebrar a semântica atual de laboratório.
+`/api/outcome` continua podendo alterar um `decision_id` no modo local de usuário único. Em SaaS público, o gate agora impede a operação antes de chegar ao store enquanto tenant-scoped storage não existe. A próxima implementação deve persistir `subject_id` + `tenant_id` no DecisionRecord/DecisionStore e exigir correspondência antes de aceitar o resultado.
 
-### 6. Auditoria de segurança é limitada e sem segredo bruto
+### 6. Replay agora tem limite explícito
+
+`/api/replay` aceita no máximo 50 casos por requisição. O limite é complementar ao teto de corpo de 256 KiB e preserva o laboratório atual. Ainda é necessário um modelo de custo/timeout mais forte quando houver processamento de replay pesado ou distribuído.
+
+### 7. Auditoria de segurança é limitada e sem segredo bruto
 
 O trilho guarda no máximo 1000 eventos em memória/SQLite, corta o path a 512 caracteres e guarda hash do identificador do cliente, não IP bruto, credencial, token ou corpo. A retenção centralizada multi-instância pertence à infraestrutura de produção.
 
-### 7. Rate limit é por processo
+### 8. Rate limit é por processo
 
 O limite atual é 60 requisições por 60 segundos e no máximo 10.000 clientes rastreados. Isso é adequado como barreira local, mas não é uma proteção distribuída para múltiplas réplicas.
 
-### 8. Cadeia de build foi endurecida
+### 9. Cadeia de build foi endurecida
 
 Foi adicionado `.dockerignore` para excluir `.runtime`, bancos SQLite, `.env`, logs, caches e artefatos Git/dev do contexto Docker. Isso evita copiar acidentalmente estado local ou arquivos de segredo para a imagem durante um build feito a partir de uma árvore de trabalho contaminada.
 
-### 9. Publicação foi explicitamente classificada
+### 10. Publicação foi explicitamente classificada
 
-`README_DEPLOY.md` agora deixa explícito que a publicação atual é para teste/uso controlado, não uma implantação SaaS multiusuário de produção. Também registra os requisitos restantes de autenticação, autorização, sessão, tenant isolation e armazenamento compartilhado.
+`README_DEPLOY.md` deixa explícito que a publicação atual é para teste/uso controlado, não uma implantação SaaS multiusuário de produção. O modo SaaS público permanece deliberadamente bloqueado até existir autenticação/sessão real, autorização, tenant isolation e armazenamento compartilhado/tenant-scoped.
 
 ## Não corrigir artificialmente
 
@@ -67,10 +71,11 @@ Não devem ser criados atalhos para habilitar REAL, nem considerar um booleano e
 
 ## Próxima correção técnica prioritária
 
-1. Introduzir uma camada HTTP de identidade/autorização provider-neutral.
-2. Vincular mutações e leituras sensíveis a `subject_id` + `tenant_id`.
-3. Transformar validação/admissão de aprendizagem em operações administrativas autenticadas.
-4. Vincular `/api/outcome` ao proprietário da decisão/tenant.
-5. Adicionar limite explícito de quantidade/custo no replay sem alterar sua função de laboratório.
+1. Implementar armazenamento tenant-scoped real para decisões, memória, preferências e aprendizagem.
+2. Persistir `subject_id` + `tenant_id` na identidade/propriedade dos `DecisionRecord` e `DecisionStore`.
+3. Fazer `/api/outcome` verificar propriedade/tenant antes de alterar um resultado.
+4. Separar armazenamento de teste/local do armazenamento compartilhado de produção.
+5. Adicionar limites de custo/timeout para replay além do limite de quantidade.
 6. Substituir rate limit em memória por mecanismo compartilhado quando houver múltiplas réplicas.
-7. Manter REAL bloqueado até todos os gates de produção estarem configurados e validados.
+7. Sanitizar endpoints de status/health para o modelo de usuário de produção.
+8. Manter REAL bloqueado até todos os gates de produção estarem configurados e validados.
