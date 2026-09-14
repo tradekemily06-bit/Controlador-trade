@@ -5,20 +5,55 @@ from typing import Any
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
+from core.models import AnalysisResult, Signal
+from core.senior_analysis_gate import SeniorAnalysisGate
 from integration.ecosystem_service import EcosystemService
+from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 
 
 class ConfiguredEcosystemService(EcosystemService):
-    """Ecosystem service with preferences and material notifications wired in.
-
-    Preferences remain configuration-only and cannot grant autonomy or REAL
-    execution. Notifications are observability only and never authorize trades.
-    """
+    """Ecosystem service with preferences, notifications and senior analysis wired in."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
+        self.senior_analysis_gate = SeniorAnalysisGate()
+
+    def analyze(self, payload: dict[str, Any]):
+        """Require senior context for actionable analysis; incomplete input fails closed to AGUARDAR."""
+        try:
+            context_input = SeniorAnalysisBoundary.build_input(payload)
+        except ValueError as exc:
+            # Backward-compatible API behavior without weakening the safety boundary:
+            # incomplete/legacy payloads are recorded only as non-actionable AGUARDAR.
+            safe = AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=float(payload.get("score", 0)),
+                reason=f"Análise sênior não pode ser concluída: {exc}.",
+                confirmed=False,
+                symbol=payload.get("symbol"),
+                timeframe=payload.get("timeframe"),
+            )
+            return self._record_analysis(safe)
+
+        senior_context = self.senior_context.assess(context_input)
+        candidate = self.engine.evaluate(
+            score=payload.get("score", 50),
+            confirmed=payload.get("confirmed", False),
+            filters_ok=payload.get("filters_ok", True),
+            symbol=payload.get("symbol"),
+            timeframe=payload.get("timeframe"),
+        )
+        gated = self.senior_analysis_gate.evaluate(analysis=candidate, senior_context=senior_context)
+        return self._record_analysis(gated)
+
+    def _record_analysis(self, result):
+        from analysis.decision_record import DecisionRecord
+        record = DecisionRecord.from_analysis(result)
+        self.memory.append(record)
+        self.store.save(record)
+        return record
 
     def get_preferences(self) -> dict[str, Any]:
         value = self.preferences.preferences

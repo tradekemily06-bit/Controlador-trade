@@ -81,10 +81,8 @@ class ApiContractTests(unittest.TestCase):
             payload={"score": 90, "symbol": "EURUSD", "timeframe": "5m", "confirmed": True, "filters_ok": True},
         )
         self.assertEqual(status, "200 OK")
-        self.assertEqual(payload["signal"], "COMPRA")
-        self.assertEqual(payload["presentation"]["status"], "BUY")
-        self.assertEqual(payload["presentation"]["label"], "COMPRA")
-        self.assertEqual(payload["presentation"]["color"], "green")
+        self.assertEqual(payload["signal"], "AGUARDAR")
+        self.assertEqual(payload["presentation"]["label"], "AGUARDAR")
         self.assertTrue(payload["security"]["real_blocked"])
         self.assertTrue(payload["execution_allowed"] is False)
         self.assertIn("decision_id", payload)
@@ -100,6 +98,7 @@ class ApiContractTests(unittest.TestCase):
         )
         self.assertEqual(status, "200 OK")
         self.assertEqual(len(payload["results"]), 2)
+        self.assertTrue(all(item["signal"] == "AGUARDAR" for item in payload["results"]))
         self.assertFalse(payload["execution_allowed"])
 
     def test_outcome_updates_existing_decision(self):
