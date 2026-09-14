@@ -71,20 +71,20 @@ class ProductionTenantDecisionRepository:
         if record.tenant_id != tenant or record.subject_id != subject:
             raise PermissionError("decision ownership does not match trusted scope")
 
-        existing_payload = self.store.load(record.decision_id, tenant_id=tenant)
+        existing_payload = self.store.load(record.decision_id, tenant_id=tenant, subject_id=subject)
         if existing_payload is not None:
             existing = self._to_record(existing_payload)
             if existing.tenant_id != tenant or existing.subject_id != subject:
                 raise PermissionError("stored decision ownership does not match trusted scope")
             if self._immutable_values(existing) != self._immutable_values(record):
                 raise PermissionError("decision core fields are immutable")
-        self.store.save(record.to_dict(), tenant_id=tenant)
+        self.store.save(record.to_dict(), tenant_id=tenant, subject_id=subject)
 
     def load(self, decision_id: str, *, tenant_id: str, subject_id: str) -> DecisionRecord | None:
         tenant, subject = self._validate_scope(tenant_id, subject_id)
         if not isinstance(decision_id, str) or not decision_id.strip():
             raise ValueError("decision_id is required")
-        payload = self.store.load(decision_id.strip(), tenant_id=tenant)
+        payload = self.store.load(decision_id.strip(), tenant_id=tenant, subject_id=subject)
         if payload is None:
             return None
         record = self._to_record(payload)
@@ -96,7 +96,7 @@ class ProductionTenantDecisionRepository:
         tenant, subject = self._validate_scope(tenant_id, subject_id)
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             raise ValueError("limit must be greater than zero")
-        records = [self._to_record(item) for item in self.store.list(tenant_id=tenant, limit=limit)]
+        records = [self._to_record(item) for item in self.store.list(tenant_id=tenant, subject_id=subject, limit=limit)]
         for record in records:
             if record.tenant_id != tenant or record.subject_id != subject:
                 raise PermissionError("stored decision ownership does not match trusted scope")
