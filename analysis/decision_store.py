@@ -13,8 +13,9 @@ class DecisionStore:
     """Optional SQLite persistence for local learning/decision memory.
 
     This store is intentionally not the production multi-tenant data plane.
-    When public SaaS mode is active, use of this global/local store is rejected
-    so a future routing mistake cannot expose process-wide decision history.
+    When public SaaS mode is active, writes are rejected and reads return an
+    empty local view so application startup cannot accidentally expose global
+    process history while still allowing the public boundary to fail closed.
     """
 
     _COLUMNS = tuple(field.name for field in fields(DecisionRecord))
@@ -83,7 +84,8 @@ class DecisionStore:
             raise RuntimeError("decision storage batch write failed") from exc
 
     def load(self) -> list[DecisionRecord]:
-        self._ensure_local_data_plane()
+        if self._public_saas_mode():
+            return []
         if not self.database_path:
             return []
         columns = ", ".join(self._COLUMNS)
