@@ -44,6 +44,7 @@ PUBLIC_SAAS_MUTATIONS = {
     "/api/learning/attempts",
 }
 PUBLIC_SAAS_READS = {
+    "/api/status",
     "/api/preferences",
     "/api/notifications",
     "/api/notifications/all",
@@ -167,7 +168,8 @@ def application(environ, start_response):
     try:
         _authorize_public_saas_request(environ, path, method)
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
+            payload = {"ok": True} if saas_public_mode() else {"ok": True, **SERVICE.system_status()}
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
