@@ -28,6 +28,11 @@ class ProductionTenantDecisionRepository:
     also carry ownership metadata that matches the trusted tenant context.
     """
 
+    _IMMUTABLE_FIELDS = (
+        "decision_id", "created_at", "symbol", "timeframe", "signal", "score",
+        "confirmed", "reason", "execution_allowed", "subject_id", "tenant_id",
+    )
+
     def __init__(self, store: ProductionStore) -> None:
         self.store = store
 
@@ -54,12 +59,25 @@ class ProductionTenantDecisionRepository:
             tenant_id=payload.get("tenant_id"),
         )
 
+    @classmethod
+    def _immutable_values(cls, record: DecisionRecord) -> tuple[Any, ...]:
+        payload = record.to_dict()
+        return tuple(payload[field] for field in cls._IMMUTABLE_FIELDS)
+
     def save(self, record: DecisionRecord, *, tenant_id: str) -> None:
         tenant = self._validate_tenant(tenant_id)
         if record.tenant_id != tenant:
             raise PermissionError("decision tenant does not match trusted tenant context")
         if not record.subject_id or not record.subject_id.strip():
             raise PermissionError("decision subject ownership is required")
+
+        existing_payload = self.store.load(record.decision_id, tenant_id=tenant)
+        if existing_payload is not None:
+            existing = self._to_record(existing_payload)
+            if existing.tenant_id != tenant or not existing.subject_id:
+                raise PermissionError("stored decision ownership is invalid")
+            if self._immutable_values(existing) != self._immutable_values(record):
+                raise PermissionError("decision core fields are immutable")
         self.store.save(record.to_dict(), tenant_id=tenant)
 
     def load(self, decision_id: str, *, tenant_id: str) -> DecisionRecord | None:
