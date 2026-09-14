@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-import pytest
-
+from core.senior_risk_reasoning import RiskDomain
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
 
@@ -13,6 +12,13 @@ def _candles():
     ]
 
 
+def _risk_observations():
+    return [
+        {"domain": domain.value, "statement": f"{domain.value} observado.", "known": True, "evidence": ["validated-context"]}
+        for domain in RiskDomain
+    ]
+
+
 def _payload():
     return {
         "symbol": "EURUSD",
@@ -21,20 +27,21 @@ def _payload():
         "confirmed": True,
         "filters_ok": True,
         "candles": _candles(),
-        "available_nodes": ["price", "structure", "volatility", "liquidity"],
-        "observed_nodes": ["price", "structure", "volatility", "liquidity"],
-        "relationships_reviewed": ["price-structure", "structure-volatility", "price-liquidity"],
-        "risk_observations": [{"domain": "CAPITAL", "statement": "Capital observado.", "known": True, "evidence": ["account"]}],
+        "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
+        "observed_nodes": ["market_data", "price_history", "risk", "execution", "security"],
+        "relationships_reviewed": ["price-structure", "structure-volatility", "price-liquidity", "risk-execution", "security-recovery"],
+        "risk_observations": _risk_observations(),
     }
 
 
-def test_application_analysis_rejects_score_only_payload():
+def test_application_analysis_fails_closed_for_score_only_payload():
     service = ConfiguredEcosystemService()
-    with pytest.raises(ValueError, match="candles are required"):
-        service.analyze({"score": 99, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    record = service.analyze({"score": 99, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    assert record.signal == "AGUARDAR"
+    assert "Análise sênior não pode ser concluída" in record.reason
 
 
-def test_application_analysis_uses_senior_context_before_recording():
+def test_application_analysis_uses_complete_senior_context_before_recording():
     service = ConfiguredEcosystemService()
     record = service.analyze(_payload())
     assert record.signal == "COMPRA"
