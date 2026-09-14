@@ -47,8 +47,14 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
 
         self.assertEqual(self.repository.load("decision-1", tenant_id="tenant-a", subject_id="user-a"), record)
         self.assertIsNone(self.repository.load("decision-1", tenant_id="tenant-b", subject_id="user-b"))
+        self.assertIsNone(self.repository.load("decision-1", tenant_id="tenant-a", subject_id="user-b"))
+
+    def test_repository_rejects_provider_returning_cross_scope_record(self) -> None:
+        record = sample_record("provider-leak")
+        self.store.records[("tenant-a", "user-a", "provider-leak")] = record.to_dict() | {"subject_id": "user-b"}
+
         with self.assertRaises(PermissionError):
-            self.repository.load("decision-1", tenant_id="tenant-a", subject_id="user-b")
+            self.repository.load("provider-leak", tenant_id="tenant-a", subject_id="user-a")
 
     def test_list_never_returns_another_tenant_or_subject(self) -> None:
         self.repository.save(sample_record("a"), tenant_id="tenant-a", subject_id="user-a")
