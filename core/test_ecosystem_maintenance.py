@@ -21,7 +21,8 @@ def test_maintenance_requires_future_start_and_exposes_return_time():
     assert notice["status"] == MaintenanceStatus.SCHEDULED.value
     assert notice["expected_return_at"] == "2026-09-14T21:30:00+00:00"
     assert notice["duration_minutes"] == 30
-    assert notice["trading_available"] is False
+    assert notice["trading_available"] is True
+    assert notice["execution_blocked"] is False
 
 
 def test_maintenance_becomes_active_then_completed():
