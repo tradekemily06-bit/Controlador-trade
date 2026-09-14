@@ -72,6 +72,12 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
+        if path == WEB_DIR / "index.html":
+            component_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
+            component_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
+            script_tag = f'<script nonce="{script_nonce}">{component_js}</script>'.encode("utf-8")
+            mount = component_html + script_tag
+            body = body.replace(b"<div class=\"section\">Visão geral</div>", mount + b"<div class=\"section\">Visão geral</div>", 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
@@ -192,7 +198,7 @@ def application(environ, start_response):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
