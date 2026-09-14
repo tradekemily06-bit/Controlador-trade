@@ -97,13 +97,16 @@ class EcosystemService:
 
     def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
-        for index, record in enumerate(self.memory):
+        for record in self.memory:
             if record.decision_id == decision_id:
                 if owner is not None and not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
                     raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
-                self.memory[index] = updated
+                # Durability is authoritative: do not mutate the in-memory view
+                # until the durable write succeeds. Otherwise a storage failure
+                # could expose a result that was never actually persisted.
                 self.store.save(updated)
+                self.memory[self.memory.index(record)] = updated
                 return updated
         raise ValueError("decision_id não encontrado")
 
