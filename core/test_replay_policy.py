@@ -1,27 +1,25 @@
 import pytest
 
-from core.replay_policy import MAX_REPLAY_CASES, prevalidate_replay_cases
+from core.replay_policy import prevalidate_replay_cases
 
 
-def test_accepts_up_to_maximum_scenarios():
-    cases = [{"score": 50} for _ in range(MAX_REPLAY_CASES)]
-    assert len(prevalidate_replay_cases(cases)) == MAX_REPLAY_CASES
+def test_accepts_arbitrary_number_of_valid_scenarios():
+    cases = [{"score": index} for index in range(101)]
+    assert len(prevalidate_replay_cases(cases)) == 101
 
 
-def test_rejects_51st_scenario_before_processing_it():
+def test_accepts_generator_without_a_scenario_count_ceiling():
     seen = []
 
     def stream():
-        for index in range(MAX_REPLAY_CASES + 1):
+        for index in range(101):
             seen.append(index)
             yield {"score": index}
 
-    with pytest.raises(ValueError, match="50"):
-        prevalidate_replay_cases(stream())
+    accepted = prevalidate_replay_cases(stream())
 
-    # The guard reads only the 51st item as the rejection sentinel; it never
-    # hands an oversized request to the analysis layer.
-    assert seen == list(range(MAX_REPLAY_CASES + 1))
+    assert len(accepted) == 101
+    assert seen == list(range(101))
 
 
 def test_rejects_invalid_scenario_before_returning_any_accepted_batch():
