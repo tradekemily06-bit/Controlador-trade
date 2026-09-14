@@ -31,6 +31,20 @@ def test_learning_state_isolated_between_tenants() -> None:
         clear_trusted_identity()
 
 
+def test_learning_state_isolated_between_subjects_in_same_tenant() -> None:
+    service = ConfiguredEcosystemService()
+    try:
+        _identity("tenant-a", "user-a")
+        service.add_learning_resource({"resource_id": "shared-id", "title": "A", "content_type": "NOTE"})
+
+        _identity("tenant-a", "user-b")
+        assert service.learning_resources_view() == []
+        service.add_learning_resource({"resource_id": "shared-id", "title": "B", "content_type": "NOTE"})
+        assert [item["title"] for item in service.learning_resources_view()] == ["B"]
+    finally:
+        clear_trusted_identity()
+
+
 def test_learning_source_cannot_be_validated_from_another_scope() -> None:
     service = ConfiguredEcosystemService()
     try:
