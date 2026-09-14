@@ -10,6 +10,7 @@ from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.trading_psychology import PsychologyCheckIn, TradingPsychologyGuard
+from core.trading_psychology_advanced import AdvancedTradingPsychology, BehavioralObservation
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
@@ -24,6 +25,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self.notifications = EcosystemNotificationCenter()
         self.maintenance = MaintenanceManager()
         self.psychology = TradingPsychologyGuard()
+        self.advanced_psychology = AdvancedTradingPsychology()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
@@ -130,3 +132,27 @@ class ConfiguredEcosystemService(EcosystemService):
         check_in = PsychologyCheckIn(emotional_state=str(payload.get("emotional_state", "")), urge_to_trade=int(payload.get("urge_to_trade", 0)), recent_losses=int(payload.get("recent_losses", 0)), fatigue=int(payload.get("fatigue", 0)), confidence=int(payload.get("confidence", 0)), rule_adherence=int(payload.get("rule_adherence", 0)))
         assessment = self.psychology.assess(check_in)
         return {"flags": [flag.value for flag in assessment.flags], "risk_level": assessment.risk_level, "message": assessment.message, "suggested_action": assessment.suggested_action, "trading_authorized": False}
+
+    def advanced_psychology_assessment(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Assess observable trader behavior with advanced, explainable guardrails."""
+        observation = BehavioralObservation(
+            operations=int(payload.get("operations", 0)),
+            losses=int(payload.get("losses", 0)),
+            consecutive_losses=int(payload.get("consecutive_losses", 0)),
+            seconds_since_last_operation=payload.get("seconds_since_last_operation"),
+            risk_per_operation=float(payload.get("risk_per_operation", 0.0)),
+            baseline_risk=float(payload.get("baseline_risk", 0.0)),
+            rules_broken=int(payload.get("rules_broken", 0)),
+            repeated_same_setup=int(payload.get("repeated_same_setup", 0)),
+            hesitation_count=int(payload.get("hesitation_count", 0)),
+            revenge_intent=bool(payload.get("revenge_intent", False)),
+            urgency=int(payload.get("urgency", 0)),
+            fatigue=int(payload.get("fatigue", 0)),
+            confidence=int(payload.get("confidence", 5)),
+            plan_adherence=int(payload.get("plan_adherence", 10)),
+            post_loss_risk_change=float(payload.get("post_loss_risk_change", 0.0)),
+            recent_win_streak=int(payload.get("recent_win_streak", 0)),
+            recent_loss_streak=int(payload.get("recent_loss_streak", 0)),
+        )
+        profile = self.advanced_psychology.assess(observation)
+        return {"patterns": [item.value for item in profile.patterns], "severity": profile.severity, "score": profile.score, "evidence": list(profile.evidence), "intervention": profile.intervention, "learning_focus": list(profile.learning_focus), "execution_authorized": False}
