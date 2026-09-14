@@ -7,6 +7,7 @@ permission.
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
+from typing import Any
 
 
 class CandleStyle(str, Enum):
@@ -72,34 +73,75 @@ class EcosystemPreferences:
 
 
 class EcosystemPreferencesStore:
-    """Validated preferences; security-critical permissions are immutable here."""
+    """Validated preferences with tenant/subject scoping in trusted request context.
+
+    Local/test callers without a trusted identity retain the original single-user
+    behavior. SaaS callers are isolated by the server-injected tenant+subject key.
+    """
 
     def __init__(self, preferences: EcosystemPreferences | None = None) -> None:
-        self._preferences = preferences or EcosystemPreferences()
-        self._validate(self._preferences)
+        self._default_preferences = preferences or EcosystemPreferences()
+        self._validate(self._default_preferences)
+        self._scoped: dict[tuple[str, str], EcosystemPreferences] = {}
+
+    @staticmethod
+    def _trusted_scope() -> tuple[str, str] | None:
+        try:
+            from security.http_identity import current_trusted_identity
+            identity = current_trusted_identity()
+        except Exception:
+            identity = None
+        if identity is None:
+            return None
+        tenant_id = str(identity.tenant_id).strip()
+        subject_id = str(identity.subject_id).strip()
+        if not tenant_id or not subject_id:
+            return None
+        return tenant_id, subject_id
+
+    def _current(self) -> EcosystemPreferences:
+        scope = self._trusted_scope()
+        if scope is None:
+            return self._default_preferences
+        return self._scoped.get(scope, self._default_preferences)
 
     @property
     def preferences(self) -> EcosystemPreferences:
-        return self._preferences
+        return self._current()
 
     def update(self, **changes) -> EcosystemPreferences:
-        candidate = replace(self._preferences, **changes)
+        current = self._current()
+        candidate = replace(current, **changes)
         self._validate(candidate)
-        self._preferences = candidate
+        scope = self._trusted_scope()
+        if scope is None:
+            self._default_preferences = candidate
+        else:
+            self._scoped[scope] = candidate
         return candidate
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        candle = replace(self._preferences.candle, **changes)
-        candidate = replace(self._preferences, candle=candle)
+        current = self._current()
+        candle = replace(current.candle, **changes)
+        candidate = replace(current, candle=candle)
         self._validate(candidate)
-        self._preferences = candidate
+        scope = self._trusted_scope()
+        if scope is None:
+            self._default_preferences = candidate
+        else:
+            self._scoped[scope] = candidate
         return candidate
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        notifications = replace(self._preferences.notifications, **changes)
-        candidate = replace(self._preferences, notifications=notifications)
+        current = self._current()
+        notifications = replace(current.notifications, **changes)
+        candidate = replace(current, notifications=notifications)
         self._validate(candidate)
-        self._preferences = candidate
+        scope = self._trusted_scope()
+        if scope is None:
+            self._default_preferences = candidate
+        else:
+            self._scoped[scope] = candidate
         return candidate
 
     @staticmethod
