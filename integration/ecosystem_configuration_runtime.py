@@ -22,8 +22,9 @@ class ConfiguredEcosystemService(EcosystemService):
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
-    def analyze(self, payload: dict[str, Any], *, persist: bool = True):
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         """Require senior context and operational risk for actionable analysis."""
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         try:
             context_input = SeniorAnalysisBoundary.build_input(payload)
         except ValueError as exc:
@@ -35,7 +36,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 symbol=payload.get("symbol"),
                 timeframe=payload.get("timeframe"),
             )
-            return self._record_analysis(safe, persist=persist)
+            return self._record_analysis(safe, persist=persist, owner=owner)
 
         senior_context = self.senior_context.assess(context_input)
         candidate = self.engine.evaluate(
@@ -51,11 +52,13 @@ class ConfiguredEcosystemService(EcosystemService):
             senior_context=senior_context,
             operational_risk=operational_risk,
         )
-        return self._record_analysis(gated, persist=persist)
+        return self._record_analysis(gated, persist=persist, owner=owner)
 
-    def _record_analysis(self, result, *, persist: bool = True):
+    def _record_analysis(self, result, *, persist: bool = True, owner=None):
         from analysis.decision_record import DecisionRecord
         record = DecisionRecord.from_analysis(result)
+        if owner is not None:
+            record = record.with_owner(subject_id=owner.subject_id, tenant_id=owner.tenant_id)
         if persist:
             self._persist_records([record])
         return record
