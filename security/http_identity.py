@@ -10,6 +10,10 @@ TRUSTED_TENANT_KEY = "controlador.trusted_tenant_id"
 TRUSTED_ROLE_KEY = "controlador.trusted_role"
 
 
+class PublicSaaSNotReady(RuntimeError):
+    """Raised when public SaaS is requested without a real tenant-scoped data plane."""
+
+
 @dataclass(frozen=True)
 class TrustedHttpIdentity:
     """Identity injected by trusted deployment middleware, never by browser headers."""
@@ -49,3 +53,8 @@ def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
     allowed = {role.strip().lower() for role in allowed_roles}
     if identity.role not in allowed:
         raise PermissionError("insufficient role")
+
+
+def require_tenant_scoped_data_plane() -> None:
+    """Public SaaS must not expose process-global state as if it were tenant-isolated."""
+    raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
