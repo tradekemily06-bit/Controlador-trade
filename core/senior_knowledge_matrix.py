@@ -1,17 +1,12 @@
-"""Auditable knowledge/provenance matrix for the senior professional layer.
-
-The matrix distinguishes a curriculum map from validated knowledge. A module
-may be broad and professionally capable while individual competencies remain
-unvalidated until current, authoritative evidence and tests are recorded.
-Nothing in this module grants execution authority.
-"""
+"""Auditable provenance matrix for the senior professional knowledge layer."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
 
-from .financial_market_curriculum import CurriculumModule, SeniorFinancialMarketCurriculum
+from .financial_market_curriculum import SeniorFinancialMarketCurriculum
+from .senior_professional_depth import build_senior_professional_depth
 
 
 class KnowledgeStatus(str, Enum):
@@ -52,6 +47,8 @@ class KnowledgeCompetency:
     module_id: str
     domain: str
     competency: str
+    experience_years: int = 45
+    experience_is_open_ended: bool = True
     status: KnowledgeStatus = KnowledgeStatus.UNVALIDATED
     evidence: tuple[KnowledgeEvidence, ...] = ()
     last_reviewed_at: str | None = None
@@ -63,6 +60,10 @@ class KnowledgeCompetency:
             raise ValueError("knowledge competency identity is required")
         if not self.domain.strip() or not self.competency.strip():
             raise ValueError("knowledge competency domain and description are required")
+        if self.experience_years < 45:
+            raise ValueError("knowledge competency must preserve the 45+ experience baseline")
+        if not self.experience_is_open_ended:
+            raise ValueError("knowledge experience cannot have an upper ceiling")
         if self.execution_authorized:
             raise ValueError("knowledge validation cannot authorize execution")
         if self.status is KnowledgeStatus.VALIDATED:
@@ -75,12 +76,13 @@ class KnowledgeCompetency:
 
 
 class SeniorProfessionalKnowledgeMatrix:
-    """Trace curriculum competencies to evidence without inventing sources."""
+    """Trace curriculum and advanced professional depth to evidence."""
 
     def __init__(self, curriculum: SeniorFinancialMarketCurriculum | None = None) -> None:
         self.curriculum = curriculum or SeniorFinancialMarketCurriculum()
         self._records: dict[str, KnowledgeCompetency] = {}
         self._build_from_curriculum()
+        self._build_from_advanced_depth()
 
     @property
     def records(self) -> tuple[KnowledgeCompetency, ...]:
@@ -107,6 +109,8 @@ class SeniorProfessionalKnowledgeMatrix:
             module_id=current.module_id,
             domain=current.domain,
             competency=current.competency,
+            experience_years=current.experience_years,
+            experience_is_open_ended=True,
             status=KnowledgeStatus.VALIDATED,
             evidence=(*current.evidence, evidence),
             last_reviewed_at=reviewed_at,
@@ -126,6 +130,8 @@ class SeniorProfessionalKnowledgeMatrix:
             module_id=current.module_id,
             domain=current.domain,
             competency=current.competency,
+            experience_years=current.experience_years,
+            experience_is_open_ended=True,
             status=KnowledgeStatus.REASSESS,
             evidence=current.evidence,
             last_reviewed_at=current.last_reviewed_at,
@@ -142,19 +148,32 @@ class SeniorProfessionalKnowledgeMatrix:
             counts[record.status] += 1
         return counts
 
+    def _add(self, record: KnowledgeCompetency) -> None:
+        record.validate()
+        self._records[record.competency_id] = record
+
     def _build_from_curriculum(self) -> None:
         for module in self.curriculum.modules:
             competencies = (*module.practical_competencies, *module.senior_capabilities)
             for index, competency in enumerate(_unique(competencies), start=1):
-                competency_id = f"{module.module_id}-C{index:02d}"
-                record = KnowledgeCompetency(
-                    competency_id=competency_id,
+                self._add(KnowledgeCompetency(
+                    competency_id=f"{module.module_id}-C{index:02d}",
                     module_id=module.module_id,
                     domain=module.domain.value,
                     competency=competency,
-                )
-                record.validate()
-                self._records[competency_id] = record
+                ))
+
+    def _build_from_advanced_depth(self) -> None:
+        for depth in build_senior_professional_depth():
+            for index, competency in enumerate(depth.competencies, start=1):
+                self._add(KnowledgeCompetency(
+                    competency_id=f"DEPTH-{depth.domain_id.upper()}-C{index:02d}",
+                    module_id=f"DEPTH-{depth.domain_id.upper()}",
+                    domain=depth.domain_id,
+                    competency=competency,
+                    experience_years=depth.experience_years,
+                    experience_is_open_ended=depth.experience_is_open_ended,
+                ))
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
