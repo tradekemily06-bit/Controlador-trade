@@ -106,6 +106,8 @@ def application(environ, start_response):
     if not SECURITY.allow(environ): return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
     try:
         _authorize_public_saas_request(environ, path, method)
+        identity = require_trusted_identity(environ) if saas_public_mode() else None
+        owner_kwargs = {"subject_id": identity.subject_id, "tenant_id": identity.tenant_id} if identity is not None else {}
         if path == "/api/health" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"ok": True} if saas_public_mode() else {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
@@ -126,15 +128,15 @@ def application(environ, start_response):
         if path == "/api/psychology/check-in" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_check_in(_read_json(environ)), request_id, environ)
         if path == "/api/psychology/advanced" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.advanced_psychology_assessment(_read_json(environ)), request_id, environ)
         if path == "/api/analyze" and method == "POST":
-            record = SERVICE.analyze(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
+            record = SERVICE.analyze(_read_json(environ), **owner_kwargs); return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list): raise ValueError("cases deve ser uma lista")
-            return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
-        if path == "/api/memory" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
-        if path == "/api/statistics" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(), request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases, **owner_kwargs), "execution_allowed": False}, request_id, environ)
+        if path == "/api/memory" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50), **owner_kwargs)}, request_id, environ)
+        if path == "/api/statistics" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(**owner_kwargs), request_id, environ)
         if path == "/api/outcome" and method == "POST":
-            data = _read_json(environ); record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", ""))); return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
+            data = _read_json(environ); record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")), **owner_kwargs); return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
         if path == "/api/risk" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
         if path == "/api/connections" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
