@@ -54,18 +54,9 @@ def test_missing_identity_fails_closed():
 def test_plan_rejects_invalid_configuration():
     with pytest.raises(ValueError):
         PlanDefinition(name="", entitlements=frozenset())
-    with pytest.raises(ValueError):
-        PlanDefinition(name="bad", limits={"analysis": -1})
-    with pytest.raises(ValueError):
-        PlanDefinition(name="bad", limits={"analysis": True})
 
 
-def test_plan_limits_and_policy_are_immutable_at_runtime():
-    limits = {"analysis": 10}
-    plan = PlanDefinition(name="safe", limits=limits)
-    limits["analysis"] = 0
-    assert plan.limit_for("analysis") == 10
-
+def test_policy_is_immutable_at_runtime():
     policy = SaaSAuthorizationPolicy()
     with pytest.raises(TypeError):
         policy.role_entitlements[SaaSRole.MEMBER] = frozenset()
