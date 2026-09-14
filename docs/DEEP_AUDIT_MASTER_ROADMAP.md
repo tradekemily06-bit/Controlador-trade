@@ -7,6 +7,7 @@ Este documento é o mapa de execução da auditoria profunda. A ordem é deliber
 - Não existe limite funcional/produto artificial. Qualquer proteção numérica deve proteger um recurso, segurança ou risco real e ser documentada como tal.
 - O professor/sênior começa disponível desde o primeiro uso do ecossistema com uma experiência profissional **45+ anos**. 45 é piso de experiência, nunca teto. A experiência não reinicia quando um novo usuário entra e pode crescer indefinidamente.
 - O professor/sênior representa uma capacidade arquitetural de nível profissional, não uma pessoa humana nem uma certificação inventada. Conhecimento e competências precisam de fontes, validação, testes e histórico de atualização.
+- O professor/sênior cobre tanto **gestão de riscos** quanto **gestão financeira** em nível profissional, inclusive para operação manual e tomada de decisão humana; isso não concede autoridade de execução.
 - Professor/sênior nunca recebe autoridade de execução por ser sênior. Julgamento, risco, segurança, identidade e execução continuam separados.
 - REAL permanece bloqueado até que todos os gates independentes de produção estejam configurados e validados.
 - Quando uma dependência externa estiver indisponível, registrar o estado e continuar tudo que não depende dela; nunca apagar o requisito nem tratá-lo como concluído.
@@ -72,7 +73,15 @@ O currículo já cobre uma trilha ampla de educação financeira, sistema financ
 
 Próximo trabalho: transformar esse mapa em uma matriz de conhecimento profissional auditável: `domínio → competência → fonte → versão/data → validação → teste → evidência → status → atualização`. Não declarar cursos, diplomas ou certificações que não existam.
 
-**C3. Conhecimento operacionalmente seguro** — PENDENTE
+**C3. Gestão de riscos profissional** — BASE EXISTENTE / EXPANSÃO CONTÍNUA
+O sênior deve raciocinar sobre risco de capital, posição, drawdown, alavancagem/margem, concentração, correlação, liquidez, custos, execução, cenários adversos, incerteza e recuperação. Isso vale para operação automatizada **e manual**: o usuário precisa conseguir aprender a gerir o próprio risco como trader profissional.
+
+**C4. Gestão financeira profissional** — INICIADA / VALIDAÇÃO PENDENTE
+Inclui gestão de capital, orçamento, fluxo de caixa, reserva de liquidez, alocação, dimensionamento de posição, concentração, drawdown, alavancagem, custos, desempenho, portfólio, contingência, registros e organização financeira relacionada à atividade de trading. A gestão financeira deve distinguir dinheiro disponível, capital destinado ao trading, capital em risco, liquidez de reserva, exposição e resultado realizado/não realizado.
+
+Foi adicionada uma capacidade analítica inicial em `core/senior_financial_management.py`, sem autoridade de execução. A próxima etapa é integrar essa capacidade ao currículo, ao raciocínio sênior, ao risco e ao ensino, com fontes e validações.
+
+**C5. Conhecimento operacionalmente seguro** — PENDENTE
 - separar conhecimento estudado de conhecimento validado;
 - manter contraevidência e incerteza;
 - promoção controlada para uso operacional;
@@ -80,13 +89,13 @@ Próximo trabalho: transformar esse mapa em uma matriz de conhecimento profissio
 
 ### FASE D — Valor monetário de pontos/ticks/pips e alavancagem
 
-**D1. PointValueEngine central** — PENDENTE / PRÓXIMA IMPLEMENTAÇÃO
+**D1. PointValueEngine central** — EM IMPLEMENTAÇÃO
 - normalizar ponto/tick/pip conforme instrumento;
 - usar especificação do broker/instrumento;
 - calcular valor monetário por unidade de movimento e quantidade;
 - converter para moeda da conta quando necessário;
 - anexar timestamp, frescor e proveniência;
-- rejeitar silenciosamente dados de conversão desatualizados; exigir REASSESS/AGUARDAR quando o cálculo depender deles.
+- exigir REASSESS/AGUARDAR quando o cálculo depender de conversão desatualizada.
 
 **D2. Integração** — PENDENTE
 - operação normal;
