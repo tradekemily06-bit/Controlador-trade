@@ -154,3 +154,13 @@ class ConfiguredEcosystemService(EcosystemService):
         )
         assessment = self.advanced_psychology.assess(snapshot)
         return {"enabled": True, "patterns": [item.pattern.value for item in assessment.evidence], "risk_level": assessment.risk_level, "score": assessment.score, "evidence": [{"pattern": item.pattern.value, "severity": item.severity, "evidence": list(item.evidence), "recommendation": item.recommendation} for item in assessment.evidence], "recommendations": list(assessment.recommendations), "trading_authorized": False}
+
+    def psychology_status(self) -> dict[str, Any]:
+        prefs = self.preferences.preferences
+        return {
+            "enabled": prefs.psychology_enabled,
+            "data_collection_enabled": prefs.psychology_data_collection_enabled,
+            "execution_authority": False,
+            "decision_authority": False,
+            "role": "parallel_behavioral_protection",
+        }
