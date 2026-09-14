@@ -2,12 +2,24 @@ from __future__ import annotations
 
 import pytest
 
+from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.ecosystem_service import EcosystemService
 
 
 def test_analyze_attaches_trusted_owner() -> None:
     service = EcosystemService()
     record = service.analyze({"score": 90, "confirmed": True, "filters_ok": True}, subject_id="user-a", tenant_id="tenant-a")
+    assert record.subject_id == "user-a"
+    assert record.tenant_id == "tenant-a"
+
+
+def test_configured_analyze_preserves_trusted_owner() -> None:
+    service = ConfiguredEcosystemService()
+    record = service.analyze(
+        {"score": 90, "confirmed": True, "filters_ok": True, "senior_context_complete": True, "risk_assessed": True},
+        subject_id="user-a",
+        tenant_id="tenant-a",
+    )
     assert record.subject_id == "user-a"
     assert record.tenant_id == "tenant-a"
 
