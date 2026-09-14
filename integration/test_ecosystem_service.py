@@ -34,9 +34,7 @@ def test_service_exposes_integrated_senior_context_without_execution_authority()
         available_nodes=("price", "structure", "volatility", "liquidity"),
         observed_nodes=("price", "structure", "volatility", "liquidity"),
         relationships_reviewed=("price-structure", "structure-volatility", "price-liquidity"),
-        risk_observations=(
-            RiskObservation(RiskDomain.CAPITAL, "Capital observado.", True, ("account",)),
-        ),
+        risk_observations=(RiskObservation(RiskDomain.CAPITAL, "Capital observado.", True, ("account",)),),
         available_risk_domains=(RiskDomain.CAPITAL,),
     )
 
@@ -89,10 +87,10 @@ def test_replay_has_no_artificial_scenario_ceiling():
 
 def test_replay_failure_persists_nothing():
     class FailingReplayService(EcosystemService):
-        def analyze(self, payload, *, persist=True):
+        def analyze(self, payload, *, persist=True, subject_id=None, tenant_id=None):
             if payload.get("fail"):
                 raise RuntimeError("simulated replay failure")
-            return super().analyze(payload, persist=persist)
+            return super().analyze(payload, persist=persist, subject_id=subject_id, tenant_id=tenant_id)
 
     service = FailingReplayService()
     cases = [
@@ -141,10 +139,7 @@ def test_production_context_requires_subject_and_tenant():
 
 
 def test_production_context_normalizes_trusted_scope():
-    context = EcosystemService().require_production_context(
-        subject_id="  user-a  ",
-        tenant_id="  tenant-a  ",
-    )
+    context = EcosystemService().require_production_context(subject_id="  user-a  ", tenant_id="  tenant-a  ")
 
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
@@ -160,11 +155,7 @@ def test_production_operation_requires_ready_storage():
 
 def test_production_operation_accepts_explicit_ready_storage():
     service = EcosystemService(
-        production_storage=ProductionStoragePolicy(
-            provider_configured=True,
-            tenant_scoped=True,
-            durable=True,
-        )
+        production_storage=ProductionStoragePolicy(provider_configured=True, tenant_scoped=True, durable=True)
     )
 
     context = service.authorize_production_operation(subject_id="user-a", tenant_id="tenant-a")
