@@ -68,13 +68,13 @@ class HttpIdentityTests(unittest.TestCase):
         self.assertEqual(status, "403 Forbidden")
         self.assertIn("request_id", payload)
 
-    def test_public_saas_mutation_accepts_deployment_trusted_identity(self):
+    def test_public_saas_mutation_fails_closed_until_tenant_storage_exists(self):
         status, payload = self.request(
             {"score": 90, "symbol": "EURUSD", "timeframe": "5m", "confirmed": True, "filters_ok": True},
             trusted=True,
         )
-        self.assertEqual(status, "200 OK")
-        self.assertFalse(payload["execution_allowed"])
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertIn("tenant-scoped data plane", payload["error"])
 
 
 if __name__ == "__main__":
