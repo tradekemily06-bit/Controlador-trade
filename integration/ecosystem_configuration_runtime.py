@@ -10,7 +10,7 @@ from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.trading_psychology import PsychologyCheckIn, TradingPsychologyGuard
-from core.trading_psychology_advanced import AdvancedTradingPsychology, BehavioralObservation
+from core.advanced_trading_psychology import AdvancedTradingPsychology, TradingBehaviorSnapshot
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
@@ -30,7 +30,6 @@ class ConfiguredEcosystemService(EcosystemService):
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
-        """Require senior context and operational risk for actionable analysis."""
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         try:
             context_input = SeniorAnalysisBoundary.build_input(payload)
@@ -109,7 +108,6 @@ class ConfiguredEcosystemService(EcosystemService):
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def schedule_maintenance(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Announce planned downtime before an update begins."""
         starts_at = datetime.fromisoformat(str(payload.get("starts_at", "")).replace("Z", "+00:00"))
         window = self.maintenance.schedule(maintenance_id=str(payload.get("maintenance_id", "")), title=str(payload.get("title", "Atualização programada")), message=str(payload.get("message", "O ecossistema ficará temporariamente indisponível para atualização.")), starts_at=starts_at, duration_minutes=int(payload.get("duration_minutes", 1)))
         notice = window.user_notice()
@@ -120,7 +118,6 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.maintenance.status()
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
-        """Route a material runtime event into the notification center."""
         notification_kind = NotificationKind(str(kind).upper())
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
         notification_id = f"event-{len(self.notifications.all()) + 1}"
@@ -128,7 +125,6 @@ class ConfiguredEcosystemService(EcosystemService):
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def psychology_check_in(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Return behavioral self-awareness feedback; never authorizes trading."""
         if not self.preferences.preferences.psychology_enabled:
             return {"enabled": False, "flags": [], "risk_level": "DISABLED", "message": "Psicologia do trader está desativada nas preferências.", "suggested_action": None, "trading_authorized": False}
         check_in = PsychologyCheckIn(emotional_state=str(payload.get("emotional_state", "")), urge_to_trade=int(payload.get("urge_to_trade", 0)), recent_losses=int(payload.get("recent_losses", 0)), fatigue=int(payload.get("fatigue", 0)), confidence=int(payload.get("confidence", 0)), rule_adherence=int(payload.get("rule_adherence", 0)))
@@ -136,27 +132,25 @@ class ConfiguredEcosystemService(EcosystemService):
         return {"enabled": True, "flags": [flag.value for flag in assessment.flags], "risk_level": assessment.risk_level, "message": assessment.message, "suggested_action": assessment.suggested_action, "trading_authorized": False}
 
     def advanced_psychology_assessment(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Assess observable trader behavior with advanced, explainable guardrails."""
         if not self.preferences.preferences.psychology_enabled:
-            return {"enabled": False, "patterns": [], "severity": "DISABLED", "score": 0, "evidence": [], "intervention": None, "learning_focus": [], "execution_authorized": False}
-        observation = BehavioralObservation(
-            operations=int(payload.get("operations", 0)),
+            return {"enabled": False, "patterns": [], "risk_level": "DISABLED", "score": 0, "evidence": [], "recommendations": [], "trading_authorized": False}
+        snapshot = TradingBehaviorSnapshot(
+            trades_count=int(payload.get("trades_count", payload.get("operations", 0))),
             losses=int(payload.get("losses", 0)),
+            wins=int(payload.get("wins", 0)),
             consecutive_losses=int(payload.get("consecutive_losses", 0)),
-            seconds_since_last_operation=payload.get("seconds_since_last_operation"),
-            risk_per_operation=float(payload.get("risk_per_operation", 0.0)),
-            baseline_risk=float(payload.get("baseline_risk", 0.0)),
-            rules_broken=int(payload.get("rules_broken", 0)),
-            repeated_same_setup=int(payload.get("repeated_same_setup", 0)),
-            hesitation_count=int(payload.get("hesitation_count", 0)),
-            revenge_intent=bool(payload.get("revenge_intent", False)),
-            urgency=int(payload.get("urgency", 0)),
+            avg_seconds_between_trades=payload.get("avg_seconds_between_trades", payload.get("seconds_since_last_operation")),
+            risk_before=payload.get("risk_before", payload.get("baseline_risk")),
+            risk_after=payload.get("risk_after", payload.get("risk_per_operation")),
+            rule_breaks=int(payload.get("rule_breaks", payload.get("rules_broken", 0))),
+            impulsive_entries=int(payload.get("impulsive_entries", 0)),
+            avoided_valid_setups=int(payload.get("avoided_valid_setups", 0)),
+            repeated_entries_after_loss=int(payload.get("repeated_entries_after_loss", payload.get("repeated_same_setup", 0))),
+            confirmation_requests=int(payload.get("confirmation_requests", 0)),
             fatigue=int(payload.get("fatigue", 0)),
-            confidence=int(payload.get("confidence", 5)),
-            plan_adherence=int(payload.get("plan_adherence", 10)),
-            post_loss_risk_change=float(payload.get("post_loss_risk_change", 0.0)),
-            recent_win_streak=int(payload.get("recent_win_streak", 0)),
-            recent_loss_streak=int(payload.get("recent_loss_streak", 0)),
+            urge_to_trade=int(payload.get("urge_to_trade", payload.get("urgency", 0))),
+            confidence=int(payload.get("confidence", 0)),
+            emotional_state=str(payload.get("emotional_state", "")),
         )
-        profile = self.advanced_psychology.assess(observation)
-        return {"enabled": True, "patterns": [item.value for item in profile.patterns], "severity": profile.severity, "score": profile.score, "evidence": list(profile.evidence), "intervention": profile.intervention, "learning_focus": list(profile.learning_focus), "execution_authorized": False}
+        assessment = self.advanced_psychology.assess(snapshot)
+        return {"enabled": True, "patterns": [item.pattern.value for item in assessment.evidence], "risk_level": assessment.risk_level, "score": assessment.score, "evidence": [{"pattern": item.pattern.value, "severity": item.severity, "evidence": list(item.evidence), "recommendation": item.recommendation} for item in assessment.evidence], "recommendations": list(assessment.recommendations), "trading_authorized": False}
