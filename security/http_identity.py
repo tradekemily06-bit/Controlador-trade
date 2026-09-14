@@ -46,7 +46,16 @@ def resolve_trusted_identity(environ) -> TrustedHttpIdentity | None:
 
 
 def require_trusted_identity(environ) -> TrustedHttpIdentity:
-    """Fail closed for public SaaS requests without a deployment-trusted identity."""
+    """Fail closed for public SaaS requests without a deployment-trusted identity.
+
+    The infrastructure health endpoint is intentionally public and carries no
+    user or tenant state. It gets a synthetic non-user identity only so the
+    common request path can continue without treating health as authenticated.
+    """
+    if str(environ.get("PATH_INFO", "")) == "/api/health":
+        identity = TrustedHttpIdentity("health-check", "health-check", "health")
+        _current_identity.set(identity)
+        return identity
     identity = resolve_trusted_identity(environ)
     if identity is None:
         raise PermissionError("trusted identity is required")
