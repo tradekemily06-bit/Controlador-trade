@@ -26,7 +26,6 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
-MAX_REPLAY_CASES = 50
 PUBLIC_SAAS_MUTATIONS = {
     "/api/preferences",
     "/api/preferences/candles",
@@ -195,8 +194,6 @@ def application(environ, start_response):
             data = _read_json(environ)
             item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", "")))
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
-        if path == "/api/saas/status" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
@@ -204,8 +201,6 @@ def application(environ, start_response):
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
                 raise ValueError("cases deve ser uma lista")
-            if len(cases) > MAX_REPLAY_CASES:
-                raise ValueError(f"replay aceita no máximo {MAX_REPLAY_CASES} casos por requisição")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
@@ -283,7 +278,7 @@ def application(environ, start_response):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
