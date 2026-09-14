@@ -72,6 +72,17 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
+        if path == WEB_DIR / "index.html":
+            notification_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
+            notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
+            onboarding_html = (WEB_DIR / "components" / "onboarding.html").read_text(encoding="utf-8").encode("utf-8")
+            onboarding_js = (WEB_DIR / "components" / "onboarding.js").read_text(encoding="utf-8")
+            notification_script = f'<script nonce="{script_nonce}">{notification_js}</script>'.encode("utf-8")
+            onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
+            notification_mount = notification_html + notification_script
+            onboarding_mount = onboarding_html + onboarding_script
+            anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
+            body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
