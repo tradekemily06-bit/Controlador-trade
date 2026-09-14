@@ -15,6 +15,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
+from security.http_identity import require_role, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -26,6 +27,26 @@ OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
 MAX_REPLAY_CASES = 50
+PUBLIC_SAAS_MUTATIONS = {
+    "/api/preferences",
+    "/api/preferences/candles",
+    "/api/preferences/notifications",
+    "/api/analyze",
+    "/api/replay",
+    "/api/outcome",
+    "/api/learning/resources",
+    "/api/learning/sources/screen",
+    "/api/learning/sources/validate",
+    "/api/learning/sources/admit",
+    "/api/learning/observations",
+    "/api/learning/activities",
+    "/api/learning/professor/activity",
+    "/api/learning/attempts",
+}
+ADMIN_ONLY_SAAS_MUTATIONS = {
+    "/api/learning/sources/validate",
+    "/api/learning/sources/admit",
+}
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -82,6 +103,15 @@ def _authorize_internal_update(environ) -> tuple[bool, str]:
     return True, "authorized"
 
 
+def _authorize_public_saas_request(environ, path: str, method: str) -> None:
+    """Gate sensitive mutations when this process is explicitly published as SaaS."""
+    if not saas_public_mode() or method != "POST" or path not in PUBLIC_SAAS_MUTATIONS:
+        return
+    identity = require_trusted_identity(environ)
+    if path in ADMIN_ONLY_SAAS_MUTATIONS:
+        require_role(identity, "admin")
+
+
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
@@ -113,6 +143,7 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     try:
+        _authorize_public_saas_request(environ, path, method)
         if path == "/api/health" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
@@ -212,6 +243,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+    except PermissionError as exc:
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 
