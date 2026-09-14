@@ -24,7 +24,7 @@ SENSITIVE_READS = (
 )
 
 
-def call(path: str, method: str = "GET") -> tuple[str, dict]:
+def call(path: str, method: str = "GET", trusted: bool = False) -> tuple[str, dict]:
     captured: dict[str, object] = {}
 
     def start_response(status, headers):
@@ -39,6 +39,10 @@ def call(path: str, method: str = "GET") -> tuple[str, dict]:
         "REMOTE_ADDR": "127.0.0.1",
         "wsgi.input": io.BytesIO(b""),
     }
+    if trusted:
+        environ["controlador.trusted_subject_id"] = "user-a"
+        environ["controlador.trusted_tenant_id"] = "tenant-a"
+        environ["controlador.trusted_role"] = "user"
     body = b"".join(app.application(environ, start_response))
     return str(captured["status"]), json.loads(body.decode("utf-8"))
 
@@ -56,3 +60,11 @@ def test_public_saas_mutation_requires_trusted_identity(monkeypatch):
     status, payload = call("/api/outcome", method="POST")
     assert status == "403 Forbidden"
     assert "request_id" in payload
+
+
+def test_public_saas_does_not_expose_global_state_after_identity_is_trusted(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
+    for path in ("/api/memory", "/api/statistics", "/api/preferences"):
+        status, payload = call(path, trusted=True)
+        assert status == "503 Service Unavailable", (path, status, payload)
+        assert "tenant-scoped data plane is not configured" in payload["error"]
