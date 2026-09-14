@@ -41,54 +41,60 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
         self.store = FakeProductionStore()
         self.repository = ProductionTenantDecisionRepository(self.store)
 
-    def test_save_and_load_are_scoped_to_tenant(self) -> None:
+    def test_save_and_load_are_scoped_to_tenant_and_subject(self) -> None:
         record = sample_record("decision-1")
-        self.repository.save(record, tenant_id="tenant-a")
+        self.repository.save(record, tenant_id="tenant-a", subject_id="user-a")
 
-        self.assertEqual(self.repository.load("decision-1", tenant_id="tenant-a"), record)
-        self.assertIsNone(self.repository.load("decision-1", tenant_id="tenant-b"))
+        self.assertEqual(self.repository.load("decision-1", tenant_id="tenant-a", subject_id="user-a"), record)
+        self.assertIsNone(self.repository.load("decision-1", tenant_id="tenant-b", subject_id="user-b"))
+        with self.assertRaises(PermissionError):
+            self.repository.load("decision-1", tenant_id="tenant-a", subject_id="user-b")
 
-    def test_list_never_returns_another_tenant(self) -> None:
-        self.repository.save(sample_record("a"), tenant_id="tenant-a")
-        self.repository.save(sample_record("b", tenant_id="tenant-b", subject_id="user-b"), tenant_id="tenant-b")
+    def test_list_never_returns_another_tenant_or_subject(self) -> None:
+        self.repository.save(sample_record("a"), tenant_id="tenant-a", subject_id="user-a")
+        self.repository.save(sample_record("other-user", tenant_id="tenant-a", subject_id="user-b"), tenant_id="tenant-a", subject_id="user-b")
+        self.repository.save(sample_record("other-tenant", tenant_id="tenant-b", subject_id="user-b"), tenant_id="tenant-b", subject_id="user-b")
 
-        self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a")], ["a"])
-        self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-b")], ["b"])
+        self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a", subject_id="user-a")], ["a"])
+        self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a", subject_id="user-b")], ["other-user"])
+        self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-b", subject_id="user-b")], ["other-tenant"])
 
     def test_owner_and_tenant_must_match_on_save(self) -> None:
         with self.assertRaises(PermissionError):
-            self.repository.save(sample_record("x", tenant_id="tenant-a"), tenant_id="tenant-b")
+            self.repository.save(sample_record("x", tenant_id="tenant-a"), tenant_id="tenant-b", subject_id="user-a")
         with self.assertRaises(PermissionError):
-            self.repository.save(sample_record("y", subject_id=""), tenant_id="tenant-a")
+            self.repository.save(sample_record("y", subject_id="user-a"), tenant_id="tenant-a", subject_id="user-b")
 
     def test_core_fields_cannot_be_overwritten_but_outcome_can_change(self) -> None:
         original = sample_record("immutable")
-        self.repository.save(original, tenant_id="tenant-a")
+        self.repository.save(original, tenant_id="tenant-a", subject_id="user-a")
 
         closed = original.with_outcome("WIN")
-        self.repository.save(closed, tenant_id="tenant-a")
-        self.assertEqual(self.repository.load("immutable", tenant_id="tenant-a").outcome, "WIN")
+        self.repository.save(closed, tenant_id="tenant-a", subject_id="user-a")
+        self.assertEqual(self.repository.load("immutable", tenant_id="tenant-a", subject_id="user-a").outcome, "WIN")
 
         tampered = DecisionRecord(**{**closed.to_dict(), "score": 1.0})
         with self.assertRaises(PermissionError):
-            self.repository.save(tampered, tenant_id="tenant-a")
+            self.repository.save(tampered, tenant_id="tenant-a", subject_id="user-a")
 
     def test_stored_record_without_owner_fails_closed(self) -> None:
         self.store.records[("tenant-a", "legacy")] = sample_record("legacy").to_dict() | {"subject_id": None}
         with self.assertRaises(PermissionError):
-            self.repository.load("legacy", tenant_id="tenant-a")
+            self.repository.load("legacy", tenant_id="tenant-a", subject_id="user-a")
 
-    def test_tenant_and_decision_id_are_required(self) -> None:
+    def test_tenant_subject_and_decision_id_are_required(self) -> None:
         with self.assertRaises(ValueError):
-            self.repository.save(sample_record("x"), tenant_id=" ")
+            self.repository.save(sample_record("x"), tenant_id=" ", subject_id="user-a")
         with self.assertRaises(ValueError):
-            self.repository.load(" ", tenant_id="tenant-a")
+            self.repository.save(sample_record("x"), tenant_id="tenant-a", subject_id=" ")
+        with self.assertRaises(ValueError):
+            self.repository.load(" ", tenant_id="tenant-a", subject_id="user-a")
 
     def test_limit_is_validated(self) -> None:
         with self.assertRaises(ValueError):
-            self.repository.list(tenant_id="tenant-a", limit=0)
+            self.repository.list(tenant_id="tenant-a", subject_id="user-a", limit=0)
         with self.assertRaises(ValueError):
-            self.repository.list(tenant_id="tenant-a", limit=True)
+            self.repository.list(tenant_id="tenant-a", subject_id="user-a", limit=True)
 
 
 if __name__ == "__main__":
