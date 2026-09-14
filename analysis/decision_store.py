@@ -13,8 +13,8 @@ class DecisionStore:
     """Optional SQLite persistence for local learning/decision memory.
 
     This store is intentionally not the production multi-tenant data plane.
-    When a database is configured, schema/write failures are surfaced instead
-    of silently pretending that durable history was saved.
+    When public SaaS mode is active, use of this global/local store is rejected
+    so a future routing mistake cannot expose process-wide decision history.
     """
 
     _COLUMNS = tuple(field.name for field in fields(DecisionRecord))
@@ -25,6 +25,14 @@ class DecisionStore:
         self._lock = Lock()
         if self.database_path:
             self._initialize()
+
+    @staticmethod
+    def _public_saas_mode() -> bool:
+        return os.environ.get("CONTROLADOR_SAAS_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _ensure_local_data_plane(self) -> None:
+        if self._public_saas_mode():
+            raise RuntimeError("local decision store is unavailable in public SaaS mode")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database_path or ":memory:", timeout=5)
@@ -65,6 +73,7 @@ class DecisionStore:
 
     def save_many(self, records: list[DecisionRecord]) -> None:
         """Persist a batch atomically when durable local storage is configured."""
+        self._ensure_local_data_plane()
         if not records or not self.database_path:
             return
         try:
@@ -74,6 +83,7 @@ class DecisionStore:
             raise RuntimeError("decision storage batch write failed") from exc
 
     def load(self) -> list[DecisionRecord]:
+        self._ensure_local_data_plane()
         if not self.database_path:
             return []
         columns = ", ".join(self._COLUMNS)
