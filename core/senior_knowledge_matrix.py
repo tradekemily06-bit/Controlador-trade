@@ -6,6 +6,7 @@ from enum import Enum
 from typing import Iterable
 
 from .financial_market_curriculum import SeniorFinancialMarketCurriculum
+from .senior_financial_management_depth import build_financial_management_depth
 from .senior_professional_depth import build_senior_professional_depth
 
 
@@ -83,6 +84,7 @@ class SeniorProfessionalKnowledgeMatrix:
         self._records: dict[str, KnowledgeCompetency] = {}
         self._build_from_curriculum()
         self._build_from_advanced_depth()
+        self._build_from_financial_management_depth()
 
     @property
     def records(self) -> tuple[KnowledgeCompetency, ...]:
@@ -174,6 +176,19 @@ class SeniorProfessionalKnowledgeMatrix:
                     experience_years=depth.experience_years,
                     experience_is_open_ended=depth.experience_is_open_ended,
                 ))
+
+    def _build_from_financial_management_depth(self) -> None:
+        depth = build_financial_management_depth()
+        for index, competency in enumerate(depth.competencies, start=1):
+            self._add(KnowledgeCompetency(
+                competency_id=f"DEPTH-FINANCIAL_MANAGEMENT-C{index:02d}",
+                module_id="DEPTH-FINANCIAL_MANAGEMENT",
+                domain=depth.domain_id,
+                competency=competency,
+                experience_years=depth.experience_years,
+                experience_is_open_ended=depth.experience_is_open_ended,
+                execution_authorized=depth.execution_authorized,
+            ))
 
 
 def _unique(values: Iterable[str]) -> tuple[str, ...]:
