@@ -18,7 +18,7 @@ def test_server_mounts_reusable_notification_component_into_index_only():
     assert 'path == WEB_DIR / "index.html"' in APP
     assert 'WEB_DIR / "components" / "notifications.html"' in APP
     assert 'WEB_DIR / "components" / "notifications.js"' in APP
-    assert 'body.replace(b"<div class=\\"section\\">Visão geral</div>"' in APP
+    assert 'anchor = \'<div class="section">Visão geral</div>\'.encode("utf-8")' in APP
     assert 'script nonce="{script_nonce}"' in APP
 
 
