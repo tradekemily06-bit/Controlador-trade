@@ -100,10 +100,14 @@ class EcosystemService:
         return self.senior_context.assess(request)
 
     def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+        # Validate the complete bounded replay envelope before calling analyze().
+        # analyze() persists each decision, so validating while processing would
+        # allow partial persistence before a later invalid/51st scenario fails.
+        from core.replay_policy import prevalidate_replay_cases
+
+        accepted_cases = prevalidate_replay_cases(cases)
         results: list[dict[str, Any]] = []
-        for index, payload in enumerate(cases, start=1):
-            if not isinstance(payload, dict):
-                raise ValueError("cada cenário deve ser um objeto")
+        for index, payload in enumerate(accepted_cases, start=1):
             record = self.analyze(payload)
             results.append({"step": index, **record.to_dict()})
         return results
