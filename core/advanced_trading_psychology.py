@@ -105,7 +105,7 @@ class AdvancedTradingPsychology:
 
         if snapshot.urge_to_trade >= 8 and snapshot.trades_count > 0:
             add(BehavioralPattern.FOMO, 8, "urgência de operar >= 8/10", recommendation="reduzir estímulos e esperar uma condição validada")
-        if snapshot.losses >= 2 and (snapshot.repeated_entries_after_loss > 0 or snapshot.consecutive_losses >= 2):
+        if (snapshot.losses >= 2 or snapshot.consecutive_losses >= 3) and (snapshot.repeated_entries_after_loss > 0 or snapshot.consecutive_losses >= 2):
             add(BehavioralPattern.REVENGE, 9, "entradas repetidas após perda ou sequência de perdas", recommendation="pausar e revisar a regra de parada após perdas")
         if snapshot.trades_count >= 12:
             add(BehavioralPattern.OVERTRADING, 7, "volume elevado de operações na sessão", recommendation="comparar quantidade de entradas com o plano da sessão")
@@ -156,9 +156,9 @@ class AdvancedTradingPsychology:
                 counts[evidence.pattern] = counts.get(evidence.pattern, 0) + 1
         recurring = tuple(pattern for pattern, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0].value)) if count >= 2)
         if len(items) >= 2:
-            half = len(items) // 2
-            first = mean(item.score for item in items[:half])
-            second = mean(item.score for item in items[half:])
+            split = max(1, (len(items) + 1) // 2)
+            first = mean(item.score for item in items[:split])
+            second = mean(item.score for item in items[split:]) if items[split:] else items[-1].score
             direction = "WORSENING" if second > first + 5 else "IMPROVING" if second < first - 5 else "STABLE"
         else:
             direction = "INSUFFICIENT_HISTORY"
