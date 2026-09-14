@@ -89,10 +89,6 @@ class ConfiguredEcosystemService(EcosystemService):
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
 
-    def _notification_visible(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
-        events = self.notifications.visible(include_info=include_info)
-        return tuple(item for item in events if self._notification_visible(item))
-
     def _notification_visible(self, item: EcosystemNotification) -> bool:
         prefs = self.preferences.preferences.notifications
         if item.severity is NotificationSeverity.CRITICAL:
