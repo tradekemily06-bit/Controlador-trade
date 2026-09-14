@@ -8,6 +8,7 @@ from core.ecosystem_maintenance import MaintenanceManager
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
+from core.scoped_learning_state import ScopedLearningState
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.trading_psychology import PsychologyCheckIn, TradingPsychologyGuard
 from core.advanced_trading_psychology import AdvancedTradingPsychology, TradingBehaviorSnapshot
@@ -31,9 +32,9 @@ class ConfiguredEcosystemService(EcosystemService):
         self.psychology_history = TradingPsychologyHistory(self.advanced_psychology)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
+        self.scoped_learning = ScopedLearningState()
 
     def _owner_context(self, *, subject_id: str | None, tenant_id: str | None):
-        """Resolve explicit trusted ownership, falling back to the HTTP request scope."""
         identity = current_trusted_identity()
         if subject_id is None and tenant_id is None and identity is not None:
             subject_id, tenant_id = identity.subject_id, identity.tenant_id
@@ -46,6 +47,14 @@ class ConfiguredEcosystemService(EcosystemService):
         if saas_public_mode():
             raise PermissionError("trusted scope is required for psychology history")
         return None
+
+    def _learning_scope(self):
+        identity = current_trusted_identity()
+        if identity is None:
+            if saas_public_mode():
+                raise PermissionError("trusted scope is required for learning state")
+            return None
+        return self.scoped_learning.get(tenant_id=identity.tenant_id, subject_id=identity.subject_id)
 
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -183,10 +192,131 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def psychology_status(self) -> dict[str, Any]:
         prefs = self.preferences.preferences
-        return {
-            "enabled": prefs.psychology_enabled,
-            "data_collection_enabled": prefs.psychology_data_collection_enabled,
-            "execution_authority": False,
-            "decision_authority": False,
-            "role": "parallel_behavioral_protection",
-        }
+        return {"enabled": prefs.psychology_enabled, "data_collection_enabled": prefs.psychology_data_collection_enabled, "execution_authority": False, "decision_authority": False, "role": "parallel_behavioral_protection"}
+
+    # SaaS learning overrides: all user-owned learning collections are selected
+    # from the trusted tenant+subject bucket. Local/test mode keeps the original
+    # process-local behavior for backwards compatibility.
+    def screen_learning_source(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().screen_learning_source(payload)
+        source_type = __import__("core.p128_learning_source_gate", fromlist=["LearningSourceType"]).LearningSourceType(str(payload.get("source_type", "LINK")).upper())
+        source = self.learning_source_gate.intake(source_id=str(payload.get("source_id", "")), source_type=source_type, uri=str(payload.get("uri", "")))
+        if source.source_id in scope.sources:
+            raise ValueError("source_id já cadastrado")
+        scope.sources[source.source_id] = source
+        return source
+
+    def validate_learning_source(self, source, *, content_verified: bool, security_checked: bool):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().validate_learning_source(source, content_verified=content_verified, security_checked=security_checked)
+        current = scope.sources.get(source.source_id)
+        if current is None:
+            raise ValueError("source_id não encontrado no tenant atual")
+        updated = self.learning_source_gate.validate_content(current, content_verified=content_verified, security_checked=security_checked)
+        scope.sources[updated.source_id] = updated
+        return updated
+
+    def admit_learning_knowledge(self, source, *, knowledge_validated: bool):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().admit_learning_knowledge(source, knowledge_validated=knowledge_validated)
+        current = scope.sources.get(source.source_id)
+        if current is None:
+            raise ValueError("source_id não encontrado no tenant atual")
+        updated = self.learning_source_gate.admit_knowledge(current, knowledge_validated=knowledge_validated)
+        scope.sources[updated.source_id] = updated
+        return updated
+
+    def learning_sources_view(self):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().learning_sources_view()
+        return [asdict(item) | {"source_type": item.source_type.value, "status": item.status.value} for item in scope.sources.values()]
+
+    def add_learning_resource(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().add_learning_resource(payload)
+        resource = __import__("core.learning_content", fromlist=["LearningResource", "ContentType", "LearningStatus", "normalize_tags"])
+        item = resource.LearningResource(resource_id=str(payload.get("resource_id", "")), title=str(payload.get("title", "")), content_type=resource.ContentType(str(payload.get("content_type", "OTHER")).upper()), source_url=payload.get("source_url"), source_name=payload.get("source_name"), status=resource.LearningStatus(str(payload.get("status", "RECEIVED")).upper()), tags=resource.normalize_tags(tuple(payload.get("tags", ()) or ())))
+        if item.resource_id in scope.resources:
+            raise ValueError("resource_id já cadastrado")
+        if item.source_url:
+            source_type = {resource.ContentType.VIDEO: "VIDEO", resource.ContentType.DOCUMENT: "DOCUMENT"}.get(item.content_type, "LINK")
+            self.screen_learning_source({"source_id": item.resource_id, "source_type": source_type, "uri": item.source_url})
+        scope.resources[item.resource_id] = item
+        return item
+
+    def learning_resources_view(self):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().learning_resources_view()
+        return [asdict(item) | {"content_type": item.content_type.value, "status": item.status.value, "source_security": (scope.sources[item.resource_id].status.value if item.resource_id in scope.sources else None)} for item in scope.resources.values()]
+
+    def add_learning_observation(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().add_learning_observation(payload)
+        resource_id = str(payload.get("resource_id", ""))
+        validated = bool(payload.get("validated", False))
+        if resource_id not in scope.resources:
+            raise ValueError("resource_id não encontrado no tenant atual")
+        source = scope.sources.get(resource_id)
+        if validated and source is not None and (source.status.value != "VALIDATED" or not source.knowledge_validated):
+            raise ValueError("external learning knowledge must pass source and knowledge validation first")
+        from core.learning_content import LearningObservation, normalize_tags
+        observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
+        scope.observations.append(observation)
+        return observation
+
+    def learning_observations_view(self):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().learning_observations_view()
+        return [asdict(item) for item in scope.observations]
+
+    def add_learning_activity(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().add_learning_activity(payload)
+        from core.learning_content import LearningActivity, normalize_tags
+        item = LearningActivity(activity_id=str(payload.get("activity_id", "")), prompt=str(payload.get("prompt", "")), expected_concepts=normalize_tags(tuple(payload.get("expected_concepts", ()) or ())), difficulty=str(payload.get("difficulty", "UNSPECIFIED")))
+        if item.activity_id in scope.activities:
+            raise ValueError("activity_id já cadastrado")
+        scope.activities[item.activity_id] = item
+        return item
+
+    def generate_professor_activity(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().generate_professor_activity(payload)
+        from core.p128_learning_professor import ProfessorActivitySpec
+        item = self.learning_professor.build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        if item.activity_id in scope.activities:
+            raise ValueError("activity_id já cadastrado")
+        scope.activities[item.activity_id] = item
+        return item
+
+    def learning_activities_view(self):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().learning_activities_view()
+        return [asdict(item) for item in scope.activities.values()]
+
+    def add_learning_attempt(self, payload: dict[str, Any]):
+        scope = self._learning_scope()
+        if scope is None:
+            return super().add_learning_attempt(payload)
+        from core.learning_content import LearningAttempt
+        activity_id = str(payload.get("activity_id", ""))
+        if activity_id not in scope.activities:
+            raise ValueError("activity_id não encontrado no tenant atual")
+        attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
+        scope.attempts.append(attempt)
+        return attempt
+
+    def learning_summary(self):
+        return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": ([asdict(item) for item in self._learning_scope().attempts] if self._learning_scope() is not None else [asdict(item) for item in self.learning_attempts]), "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True}
