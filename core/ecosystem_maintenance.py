@@ -77,6 +77,7 @@ class MaintenanceManager:
     def __init__(self, state_path: str | Path | None = None) -> None:
         self._current: MaintenanceWindow | None = None
         self._state_path = Path(state_path) if state_path is not None else None
+        self._state_corrupt = False
         self._lock = RLock()
         self._load()
 
@@ -85,6 +86,9 @@ class MaintenanceManager:
             return
         try:
             payload = json.loads(self._state_path.read_text(encoding="utf-8"))
+            if payload.get("current") is None:
+                self._current = None
+                return
             self._current = MaintenanceWindow(
                 maintenance_id=str(payload["maintenance_id"]),
                 title=str(payload["title"]),
@@ -94,9 +98,8 @@ class MaintenanceManager:
                 status=MaintenanceStatus(str(payload["status"])),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
-            # A corrupt maintenance state must fail closed at the execution
-            # boundary rather than silently inventing an available state.
             self._current = None
+            self._state_corrupt = True
 
     def _save(self) -> None:
         if self._state_path is None:
@@ -106,12 +109,14 @@ class MaintenanceManager:
             payload = {"current": None}
         else:
             payload = {
-                "maintenance_id": self._current.maintenance_id,
-                "title": self._current.title,
-                "message": self._current.message,
-                "starts_at": self._current.starts_at.isoformat(),
-                "ends_at": self._current.ends_at.isoformat(),
-                "status": self._current.status.value,
+                "current": {
+                    "maintenance_id": self._current.maintenance_id,
+                    "title": self._current.title,
+                    "message": self._current.message,
+                    "starts_at": self._current.starts_at.isoformat(),
+                    "ends_at": self._current.ends_at.isoformat(),
+                    "status": self._current.status.value,
+                }
             }
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
@@ -119,18 +124,12 @@ class MaintenanceManager:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self._state_path)
+        self._state_corrupt = False
 
-    def schedule(
-        self,
-        *,
-        maintenance_id: str,
-        title: str,
-        message: str,
-        starts_at: datetime,
-        duration_minutes: int,
-        now: datetime | None = None,
-    ) -> MaintenanceWindow:
+    def schedule(self, *, maintenance_id: str, title: str, message: str, starts_at: datetime, duration_minutes: int, now: datetime | None = None) -> MaintenanceWindow:
         with self._lock:
+            if self._state_corrupt:
+                raise RuntimeError("maintenance state is corrupt; recovery is required before scheduling")
             if not maintenance_id.strip() or not title.strip() or not message.strip():
                 raise ValueError("maintenance identity, title and message are required")
             start = _utc(starts_at)
@@ -150,6 +149,8 @@ class MaintenanceManager:
 
     def begin(self, maintenance_id: str, *, now: datetime | None = None) -> MaintenanceWindow:
         with self._lock:
+            if self._state_corrupt:
+                raise RuntimeError("maintenance state is corrupt; recovery is required")
             if self._current is None or self._current.maintenance_id != maintenance_id:
                 raise ValueError("maintenance window not found")
             current = self._current.normalized(now)
@@ -161,6 +162,8 @@ class MaintenanceManager:
 
     def cancel(self, maintenance_id: str) -> MaintenanceWindow:
         with self._lock:
+            if self._state_corrupt:
+                raise RuntimeError("maintenance state is corrupt; recovery is required")
             if self._current is None or self._current.maintenance_id != maintenance_id:
                 raise ValueError("maintenance window not found")
             current = self._current.normalized()
@@ -172,19 +175,16 @@ class MaintenanceManager:
 
     def status(self, *, now: datetime | None = None) -> dict[str, object]:
         with self._lock:
+            if self._state_corrupt:
+                return {"status": "CORRUPT", "trading_available": False, "execution_blocked": True, "maintenance": None, "recovery_required": True}
             if self._current is None:
-                return {"status": "NONE", "trading_available": True, "execution_blocked": False, "maintenance": None}
+                return {"status": "NONE", "trading_available": True, "execution_blocked": False, "maintenance": None, "recovery_required": False}
             current = self._current.normalized(now)
             if current != self._current:
                 self._current = current
                 self._save()
             blocked = current.status is MaintenanceStatus.ACTIVE
-            return {
-                "status": current.status.value,
-                "trading_available": not blocked,
-                "execution_blocked": blocked,
-                "maintenance": current.user_notice(now),
-            }
+            return {"status": current.status.value, "trading_available": not blocked, "execution_blocked": blocked, "maintenance": current.user_notice(now), "recovery_required": False}
 
     def execution_blocked(self, *, now: datetime | None = None) -> bool:
         """Return whether the execution boundary must refuse new operations."""
