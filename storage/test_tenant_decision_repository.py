@@ -61,6 +61,18 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
         with self.assertRaises(PermissionError):
             self.repository.save(sample_record("y", subject_id=""), tenant_id="tenant-a")
 
+    def test_core_fields_cannot_be_overwritten_but_outcome_can_change(self) -> None:
+        original = sample_record("immutable")
+        self.repository.save(original, tenant_id="tenant-a")
+
+        closed = original.with_outcome("WIN")
+        self.repository.save(closed, tenant_id="tenant-a")
+        self.assertEqual(self.repository.load("immutable", tenant_id="tenant-a").outcome, "WIN")
+
+        tampered = DecisionRecord(**{**closed.to_dict(), "score": 1.0})
+        with self.assertRaises(PermissionError):
+            self.repository.save(tampered, tenant_id="tenant-a")
+
     def test_stored_record_without_owner_fails_closed(self) -> None:
         self.store.records[("tenant-a", "legacy")] = sample_record("legacy").to_dict() | {"subject_id": None}
         with self.assertRaises(PermissionError):
