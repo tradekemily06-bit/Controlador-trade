@@ -10,6 +10,7 @@ from core.market_context import MarketContextResult
 from core.models import AnalysisResult
 from core.operational_state import OperationalState
 from core.signal_quality import SignalQuality
+from core.senior_context_cycle import SeniorContextCycle
 from data.feed import MarketDataFeed, MarketDataRequest, MarketDataResult
 
 
@@ -23,6 +24,7 @@ class OrchestrationResult:
     decision: DecisionResult
     snapshot: DecisionSnapshot
     timestamp: datetime
+    senior_context: SeniorContextCycle | None = None
 
     @property
     def executable(self) -> bool:
@@ -30,10 +32,10 @@ class OrchestrationResult:
 
 
 class TradingOrchestrator:
-    """Liga dados -> análise -> qualidade -> decisão em uma única fronteira.
+    """Liga dados -> análise -> contexto sênior -> qualidade -> decisão.
 
     A classe não conhece corretoras e não executa ordens. A execução continua
-    sendo responsabilidade explícita do ExecutionGateway.
+    sendo responsabilidade explícita do ExecutionGateway, após a admissão sênior.
     """
 
     def __init__(
@@ -55,6 +57,7 @@ class TradingOrchestrator:
         *,
         operational_state: OperationalState | None,
         market_context: MarketContextResult | None,
+        senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
         filters_ok: bool = True,
         daily_result=None,
@@ -75,6 +78,7 @@ class TradingOrchestrator:
             analysis=analysis,
             market_context=market_context,
             operational_state=operational_state,
+            senior_context=senior_context,
             daily_result=daily_result,
             operations_count=operations_count,
             consecutive_losses=consecutive_losses,
@@ -93,4 +97,5 @@ class TradingOrchestrator:
             decision=decision,
             snapshot=snapshot,
             timestamp=timestamp,
+            senior_context=senior_context,
         )
