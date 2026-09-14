@@ -8,16 +8,16 @@ from storage.tenant_decision_repository import ProductionTenantDecisionRepositor
 
 class FakeProductionStore:
     def __init__(self) -> None:
-        self.records: dict[tuple[str, str], dict] = {}
+        self.records: dict[tuple[str, str, str], dict] = {}
 
-    def save(self, record: dict, *, tenant_id: str) -> None:
-        self.records[(tenant_id, record["decision_id"])] = dict(record)
+    def save(self, record: dict, *, tenant_id: str, subject_id: str) -> None:
+        self.records[(tenant_id, subject_id, record["decision_id"])] = dict(record)
 
-    def load(self, record_id: str, *, tenant_id: str) -> dict | None:
-        return self.records.get((tenant_id, record_id))
+    def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict | None:
+        return self.records.get((tenant_id, subject_id, record_id))
 
-    def list(self, *, tenant_id: str, limit: int = 100) -> list[dict]:
-        items = [record for (scope, _), record in self.records.items() if scope == tenant_id]
+    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[dict]:
+        items = [record for (scope, owner, _), record in self.records.items() if scope == tenant_id and owner == subject_id]
         return items[:limit]
 
 
@@ -78,7 +78,7 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
             self.repository.save(tampered, tenant_id="tenant-a", subject_id="user-a")
 
     def test_stored_record_without_owner_fails_closed(self) -> None:
-        self.store.records[("tenant-a", "legacy")] = sample_record("legacy").to_dict() | {"subject_id": None}
+        self.store.records[("tenant-a", "user-a", "legacy")] = sample_record("legacy").to_dict() | {"subject_id": None}
         with self.assertRaises(PermissionError):
             self.repository.load("legacy", tenant_id="tenant-a", subject_id="user-a")
 
