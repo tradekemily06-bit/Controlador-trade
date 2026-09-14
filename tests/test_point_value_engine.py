@@ -100,3 +100,43 @@ def test_no_broker_value_source_is_not_guessed():
     result = assess_point_value(request, movement_price_units=Decimal("0.1"))
     assert result.status is PointValueStatus.REASSESS
     assert "broker_value_source_required" in result.reasons
+
+
+def test_concordant_value_sources_are_reconciled_without_artificial_preference():
+    request = PointValueRequest(
+        instrument="EURUSD",
+        broker="provider",
+        account_currency="USD",
+        quote_currency="USD",
+        quantity=Decimal("1"),
+        price=Decimal("1.1000"),
+        tick_size=Decimal("0.00001"),
+        tick_value=Decimal("1"),
+        point_size=Decimal("0.00010"),
+        contract_size=Decimal("100000"),
+        value_per_price_unit=Decimal("100000"),
+    )
+    result = assess_point_value(request, movement_price_units=Decimal("0.00100"))
+    assert result.status is PointValueStatus.READY
+    assert result.value_per_price_unit == Decimal("100000")
+    assert "multiple_value_sources_concordant" in result.reasons
+
+
+def test_conflicting_value_sources_fail_closed_for_reassessment():
+    request = PointValueRequest(
+        instrument="EURUSD",
+        broker="provider",
+        account_currency="USD",
+        quote_currency="USD",
+        quantity=Decimal("1"),
+        price=Decimal("1.1000"),
+        tick_size=Decimal("0.00001"),
+        tick_value=Decimal("1"),
+        point_size=Decimal("0.00010"),
+        contract_size=Decimal("90000"),
+    )
+    result = assess_point_value(request, movement_price_units=Decimal("0.00100"))
+    assert result.status is PointValueStatus.REASSESS
+    assert result.source is None
+    assert "conflicting_value_sources" in result.reasons
+    assert result.movement_money is None
