@@ -86,16 +86,17 @@ class MaintenanceManager:
             return
         try:
             payload = json.loads(self._state_path.read_text(encoding="utf-8"))
-            if payload.get("current") is None:
+            current = payload.get("current")
+            if current is None:
                 self._current = None
                 return
             self._current = MaintenanceWindow(
-                maintenance_id=str(payload["maintenance_id"]),
-                title=str(payload["title"]),
-                message=str(payload["message"]),
-                starts_at=datetime.fromisoformat(str(payload["starts_at"])),
-                ends_at=datetime.fromisoformat(str(payload["ends_at"])),
-                status=MaintenanceStatus(str(payload["status"])),
+                maintenance_id=str(current["maintenance_id"]),
+                title=str(current["title"]),
+                message=str(current["message"]),
+                starts_at=datetime.fromisoformat(str(current["starts_at"])),
+                ends_at=datetime.fromisoformat(str(current["ends_at"])),
+                status=MaintenanceStatus(str(current["status"])),
             )
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             self._current = None
@@ -105,19 +106,15 @@ class MaintenanceManager:
         if self._state_path is None:
             return
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        if self._current is None:
-            payload = {"current": None}
-        else:
-            payload = {
-                "current": {
-                    "maintenance_id": self._current.maintenance_id,
-                    "title": self._current.title,
-                    "message": self._current.message,
-                    "starts_at": self._current.starts_at.isoformat(),
-                    "ends_at": self._current.ends_at.isoformat(),
-                    "status": self._current.status.value,
-                }
-            }
+        current = self._current
+        payload = {"current": None if current is None else {
+            "maintenance_id": current.maintenance_id,
+            "title": current.title,
+            "message": current.message,
+            "starts_at": current.starts_at.isoformat(),
+            "ends_at": current.ends_at.isoformat(),
+            "status": current.status.value,
+        }}
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
         with temporary.open("r+b") as handle:
