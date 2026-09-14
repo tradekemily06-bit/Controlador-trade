@@ -23,3 +23,41 @@ def test_system_updates_follow_their_preference():
     service.update_notification_preferences({"system_updates_enabled": False})
     assert service.notification_summary()["count"] == 0
     assert len(service.all_notifications()) == 1
+
+
+def test_psychology_check_in_is_disabled_at_runtime_when_preference_is_off():
+    service = ConfiguredEcosystemService()
+    enabled = service.psychology_check_in({
+        "emotional_state": "ansiedade",
+        "urge_to_trade": 9,
+        "recent_losses": 2,
+        "fatigue": 2,
+        "confidence": 5,
+        "rule_adherence": 5,
+    })
+    assert enabled["enabled"] is True
+    assert enabled["trading_authorized"] is False
+
+    service.update_preferences({"psychology_enabled": False})
+    disabled = service.psychology_check_in({
+        "emotional_state": "ansiedade",
+        "urge_to_trade": 9,
+        "recent_losses": 2,
+        "fatigue": 2,
+        "confidence": 5,
+        "rule_adherence": 5,
+    })
+    assert disabled["enabled"] is False
+    assert disabled["risk_level"] == "DISABLED"
+    assert disabled["flags"] == []
+    assert disabled["trading_authorized"] is False
+
+
+def test_advanced_psychology_is_disabled_without_affecting_execution_safety_contract():
+    service = ConfiguredEcosystemService()
+    service.update_preferences({"psychology_enabled": False})
+    result = service.advanced_psychology_assessment({"operations": 10, "losses": 8, "urgency": 10})
+
+    assert result["enabled"] is False
+    assert result["patterns"] == []
+    assert result["execution_authorized"] is False
