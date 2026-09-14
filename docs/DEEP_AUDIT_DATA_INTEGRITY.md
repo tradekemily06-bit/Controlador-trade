@@ -2,99 +2,102 @@
 
 ## Escopo
 
-Esta auditoria cobre a superfície HTTP atual, mutações de estado, memória/estatísticas, aprendizagem, replay, auditoria de segurança e cadeia de build do container.
+Esta auditoria cobre a superfície HTTP atual, mutações de estado, memória/estatísticas, aprendizagem, replay, auditoria de segurança, limites funcionais, alavancagem/ponto monetário e cadeia de build.
 
-## Matriz de risco atual
+## Estado consolidado
 
-| Superfície | Tipo | Estado atual | Risco | Tratamento |
-|---|---|---|---|---|
-| `/api/health` | GET | health público | exposição operacional | em SaaS público retorna somente `ok: true`; detalhes continuam fora da superfície pública |
-| `/api/status` | GET | leitura operacional | exposição de estado | em SaaS público exige identidade confiável + tenant-scoped data plane |
-| `/api/notifications`, `/api/notifications/all` | GET | leitura | baixa | em SaaS público exige identidade + tenant data plane; conteúdo renderizado com escape no frontend |
-| `/api/updates` | POST | mutação interna | alta se exposta | protegido por `CONTROLADOR_UPDATE_TOKEN` e fail-closed quando não configurado |
-| `/api/analyze` | POST | grava decisão/memória | média em API pública | em modo SaaS público exige identidade confiável e tenant-scoped data plane; como este último ainda não existe, falha fechado |
-| `/api/replay` | POST | grava decisões na memória atual | média/alta | limite explícito de 50 casos por requisição + limite de corpo; ainda depende de tenant-scoped storage para SaaS público |
-| `/api/outcome` | POST | altera resultado de decisão | alta para integridade | protegido pelo gate de identidade em SaaS público, mas propriedade da decisão/tenant ainda precisa ser integrada ao fluxo HTTP; sem isso, o modo SaaS público falha fechado |
-| `/api/preferences*` | GET/POST | mutação/leitura de preferências | média | identidade + tenant são requisitos de SaaS; modo público falha fechado até existir armazenamento tenant-scoped |
-| `/api/learning/*` | GET/POST | estado de aprendizagem | média/alta | identidade + tenant são requisitos de SaaS; validação/admissão exige `admin`; modo público falha fechado sem data plane |
-| `/api/risk`, `/api/news`, `/api/connections` | GET | estado operacional | média | em SaaS público exige identidade + tenant data plane |
-| `/api/saas/status` | GET | estado SaaS | média | em SaaS público exige identidade + tenant data plane |
+| Superfície | Estado | Observação |
+|---|---|---|
+| `/api/health` | PROTEGIDO | Em SaaS público expõe somente o mínimo necessário para infraestrutura. |
+| `/api/status` | PROTEGIDO / DEPENDENTE | Exige identidade confiável e data plane tenant-scoped no modo público. |
+| `/api/analyze` | PROTEGIDO / DEPENDENTE | Identidade e ownership já existem no serviço; SaaS público permanece fechado sem data plane real. |
+| `/api/replay` | PROTEGIDO / DEPENDENTE | Pré-validação + persistência em lote; **sem limite funcional artificial de quantidade**. |
+| `/api/outcome` | PENDENTE DE INTEGRAÇÃO | Precisa usar o repositório tenant+subject scoped antes de mutar resultado em SaaS. |
+| `/api/preferences*` | PENDENTE DE DATA PLANE | Não pode usar estado global como fonte de verdade em SaaS multiusuário. |
+| `/api/notifications*` | PENDENTE DE DATA PLANE | Conteúdo prioritário existe; persistência/isolamento por usuário ainda depende do data plane. |
+| `/api/learning/*` | PROTEGIDO / DEPENDENTE | Identidade/admin/proveniência precisam permanecer confiáveis; SaaS público falha fechado sem data plane. |
+| `/api/updates` | PROTEGIDO | Publicação interna exige token de atualização e falha fechado sem configuração. |
+| REAL | BLOQUEADO | Não há rota pública de REAL e as camadas próprias continuam desabilitadas. |
 
-## Achados confirmados
+## Ownership e tenant isolation
 
-### 1. REAL continua isolado
+`DecisionRecord` possui `subject_id` e `tenant_id` e pode receber ownership apenas por uma fronteira confiável. `owned_by()` exige correspondência exata e `with_owner()` impede reatribuição silenciosa de uma decisão já vinculada.
 
-A superfície HTTP não possui rota pública de execução REAL. A camada de execução REAL exige contratos próprios e permanece desabilitada. Nenhuma das mutações auditadas cria autoridade de execução.
+`ProductionTenantDecisionRepository` exige tenant e sujeito confiáveis, verifica ownership do registro e falha fechado diante de dados inconsistentes. Wrong-subject reads devem evitar existência-oracle quando possível.
 
-### 2. Aprendizagem não autoriza trading
+O modo `CONTROLADOR_SAAS_PUBLIC` continua bloqueando o uso de estado global enquanto o data plane tenant-scoped real não existir. Isso é deliberado: autenticar sem isolar os dados não é segurança multiusuário.
 
-As respostas HTTP de aprendizagem continuam explicitando `execution_allowed: false` ou `operation_eligible: false`, e o serviço mantém a regra de que conhecimento externo não concede autoridade de operação.
+## Replay e capacidade
 
-### 3. Fronteira provider-neutral de identidade foi introduzida
+O Replay não possui teto funcional de quantidade de cenários. O antigo limite 50 foi removido. A pré-validação estrutural acontece antes da análise e a persistência é feita em lote, de modo que falhas não deixem histórico parcial.
 
-O modo `CONTROLADOR_SAAS_PUBLIC=true` agora exige identidade injetada pelo ambiente WSGI confiável para mutações sensíveis. Cabeçalhos HTTP `X-*` não são tratados como identidade confiável. A camada também separa papel administrativo das ações de validação/admissão de aprendizagem.
+Proteções de infraestrutura podem existir para corpo HTTP, memória, CPU, tempo, concorrência, armazenamento, abuso e disponibilidade. Essas proteções não devem ser apresentadas como limite funcional de cenários, candles, operações ou capacidade do produto.
 
-### 4. SaaS público falha fechado sem armazenamento tenant-scoped
+Quando uma resposta for grande demais para processamento síncrono, a arquitetura correta é paginação/cursor, streaming, processamento assíncrono, cancelamento ou outro mecanismo baseado no recurso real — não um teto funcional arbitrário.
 
-Mesmo uma identidade confiável não libera acesso ao estado atual, porque memória, decisões, preferências e aprendizagem ainda são globais ao processo. O gate de SaaS público exige um data plane tenant-scoped real e retorna indisponibilidade enquanto ele não existir. Isso evita transformar autenticação sem isolamento em falsa segurança multiusuário.
+## Limites: classificação obrigatória
 
-### 5. Leituras globais também foram fechadas
+- quotas funcionais de planos: removidas;
+- quantidade de cenários de replay: sem teto funcional;
+- `limit` de paginação/apresentação: controle de transporte/consulta, não capacidade comercial;
+- tamanho de corpo: proteção de recurso;
+- rate limit: anti-abuso/disponibilidade;
+- retenção local de auditoria: cache operacional, não capacidade de produto;
+- limites de risco de trading: controles de segurança/risco, preservados;
+- frescor de dados: integridade/safety, não capacidade.
 
-A auditoria encontrou uma lacuna adicional: proteger apenas POST não era suficiente, porque GETs de memória, estatísticas, preferências, aprendizagem, conexões e status ainda poderiam expor estado global. Essas leituras agora também exigem identidade confiável e data plane tenant-scoped quando o modo SaaS público está ativo.
+Qualquer novo `MAX_*`, `limit`, quota, slice ou truncamento deve ser classificado antes de ser aceito.
 
-### 6. Health público foi sanitizado
+## Professor/sênior
 
-`/api/health` continua disponível para infraestrutura e smoke tests, mas em modo SaaS público retorna somente `ok: true`. Detalhes como armazenamento, identidade e estado interno não são expostos nessa superfície.
+O ecossistema mantém um perfil sênior disponível desde o primeiro dia do usuário com piso de **45+ anos de experiência**. Esse valor é um piso arquitetural, não um limite superior: a experiência pode crescer indefinidamente e não é reiniciada pela entrada de um novo usuário.
 
-### 7. Propriedade de DecisionRecord foi endurecida
+O perfil não é uma alegação de que exista uma pessoa humana nem uma certificação inventada. O currículo financeiro profissional já cobre fundamentos, sistema financeiro, instrumentos, microestrutura, price action, fundamental, macro, quantitativo, carteiras, risco, metodologias, psicologia, execução, automação, regulação/ética, prática profissional e pesquisa contínua.
 
-`DecisionRecord` agora possui `subject_id` e `tenant_id` como metadados de propriedade e oferece vínculo único por `with_owner()`: uma decisão já vinculada não pode ser reatribuída a outro sujeito/tenant. `owned_by()` exige correspondência exata. Esses valores continuam sendo confiáveis somente quando atribuídos por uma fronteira de identidade confiável; o navegador nunca é prova de identidade.
+A pendência é elevar esse currículo a uma matriz auditável de conhecimento: domínio → competência → fonte → versão/data → validação → teste → evidência → status → atualização. Nenhuma certificação, diploma ou curso deve ser declarado como concluído sem evidência real.
 
-### 8. Repositório tenant-scoped falha fechado sem proprietário
+Ser sênior nunca equivale a autorização de execução. O professor pode raciocinar, pesquisar, ensinar, questionar e avaliar risco; execução permanece atrás de suas próprias fronteiras.
 
-`ProductionTenantDecisionRepository` agora exige que o `tenant_id` do registro corresponda ao tenant confiável e rejeita registros sem `subject_id`. Leituras também verificam o tenant armazenado e a presença de proprietário. Isso fecha o risco de transformar apenas o `decision_id` em autorização.
+## Ponto/tick/pip e alavancagem
 
-### 9. DecisionStore local não finge ser produção
+Foi criada uma fronteira central `PointValueEngine` para transformar movimento de preço em valor monetário sem transformá-lo em sinal de COMPRA/VENDA.
 
-O `DecisionStore` continua explicitamente classificado como armazenamento local. O schema foi ampliado para persistir `subject_id`/`tenant_id`, possui migração para bancos legados e cria índice de tenant. Quando um banco é configurado, falhas de inicialização, leitura ou escrita agora falham explicitamente em vez de apagar silenciosamente a durabilidade e continuar como se tudo estivesse salvo.
+O engine usa, conforme disponibilidade e proveniência, valor de tick do broker, especificação contratual ou valor explícito de unidade de preço; normaliza tick/point/pip, quantidade e conversão para a moeda da conta e carrega timestamp/frescor da conversão.
 
-Isso não transforma SQLite local em armazenamento SaaS: o data plane de produção continua sendo o contrato tenant-scoped separado.
+Quando uma conversão cambial necessária está stale, o resultado é `REASSESS` e não usa silenciosamente a taxa antiga. A alavancagem pode consumir esse resultado, mas não multiplica o valor do ponto pela alavancagem. Alavancagem e valor monetário do movimento são dimensões separadas.
 
-### 10. Resultado de operação ainda precisa de integração com proprietário
+A fórmula de `margin_required` ainda precisa ser confrontada com a especificação real de cada instrumento/broker antes de ser considerada um modelo universal.
 
-`/api/outcome` continua podendo alterar um `decision_id` no modo local de usuário único. A camada de dados agora possui os mecanismos necessários para verificar propriedade, mas o fluxo HTTP normal ainda não foi migrado para o repositório tenant-scoped. Em SaaS público, o gate continua bloqueando antes de chegar ao estado global.
+## Segurança de aprendizagem
 
-### 11. Replay agora tem limite explícito
+Conteúdo externo deve continuar sendo tratado como alegação até validação. `content_verified`, `security_checked` ou `knowledge_validated` vindos diretamente de um cliente não podem ser considerados prova de confiança em SaaS de produção. A fronteira administrativa/proveniência deve ser mantida no data plane confiável.
 
-`/api/replay` aceita no máximo 50 casos por requisição. O limite é complementar ao teto de corpo de 256 KiB e preserva o laboratório atual. Ainda é necessário um modelo de custo/timeout mais forte quando houver processamento de replay pesado ou distribuído.
+Aprendizagem continua sem autoridade de execução.
 
-### 12. Auditoria de segurança é limitada e sem segredo bruto
+## Auditoria de segurança e rate limit
 
-O trilho guarda no máximo 1000 eventos em memória/SQLite, corta o path a 512 caracteres e guarda hash do identificador do cliente, não IP bruto, credencial, token ou corpo. A retenção centralizada multi-instância pertence à infraestrutura de produção.
+A retenção local de eventos de segurança e o rate limit em processo são barreiras de recurso/anti-abuso, não limites funcionais do ecossistema. Em múltiplas réplicas, a autoridade definitiva deve migrar para mecanismos compartilhados na infraestrutura de produção.
 
-### 13. Rate limit é por processo
+## Cadeia de build
 
-O limite atual é 60 requisições por 60 segundos e no máximo 10.000 clientes rastreados. Isso é adequado como barreira local, mas não é uma proteção distribuída para múltiplas réplicas.
+O build usa `.dockerignore` para excluir estado local, SQLite, `.env`, logs, caches e artefatos de desenvolvimento. CI mantém testes, auditoria de dependências, compilação de todas as superfícies Python, build de produção e smoke test.
 
-### 14. Cadeia de build foi endurecida
+## Critérios de fechamento
 
-Foi adicionado `.dockerignore` para excluir `.runtime`, bancos SQLite, `.env`, logs, caches e artefatos Git/dev do contexto Docker. Isso evita copiar acidentalmente estado local ou arquivos de segredo para a imagem durante um build feito a partir de uma árvore de trabalho contaminada.
+Esta auditoria só pode ser encerrada após:
 
-### 15. Publicação foi explicitamente classificada
+1. data plane durável tenant+subject scoped integrado;
+2. `/api/outcome` protegido por ownership no fluxo real;
+3. memória, estatísticas, preferências, notificações e aprendizagem isoladas por usuário/tenant;
+4. currículo sênior com provenance/validação/testes;
+5. PointValueEngine integrado à operação, risco e alavancagem;
+6. modelo de margem revisado por especificação de instrumento/broker;
+7. replay protegido por custo real sem teto funcional;
+8. rate limit/auditoria compartilhados para múltiplas réplicas;
+9. autenticação/sessão/RBAC/CSRF de produção quando aplicáveis;
+10. CI/security/compile/container/smoke verdes após todas as mudanças;
+11. documentação sincronizada com código e testes;
+12. governança do PR satisfeita;
+13. CHECAGEM GERAL final pós-governança.
 
-`README_DEPLOY.md` deixa explícito que a publicação atual é para teste/uso controlado, não uma implantação SaaS multiusuário de produção. O modo SaaS público permanece deliberadamente bloqueado até existir autenticação/sessão real, autorização, tenant isolation e armazenamento compartilhado/tenant-scoped.
-
-## Não corrigir artificialmente
-
-Não devem ser criados atalhos para habilitar REAL, nem considerar um booleano enviado pelo navegador como prova de identidade, validação de conhecimento, autorização administrativa ou propriedade de uma decisão. Essas garantias devem vir de uma fronteira de confiança real.
-
-## Próxima correção técnica prioritária
-
-1. Conectar o fluxo HTTP normal a um data plane tenant-scoped real.
-2. Propagar `subject_id` + `tenant_id` da identidade confiável até `analyze`, `replay`, `memory`, `statistics` e `outcome`.
-3. Fazer `/api/outcome` carregar a decisão por tenant e verificar propriedade antes de alterar o resultado.
-4. Separar definitivamente armazenamento de teste/local do armazenamento compartilhado de produção.
-5. Adicionar limites de custo/timeout para replay além do limite de quantidade.
-6. Substituir rate limit em memória por mecanismo compartilhado quando houver múltiplas réplicas.
-7. Revisar ações do CI para pinagem imutável por SHA e separar dependências de runtime/teste.
-8. Manter REAL bloqueado até todos os gates de produção estarem configurados e validados.
+REAL permanece bloqueado até esses critérios serem comprovados.
