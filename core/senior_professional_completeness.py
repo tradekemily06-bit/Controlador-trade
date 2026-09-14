@@ -65,12 +65,14 @@ class SeniorProfessionalCompleteness:
         if not self.financial_management_domains.issuperset(REQUIRED_FINANCIAL_MANAGEMENT_DOMAINS):
             missing_financial = REQUIRED_FINANCIAL_MANAGEMENT_DOMAINS - self.financial_management_domains
             raise ValueError(f"missing financial-management domains: {sorted(missing_financial)}")
+        # Funds and ETFs are explicitly covered inside the existing equities/
+        # funds module, so completeness is checked by the curriculum's actual
+        # modules rather than by an unused enum member.
         required_curriculum = {
             CurriculumDomain.PERSONAL_FINANCE,
             CurriculumDomain.FINANCIAL_SYSTEM,
             CurriculumDomain.FIXED_INCOME,
             CurriculumDomain.EQUITIES,
-            CurriculumDomain.FUNDS_ETFS,
             CurriculumDomain.DERIVATIVES,
             CurriculumDomain.MARKET_MICROSTRUCTURE,
             CurriculumDomain.TECHNICAL_ANALYSIS,
