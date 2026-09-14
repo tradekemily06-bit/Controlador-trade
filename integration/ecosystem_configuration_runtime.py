@@ -9,6 +9,7 @@ from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
+from integration.p137_operational_risk_bridge import OperationalRiskBridge
 
 
 class ConfiguredEcosystemService(EcosystemService):
@@ -19,14 +20,13 @@ class ConfiguredEcosystemService(EcosystemService):
         self.preferences = EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
         self.senior_analysis_gate = SeniorAnalysisGate()
+        self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
     def analyze(self, payload: dict[str, Any]):
-        """Require senior context for actionable analysis; incomplete input fails closed to AGUARDAR."""
+        """Require senior context and operational risk for actionable analysis."""
         try:
             context_input = SeniorAnalysisBoundary.build_input(payload)
         except ValueError as exc:
-            # Backward-compatible API behavior without weakening the safety boundary:
-            # incomplete/legacy payloads are recorded only as non-actionable AGUARDAR.
             safe = AnalysisResult(
                 signal=Signal.AGUARDAR,
                 score=float(payload.get("score", 0)),
@@ -45,7 +45,12 @@ class ConfiguredEcosystemService(EcosystemService):
             symbol=payload.get("symbol"),
             timeframe=payload.get("timeframe"),
         )
-        gated = self.senior_analysis_gate.evaluate(analysis=candidate, senior_context=senior_context)
+        operational_risk = self.operational_risk_bridge.evaluate(payload)
+        gated = self.senior_analysis_gate.evaluate(
+            analysis=candidate,
+            senior_context=senior_context,
+            operational_risk=operational_risk,
+        )
         return self._record_analysis(gated)
 
     def _record_analysis(self, result):
