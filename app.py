@@ -25,6 +25,7 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
+MAX_REPLAY_CASES = 50
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -148,6 +149,8 @@ def application(environ, start_response):
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
                 raise ValueError("cases deve ser uma lista")
+            if len(cases) > MAX_REPLAY_CASES:
+                raise ValueError(f"replay aceita no máximo {MAX_REPLAY_CASES} casos por requisição")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
