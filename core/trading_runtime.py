@@ -7,6 +7,7 @@ from typing import Callable
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
+from core.senior_context_cycle import SeniorContextCycle
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
 
@@ -50,6 +51,7 @@ class TradingRuntime:
         *,
         operational_state,
         market_context,
+        senior_context: SeniorContextCycle | None = None,
         amount: float,
         duration_seconds: int,
         max_cycles: int = 1,
@@ -81,6 +83,7 @@ class TradingRuntime:
                 request,
                 operational_state=operational_state,
                 market_context=market_context,
+                senior_context=senior_context,
                 confirmed=confirmed,
                 filters_ok=filters_ok,
                 daily_result=daily_result,
