@@ -52,17 +52,26 @@ class DecisionStore:
         except (OSError, sqlite3.Error) as exc:
             raise RuntimeError("decision storage could not be initialized") from exc
 
-    def save(self, record: DecisionRecord) -> None:
-        if not self.database_path:
-            return
+    def _save_values(self, connection: sqlite3.Connection, records: list[DecisionRecord]) -> None:
         placeholders = ", ".join("?" for _ in self._COLUMNS)
         columns = ", ".join(self._COLUMNS)
-        values = tuple(record.to_dict()[column] for column in self._COLUMNS)
+        connection.executemany(
+            f"INSERT OR REPLACE INTO decisions ({columns}) VALUES ({placeholders})",
+            [tuple(record.to_dict()[column] for column in self._COLUMNS) for record in records],
+        )
+
+    def save(self, record: DecisionRecord) -> None:
+        self.save_many([record])
+
+    def save_many(self, records: list[DecisionRecord]) -> None:
+        """Persist a batch atomically when durable local storage is configured."""
+        if not records or not self.database_path:
+            return
         try:
             with self._lock, self._connect() as connection:
-                connection.execute(f"INSERT OR REPLACE INTO decisions ({columns}) VALUES ({placeholders})", values)
+                self._save_values(connection, records)
         except sqlite3.Error as exc:
-            raise RuntimeError("decision storage write failed") from exc
+            raise RuntimeError("decision storage batch write failed") from exc
 
     def load(self) -> list[DecisionRecord]:
         if not self.database_path:
