@@ -10,12 +10,11 @@ from analysis.decision_record import DecisionRecord
 
 
 class DecisionStore:
-    """Optional SQLite persistence for the learning/decision memory.
+    """Optional SQLite persistence for local learning/decision memory.
 
-    The store is enabled only when CONTROLADOR_DECISION_DB is configured.
-    Without it, the application keeps its existing in-memory behavior.
-    Persistence failures are fail-soft: the caller can continue using the
-    in-memory memory without turning a storage problem into an outage.
+    This store is intentionally not the production multi-tenant data plane.
+    When a database is configured, schema/write failures are surfaced instead
+    of silently pretending that durable history was saved.
     """
 
     _COLUMNS = tuple(field.name for field in fields(DecisionRecord))
@@ -39,12 +38,14 @@ class DecisionStore:
                 "timeframe TEXT", "signal TEXT NOT NULL", "score REAL NOT NULL",
                 "confirmed INTEGER NOT NULL", "reason TEXT NOT NULL",
                 "execution_allowed INTEGER NOT NULL", "outcome TEXT",
+                "subject_id TEXT", "tenant_id TEXT",
             ])
             with self._lock, self._connect() as connection:
                 connection.execute(f"CREATE TABLE IF NOT EXISTS decisions ({columns})")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
-        except (OSError, sqlite3.Error):
-            self.database_path = None
+                connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_tenant ON decisions(tenant_id)")
+        except (OSError, sqlite3.Error) as exc:
+            raise RuntimeError("decision storage could not be initialized") from exc
 
     def save(self, record: DecisionRecord) -> None:
         if not self.database_path:
@@ -55,8 +56,8 @@ class DecisionStore:
         try:
             with self._lock, self._connect() as connection:
                 connection.execute(f"INSERT OR REPLACE INTO decisions ({columns}) VALUES ({placeholders})", values)
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            raise RuntimeError("decision storage write failed") from exc
 
     def load(self) -> list[DecisionRecord]:
         if not self.database_path:
@@ -68,7 +69,7 @@ class DecisionStore:
             return [DecisionRecord(
                 decision_id=row[0], created_at=row[1], symbol=row[2], timeframe=row[3],
                 signal=row[4], score=float(row[5]), confirmed=bool(row[6]), reason=row[7],
-                execution_allowed=bool(row[8]), outcome=row[9],
+                execution_allowed=bool(row[8]), outcome=row[9], subject_id=row[10], tenant_id=row[11],
             ) for row in rows]
-        except (sqlite3.Error, ValueError, TypeError):
-            return []
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            raise RuntimeError("decision storage read failed") from exc
