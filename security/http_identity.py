@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 
@@ -26,6 +27,9 @@ class TrustedHttpIdentity:
         return bool(self.subject_id.strip() and self.tenant_id.strip() and self.role.strip())
 
 
+_current_identity: ContextVar[TrustedHttpIdentity | None] = ContextVar("controlador_trusted_identity", default=None)
+
+
 def saas_public_mode() -> bool:
     return os.environ.get(SAAS_PUBLIC_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -46,7 +50,18 @@ def require_trusted_identity(environ) -> TrustedHttpIdentity:
     identity = resolve_trusted_identity(environ)
     if identity is None:
         raise PermissionError("trusted identity is required")
+    _current_identity.set(identity)
     return identity
+
+
+def current_trusted_identity() -> TrustedHttpIdentity | None:
+    """Return the identity established by the trusted HTTP boundary for this request."""
+    return _current_identity.get()
+
+
+def clear_trusted_identity() -> None:
+    """Clear request identity after request completion in long-lived worker contexts."""
+    _current_identity.set(None)
 
 
 def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
