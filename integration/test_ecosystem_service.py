@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from integration.ecosystem_service import EcosystemService
 import pytest
 
+from core.replay_policy import MAX_REPLAY_CASES
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from storage.production_boundary import ProductionStoragePolicy
@@ -75,6 +76,30 @@ def test_replay_and_statistics_share_the_same_memory():
     stats = service.statistics()
     assert stats["total"] == 2
     assert stats["actionable"] == 1
+
+
+def test_replay_rejects_more_than_50_before_any_decision_is_persisted():
+    service = EcosystemService()
+    oversized = [{"score": 90, "confirmed": True, "filters_ok": True} for _ in range(MAX_REPLAY_CASES + 1)]
+
+    with pytest.raises(ValueError, match="50"):
+        service.replay(oversized)
+
+    assert service.memory == []
+
+
+def test_replay_rejects_late_invalid_case_before_persisting_earlier_cases():
+    service = EcosystemService()
+    cases = [
+        {"score": 90, "confirmed": True, "filters_ok": True},
+        {"score": 80, "confirmed": True, "filters_ok": True},
+        "invalid",
+    ]
+
+    with pytest.raises(ValueError, match="posição 3"):
+        service.replay(cases)
+
+    assert service.memory == []
 
 
 def test_system_status_has_safe_gates():
