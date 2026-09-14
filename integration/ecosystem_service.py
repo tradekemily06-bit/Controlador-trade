@@ -72,36 +72,13 @@ class EcosystemService:
         self.store.save_many(records)
         self.memory.extend(records)
 
-    def assess_senior_context(
-        self,
-        *,
-        context_id: str,
-        candles: Iterable[Candle],
-        available_nodes: Iterable[str],
-        observed_nodes: Iterable[str],
-        gaps: dict[str, str] | None = None,
-        relationships_reviewed: Iterable[str] = (),
-        risk_observations: Iterable[RiskObservation] = (),
-        validated_knowledge_ids: Iterable[str] = (),
-        available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain),
-    ) -> Any:
+    def assess_senior_context(self, *, context_id: str, candles: Iterable[Candle], available_nodes: Iterable[str], observed_nodes: Iterable[str], gaps: dict[str, str] | None = None, relationships_reviewed: Iterable[str] = (), risk_observations: Iterable[RiskObservation] = (), validated_knowledge_ids: Iterable[str] = (), available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain)) -> Any:
         """Run the senior contextual layer without creating an operation."""
-        request = SeniorContextInput(
-            context_id=context_id,
-            candles=tuple(candles),
-            available_nodes=tuple(available_nodes),
-            observed_nodes=tuple(observed_nodes),
-            gaps=dict(gaps or {}),
-            relationships_reviewed=tuple(relationships_reviewed),
-            risk_observations=tuple(risk_observations),
-            validated_knowledge_ids=tuple(validated_knowledge_ids),
-            available_risk_domains=tuple(available_risk_domains),
-        )
+        request = SeniorContextInput(context_id=context_id, candles=tuple(candles), available_nodes=tuple(available_nodes), observed_nodes=tuple(observed_nodes), gaps=dict(gaps or {}), relationships_reviewed=tuple(relationships_reviewed), risk_observations=tuple(risk_observations), validated_knowledge_ids=tuple(validated_knowledge_ids), available_risk_domains=tuple(available_risk_domains))
         return self.senior_context.assess(request)
 
     def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         from core.replay_policy import prevalidate_replay_cases
-
         accepted_cases = prevalidate_replay_cases(cases)
         records: list[DecisionRecord] = []
         for payload in accepted_cases:
@@ -236,5 +213,6 @@ class EcosystemService:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": production_storage["status"], "production_operation_gate": production_gate, "identity": identity}
-        return {"mode": "SIMULACAO", "execution_allowed": False, "real": "DESABILITADO", "mt5_demo": "DEMO_VALIDADO", "production_operation_gate": production_gate, "identity": identity, "production_storage": production_storage, "components": components, "health_alerts": build_health_alerts(self)}
+        storage_status = production_storage.get("status", production_storage.get("state", "UNKNOWN"))
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": storage_status, "production_operation_gate": production_gate, "identity": identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "real": "DESABILITADO", "mt5_demo": "DEMO_VALIDADO", "production_operation_gate": production_gate, "identity": identity, "production_storage": production_storage, "components": components, "health_alerts": build_health_alerts(components)}
