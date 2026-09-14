@@ -87,6 +87,25 @@ def test_replay_has_no_artificial_scenario_ceiling():
     assert len(service.memory) == 51
 
 
+def test_replay_failure_persists_nothing():
+    class FailingReplayService(EcosystemService):
+        def analyze(self, payload, *, persist=True):
+            if payload.get("fail"):
+                raise RuntimeError("simulated replay failure")
+            return super().analyze(payload, persist=persist)
+
+    service = FailingReplayService()
+    cases = [
+        {"score": 90, "confirmed": True, "filters_ok": True},
+        {"score": 80, "confirmed": True, "filters_ok": True, "fail": True},
+    ]
+
+    with pytest.raises(RuntimeError, match="simulated replay failure"):
+        service.replay(cases)
+
+    assert service.memory == []
+
+
 def test_replay_rejects_late_invalid_case_before_persisting_earlier_cases():
     service = EcosystemService()
     cases = [
