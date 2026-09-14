@@ -23,7 +23,7 @@ class ConfiguredEcosystemService(EcosystemService):
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
-        self.maintenance = MaintenanceManager()
+        self.maintenance = self.operational_runtime.maintenance if self.operational_runtime is not None else MaintenanceManager()
         self.psychology = TradingPsychologyGuard()
         self.advanced_psychology = AdvancedTradingPsychology()
         self.senior_analysis_gate = SeniorAnalysisGate()
