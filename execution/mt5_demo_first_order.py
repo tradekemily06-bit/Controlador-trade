@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
-from execution.ports import ExecutionMode, ExecutionRequest
 from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest
 
 
-def main() -> None:
-    request = ExecutionRequest(
+"""Safe DEMO request example.
+
+This module deliberately does not dispatch directly to a broker adapter.
+All execution must pass through the orchestrated decision, contextual-risk,
+market-data, safety and reconciliation gates first.
+"""
+
+
+def build_demo_request() -> ExecutionRequest:
+    """Build an example request without authorizing or submitting it."""
+    return ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=0.01,
@@ -15,10 +23,12 @@ def main() -> None:
         request_id="mt5-demo-first-order",
     )
 
-    adapter = ICMarketsMT5DemoAdapter()
-    result = adapter.execute(request)
-    print(result)
-    print("DEMO_ONLY=True; REAL=False")
+
+def main() -> None:
+    request = build_demo_request()
+    print(request)
+    print("DEMO_REQUEST_ONLY=True; DIRECT_BROKER_DISPATCH=False")
+    print("Use the orchestrated DEMO flow after all required gates are satisfied.")
 
 
 if __name__ == "__main__":
