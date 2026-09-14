@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime
 from typing import Any
 
+from core.ecosystem_maintenance import MaintenanceManager
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
+from core.trading_psychology import PsychologyCheckIn, TradingPsychologyGuard
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
@@ -19,6 +22,8 @@ class ConfiguredEcosystemService(EcosystemService):
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
+        self.maintenance = MaintenanceManager()
+        self.psychology = TradingPsychologyGuard()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
@@ -28,30 +33,12 @@ class ConfiguredEcosystemService(EcosystemService):
         try:
             context_input = SeniorAnalysisBoundary.build_input(payload)
         except ValueError as exc:
-            safe = AnalysisResult(
-                signal=Signal.AGUARDAR,
-                score=float(payload.get("score", 0)),
-                reason=f"Análise sênior não pode ser concluída: {exc}.",
-                confirmed=False,
-                symbol=payload.get("symbol"),
-                timeframe=payload.get("timeframe"),
-            )
+            safe = AnalysisResult(signal=Signal.AGUARDAR, score=float(payload.get("score", 0)), reason=f"Análise sênior não pode ser concluída: {exc}.", confirmed=False, symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
             return self._record_analysis(safe, persist=persist, owner=owner)
-
         senior_context = self.senior_context.assess(context_input)
-        candidate = self.engine.evaluate(
-            score=payload.get("score", 50),
-            confirmed=payload.get("confirmed", False),
-            filters_ok=payload.get("filters_ok", True),
-            symbol=payload.get("symbol"),
-            timeframe=payload.get("timeframe"),
-        )
+        candidate = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         operational_risk = self.operational_risk_bridge.evaluate(payload)
-        gated = self.senior_analysis_gate.evaluate(
-            analysis=candidate,
-            senior_context=senior_context,
-            operational_risk=operational_risk,
-        )
+        gated = self.senior_analysis_gate.evaluate(analysis=candidate, senior_context=senior_context, operational_risk=operational_risk)
         return self._record_analysis(gated, persist=persist, owner=owner)
 
     def _record_analysis(self, result, *, persist: bool = True, owner=None):
@@ -100,16 +87,7 @@ class ConfiguredEcosystemService(EcosystemService):
             return prefs.info_enabled
         if not prefs.important_enabled:
             return False
-        category_enabled = {
-            NotificationKind.SYSTEM_UPDATE: prefs.system_updates_enabled,
-            NotificationKind.SECURITY: prefs.security_enabled,
-            NotificationKind.MARKET: prefs.market_enabled,
-            NotificationKind.RISK: prefs.risk_enabled,
-            NotificationKind.CONNECTION: prefs.connection_enabled,
-            NotificationKind.EXECUTION: prefs.execution_enabled,
-            NotificationKind.LEARNING: prefs.learning_enabled,
-            NotificationKind.RECOVERY: prefs.recovery_enabled,
-        }[item.kind]
+        category_enabled = {NotificationKind.SYSTEM_UPDATE: prefs.system_updates_enabled, NotificationKind.SECURITY: prefs.security_enabled, NotificationKind.MARKET: prefs.market_enabled, NotificationKind.RISK: prefs.risk_enabled, NotificationKind.CONNECTION: prefs.connection_enabled, NotificationKind.EXECUTION: prefs.execution_enabled, NotificationKind.LEARNING: prefs.learning_enabled, NotificationKind.RECOVERY: prefs.recovery_enabled}[item.kind]
         return category_enabled
 
     def _visible_notifications(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
@@ -118,11 +96,7 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def notification_summary(self) -> dict[str, Any]:
         visible = self._visible_notifications(include_info=False)
-        return {
-            "count": len(visible),
-            "critical_count": len(self.notifications.critical()),
-            "items": [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in visible],
-        }
+        return {"count": len(visible), "critical_count": len(self.notifications.critical()), "items": [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in visible]}
 
     def all_notifications(self) -> list[dict[str, Any]]:
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
@@ -132,6 +106,17 @@ class ConfiguredEcosystemService(EcosystemService):
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
+    def schedule_maintenance(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Announce planned downtime before an update begins."""
+        starts_at = datetime.fromisoformat(str(payload.get("starts_at", "")).replace("Z", "+00:00"))
+        window = self.maintenance.schedule(maintenance_id=str(payload.get("maintenance_id", "")), title=str(payload.get("title", "Atualização programada")), message=str(payload.get("message", "O ecossistema ficará temporariamente indisponível para atualização.")), starts_at=starts_at, duration_minutes=int(payload.get("duration_minutes", 1)))
+        notice = window.user_notice()
+        self.publish_material_event("SYSTEM_UPDATE", notice["title"], f"{notice['message']} Início: {notice['starts_at']}. Retorno previsto: {notice['expected_return_at']} ({notice['duration_minutes']} min).", critical=True, blocking=False)
+        return notice
+
+    def maintenance_status(self) -> dict[str, Any]:
+        return self.maintenance.status()
+
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
         """Route a material runtime event into the notification center."""
         notification_kind = NotificationKind(str(kind).upper())
@@ -139,3 +124,9 @@ class ConfiguredEcosystemService(EcosystemService):
         notification_id = f"event-{len(self.notifications.all()) + 1}"
         item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+
+    def psychology_check_in(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Return behavioral self-awareness feedback; never authorizes trading."""
+        check_in = PsychologyCheckIn(emotional_state=str(payload.get("emotional_state", "")), urge_to_trade=int(payload.get("urge_to_trade", 0)), recent_losses=int(payload.get("recent_losses", 0)), fatigue=int(payload.get("fatigue", 0)), confidence=int(payload.get("confidence", 0)), rule_adherence=int(payload.get("rule_adherence", 0)))
+        assessment = self.psychology.assess(check_in)
+        return {"flags": [flag.value for flag in assessment.flags], "risk_level": assessment.risk_level, "message": assessment.message, "suggested_action": assessment.suggested_action, "trading_authorized": False}
