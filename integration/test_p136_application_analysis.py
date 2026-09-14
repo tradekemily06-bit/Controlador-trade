@@ -31,6 +31,17 @@ def _payload():
         "observed_nodes": ["market_data", "price_history", "risk", "execution", "security"],
         "relationships_reviewed": ["price-structure", "structure-volatility", "price-liquidity", "risk-execution", "security-recovery"],
         "risk_observations": _risk_observations(),
+        "operational_state": {
+            "balance": 2000,
+            "equity": 2000,
+            "realized_pnl": 0,
+            "trades_today": 2,
+            "consecutive_losses": 0,
+            "open_positions": 0,
+            "exposure": 0,
+            "market_open": True,
+            "last_processed_candle": datetime(2026, 9, 13, tzinfo=timezone.utc).isoformat(),
+        },
     }
 
 
@@ -41,11 +52,29 @@ def test_application_analysis_fails_closed_for_score_only_payload():
     assert "Análise sênior não pode ser concluída" in record.reason
 
 
-def test_application_analysis_uses_complete_senior_context_before_recording():
+def test_application_analysis_uses_complete_senior_context_and_operational_risk():
     service = ConfiguredEcosystemService()
     record = service.analyze(_payload())
     assert record.signal == "COMPRA"
     assert record.score == 95
+
+
+def test_application_analysis_blocks_when_operational_risk_state_is_missing():
+    service = ConfiguredEcosystemService()
+    payload = _payload()
+    payload.pop("operational_state")
+    record = service.analyze(payload)
+    assert record.signal == "AGUARDAR"
+    assert "Estado operacional de risco inválido" in record.reason
+
+
+def test_application_analysis_blocks_when_operational_risk_limit_denies():
+    service = ConfiguredEcosystemService()
+    service.risk = service.risk.__class__(max_operations=2)
+    service.operational_risk_bridge = service.operational_risk_bridge.__class__(service.risk)
+    record = service.analyze(_payload())
+    assert record.signal == "AGUARDAR"
+    assert "Limite de operações" in record.reason
 
 
 def test_application_analysis_does_not_store_unsupported_direction():
