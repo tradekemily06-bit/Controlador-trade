@@ -24,10 +24,22 @@ def test_fresh_session_is_safe(tmp_path):
 
 def test_checkpoint_allows_safe_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
-    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", datetime.now(timezone.utc)))
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.REJECTED, now, "rejected"))
+    coordinator.execution_ledger.mark_rejected("req-3")
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", now))
     result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
     assert result.checkpoint.last_cycle == 3
+
+
+def test_orphan_checkpoint_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "missing-request", datetime.now(timezone.utc)))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "checkpoint" in result.message
 
 
 def test_unknown_requires_reconciliation(tmp_path):
