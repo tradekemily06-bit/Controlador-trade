@@ -291,7 +291,11 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         if scope is None:
             return super().generate_professor_activity(payload)
         from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
-        activity = LearningProfessor().build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        validated_source = scope.sources.get(knowledge_id)
+        if validated_source is None or validated_source.status.value != "VALIDATED" or not validated_source.knowledge_validated:
+            raise ValueError("only validated knowledge from the current tenant can generate professor activities")
+        activity = LearningProfessor().build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=knowledge_id, statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=True)
         if activity.activity_id in scope.activities:
             raise ValueError("activity_id já cadastrado")
         scope.activities[activity.activity_id] = activity
