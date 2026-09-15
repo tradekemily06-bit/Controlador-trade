@@ -8,7 +8,6 @@ from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
-from core.operation_memory import OperationMemory
 from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
@@ -75,12 +74,10 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
-    memory = OperationMemory()
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
-        memory=memory,
     )
     health = RuntimeHealthMonitor(
         ledger=ledger,
