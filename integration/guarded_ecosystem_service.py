@@ -14,15 +14,17 @@ class GuardedEcosystemService(ConfiguredEcosystemService):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        # Bind the risk boundary to the same runtime barrier used here. The
-        # provider is evaluated fresh on every risk decision, so a kill switch,
-        # incident, maintenance state, stale market-data state, or runtime
-        # failure cannot be hidden behind a startup snapshot.
+        # Bind the risk boundary to the same runtime barrier AND authoritative
+        # runtime risk-state source. The provider is evaluated fresh on every
+        # risk decision, so a kill switch, incident, maintenance state,
+        # stale-market state, runtime failure, or spoofed payload cannot be
+        # hidden behind a startup snapshot.
         if self.operational_runtime is not None:
             self.operational_risk_bridge = OperationalRiskBridge(
                 self.risk,
                 incident_manager=self.operational_runtime.incident_manager,
                 operational_barrier_provider=lambda: build_global_operational_barrier(self.operational_runtime),
+                operational_state_provider=self.operational_runtime.risk_state_provider,
             )
 
     def operational_barrier(self):
