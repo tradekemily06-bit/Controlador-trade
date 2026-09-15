@@ -15,18 +15,21 @@ from execution.ports import ExecutionMode, ExecutionRequest
 
 def _decision_identity(orchestration: OrchestrationResult) -> str:
     """Deterministic identity for the exact decision context used by a plan."""
+    def _value(value):
+        return value.value if hasattr(value, "value") else value
+
     payload = {
-        "signal": orchestration.analysis.signal.value,
+        "signal": _value(orchestration.analysis.signal),
         "score": orchestration.analysis.score,
         "reason": orchestration.analysis.reason,
         "confirmed": orchestration.analysis.confirmed,
         "symbol": orchestration.analysis.symbol,
         "timeframe": orchestration.analysis.timeframe,
         "quality_score": orchestration.quality.score,
-        "quality_level": orchestration.quality.level.value,
+        "quality_level": _value(orchestration.quality.level),
         "actionable": orchestration.quality.actionable,
-        "decision": orchestration.decision.decision.value,
-        "decision_signal": orchestration.decision.signal.value,
+        "decision": _value(orchestration.decision.decision),
+        "decision_signal": _value(orchestration.decision.signal),
         "decision_reason": orchestration.decision.reason,
         "snapshot": orchestration.snapshot.as_dict(),
         "timestamp": orchestration.timestamp.isoformat(),
