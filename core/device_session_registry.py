@@ -8,15 +8,23 @@ implemented by the authenticated control plane).
 
 This module tracks connection state only. It does not grant trading authority,
 change the execution safety gates, or replace authentication.
+
+The registry uses local SQLite and is therefore a single-instance primitive.
+Multi-instance production must use a shared session provider instead of
+silently treating one process-local database as authoritative.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
+
+
+MULTI_INSTANCE_ENV = "CONTROLADOR_MULTI_INSTANCE"
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,8 @@ class DeviceSessionRegistry:
     """Durable registry allowing multiple independently connected devices."""
 
     def __init__(self, database_path: str | Path) -> None:
+        if os.environ.get(MULTI_INSTANCE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}:
+            raise RuntimeError("local device session registry is not safe for multi-instance deployment")
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = RLock()
