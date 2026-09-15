@@ -27,7 +27,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         super().__init__(*args, **kwargs)
         state_store = self.production_data_plane.state_store if self.production_data_plane is not None else None
         self.preferences = EcosystemPreferencesStore(state_store=state_store)
-        self.notifications = EcosystemNotificationCenter()
+        self.notifications = EcosystemNotificationCenter(state_store=state_store, require_durable=saas_public_mode())
         self.maintenance = self.operational_runtime.maintenance if self.operational_runtime is not None else MaintenanceManager()
         self.psychology = TradingPsychologyGuard()
         self.advanced_psychology = AdvancedTradingPsychology()
@@ -140,7 +140,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
+        notification_id = self.notifications.new_id("update")
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
@@ -157,7 +157,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
         notification_kind = NotificationKind(str(kind).upper())
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-        notification_id = f"event-{len(self.notifications.all()) + 1}"
+        notification_id = self.notifications.new_id("event")
         item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
