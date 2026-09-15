@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -67,3 +68,29 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_concurrent_gateways_only_one_worker_can_reserve_same_request_id(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    gateways = [
+        ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+        for _ in range(16)
+    ]
+
+    def attempt(index: int):
+        return gateways[index].execute("same-concurrent-id", request())
+
+    with ThreadPoolExecutor(max_workers=len(gateways)) as pool:
+        results = list(pool.map(attempt, range(len(gateways))))
+
+    accepted = [result for result in results if result.status is GatewayStatus.ACCEPTED]
+    duplicates = [result for result in results if result.status is GatewayStatus.DUPLICATE]
+    blocked_or_uncertain = [
+        result for result in results
+        if result.status not in (GatewayStatus.ACCEPTED, GatewayStatus.DUPLICATE)
+    ]
+
+    assert len(accepted) == 1
+    assert len(duplicates) == 15
+    assert blocked_or_uncertain == []
+    assert ExecutionLedger(path).records() == ("same-concurrent-id",)
