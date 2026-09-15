@@ -11,7 +11,7 @@ def test_guarded_service_blocks_analysis_when_kill_switch_is_active(tmp_path: Pa
 
     record = service.analyze({"score": 95, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "M5"}, persist=False)
 
-    assert record.signal.value == "AGUARDAR"
+    assert record.signal == "AGUARDAR"
     assert "bloqueada" in record.reason.lower()
     assert service.risk_status()["allowed"] is False
     assert service.operational_barrier_status()["operationally_allowed"] is False
