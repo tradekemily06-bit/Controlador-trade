@@ -223,6 +223,30 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     assert second.status == RealGatewayStatus.UNKNOWN
 
 
+def test_real_gateway_sanitizes_executor_exception(tmp_path: Path):
+    class LeakyAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            raise RuntimeError("SECRET_INTERNAL_BROKER_DETAILS")
+
+    registry = BrokerRegistry()
+    registry.register("fake", LeakyAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, _barrier_provider())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(broker="fake", request_id="leak-check", request=_request(), authorization=auth, admission=admission, safety=safety)
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert "SECRET_INTERNAL_BROKER_DETAILS" not in result.message
+    assert "RuntimeError" in result.message
+    assert ledger.status("leak-check") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", UnknownAdapter())
