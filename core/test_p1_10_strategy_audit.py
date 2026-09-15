@@ -15,6 +15,7 @@ from core.risk_manager import RiskManager
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
@@ -45,6 +46,18 @@ def make_senior_context():
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation_assessment = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="FORTE",
+        reasons=("Fixture explicitamente validado para testar o caminho de execução.",),
+        strengths=("Contexto suficiente para o cenário de teste.",),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("Teste de caminho aprovado.",),
+        evidence_against=(),
+        independent_confluences=("contexto", "confirmação"),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="p1-10-senior-context",
         whole_graph=None,
@@ -56,6 +69,7 @@ def make_senior_context():
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
         execution_authorized=False,
+        operation_assessment=operation_assessment,
     )
 
 
