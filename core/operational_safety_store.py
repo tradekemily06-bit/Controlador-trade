@@ -111,6 +111,41 @@ class OperationalSafetyStore:
             except OSError:
                 pass
 
+    @classmethod
+    def _merge_audit_records(cls, persisted: object, current: tuple[DecisionAuditRecord, ...]) -> list[dict[str, object]]:
+        if not isinstance(persisted, list):
+            raise ValueError("auditoria persistida inválida.")
+        merged: dict[str, dict[str, object]] = {}
+        for item in persisted:
+            record = cls._audit_record(item)
+            normalized = cls._audit_dict(record)
+            key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+            merged[key] = normalized
+        for record in current:
+            normalized = cls._audit_dict(record)
+            key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+            merged[key] = normalized
+        records = list(merged.values())
+        records.sort(key=lambda item: str(item["timestamp"]))
+        return records
+
+    @classmethod
+    def _merge_execution_audit(cls, persisted: object, current: list[dict[str, object]]) -> list[dict[str, object]]:
+        if not isinstance(persisted, list):
+            raise ValueError("auditoria de execução persistida inválida.")
+        merged: dict[tuple[str, str, str, str], dict[str, object]] = {}
+        for item in persisted:
+            normalized = cls._execution_audit_item(item)
+            key = (normalized["request_id"], normalized["state"], normalized["timestamp"], normalized["message"])
+            merged[key] = normalized
+        for item in current:
+            normalized = cls._execution_audit_item(item)
+            key = (normalized["request_id"], normalized["state"], normalized["timestamp"], normalized["message"])
+            merged[key] = normalized
+        records = list(merged.values())
+        records.sort(key=lambda item: str(item["timestamp"]))
+        return records
+
     def replace_with_fail_closed_state(self, reason: str) -> None:
         """Replace an unreadable safety file without reading the corrupt payload."""
         if not isinstance(reason, str) or not reason.strip():
@@ -129,11 +164,12 @@ class OperationalSafetyStore:
             execution_audit = payload.get("execution_audit", [])
             if not isinstance(execution_audit, list):
                 raise ValueError("auditoria de execução persistida inválida.")
-            execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+            normalized_execution = [self._execution_audit_item(item) for item in execution_audit]
+            merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
             self._write_payload({
-                "audit": [self._audit_dict(record) for record in audit.records()],
+                "audit": merged_audit,
                 "kill_switch": {"enabled": state.enabled, "reason": state.reason},
-                "execution_audit": execution_audit,
+                "execution_audit": normalized_execution,
             })
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
@@ -146,7 +182,8 @@ class OperationalSafetyStore:
             kill_switch = payload.get("kill_switch", {})
             if not isinstance(audit, list) or not isinstance(kill_switch, dict):
                 raise ValueError("estado de segurança inválido.")
-            self._write_payload({"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized})
+            merged_execution = self._merge_execution_audit(payload.get("execution_audit", []), normalized)
+            self._write_payload({"audit": audit, "kill_switch": kill_switch, "execution_audit": merged_execution})
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         with self._lock():
@@ -173,10 +210,7 @@ class OperationalSafetyStore:
                     raise ValueError("estado do kill switch inválido.")
                 state = KillSwitchState(enabled=raw_state.get("enabled", False), reason=raw_state.get("reason"))
                 kill_switch = KillSwitch()
-                if state.enabled:
-                    kill_switch.activate(state.reason or "estado persistido")
-                else:
-                    kill_switch.deactivate()
+                kill_switch.synchronize(state)
                 raw_execution_audit = payload.get("execution_audit", [])
                 if not isinstance(raw_execution_audit, list):
                     raise ValueError("auditoria de execução persistida inválida.")
