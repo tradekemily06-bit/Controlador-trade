@@ -38,11 +38,7 @@ class OperationalRuntime:
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
-    """Compose one shared runtime; broker selection is injected at the edge.
-
-    The kill switch is restored from durable safety state. If that state cannot
-    be trusted, the runtime starts fail-closed with the kill switch active.
-    """
+    """Compose one shared runtime with fail-closed durable safety state."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
@@ -50,10 +46,17 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         safety_audit, persisted_switch = safety_store.load()
         initial_enabled = persisted_switch.state.enabled
         initial_reason = persisted_switch.state.reason
+        safety_state_valid = True
     except (OSError, ValueError, TypeError) as exc:
         safety_audit = DecisionAudit()
         initial_enabled = True
         initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
+        safety_state_valid = False
+
+    # Persist only after the KillSwitch has been constructed. A corrupt or
+    # unavailable prior state is replaced by a minimal, valid fail-closed
+    # state rather than recursively reading the corrupt payload during startup.
+    kill_switch: KillSwitch
 
     def persist_safety(_state) -> None:
         safety_store.save(safety_audit, kill_switch)
@@ -61,7 +64,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     kill_switch = KillSwitch(on_change=persist_safety)
     if initial_enabled:
         kill_switch.activate(initial_reason or "estado de segurança persistido")
-    else:
+    elif safety_state_valid:
         safety_store.save(safety_audit, kill_switch)
 
     maintenance = MaintenanceManager(root / "maintenance.json")
