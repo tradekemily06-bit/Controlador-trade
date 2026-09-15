@@ -13,7 +13,7 @@ class ProductionStore(Protocol):
     def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         ...
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         ...
 
 
@@ -58,11 +58,11 @@ class ProductionStoragePolicy:
 class UnconfiguredProductionStore:
     """Explicit fail-closed placeholder until deployment supplies a real provider."""
 
-    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str | None = None) -> None:
+    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str) -> None:
         raise RuntimeError("production storage provider is not configured")
 
-    def load(self, record_id: str, *, tenant_id: str, subject_id: str | None = None) -> dict[str, Any] | None:
+    def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         raise RuntimeError("production storage provider is not configured")
 
-    def list(self, *, tenant_id: str, subject_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         raise RuntimeError("production storage provider is not configured")
