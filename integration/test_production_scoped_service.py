@@ -36,6 +36,8 @@ def test_configured_service_uses_durable_scope_for_analysis_memory_and_statistic
     assert service.memory_view(subject_id="user-a", tenant_id="tenant-b") == []
     assert service.statistics(subject_id="user-a", tenant_id="tenant-a")["total"] == 1
     assert service.statistics(subject_id="user-b", tenant_id="tenant-a")["total"] == 0
+    assert service.production_storage.status()["status"] == "READY"
+    assert service.production_gate.status()["storage_state"] == "READY"
 
     restarted = ConfiguredEcosystemService(production_data_plane=plane)
     assert restarted.memory_view(subject_id="user-a", tenant_id="tenant-a")[0]["decision_id"] == record.decision_id
