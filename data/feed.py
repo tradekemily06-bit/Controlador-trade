@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, Sequence
 
+from core.market_data_fingerprint import fingerprint_candles
 from data.models import Candle
 from data.normalizer import normalize_candle
 from data.validator import validate_candles
@@ -29,6 +30,11 @@ class MarketDataResult:
     candles: tuple[Candle, ...]
     source: str
     received_at: datetime
+
+    @property
+    def fingerprint(self) -> str:
+        """Identity of the exact normalized candles used by the analysis."""
+        return fingerprint_candles(self.candles)
 
 
 class MarketDataProvider(Protocol):

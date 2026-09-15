@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from core.models import Signal
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -66,6 +68,18 @@ def test_paper_executor_generates_unique_ids():
 
     assert first.external_id != second.external_id
     assert second.external_id == "PAPER-000002"
+
+
+def test_paper_executor_generates_unique_ids_under_concurrency():
+    executor = PaperExecutor()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: executor.execute(make_request()), range(40)))
+
+    ids = [result.external_id for result in results]
+    assert all(result.accepted for result in results)
+    assert len(ids) == len(set(ids)) == 40
+    assert {item.result.external_id for item in executor.executions()} == set(ids)
 
 
 def test_reconciler_reports_consistent_execution_history():

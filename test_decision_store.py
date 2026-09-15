@@ -1,5 +1,6 @@
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
+import pytest
 
 
 def make_record(decision_id: str = "d-1", outcome: str | None = None) -> DecisionRecord:
@@ -47,11 +48,35 @@ def test_decision_store_is_optional_and_in_memory_compatible(monkeypatch):
     assert store.load() == []
 
 
-def test_decision_store_failure_is_fail_soft(tmp_path):
+def test_decision_store_fails_closed_in_public_saas_mode(monkeypatch, tmp_path):
+    database = tmp_path / "decisions.sqlite3"
+    store = DecisionStore(str(database))
+    store.save(make_record())
+
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
+    assert DecisionStore(str(database)).load() == []
+    with pytest.raises(RuntimeError, match="local decision store is unavailable"):
+        DecisionStore(str(database)).save(make_record("blocked"))
+
+
+def test_configured_decision_store_fails_closed_when_database_path_is_unavailable(tmp_path):
     blocked = tmp_path / "not-a-directory"
     blocked.write_text("blocked", encoding="utf-8")
-    store = DecisionStore(str(blocked / "decisions.sqlite3"))
+    with pytest.raises(RuntimeError, match="decision storage could not be initialized"):
+        DecisionStore(str(blocked / "decisions.sqlite3"))
 
-    assert store.database_path is None
-    store.save(make_record())
-    assert store.load() == []
+
+def test_decision_store_migrates_legacy_database_with_owner_columns(tmp_path):
+    database = tmp_path / "legacy.sqlite3"
+    legacy = DecisionStore.__new__(DecisionStore)
+    legacy.database_path = str(database)
+    legacy._lock = __import__("threading").Lock()
+    with legacy._lock, legacy._connect() as connection:
+        connection.execute("CREATE TABLE decisions (decision_id TEXT PRIMARY KEY, created_at TEXT NOT NULL, symbol TEXT, timeframe TEXT, signal TEXT NOT NULL, score REAL NOT NULL, confirmed INTEGER NOT NULL, reason TEXT NOT NULL, execution_allowed INTEGER NOT NULL, outcome TEXT)")
+        connection.execute("INSERT INTO decisions VALUES ('legacy', '2026-09-11T12:00:00+00:00', 'EURUSD', 'M5', 'COMPRA', 90, 1, 'legacy', 0, NULL)")
+
+    migrated = DecisionStore(str(database))
+    loaded = migrated.load()
+    assert loaded[0].decision_id == "legacy"
+    assert loaded[0].subject_id is None
+    assert loaded[0].tenant_id is None

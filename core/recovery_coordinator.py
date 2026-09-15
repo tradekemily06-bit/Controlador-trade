@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
@@ -13,6 +12,7 @@ class RecoveryState(str, Enum):
     FRESH = "FRESH"
     SAFE_TO_RESUME = "SAFE_TO_RESUME"
     REQUIRES_RECONCILIATION = "REQUIRES_RECONCILIATION"
+    SESSION_MISMATCH = "SESSION_MISMATCH"
     INVALID = "INVALID"
 
 
@@ -38,7 +38,6 @@ class RecoveryCoordinator:
         checkpoint_store: RuntimeCheckpointStore,
         lifecycle_store: ExecutionLifecycleStore,
         execution_ledger: ExecutionLedger,
-        memory: OperationMemory,
     ) -> None:
         if not isinstance(checkpoint_store, RuntimeCheckpointStore):
             raise ValueError("checkpoint_store inválido.")
@@ -46,14 +45,14 @@ class RecoveryCoordinator:
             raise ValueError("lifecycle_store inválido.")
         if not isinstance(execution_ledger, ExecutionLedger):
             raise ValueError("execution_ledger inválido.")
-        if not isinstance(memory, OperationMemory):
-            raise ValueError("memory inválida.")
         self.checkpoint_store = checkpoint_store
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
-        self.memory = memory
 
-    def assess(self) -> RecoveryAssessment:
+    def assess(self, *, session_id: str | None = None) -> RecoveryAssessment:
+        if session_id is not None and (not isinstance(session_id, str) or not session_id.strip()):
+            raise ValueError("session_id inválido.")
+
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
@@ -61,11 +60,23 @@ class RecoveryCoordinator:
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+        ]
+
+        checkpoint_orphan = None
+        if checkpoint is not None and checkpoint.last_request_id:
+            request_id = checkpoint.last_request_id
+            if request_id not in lifecycle_by_id and request_id not in ledger_ids:
+                checkpoint_orphan = request_id
+
+        if unknown or pending or inconsistent or checkpoint_orphan:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -73,12 +84,23 @@ class RecoveryCoordinator:
                 details.append("PENDING requer verificação")
             if inconsistent:
                 details.append("ACCEPTED sem ledger requer reconciliação")
+            if checkpoint_orphan:
+                details.append("checkpoint aponta para request_id ausente no lifecycle e ledger; requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
                 pending,
                 unknown,
                 "; ".join(details),
+            )
+
+        if checkpoint is not None and session_id is not None and checkpoint.session_id != session_id:
+            return RecoveryAssessment(
+                RecoveryState.SESSION_MISMATCH,
+                checkpoint,
+                (),
+                (),
+                "checkpoint pertence a outra sessão; retomada automática bloqueada",
             )
 
         state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME

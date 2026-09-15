@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from core.p55_trusted_knowledge import TrustedKnowledge
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from core.senior_context_cycle import SeniorContextQuality
@@ -34,6 +35,15 @@ def request(*, risk_observations=(), available_risk_domains=(RiskDomain.CAPITAL,
         risk_observations=tuple(risk_observations),
         validated_knowledge_ids=("knowledge-validated-1",),
         available_risk_domains=tuple(available_risk_domains),
+        trusted_knowledge=(
+            TrustedKnowledge(
+                knowledge_id="knowledge-validated-1",
+                hypothesis_id="hypothesis-1",
+                test_id="test-1",
+                statement="Conhecimento validado para o contexto.",
+                source_observation="Observação validada.",
+            ),
+        ),
     )
 
 
@@ -61,6 +71,16 @@ def test_orchestrator_keeps_missing_risk_context_in_reassessment():
     assert cycle.risk_assessment.status.value == "INSUFFICIENT"
     assert cycle.execution_authorized is False
     assert any("risk" in question.lower() for question in cycle.unresolved_questions)
+
+
+def test_orchestrator_rejects_untraceable_knowledge():
+    value = request()
+    value = SeniorContextInput(
+        **{**value.__dict__, "trusted_knowledge": ()},
+    )
+
+    with pytest.raises(ValueError, match="trusted knowledge"):
+        SeniorContextOrchestrator().assess(value)
 
 
 def test_orchestrator_rejects_invalid_or_unsorted_market_data():

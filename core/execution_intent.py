@@ -19,6 +19,8 @@ class ExecutionIntent:
     duration_seconds: int
     mode: ExecutionMode
     created_at: datetime
+    market_data_fingerprint: str | None = None
+    risk_state_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
@@ -39,6 +41,12 @@ class ExecutionIntent:
             raise ValueError("execução REAL permanece bloqueada nesta etapa.")
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at inválido.")
+        if self.market_data_fingerprint is not None:
+            if not isinstance(self.market_data_fingerprint, str) or len(self.market_data_fingerprint) != 64:
+                raise ValueError("market_data_fingerprint inválido.")
+        if self.risk_state_fingerprint is not None:
+            if not isinstance(self.risk_state_fingerprint, str) or len(self.risk_state_fingerprint) != 64:
+                raise ValueError("risk_state_fingerprint inválido.")
 
     def as_execution_request(self) -> ExecutionRequest:
         """Build the existing port DTO without invoking any execution adapter."""
@@ -49,4 +57,6 @@ class ExecutionIntent:
             duration_seconds=self.duration_seconds,
             mode=self.mode,
             request_id=self.request_id,
+            market_data_fingerprint=self.market_data_fingerprint,
+            risk_state_fingerprint=self.risk_state_fingerprint,
         )

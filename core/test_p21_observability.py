@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from core.operation_memory import OperationMemory
 from core.p21_observability import HealthState, RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -14,12 +13,10 @@ def build(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    memory = OperationMemory()
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
-        memory=memory,
     )
     monitor = RuntimeHealthMonitor(
         ledger=ledger,
@@ -65,12 +62,10 @@ def test_invalid_dependency_is_rejected(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    memory = OperationMemory()
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
-        memory=memory,
     )
     with pytest.raises(ValueError):
         RuntimeHealthMonitor(ledger=ledger, lifecycle=lifecycle, checkpoint_store=object(), recovery=recovery)

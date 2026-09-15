@@ -51,3 +51,34 @@ def test_invalid_outcome_is_rejected():
         assert "outcome" in str(exc)
     else:
         raise AssertionError("outcome inválido deveria ser rejeitado")
+
+
+def test_owner_can_be_bound_once_and_cannot_be_reassigned():
+    result = AnalysisResult(signal=Signal.COMPRA, score=90, reason="ok", confirmed=True)
+    record = DecisionRecord.from_analysis(result)
+    owned = record.with_owner(subject_id="user-a", tenant_id="tenant-a")
+
+    assert owned.owned_by(subject_id="user-a", tenant_id="tenant-a") is True
+    assert owned.owned_by(subject_id="user-b", tenant_id="tenant-a") is False
+    assert owned.owned_by(subject_id="user-a", tenant_id="tenant-b") is False
+    assert owned.with_owner(subject_id="user-a", tenant_id="tenant-a") == owned
+
+    try:
+        owned.with_owner(subject_id="user-b", tenant_id="tenant-a")
+    except ValueError as exc:
+        assert "reassigned" in str(exc)
+    else:
+        raise AssertionError("ownership não deveria poder ser reassigned")
+
+
+def test_owner_requires_non_empty_identity_values():
+    result = AnalysisResult(signal=Signal.COMPRA, score=90, reason="ok", confirmed=True)
+    record = DecisionRecord.from_analysis(result)
+
+    for subject_id, tenant_id in (("", "tenant-a"), ("user-a", "")):
+        try:
+            record.with_owner(subject_id=subject_id, tenant_id=tenant_id)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("ownership vazia deveria ser rejeitada")

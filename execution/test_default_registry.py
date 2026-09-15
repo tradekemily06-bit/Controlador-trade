@@ -38,6 +38,27 @@ def test_ic_markets_demo_gateway_is_composed_without_connecting():
     assert gateway is not None
 
 
+def test_ic_markets_demo_gateway_without_runtime_barrier_is_fail_closed():
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("global barrier must block before MT5 access")
+
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5())
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id="demo-missing-runtime",
+    )
+
+    result = gateway.execute("demo-missing-runtime", request)
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert "runtime operacional" in result.message.lower()
+
+
 def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
     class UnusedMT5:
         def initialize(self):

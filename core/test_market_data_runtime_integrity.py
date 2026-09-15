@@ -17,6 +17,8 @@ def test_healthy_snapshot_is_safe_for_analysis():
     assert report.health is MarketDataHealth.HEALTHY
     assert report.safe_for_analysis is True
     assert report.to_dict()["source"] == "IC_MARKETS_MT5_DEMO"
+    assert isinstance(report.fingerprint, str)
+    assert len(report.fingerprint) == 64
 
 
 def test_gap_snapshot_is_not_safe_for_analysis():
@@ -27,6 +29,7 @@ def test_gap_snapshot_is_not_safe_for_analysis():
     assert report.health is MarketDataHealth.GAP
     assert report.safe_for_analysis is False
     assert report.gap_count == 1
+    assert report.fingerprint is None
 
 
 def test_unknown_timeframe_is_not_safe_for_analysis():
@@ -36,3 +39,4 @@ def test_unknown_timeframe_is_not_safe_for_analysis():
     )
     assert report.health is MarketDataHealth.UNKNOWN
     assert report.safe_for_analysis is False
+    assert report.fingerprint is None

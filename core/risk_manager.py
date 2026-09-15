@@ -128,66 +128,30 @@ class RiskManager:
         operations_count=_UNSET,
         consecutive_losses=_UNSET,
     ):
-        """Compatibility API for the pre-P0.3 scalar risk checks.
+        """Compatibility API with fail-closed semantics.
 
-        The explicit ``evaluate(state=...)`` path remains fail-closed. This
-        legacy helper evaluates only the legacy values that were supplied,
-        preserving the public behavior of older callers without pretending
-        that omitted operational state is known.
+        This method is retained for old callers, but it is not an operational
+        authorization primitive. When no authoritative ``OperationalState`` is
+        supplied, all three legacy scalar values must be present; partial input
+        is rejected rather than treating omitted risk dimensions as safe.
+        Production execution must still pass through the operational risk
+        bridge and execution gateway.
         """
         if state is not None:
             return self.evaluate(state=state).allowed
 
-        supplied_any = any(
-            value is not _UNSET
-            for value in (daily_result, operations_count, consecutive_losses)
-        )
-        if not supplied_any:
+        if not (
+            daily_result is not _UNSET
+            and operations_count is not _UNSET
+            and consecutive_losses is not _UNSET
+        ):
             return False
 
-        if daily_result is not _UNSET:
-            try:
-                if (
-                    isinstance(daily_result, bool)
-                    or not isinstance(daily_result, (int, float))
-                    or not math.isfinite(float(daily_result))
-                ):
-                    return False
-            except (TypeError, ValueError):
-                return False
-            if (
-                self.daily_loss_limit != 0
-                and daily_result <= -abs(self.daily_loss_limit)
-            ):
-                return False
-
-        if operations_count is not _UNSET:
-            if (
-                isinstance(operations_count, bool)
-                or not isinstance(operations_count, int)
-                or operations_count < 0
-            ):
-                return False
-            if (
-                self.max_operations != 0
-                and operations_count >= self.max_operations
-            ):
-                return False
-
-        if consecutive_losses is not _UNSET:
-            if (
-                isinstance(consecutive_losses, bool)
-                or not isinstance(consecutive_losses, int)
-                or consecutive_losses < 0
-            ):
-                return False
-            if (
-                self.max_consecutive_losses != 0
-                and consecutive_losses >= self.max_consecutive_losses
-            ):
-                return False
-
-        return True
+        return self.evaluate(
+            daily_result=daily_result,
+            operations_count=operations_count,
+            consecutive_losses=consecutive_losses,
+        ).allowed
 
     @staticmethod
     def calculate_position_risk(*, account_balance, risk_percent):

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from typing import Callable
 
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -26,16 +28,48 @@ class RealGatewayResult:
 
 
 class RealExecutionGateway:
-    """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
+    """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway.
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    REAL dispatch is fail-closed against the ecosystem-wide operational barrier.
+    A missing provider is itself unsafe: unit/integration callers must explicitly
+    supply a barrier provider before REAL dispatch can reach a broker.
+    """
+
+    def __init__(
+        self,
+        adapter_gateway: BrokerAdapterGateway,
+        ledger: ExecutionLedger,
+        operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+    ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._operational_barrier_provider = operational_barrier_provider
         self._processed_request_ids: set[str] = set(ledger.records())
+
+    def set_operational_barrier_provider(
+        self, provider: Callable[[], GlobalOperationalBarrier] | None
+    ) -> None:
+        """Replace the barrier provider; passing None deliberately fail-closes REAL."""
+        self._operational_barrier_provider = provider
+
+    def _global_barrier_error(self) -> str | None:
+        provider = self._operational_barrier_provider
+        if provider is None:
+            return "barreira operacional global não configurada; execução REAL bloqueada"
+        try:
+            barrier = provider()
+            if not isinstance(barrier, GlobalOperationalBarrier):
+                return "provedor da barreira operacional global retornou um objeto inválido"
+            decision = barrier.evaluate()
+        except Exception as exc:
+            return f"estado da barreira operacional global indisponível: {type(exc).__name__}"
+        if not decision.operationally_allowed:
+            return f"barreira operacional global bloqueou REAL: {decision.reason}"
+        return None
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -51,9 +85,16 @@ class RealExecutionGateway:
             return False
         return True
 
+    @staticmethod
+    def _safe_error(exc: Exception) -> str:
+        return type(exc).__name__
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
+        barrier_error = self._global_barrier_error()
+        if barrier_error is not None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
@@ -83,7 +124,15 @@ class RealExecutionGateway:
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
+
+        barrier_error = self._global_barrier_error()
+        if barrier_error is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
 
         try:
             result = self._gateway.execute(broker, request)
@@ -92,7 +141,7 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {self._safe_error(exc)}")
 
         if result.execution is None:
             try:
@@ -105,29 +154,51 @@ class RealExecutionGateway:
             try:
                 self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
 
-        # An accepted REAL result without a durable broker/exchange reference is
-        # ambiguous: the external order may exist but cannot be safely reconciled.
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
             self._ledger.mark_accepted(request_id)
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {self._safe_error(exc)}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        """Legacy reconciliation hook; never resubmits the order.
+
+        New production callers should use reconcile_unknown_with_evidence so the
+        terminal state is tied to an auditable external observation.
+        """
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        self._ledger.reconcile(request_id, executed=executed)
+
+    def reconcile_unknown_with_evidence(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> None:
+        """Resolve uncertainty only when explicit external evidence is supplied."""
+        if self._ledger.status(request_id) not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
+            raise ValueError("request_id não está em estado incerto reconciliável.")
+        if not isinstance(evidence_id, str) or not evidence_id.strip():
+            raise ValueError("evidência externa exige evidence_id")
+        if not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("evidência externa exige evidence_source")
         self._ledger.reconcile(request_id, executed=executed)

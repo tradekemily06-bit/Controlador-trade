@@ -14,6 +14,8 @@ from typing import Iterable
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
 from core.senior_market_reasoning import SeniorMarketAssessment
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationAssessor, SeniorOperationDisposition
+from core.senior_market_intelligence import SeniorIntelligenceAssessment
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.temporal_market_context import TemporalMarketContext
 from core.whole_graph_observation import WholeGraphObservation, WholeGraphStatus
@@ -39,10 +41,15 @@ class SeniorContextCycle:
     unresolved_questions: tuple[str, ...]
     quality: SeniorContextQuality
     execution_authorized: bool = False
+    operation_assessment: SeniorOperationAssessment | None = None
+    intelligence_assessment: SeniorIntelligenceAssessment | None = None
 
 
 class SeniorContextCycleBoundary:
     """Assemble a traceable senior cycle while failing closed on missing context."""
+
+    def __init__(self, operation_assessor: SeniorOperationAssessor | None = None) -> None:
+        self.operation_assessor = operation_assessor or SeniorOperationAssessor()
 
     def assemble(
         self,
@@ -54,6 +61,7 @@ class SeniorContextCycleBoundary:
         senior_assessment: SeniorMarketAssessment,
         risk_assessment: SeniorRiskAssessment,
         validated_knowledge_ids: Iterable[str] = (),
+        intelligence_assessment: SeniorIntelligenceAssessment | None = None,
     ) -> SeniorContextCycle:
         if not isinstance(cycle_id, str) or not cycle_id.strip():
             raise ValueError("cycle_id is required")
@@ -67,10 +75,14 @@ class SeniorContextCycleBoundary:
             raise ValueError("senior_assessment is required")
         if not isinstance(risk_assessment, SeniorRiskAssessment):
             raise ValueError("risk_assessment is required")
+        if intelligence_assessment is not None and not isinstance(intelligence_assessment, SeniorIntelligenceAssessment):
+            raise ValueError("intelligence_assessment is invalid")
         if senior_assessment.execution_authorized:
             raise ValueError("senior assessment cannot authorize execution")
         if risk_assessment.execution_authorized:
             raise ValueError("risk assessment cannot authorize execution")
+        if intelligence_assessment is not None and intelligence_assessment.execution_authorized:
+            raise ValueError("intelligence assessment cannot authorize execution")
 
         knowledge = self._normalize_ids(validated_knowledge_ids)
         questions = tuple(
@@ -96,11 +108,35 @@ class SeniorContextCycleBoundary:
                 )
             )
 
+        if intelligence_assessment is not None:
+            questions = tuple(
+                dict.fromkeys(
+                    (
+                        *questions,
+                        *intelligence_assessment.gaps,
+                        *intelligence_assessment.required_reassessment,
+                    )
+                )
+            )
+
         quality = SeniorContextQuality.COMPLETE
         if whole_graph.status is WholeGraphStatus.PARTIAL:
             quality = SeniorContextQuality.PARTIAL
         if market_reading.status is not ReadingStatus.SUPPORTED or risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             quality = SeniorContextQuality.REASSESS
+        if intelligence_assessment is not None and intelligence_assessment.status.value != "READY":
+            quality = SeniorContextQuality.REASSESS
+
+        operation_assessment = self.operation_assessor.assess(
+            graph=whole_graph,
+            reading=market_reading,
+            reasoning=senior_assessment,
+            risk_assessment=risk_assessment,
+            intelligence=intelligence_assessment,
+        )
+
+        if operation_assessment.disposition is not SeniorOperationDisposition.SUITABLE:
+            questions = tuple(dict.fromkeys((*questions, *operation_assessment.invalidators)))
 
         return SeniorContextCycle(
             cycle_id=cycle_id.strip(),
@@ -113,6 +149,8 @@ class SeniorContextCycleBoundary:
             unresolved_questions=questions,
             quality=quality,
             execution_authorized=False,
+            operation_assessment=operation_assessment,
+            intelligence_assessment=intelligence_assessment,
         )
 
     @staticmethod
