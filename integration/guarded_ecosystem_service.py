@@ -58,6 +58,16 @@ class GuardedEcosystemService(ConfiguredEcosystemService):
             "authorization_rule": "repair_success_never_authorizes; full revalidation required",
         }
 
+    def system_status(self) -> dict[str, Any]:
+        result = dict(super().system_status())
+        result["global_operational_barrier"] = self.operational_barrier_status()
+        return result
+
+    def public_status(self) -> dict[str, Any]:
+        result = dict(super().public_status())
+        result["global_operational_barrier"] = self.operational_barrier_status()
+        return result
+
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         decision = self.operational_barrier().evaluate()
         if not decision.operationally_allowed:
