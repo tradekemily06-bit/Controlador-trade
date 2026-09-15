@@ -4,10 +4,10 @@ The bridge validates the boundary, builds OperationalState, delegates policy to
 RiskManager, and optionally reconciles a calculated leverage assessment with
 the same operation's operational exposure. It never grants execution authority.
 
-Operational approval is also fail-closed against the global runtime barrier.
-Pure calculations remain available elsewhere, but this bridge is an operational
-boundary and must never approve risk when the ecosystem runtime is unavailable,
-blocked, or indeterminate.
+Operational approval is fail-closed against the global runtime barrier and, for
+an operationally bound bridge, against missing authoritative risk state. A
+caller cannot turn an untrusted payload into the account state used for an
+operational approval.
 """
 
 from __future__ import annotations
@@ -45,14 +45,19 @@ class OperationalRiskBridge:
         risk_manager: RiskManager,
         incident_manager: EcosystemIncidentManager | None = None,
         operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+        operational_state_provider: Callable[[], OperationalState | None] | None = None,
     ) -> None:
         if not isinstance(risk_manager, RiskManager):
             raise ValueError("risk_manager must be RiskManager")
         if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
             raise ValueError("incident_manager must be EcosystemIncidentManager")
+        if operational_state_provider is not None and not callable(operational_state_provider):
+            raise ValueError("operational_state_provider must be callable")
         self.risk_manager = risk_manager
         self.incident_manager = incident_manager
+        self._runtime_barrier_bound = operational_barrier_provider is not None
         self.operational_barrier_provider = operational_barrier_provider or _missing_runtime_barrier
+        self.operational_state_provider = operational_state_provider
 
     def _barrier_blocked(self) -> bool:
         try:
@@ -74,13 +79,28 @@ class OperationalRiskBridge:
     def _operational_blocked(self) -> bool:
         return self._barrier_blocked() or self._incident_blocked()
 
+    def _authoritative_state(self, payload: Mapping[str, Any]) -> OperationalState:
+        """Resolve risk state without allowing an operational payload to spoof it."""
+        if self._runtime_barrier_bound:
+            if self.operational_state_provider is None:
+                raise OperationalStateValidationError(
+                    "fonte autoritativa de estado de risco não foi fornecida"
+                )
+            state = self.operational_state_provider()
+            if not isinstance(state, OperationalState):
+                raise OperationalStateValidationError(
+                    "fonte autoritativa de estado de risco indisponível"
+                )
+            return state
+        return self.build_state(payload)
+
     def evaluate(self, payload: Mapping[str, Any]) -> RiskDecision:
         if self._operational_blocked():
             return RiskDecision(False, "Operação bloqueada: barreira operacional global não está READY.")
         try:
-            state = self.build_state(payload)
+            state = self._authoritative_state(payload)
         except (TypeError, ValueError, OperationalStateValidationError):
-            return RiskDecision(False, "Estado operacional de risco inválido.")
+            return RiskDecision(False, "Estado operacional de risco não possui fonte autoritativa válida.")
 
         base = self.risk_manager.evaluate(state=state)
         if not base.allowed:
@@ -99,6 +119,11 @@ class OperationalRiskBridge:
 
     @staticmethod
     def build_state(payload: Mapping[str, Any]) -> OperationalState:
+        """Parse explicit state for non-operational/test contexts only.
+
+        This helper is intentionally not authoritative when the bridge is bound
+        to the operational runtime.
+        """
         if not isinstance(payload, Mapping):
             raise ValueError("analysis payload must be an object")
         raw = payload.get("operational_state")
