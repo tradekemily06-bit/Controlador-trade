@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
@@ -14,7 +13,6 @@ def make_coordinator(tmp_path):
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
         lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
         execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
-        memory=OperationMemory(),
     )
 
 
@@ -73,5 +71,4 @@ def test_dependencies_are_required(tmp_path):
             checkpoint_store=None,
             lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
-            memory=OperationMemory(),
         )
