@@ -64,7 +64,6 @@ class TradingOrchestrator:
         operations_count=None,
         consecutive_losses=None,
     ) -> OrchestrationResult:
-        timestamp = datetime.now(timezone.utc)
         market_data = self.feed.fetch(request)
         analysis = self.pipeline.evaluate(
             list(market_data.candles),
@@ -83,12 +82,17 @@ class TradingOrchestrator:
             operations_count=operations_count,
             consecutive_losses=consecutive_losses,
         )
+        # This timestamp represents the completed decision, not the beginning
+        # of the data-fetch/analysis cycle. It is the freshness anchor carried
+        # by both the orchestration result and its immutable decision snapshot.
+        timestamp = datetime.now(timezone.utc)
         snapshot = DecisionSnapshot.from_results(
             analysis=analysis,
             quality=quality,
             decision=decision,
             market_context=market_context,
             operational_state=operational_state,
+            created_at=timestamp,
         )
         return OrchestrationResult(
             market_data=market_data,
