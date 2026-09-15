@@ -14,8 +14,8 @@ from typing import Iterable
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
 from core.senior_market_reasoning import SeniorMarketAssessment
-from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationAssessor
-from core.senior_market_intelligence import SeniorIntelligenceAssessment, SeniorIntelligenceStatus
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationAssessor, SeniorOperationDisposition
+from core.senior_market_intelligence import SeniorIntelligenceAssessment
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.temporal_market_context import TemporalMarketContext
 from core.whole_graph_observation import WholeGraphObservation, WholeGraphStatus
@@ -118,7 +118,7 @@ class SeniorContextCycleBoundary:
             intelligence=intelligence_assessment,
         )
 
-        if operation_assessment.disposition is not operation_assessment.disposition.SUITABLE:
+        if operation_assessment.disposition is not SeniorOperationDisposition.SUITABLE:
             questions = tuple(dict.fromkeys((*questions, *operation_assessment.invalidators)))
 
         return SeniorContextCycle(
