@@ -34,7 +34,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         self.psychology_history = TradingPsychologyHistory(self.advanced_psychology)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
-        self.scoped_learning = ScopedLearningState()
+        self.scoped_learning = ScopedLearningState(state_store=state_store, require_durable=saas_public_mode())
 
     def _owner_context(self, *, subject_id: str | None, tenant_id: str | None):
         identity = current_trusted_identity()
@@ -57,6 +57,14 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
                 raise PermissionError("trusted scope is required for learning state")
             return None
         return self.scoped_learning.get(tenant_id=identity.tenant_id, subject_id=identity.subject_id)
+
+    def _persist_learning_scope(self) -> None:
+        identity = current_trusted_identity()
+        if identity is None:
+            if saas_public_mode():
+                raise PermissionError("trusted scope is required for learning state")
+            return
+        self.scoped_learning.persist(tenant_id=identity.tenant_id, subject_id=identity.subject_id)
 
     def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -189,6 +197,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         if source.source_id in scope.sources:
             raise ValueError("source_id já cadastrado")
         scope.sources[source.source_id] = source
+        self._persist_learning_scope()
         return source
 
     def validate_learning_source(self, source, *, content_verified: bool, security_checked: bool):
@@ -200,6 +209,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
             raise ValueError("source_id não encontrado no tenant atual")
         updated = self.learning_source_gate.validate_content(current, content_verified=content_verified, security_checked=security_checked)
         scope.sources[updated.source_id] = updated
+        self._persist_learning_scope()
         return updated
 
     def admit_learning_knowledge(self, source, *, knowledge_validated: bool):
@@ -211,6 +221,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
             raise ValueError("source_id não encontrado no tenant atual")
         updated = self.learning_source_gate.admit_knowledge(current, knowledge_validated=knowledge_validated)
         scope.sources[updated.source_id] = updated
+        self._persist_learning_scope()
         return updated
 
     def learning_sources_view(self):
@@ -231,6 +242,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
             source_type = {resource.ContentType.VIDEO: "VIDEO", resource.ContentType.DOCUMENT: "DOCUMENT"}.get(item.content_type, "LINK")
             self.screen_learning_source({"source_id": item.resource_id, "source_type": source_type, "uri": item.source_url})
         scope.resources[item.resource_id] = item
+        self._persist_learning_scope()
         return item
 
     def learning_resources_view(self):
@@ -253,6 +265,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         resource = __import__("core.learning_content", fromlist=["LearningObservation", "normalize_tags"])
         observation = resource.LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=resource.normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         scope.observations.append(observation)
+        self._persist_learning_scope()
         return observation
 
     def learning_observations_view(self):
@@ -270,6 +283,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         if activity.activity_id in scope.activities:
             raise ValueError("activity_id já cadastrado")
         scope.activities[activity.activity_id] = activity
+        self._persist_learning_scope()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]):
@@ -281,6 +295,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         if activity.activity_id in scope.activities:
             raise ValueError("activity_id já cadastrado")
         scope.activities[activity.activity_id] = activity
+        self._persist_learning_scope()
         return activity
 
     def learning_activities_view(self):
@@ -299,6 +314,7 @@ class ConfiguredEcosystemService(ProductionScopedServiceMixin, EcosystemService)
         from core.learning_content import LearningAttempt
         attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
         scope.attempts.append(attempt)
+        self._persist_learning_scope()
         return attempt
 
     def learning_summary(self):
