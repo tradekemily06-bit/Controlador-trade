@@ -182,6 +182,30 @@ def test_real_gateway_blocks_when_global_barrier_is_unhealthy(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_gateway_rechecks_barrier_immediately_before_external_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    calls = 0
+
+    def racing_barrier():
+        nonlocal calls
+        calls += 1
+        return GlobalOperationalBarrier() if calls == 1 else _BlockedBarrier()
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, racing_barrier)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(broker="fake", request_id="race-barrier", request=_request(), authorization=auth, admission=admission, safety=safety)
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("race-barrier") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = UnknownAdapter()
