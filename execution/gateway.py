@@ -75,7 +75,13 @@ class ExecutionGateway:
         return type(exc).__name__
 
     def _refresh_kill_switch(self) -> str | None:
-        """Refresh the authoritative persisted kill switch before dispatch."""
+        """Refresh the authoritative persisted kill switch before dispatch.
+
+        A process-local KillSwitch cannot observe a safety change made by a
+        different worker. When a durable safety store is configured, every
+        execution attempt therefore re-reads the persisted state. Any read or
+        validation failure fails closed and no executor dispatch is allowed.
+        """
         if self._safety_store is None:
             return None
         try:
@@ -99,6 +105,7 @@ class ExecutionGateway:
         return None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
+        """Never leave a reservation falsely reusable after a lifecycle conflict."""
         if self._ledger is None:
             return
         try:
@@ -137,6 +144,9 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
+        # The ledger reservation is the atomic cross-process idempotency barrier.
+        # Checking memory first is only an optimization; reserve() is the
+        # authoritative decision and must happen before dispatch.
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
         if self._ledger is not None:
@@ -252,13 +262,15 @@ class ExecutionGateway:
         if not isinstance(request_id, str) or not request_id.strip():
             return "request_id não pode ser vazio."
         if not isinstance(request, ExecutionRequest):
-            return "request inválido."
-        if request.mode not in (ExecutionMode.DEMO, ExecutionMode.PAPER):
-            return "modo de execução não permitido nesta fase."
+            return "requisição de execução inválida."
+        if request.mode is not ExecutionMode.DEMO:
+            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
-            return "sinal de execução inválido."
+            return "sinal AGUARDAR não pode ser executado."
+        if not request.symbol.strip():
+            return "Símbolo não pode ser vazio."
         if request.amount <= 0:
-            return "amount deve ser maior que zero."
+            return "Valor da execução deve ser positivo."
         if request.duration_seconds <= 0:
-            return "duration_seconds deve ser maior que zero."
+            return "Duração deve ser positiva."
         return None
