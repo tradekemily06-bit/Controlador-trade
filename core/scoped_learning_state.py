@@ -5,6 +5,13 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from core.learning_content import LearningActivity, LearningAttempt, LearningObservation, LearningResource, ContentType, LearningStatus
+from core.learning_material_review import (
+    EffectivenessVerdict,
+    LearningMaterialReview,
+    MaterialClaimReview,
+    MaterialEffectivenessReview,
+    MaterialVerdict,
+)
 from core.p128_learning_source_gate import LearningSource, LearningSourceStatus, LearningSourceType
 
 
@@ -17,6 +24,7 @@ class LearningScope:
     observations: list[LearningObservation] = field(default_factory=list)
     activities: dict[str, LearningActivity] = field(default_factory=dict)
     attempts: list[LearningAttempt] = field(default_factory=list)
+    material_reviews: dict[str, LearningMaterialReview] = field(default_factory=dict)
 
 
 class ScopedLearningState:
@@ -50,6 +58,67 @@ class ScopedLearningState:
         return tenant, subject
 
     @staticmethod
+    def _encode_review(review: LearningMaterialReview) -> dict[str, Any]:
+        return {
+            "resource_id": review.resource_id,
+            "knowledge_level": review.knowledge_level.value,
+            "overall_verdict": review.overall_verdict.value,
+            "claims": [
+                {
+                    "claim": item.claim,
+                    "verdict": item.verdict.value,
+                    "rationale": item.rationale,
+                    "matching_reference_ids": list(item.matching_reference_ids),
+                    "confidence": item.confidence,
+                }
+                for item in review.claims
+            ],
+            "effectiveness": {
+                "verdict": review.effectiveness.verdict.value,
+                "rationale": review.effectiveness.rationale,
+                "sample_size": review.effectiveness.sample_size,
+                "tested_period": review.effectiveness.tested_period,
+            },
+            "limitations": list(review.limitations),
+            # This is a safety invariant, not caller-controlled persisted state.
+            "operation_authorized": False,
+        }
+
+    @staticmethod
+    def _decode_review(value: object) -> LearningMaterialReview:
+        if not isinstance(value, dict):
+            raise RuntimeError("learning material review is corrupt")
+        try:
+            claims = tuple(
+                MaterialClaimReview(
+                    claim=str(item["claim"]),
+                    verdict=MaterialVerdict(str(item["verdict"])),
+                    rationale=str(item["rationale"]),
+                    matching_reference_ids=tuple(str(ref) for ref in item.get("matching_reference_ids", ()) or ()),
+                    confidence=float(item.get("confidence", 0.0)),
+                )
+                for item in list(value.get("claims", ()) or ())
+            )
+            effectiveness_value = dict(value["effectiveness"])
+            effectiveness = MaterialEffectivenessReview(
+                verdict=EffectivenessVerdict(str(effectiveness_value["verdict"])),
+                rationale=str(effectiveness_value["rationale"]),
+                sample_size=effectiveness_value.get("sample_size"),
+                tested_period=effectiveness_value.get("tested_period"),
+            )
+            return LearningMaterialReview(
+                resource_id=str(value["resource_id"]),
+                knowledge_level=MaterialVerdict(str(value["knowledge_level"])),
+                overall_verdict=MaterialVerdict(str(value["overall_verdict"])),
+                claims=claims,
+                effectiveness=effectiveness,
+                limitations=tuple(str(item) for item in value.get("limitations", ()) or ()),
+                operation_authorized=False,
+            )
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise RuntimeError("learning material review is corrupt") from exc
+
+    @staticmethod
     def _encode(scope: LearningScope) -> dict[str, Any]:
         return {
             "sources": {key: asdict(value) | {"source_type": value.source_type.value, "status": value.status.value} for key, value in scope.sources.items()},
@@ -57,6 +126,7 @@ class ScopedLearningState:
             "observations": [asdict(value) for value in scope.observations],
             "activities": {key: asdict(value) for key, value in scope.activities.items()},
             "attempts": [asdict(value) for value in scope.attempts],
+            "material_reviews": {key: ScopedLearningState._encode_review(value) for key, value in scope.material_reviews.items()},
         }
 
     @staticmethod
@@ -69,9 +139,10 @@ class ScopedLearningState:
             observations = [LearningObservation(resource_id=str(value["resource_id"]), statement=str(value["statement"]), concepts=tuple(value.get("concepts", ()) or ()), evidence=value.get("evidence"), confidence=value.get("confidence"), validated=bool(value.get("validated", False))) for value in list(payload.get("observations", ()) or ())]
             activities = {str(key): LearningActivity(activity_id=str(value["activity_id"]), prompt=str(value["prompt"]), expected_concepts=tuple(value.get("expected_concepts", ()) or ()), difficulty=str(value.get("difficulty", "UNSPECIFIED"))) for key, value in dict(payload.get("activities", {})).items()}
             attempts = [LearningAttempt(activity_id=str(value["activity_id"]), answer=str(value["answer"]), correct=value.get("correct"), feedback=str(value.get("feedback", ""))) for value in list(payload.get("attempts", ()) or ())]
+            material_reviews = {str(key): ScopedLearningState._decode_review(value) for key, value in dict(payload.get("material_reviews", {})).items()}
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise RuntimeError("learning state is corrupt") from exc
-        return LearningScope(sources=sources, resources=resources, observations=observations, activities=activities, attempts=attempts)
+        return LearningScope(sources=sources, resources=resources, observations=observations, activities=activities, attempts=attempts, material_reviews=material_reviews)
 
     def _load(self, scope: tuple[str, str]) -> LearningScope:
         if self._state_store is None:
@@ -97,10 +168,12 @@ class ScopedLearningState:
             observations=list(latest.observations),
             activities=dict(latest.activities),
             attempts=list(latest.attempts),
+            material_reviews=dict(latest.material_reviews),
         )
         merged.sources.update(current.sources)
         merged.resources.update(current.resources)
         merged.activities.update(current.activities)
+        merged.material_reviews.update(current.material_reviews)
         for item in current.observations:
             if item not in merged.observations:
                 merged.observations.append(item)
