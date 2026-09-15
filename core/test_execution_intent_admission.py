@@ -23,7 +23,10 @@ class RecordingExecutor:
         return ExecutionResult(True, "demo accepted", "demo-1")
 
 
-def make_intent(signal=Signal.COMPRA, symbol="EURUSD"):
+INTENT_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def make_intent(signal=Signal.COMPRA, symbol="EURUSD", created_at=INTENT_TIME):
     return ExecutionIntent(
         request_id="req-27",
         symbol=symbol,
@@ -31,11 +34,11 @@ def make_intent(signal=Signal.COMPRA, symbol="EURUSD"):
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=created_at,
     )
 
 
-def make_snapshot(signal="COMPRA", symbol="EURUSD", timeframe="M5", decision="EXECUTAR", actionable=True):
+def make_snapshot(signal="COMPRA", symbol="EURUSD", timeframe="M5", decision="EXECUTAR", actionable=True, created_at=None):
     return DecisionSnapshot(
         signal=signal,
         analysis_score=90.0,
@@ -53,6 +56,7 @@ def make_snapshot(signal="COMPRA", symbol="EURUSD", timeframe="M5", decision="EX
         consecutive_losses=0,
         symbol=symbol,
         timeframe=timeframe,
+        created_at=created_at,
     )
 
 
@@ -175,6 +179,31 @@ def test_snapshot_signal_mismatch_blocks_before_executor():
     assert result.status is GatewayStatus.BLOCKED
     assert "sinal" in result.message
     assert executor.calls == 0
+
+
+def test_snapshot_timestamp_mismatch_blocks_before_executor():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(created_at=INTENT_TIME),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(created_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc)),
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "timestamp" in result.message
+    assert executor.calls == 0
+
+
+def test_matching_decision_timestamp_is_preserved():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(created_at=INTENT_TIME),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(created_at=INTENT_TIME),
+    )
+    assert result.status is GatewayStatus.ACCEPTED
+    assert executor.calls == 1
 
 
 def test_non_executable_snapshot_blocks_before_executor():
