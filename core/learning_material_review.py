@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import re
 
 
 class MaterialVerdict(str, Enum):
@@ -21,7 +22,6 @@ class EffectivenessVerdict(str, Enum):
 @dataclass(frozen=True)
 class KnowledgeReference:
     """A trusted proposition from the ecosystem's reviewed knowledge base."""
-
     reference_id: str
     statement: str
     topics: tuple[str, ...] = ()
@@ -73,6 +73,11 @@ class LearningMaterialReviewer:
     effectiveness are separate assessments.
     """
 
+    @staticmethod
+    def _normalize_claim(value: str) -> str:
+        """Normalize only presentation noise, never semantic claim content."""
+        return re.sub(r"[\s\.,;:!?]+$", "", str(value).strip()).casefold()
+
     def review(
         self,
         *,
@@ -106,10 +111,10 @@ class LearningMaterialReviewer:
             )
 
         ref_by_id = {item.reference_id: item for item in references if item.reference_id.strip()}
-        ref_by_statement = {item.statement.strip().casefold(): item for item in references if item.statement.strip()}
+        ref_by_statement = {self._normalize_claim(item.statement): item for item in references if item.statement.strip()}
         legacy_ids = {item.strip() for item in contradicted_reference_ids if item.strip()}
         explicit_contradictions = {
-            str(claim).strip().casefold(): tuple(
+            self._normalize_claim(claim): tuple(
                 ref_id.strip() for ref_id in ref_ids if str(ref_id).strip() in ref_by_id
             )
             for claim, ref_ids in (contradicted_claims or {}).items()
@@ -120,7 +125,7 @@ class LearningMaterialReviewer:
             normalized = claim.strip()
             if not normalized:
                 continue
-            contradiction_ids = explicit_contradictions.get(normalized.casefold(), ())
+            contradiction_ids = explicit_contradictions.get(self._normalize_claim(normalized), ())
             if contradiction_ids:
                 reviewed.append(MaterialClaimReview(
                     normalized,
@@ -130,7 +135,7 @@ class LearningMaterialReviewer:
                     0.9,
                 ))
                 continue
-            exact = ref_by_statement.get(normalized.casefold())
+            exact = ref_by_statement.get(self._normalize_claim(normalized))
             if exact is not None:
                 reviewed.append(MaterialClaimReview(
                     normalized,
@@ -140,9 +145,6 @@ class LearningMaterialReviewer:
                     1.0,
                 ))
                 continue
-            # Legacy contradiction input is deliberately conservative: an ID by
-            # itself cannot contradict an arbitrary claim. It is only accepted
-            # when that reference is explicitly represented in the new mapping.
             _ = legacy_ids
             reviewed.append(MaterialClaimReview(
                 normalized,
