@@ -40,7 +40,7 @@ def _leverage():
 
 def _ready_barrier():
     return GlobalOperationalBarrier(
-        components=(SafetyComponent(name="test-runtime", healthy=True, reason="ready"),)
+        components=(SafetyComponent(name="test-runtime", healthy=True, detail="ready"),)
     )
 
 
@@ -132,7 +132,7 @@ def test_bridge_blocks_when_barrier_changes_during_evaluation():
         if calls["count"] == 1:
             return _ready_barrier()
         return GlobalOperationalBarrier(
-            components=(SafetyComponent(name="kill-switch", healthy=False, reason="activated"),)
+            components=(SafetyComponent(name="kill-switch", healthy=False, detail="activated"),)
         )
 
     bridge = OperationalRiskBridge(RiskManager(), operational_barrier_provider=provider)
