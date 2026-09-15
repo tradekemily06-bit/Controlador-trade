@@ -45,7 +45,7 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None, decision_freshness_policy: DecisionFreshnessPolicy | None = None, decision_clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None, risk_state_fingerprint_provider: Callable[[], str | None] | None = None, decision_freshness_policy: DecisionFreshnessPolicy | None = None, decision_clock: Callable[[], datetime] | None = None) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -57,11 +57,13 @@ class ExecutionGateway:
         if operational_barrier_provider is not None and not callable(operational_barrier_provider):
             raise ValueError("operational_barrier_provider inválido.")
         if market_data_fingerprint_provider is not None and not callable(market_data_fingerprint_provider):
-            raise ValueError("market_data_fingerprint_provider inválido.")
+            raise ValueError("market-data fingerprint provider inválido.")
+        if risk_state_fingerprint_provider is not None and not callable(risk_state_fingerprint_provider):
+            raise ValueError("risk-state fingerprint provider inválido.")
         if decision_freshness_policy is not None and not isinstance(decision_freshness_policy, DecisionFreshnessPolicy):
             raise ValueError("decision_freshness_policy inválida.")
         if decision_clock is not None and not callable(decision_clock):
-            raise ValueError("decision_clock inválido.")
+            raise ValueError("decision clock inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -72,6 +74,7 @@ class ExecutionGateway:
         self._incident_manager = incident_manager
         self._operational_barrier_provider = operational_barrier_provider
         self._market_data_fingerprint_provider = market_data_fingerprint_provider
+        self._risk_state_fingerprint_provider = risk_state_fingerprint_provider
         self._decision_freshness_policy = decision_freshness_policy
         self._decision_clock = decision_clock or (lambda: datetime.now(timezone.utc))
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
@@ -87,6 +90,12 @@ class ExecutionGateway:
         if not callable(provider):
             raise ValueError("market-data fingerprint provider inválido.")
         self._market_data_fingerprint_provider = provider
+
+    def set_risk_state_fingerprint_provider(self, provider: Callable[[], str | None]) -> None:
+        """Attach the authoritative runtime risk-state identity after composition."""
+        if not callable(provider):
+            raise ValueError("risk-state fingerprint provider inválido.")
+        self._risk_state_fingerprint_provider = provider
 
     def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy, *, clock: Callable[[], datetime] | None = None) -> None:
         """Attach the authoritative freshness policy after runtime composition."""
@@ -180,6 +189,24 @@ class ExecutionGateway:
             return "execução bloqueada: dados de mercado mudaram desde a decisão; nova avaliação obrigatória"
         return None
 
+    def _risk_state_fingerprint_error(self, request: ExecutionRequest) -> str | None:
+        """Require authoritative risk identity whenever the decision captured one."""
+        expected = request.risk_state_fingerprint
+        if expected is None:
+            return None
+        provider = self._risk_state_fingerprint_provider
+        if provider is None:
+            return "execução bloqueada: identidade do estado de risco não está vinculada ao runtime operacional"
+        try:
+            current = provider()
+        except Exception as exc:
+            return f"execução bloqueada: identidade do estado de risco indisponível: {type(exc).__name__}"
+        if current is None:
+            return "execução bloqueada: estado de risco autoritativo indisponível"
+        if current != expected:
+            return "execução bloqueada: estado de risco mudou desde a decisão; nova avaliação obrigatória"
+        return None
+
     def _final_safety_barrier(self, *, now: datetime) -> str | None:
         incident_error = self._incident_error()
         if incident_error is not None:
@@ -223,6 +250,9 @@ class ExecutionGateway:
         market_data_error = self._market_data_fingerprint_error(request)
         if market_data_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, market_data_error)
+        risk_state_error = self._risk_state_fingerprint_error(request)
+        if risk_state_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, risk_state_error)
         if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
         audit_record = None
@@ -275,6 +305,10 @@ class ExecutionGateway:
         if final_market_data_error is not None:
             self._mark_unknown(request_id, event_time, f"identidade de mercado mudou antes do dispatch: {final_market_data_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_market_data_error)
+        final_risk_state_error = self._risk_state_fingerprint_error(request)
+        if final_risk_state_error is not None:
+            self._mark_unknown(request_id, event_time, f"estado de risco mudou ou ficou indisponível antes do dispatch: {final_risk_state_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_risk_state_error)
         try:
             result = self._executor.execute(request)
         except Exception as exc:
@@ -301,7 +335,7 @@ class ExecutionGateway:
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas ledger não foi persistido; estado UNKNOWN: {exc}", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
@@ -359,4 +393,6 @@ class ExecutionGateway:
             return "Duração deve ser positiva."
         if request.market_data_fingerprint is not None and (not isinstance(request.market_data_fingerprint, str) or len(request.market_data_fingerprint) != 64):
             return "identidade dos dados de mercado inválida."
+        if request.risk_state_fingerprint is not None and (not isinstance(request.risk_state_fingerprint, str) or len(request.risk_state_fingerprint) != 64):
+            return "identidade do estado de risco inválida."
         return None
