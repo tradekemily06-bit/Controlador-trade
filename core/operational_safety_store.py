@@ -91,12 +91,31 @@ class OperationalSafetyStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            except OSError:
+                directory_fd = None
+            if directory_fd is not None:
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
         finally:
             try:
                 if temporary.exists():
                     temporary.unlink()
             except OSError:
                 pass
+
+    def replace_with_fail_closed_state(self, reason: str) -> None:
+        """Replace an unreadable safety file without reading the corrupt payload."""
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("reason é obrigatório.")
+        self._write_payload({
+            "audit": [],
+            "kill_switch": {"enabled": True, "reason": reason},
+            "execution_audit": [],
+        })
 
     def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
         if not isinstance(audit, DecisionAudit):
