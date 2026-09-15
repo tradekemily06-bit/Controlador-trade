@@ -12,6 +12,19 @@ from integration.production_data_plane import ProductionDataPlane
 from security.http_identity import current_trusted_identity, saas_public_mode
 
 
+class _ProductionLocalDecisionStoreBlock:
+    """Fail-closed sentinel preventing legacy local decision persistence in production."""
+
+    def load(self):
+        raise RuntimeError("local decision store is unavailable for production-scoped service")
+
+    def save(self, _record):
+        raise RuntimeError("local decision store is unavailable for production-scoped service")
+
+    def save_many(self, _records):
+        raise RuntimeError("local decision store is unavailable for production-scoped service")
+
+
 class ProductionScopedServiceMixin:
     """Replace process-global decision state with durable scoped state."""
 
@@ -32,6 +45,14 @@ class ProductionScopedServiceMixin:
             self.production_storage = self.production_data_plane.policy
             from security.production_operation_gate import ProductionOperationGate
             self.production_gate = ProductionOperationGate(self.production_storage)
+            # The legacy DecisionStore is constructed by EcosystemService for
+            # local/demo compatibility. Once a durable production data plane
+            # exists it must not remain usable as a hidden fallback or source
+            # of truth, even if a future inherited method accidentally touches
+            # self.store. Also discard any local process snapshot loaded by the
+            # legacy constructor so it cannot be read by a future bypass.
+            self.store = _ProductionLocalDecisionStoreBlock()
+            self.memory = []
 
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
