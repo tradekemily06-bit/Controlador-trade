@@ -12,6 +12,7 @@ from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrity
 from core.recovery_coordinator import RecoveryAssessment, RecoveryState
 from core.runtime_config import RuntimeConfig
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
@@ -75,6 +76,18 @@ def senior_context(quality=SeniorContextQuality.COMPLETE):
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="HIGH",
+        reasons=("fixture profissionalmente avaliado",),
+        strengths=("evidência suficiente",),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("fixture",),
+        evidence_against=(),
+        independent_confluences=("estrutura", "confirmação"),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="demo-coordinator-test",
         whole_graph=None,
@@ -86,6 +99,7 @@ def senior_context(quality=SeniorContextQuality.COMPLETE):
         unresolved_questions=(),
         quality=quality,
         execution_authorized=False,
+        operation_assessment=operation,
     )
 
 
