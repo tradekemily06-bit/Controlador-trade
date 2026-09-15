@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable, TYPE_CHECKING
 
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
@@ -44,7 +45,7 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None) -> None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None, decision_freshness_policy: DecisionFreshnessPolicy | None = None, decision_clock: Callable[[], datetime] | None = None) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -57,6 +58,10 @@ class ExecutionGateway:
             raise ValueError("operational_barrier_provider inválido.")
         if market_data_fingerprint_provider is not None and not callable(market_data_fingerprint_provider):
             raise ValueError("market_data_fingerprint_provider inválido.")
+        if decision_freshness_policy is not None and not isinstance(decision_freshness_policy, DecisionFreshnessPolicy):
+            raise ValueError("decision_freshness_policy inválida.")
+        if decision_clock is not None and not callable(decision_clock):
+            raise ValueError("decision_clock inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -67,6 +72,8 @@ class ExecutionGateway:
         self._incident_manager = incident_manager
         self._operational_barrier_provider = operational_barrier_provider
         self._market_data_fingerprint_provider = market_data_fingerprint_provider
+        self._decision_freshness_policy = decision_freshness_policy
+        self._decision_clock = decision_clock or (lambda: datetime.now(timezone.utc))
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def set_operational_barrier_provider(self, provider: Callable[[], GlobalOperationalBarrier]) -> None:
@@ -80,6 +87,16 @@ class ExecutionGateway:
         if not callable(provider):
             raise ValueError("market-data fingerprint provider inválido.")
         self._market_data_fingerprint_provider = provider
+
+    def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy, *, clock: Callable[[], datetime] | None = None) -> None:
+        """Attach the authoritative freshness policy after runtime composition."""
+        if not isinstance(policy, DecisionFreshnessPolicy):
+            raise ValueError("decision freshness policy inválida.")
+        if clock is not None and not callable(clock):
+            raise ValueError("decision clock inválido.")
+        self._decision_freshness_policy = policy
+        if clock is not None:
+            self._decision_clock = clock
 
     def _refresh_kill_switch(self) -> str | None:
         if self._safety_store is None:
@@ -117,6 +134,16 @@ class ExecutionGateway:
             return None
         except Exception as exc:
             return f"barreira operacional global indisponível: {type(exc).__name__}"
+
+    def _decision_freshness_error(self, *, created_at: datetime, now: datetime | None = None) -> str | None:
+        policy = self._decision_freshness_policy
+        if policy is None:
+            return None
+        try:
+            current = now or self._decision_clock()
+            return policy.validate(created_at, now=current)
+        except Exception as exc:
+            return f"execução bloqueada: estado de frescor da decisão indisponível: {type(exc).__name__}"
 
     def _market_data_fingerprint_error(self, request: ExecutionRequest) -> str | None:
         expected = request.market_data_fingerprint
@@ -163,6 +190,9 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
         event_time = timestamp or datetime.now(timezone.utc)
+        freshness_error = self._decision_freshness_error(created_at=event_time)
+        if freshness_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, freshness_error)
         preflight_incident_error = self._incident_error()
         if preflight_incident_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, preflight_incident_error)
@@ -209,6 +239,10 @@ class ExecutionGateway:
         if final_safety_error is not None:
             self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
+        final_freshness_error = self._decision_freshness_error(created_at=event_time)
+        if final_freshness_error is not None:
+            self._mark_unknown(request_id, event_time, f"decisão expirou antes do dispatch: {final_freshness_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_freshness_error)
         final_market_data_error = self._market_data_fingerprint_error(request)
         if final_market_data_error is not None:
             self._mark_unknown(request_id, event_time, f"identidade de mercado mudou antes do dispatch: {final_market_data_error}")
