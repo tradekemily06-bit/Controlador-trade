@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class AdapterGatewayError(RuntimeError):
@@ -18,12 +18,23 @@ class AdapterExecutionResult:
 
 
 class BrokerAdapterGateway:
-    """Thin broker boundary; it never contains trading or signal logic."""
+    """Thin REAL broker boundary; operational authorization stays upstream."""
 
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+        # DEMO/PAPER execution must never reach a broker adapter directly.
+        # It belongs to ExecutionGateway, where freshness, market/risk identity,
+        # global barrier, ledger and recovery controls are enforced.
+        if not isinstance(request, ExecutionRequest):
+            return AdapterExecutionResult(False, "request de execução inválido.")
+        if request.mode is not ExecutionMode.REAL:
+            return AdapterExecutionResult(
+                False,
+                "broker adapter aceita somente REAL; DEMO deve passar pelo gateway operacional.",
+            )
+
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
