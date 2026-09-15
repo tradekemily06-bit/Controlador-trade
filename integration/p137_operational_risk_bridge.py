@@ -11,6 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Mapping
 
+from core.ecosystem_incidents import EcosystemIncidentManager
 from core.leverage_operation import LeverageRequest, LeverageStatus, assess_leverage
 from core.operational_state import OperationalState, OperationalStateValidationError
 from core.point_value_engine import PointValueRequest
@@ -20,12 +21,25 @@ from core.risk_manager import RiskDecision, RiskManager
 class OperationalRiskBridge:
     """Fail-closed adapter between application payloads and RiskManager."""
 
-    def __init__(self, risk_manager: RiskManager) -> None:
+    def __init__(self, risk_manager: RiskManager, incident_manager: EcosystemIncidentManager | None = None) -> None:
         if not isinstance(risk_manager, RiskManager):
             raise ValueError("risk_manager must be RiskManager")
+        if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
+            raise ValueError("incident_manager must be EcosystemIncidentManager")
         self.risk_manager = risk_manager
+        self.incident_manager = incident_manager
+
+    def _incident_blocked(self) -> bool:
+        if self.incident_manager is None:
+            return False
+        try:
+            return self.incident_manager.execution_blocked()
+        except (OSError, ValueError, TypeError, RuntimeError):
+            return True
 
     def evaluate(self, payload: Mapping[str, Any]) -> RiskDecision:
+        if self._incident_blocked():
+            return RiskDecision(False, "Operação bloqueada: incidente técnico ativo ou estado de segurança indisponível.")
         try:
             state = self.build_state(payload)
         except (TypeError, ValueError, OperationalStateValidationError):
@@ -34,6 +48,9 @@ class OperationalRiskBridge:
         base = self.risk_manager.evaluate(state=state)
         if not base.allowed:
             return base
+
+        if self._incident_blocked():
+            return RiskDecision(False, "Operação bloqueada: incidente técnico detectado durante a avaliação de risco.")
 
         leverage_decision = self._evaluate_leverage(payload, state)
         if leverage_decision is not None and not leverage_decision.allowed:
