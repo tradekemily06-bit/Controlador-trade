@@ -15,6 +15,8 @@ from enum import Enum
 from pathlib import Path
 from threading import RLock
 
+from core.file_lock import exclusive_file_lock
+
 
 class MaintenanceStatus(str, Enum):
     SCHEDULED = "SCHEDULED"
@@ -81,6 +83,11 @@ class MaintenanceManager:
         self._lock = RLock()
         self._load()
 
+    def _lock_path(self) -> Path | None:
+        if self._state_path is None:
+            return None
+        return self._state_path.with_name(f".{self._state_path.name}.lock")
+
     def _load(self) -> None:
         if self._state_path is None or not self._state_path.exists():
             return
@@ -123,8 +130,15 @@ class MaintenanceManager:
         os.replace(temporary, self._state_path)
         self._state_corrupt = False
 
+    def _with_process_lock(self):
+        lock_path = self._lock_path()
+        if lock_path is None:
+            return _NoOpLock()
+        return exclusive_file_lock(lock_path)
+
     def schedule(self, *, maintenance_id: str, title: str, message: str, starts_at: datetime, duration_minutes: int, now: datetime | None = None) -> MaintenanceWindow:
-        with self._lock:
+        with self._lock, self._with_process_lock():
+            self._load()
             if self._state_corrupt:
                 raise RuntimeError("maintenance state is corrupt; recovery is required before scheduling")
             if not maintenance_id.strip() or not title.strip() or not message.strip():
@@ -145,7 +159,8 @@ class MaintenanceManager:
             return self._current
 
     def begin(self, maintenance_id: str, *, now: datetime | None = None) -> MaintenanceWindow:
-        with self._lock:
+        with self._lock, self._with_process_lock():
+            self._load()
             if self._state_corrupt:
                 raise RuntimeError("maintenance state is corrupt; recovery is required")
             if self._current is None or self._current.maintenance_id != maintenance_id:
@@ -158,7 +173,8 @@ class MaintenanceManager:
             return current
 
     def cancel(self, maintenance_id: str) -> MaintenanceWindow:
-        with self._lock:
+        with self._lock, self._with_process_lock():
+            self._load()
             if self._state_corrupt:
                 raise RuntimeError("maintenance state is corrupt; recovery is required")
             if self._current is None or self._current.maintenance_id != maintenance_id:
@@ -171,7 +187,8 @@ class MaintenanceManager:
             return self._current
 
     def status(self, *, now: datetime | None = None) -> dict[str, object]:
-        with self._lock:
+        with self._lock, self._with_process_lock():
+            self._load()
             if self._state_corrupt:
                 return {"status": "CORRUPT", "trading_available": False, "execution_blocked": True, "maintenance": None, "recovery_required": True}
             if self._current is None:
@@ -186,3 +203,11 @@ class MaintenanceManager:
     def execution_blocked(self, *, now: datetime | None = None) -> bool:
         """Return whether the execution boundary must refuse new operations."""
         return self.status(now=now)["execution_blocked"] is True
+
+
+class _NoOpLock:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
