@@ -135,7 +135,12 @@ class EcosystemNotificationCenter:
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
         scope = self._trusted_scope() or (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT)
-        events = self._load(scope)
+        if self._state_store is None:
+            if self._require_durable:
+                raise RuntimeError("durable notification state provider is required")
+            events = list(self._global_notifications if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT) else self._scoped_notifications.get(scope, []))
+        else:
+            events = self._load(scope)
         events.append(notification)
         self._save(scope, events)
         self._replace_cache(scope, events)
