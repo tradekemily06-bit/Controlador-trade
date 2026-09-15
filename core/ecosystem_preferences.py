@@ -86,6 +86,12 @@ class EcosystemPreferencesStore:
         subject_id = str(identity.subject_id).strip()
         return (tenant_id, subject_id) if tenant_id and subject_id else None
 
+    def _require_scope_for_durable_state(self) -> tuple[str, str] | None:
+        scope = self._trusted_scope()
+        if self._state_store is not None and scope is None:
+            raise PermissionError("trusted tenant and subject scope are required for durable preferences")
+        return scope
+
     @staticmethod
     def _decode(payload: dict[str, Any]) -> EcosystemPreferences:
         candle = payload.get("candle", {})
@@ -115,7 +121,7 @@ class EcosystemPreferencesStore:
         )
 
     def _current(self) -> EcosystemPreferences:
-        scope = self._trusted_scope()
+        scope = self._require_scope_for_durable_state()
         if scope is None:
             return self._default_preferences
         if scope in self._scoped:
@@ -131,7 +137,7 @@ class EcosystemPreferencesStore:
 
     def _fresh_current(self) -> EcosystemPreferences:
         """Reload durable scoped state before a write so stale caches cannot clobber it."""
-        scope = self._trusted_scope()
+        scope = self._require_scope_for_durable_state()
         if scope is None or self._state_store is None:
             return self._current()
         payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
@@ -149,7 +155,7 @@ class EcosystemPreferencesStore:
 
     def _save(self, value: EcosystemPreferences) -> EcosystemPreferences:
         self._validate(value)
-        scope = self._trusted_scope()
+        scope = self._require_scope_for_durable_state()
         if scope is None:
             self._default_preferences = value
         else:
