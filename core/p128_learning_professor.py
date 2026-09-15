@@ -3,14 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .learning_content import LearningActivity
+from .professional_learning_question_engine import ProfessionalLearningQuestion, ProfessionalLearningQuestionEngine, QuestionType
 
 
 @dataclass(frozen=True)
 class ProfessorActivitySpec:
-    """Educational activity generated only from validated knowledge.
-
-    This layer teaches and evaluates the user; it has no trading authority.
-    """
+    """Educational activity generated only from validated knowledge."""
 
     activity_id: str
     knowledge_id: str
@@ -28,9 +26,13 @@ class ProfessorActivitySpec:
 class LearningProfessor:
     """Senior-teacher boundary for validated market knowledge.
 
-    The professor may explain validated knowledge and create tests from it, but
-    it never treats a lesson, quiz, or user score as authorization to trade.
+    The professor may explain validated knowledge and create professional
+    assessments from it, but it never treats a lesson, quiz, or user score as
+    authorization to trade.
     """
+
+    def __init__(self, question_engine: ProfessionalLearningQuestionEngine | None = None) -> None:
+        self.question_engine = question_engine or ProfessionalLearningQuestionEngine()
 
     def build_activity(self, spec: ProfessorActivitySpec, *, knowledge_validated: bool) -> LearningActivity:
         if not isinstance(spec, ProfessorActivitySpec):
@@ -45,6 +47,19 @@ class LearningProfessor:
             ),
             expected_concepts=(spec.concept, spec.knowledge_id),
             difficulty=spec.difficulty,
+        )
+
+    def build_professional_questions(self, spec: ProfessorActivitySpec, *, knowledge_validated: bool, context: str = "", question_types: tuple[QuestionType, ...] | None = None) -> tuple[ProfessionalLearningQuestion, ...]:
+        if not isinstance(spec, ProfessorActivitySpec):
+            raise ValueError("invalid professor activity specification")
+        if not knowledge_validated:
+            raise ValueError("only validated knowledge can generate professional questions")
+        return self.question_engine.build(
+            knowledge_id=spec.knowledge_id,
+            concept=spec.concept,
+            statement=spec.statement,
+            context=context,
+            question_types=question_types,
         )
 
     @staticmethod
