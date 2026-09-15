@@ -82,7 +82,7 @@ def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
 
 
 def require_tenant_scoped_data_plane() -> None:
-    """Allow public SaaS only when durable tenant-scoped storage is actually configured.
+    """Allow public SaaS only when durable tenant+subject-scoped storage is configured.
 
     The check intentionally reconstructs the provider policy from deployment
     configuration rather than trusting a browser-supplied value or falling back
@@ -96,7 +96,11 @@ def require_tenant_scoped_data_plane() -> None:
         raise PublicSaaSNotReady("tenant-scoped data plane is not safely configured") from exc
     if provider is None or not cfg.database_path:
         raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
-    if not policy.authorize_write(authenticated=True, tenant_id="configured"):
+    if not policy.authorize_write(
+        authenticated=True,
+        tenant_id="configured",
+        subject_id="configured",
+    ):
         raise PublicSaaSNotReady("tenant-scoped data plane is not authorized")
-    if not policy.durable or not policy.tenant_scoped:
-        raise PublicSaaSNotReady("tenant-scoped data plane must be durable and tenant-scoped")
+    if not policy.durable or not policy.tenant_scoped or not policy.subject_scoped:
+        raise PublicSaaSNotReady("tenant+subject-scoped data plane must be durable and scoped")
