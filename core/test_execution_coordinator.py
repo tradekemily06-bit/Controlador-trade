@@ -27,7 +27,7 @@ class FakeGateway:
         return "executed"
 
 
-def make_senior_context(quality=SeniorContextQuality.COMPLETE):
+def make_senior_context(quality=SeniorContextQuality.COMPLETE, knowledge_ids=()):
     risk = SeniorRiskAssessment(
         status=RiskKnowledgeStatus.ASSESSED,
         observations=(),
@@ -44,7 +44,7 @@ def make_senior_context(quality=SeniorContextQuality.COMPLETE):
         market_reading=None,
         senior_assessment=None,
         risk_assessment=risk,
-        validated_knowledge_ids=(),
+        validated_knowledge_ids=knowledge_ids,
         unresolved_questions=(),
         quality=quality,
         execution_authorized=False,
@@ -162,6 +162,33 @@ def test_coordinator_blocks_when_decision_identity_changes():
         snapshot=changed_snapshot,
         timestamp=orchestration.timestamp,
         senior_context=orchestration.senior_context,
+    )
+    gateway = FakeGateway()
+    result = ExecutionCoordinator(gateway).execute_plan(plan, orchestration=changed)
+    assert result.status is GatewayStatus.BLOCKED
+    assert "decisão/orquestração mudou" in result.message
+    assert gateway.calls == []
+
+
+def test_coordinator_blocks_when_validated_knowledge_changes():
+    original_context = make_senior_context(knowledge_ids=("knowledge-A",))
+    orchestration = executable_orchestration(senior_context=original_context)
+    plan = ExecutionCoordinator.build_plan(
+        orchestration,
+        request_id="req-knowledge-change",
+        amount=10.0,
+        duration_seconds=60,
+    )
+    changed_context = make_senior_context(knowledge_ids=("knowledge-B",))
+    changed = executable_orchestration(senior_context=changed_context)
+    changed = OrchestrationResult(
+        market_data=orchestration.market_data,
+        analysis=changed.analysis,
+        quality=changed.quality,
+        decision=changed.decision,
+        snapshot=changed.snapshot,
+        timestamp=orchestration.timestamp,
+        senior_context=changed_context,
     )
     gateway = FakeGateway()
     result = ExecutionCoordinator(gateway).execute_plan(plan, orchestration=changed)
