@@ -72,6 +72,13 @@ class PersistentOperationalRecorder:
         return updated
 
     def can_execute(self) -> bool:
+        """Report only the recorder's kill-switch state, never execution authority.
+
+        A true result means only that this recorder-local safety control is clear.
+        It does not establish global barrier readiness, decision validity,
+        market/risk identity, senior suitability, freshness, or permission to
+        dispatch. Production execution must still pass the execution gateway.
+        """
         return self.recorder.can_execute()
 
     def guard_execution(self) -> None:
