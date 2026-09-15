@@ -32,6 +32,7 @@ class TechnicalIncident:
 
 class EcosystemIncidentManager:
     """Fail-closed incident barrier with optional cross-process persistence."""
+
     def __init__(self, *, notification_center=None, store: TechnicalIncidentStore | None = None) -> None:
         if store is not None and not isinstance(store, TechnicalIncidentStore):
             raise TypeError("store inválido")
@@ -41,31 +42,51 @@ class EcosystemIncidentManager:
         self._lock = RLock()
 
     def open_incident(self, *, title: str, message: str, incident_id: str | None = None, now: datetime | None = None) -> TechnicalIncident:
-        if not title.strip() or not message.strip():
+        if not isinstance(title, str) or not title.strip() or not isinstance(message, str) or not message.strip():
             raise ValueError("incident title and message are required")
         started_at = _utc(now or datetime.now(timezone.utc))
         incident = TechnicalIncident((incident_id or f"incident-{uuid4().hex}").strip(), title.strip(), message.strip(), started_at)
         with self._lock:
             if self._store is not None:
-                self._store.open(f"{incident.title}: {incident.message}", now=started_at)
+                current = self._store.status()
+                if current["status"] == "INCIDENT":
+                    existing_id = current.get("incident_id") or "persisted-incident"
+                    if incident.incident_id != existing_id:
+                        # Do not replace an active stop with a different incident;
+                        # the existing safety condition must be resolved explicitly.
+                        raise RuntimeError("já existe um incidente técnico ativo")
+                self._store.open(incident.incident_id, f"{incident.title}: {incident.message}", now=started_at)
             self._incidents[incident.incident_id] = incident
             self._publish(incident)
         return incident
 
     def resolve_incident(self, incident_id: str, *, now: datetime | None = None) -> TechnicalIncident:
+        key = str(incident_id).strip()
+        if not key:
+            raise ValueError("incident_id é obrigatório")
         with self._lock:
-            current = self._incidents.get(incident_id)
+            current = self._incidents.get(key)
+            if current is None and self._store is not None:
+                state = self._store.status()
+                if state["status"] == "INCIDENT":
+                    persisted_id = str(state.get("incident_id") or "persisted-incident")
+                    if key != persisted_id:
+                        raise ValueError("incident_id não corresponde ao incidente técnico ativo")
+                    started_at = _timestamp(state.get("changed_at"))
+                    reason = str(state.get("reason") or "incidente técnico ativo")
+                    current = TechnicalIncident(persisted_id, "Problema técnico ativo", reason, started_at)
+                    self._incidents[persisted_id] = current
             if current is None:
                 raise ValueError("incident not found")
             if current.status is IncidentStatus.RESOLVED:
                 return current
             resolved_at = _utc(now or datetime.now(timezone.utc))
             if self._store is not None:
-                self._store.resolve(now=resolved_at)
+                self._store.resolve(key, now=resolved_at)
             resolved = TechnicalIncident(current.incident_id, current.title, current.message, current.started_at, IncidentStatus.RESOLVED, resolved_at)
-            self._incidents[incident_id] = resolved
+            self._incidents[key] = resolved
             if self._notification_center is not None:
-                self._notification_center.publish(EcosystemNotification(f"incident-resolved-{uuid4().hex}", NotificationKind.RECOVERY, NotificationSeverity.IMPORTANT, "Problema técnico resolvido", f"O incidente {incident_id} foi resolvido. O ecossistema só volta a operar se as demais barreiras de segurança também estiverem liberadas.", requires_attention=True))
+                self._notification_center.publish(EcosystemNotification(f"incident-resolved-{uuid4().hex}", NotificationKind.RECOVERY, NotificationSeverity.IMPORTANT, "Problema técnico resolvido", f"O incidente {key} foi resolvido. O ecossistema só volta a operar se as demais barreiras de segurança também estiverem liberadas.", requires_attention=True))
             return resolved
 
     def active(self) -> tuple[TechnicalIncident, ...]:
@@ -73,10 +94,11 @@ class EcosystemIncidentManager:
             if self._store is not None:
                 state = self._store.status()
                 if state["status"] == "INCIDENT":
-                    local = tuple(item for item in self._incidents.values() if item.status is IncidentStatus.ACTIVE)
-                    if local:
-                        return local
-                    return (TechnicalIncident("persisted-incident", "Problema técnico ativo", str(state.get("reason") or "incidente técnico ativo"), _timestamp(state.get("changed_at"))),)
+                    persisted_id = str(state.get("incident_id") or "persisted-incident")
+                    local = self._incidents.get(persisted_id)
+                    if local is not None and local.status is IncidentStatus.ACTIVE:
+                        return (local,)
+                    return (TechnicalIncident(persisted_id, "Problema técnico ativo", str(state.get("reason") or "incidente técnico ativo"), _timestamp(state.get("changed_at"))),)
                 return ()
             return tuple(item for item in self._incidents.values() if item.status is IncidentStatus.ACTIVE)
 
@@ -85,15 +107,20 @@ class EcosystemIncidentManager:
             return bool(self.active())
         try:
             return self._store.status()["status"] != "HEALTHY"
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RuntimeError):
             return True
 
     def status(self) -> dict[str, object]:
         try:
             active = self.active()
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RuntimeError):
             return {"status": "INCIDENT", "execution_blocked": True, "active_incidents": (), "reason": "estado de incidente indisponível"}
-        return {"status": "INCIDENT" if active else "HEALTHY", "execution_blocked": bool(active), "active_incidents": tuple(item.incident_id for item in active)}
+        return {
+            "status": "INCIDENT" if active else "HEALTHY",
+            "execution_blocked": bool(active),
+            "active_incidents": tuple(item.incident_id for item in active),
+            "reason": active[0].message if active else None,
+        }
 
     def _publish(self, incident: TechnicalIncident) -> None:
         if self._notification_center is not None:
