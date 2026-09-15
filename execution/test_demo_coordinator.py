@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from core.decision_freshness import DecisionFreshnessPolicy
+from core.decision_snapshot import DecisionSnapshot
 from core.execution_intent import ExecutionIntent
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
@@ -43,6 +44,27 @@ def intent():
     return ExecutionIntent("req-31", "EURUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
+def snapshot(signal="COMPRA", symbol="EURUSD", timeframe="5m", decision="EXECUTAR", actionable=True):
+    return DecisionSnapshot(
+        signal=signal,
+        analysis_score=90.0,
+        confirmed=True,
+        quality_score=90.0,
+        quality_level="A",
+        actionable=actionable,
+        decision=decision,
+        decision_reason="decisão validada",
+        market_context="TREND",
+        market_direction="UP",
+        market_score=90.0,
+        operational_state_available=True,
+        trades_today=0,
+        consecutive_losses=0,
+        symbol=symbol,
+        timeframe=timeframe,
+    )
+
+
 def senior_context(quality=SeniorContextQuality.COMPLETE):
     risk = SeniorRiskAssessment(
         status=RiskKnowledgeStatus.ASSESSED,
@@ -76,7 +98,7 @@ def make_coordinator():
 
 def test_ready_demo_reaches_gateway_once():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context())
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context(), snapshot=snapshot())
     assert result.readiness.ready
     assert result.gateway is not None
     assert result.gateway.status is GatewayStatus.ACCEPTED
@@ -101,6 +123,7 @@ def test_demo_preserves_intent_timestamp_for_freshness_gate():
         recovery=recovery(),
         intent=intent(),
         senior_context=senior_context(),
+        snapshot=snapshot(),
     )
     assert result.gateway is not None
     assert result.gateway.status is GatewayStatus.BLOCKED
@@ -108,9 +131,17 @@ def test_demo_preserves_intent_timestamp_for_freshness_gate():
     assert executor.calls == 0
 
 
+def test_missing_snapshot_never_calls_executor():
+    demo_coordinator, executor = make_coordinator()
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context(), snapshot=None)
+    assert result.gateway is not None
+    assert result.gateway.status is GatewayStatus.BLOCKED
+    assert executor.calls == 0
+
+
 def test_missing_senior_context_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=None)
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=None, snapshot=snapshot())
     assert result.gateway is None
     assert not result.executed
     assert executor.calls == 0
@@ -118,7 +149,7 @@ def test_missing_senior_context_never_calls_executor():
 
 def test_incomplete_senior_context_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context(SeniorContextQuality.REASSESS))
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=intent(), senior_context=senior_context(SeniorContextQuality.REASSESS), snapshot=snapshot())
     assert result.gateway is None
     assert not result.executed
     assert executor.calls == 0
@@ -127,7 +158,7 @@ def test_incomplete_senior_context_never_calls_executor():
 def test_unready_market_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
     bad_market = MarketDataIntegrityReport(MarketDataHealth.STALE, 1, None, 0, True, "stale")
-    result = demo_coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent(), senior_context=senior_context())
+    result = demo_coordinator.execute(config=config(), market_data=bad_market, recovery=recovery(), intent=intent(), senior_context=senior_context(), snapshot=snapshot())
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
@@ -135,7 +166,7 @@ def test_unready_market_never_calls_executor():
 
 def test_missing_intent_never_calls_executor():
     demo_coordinator, executor = make_coordinator()
-    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None, senior_context=senior_context())
+    result = demo_coordinator.execute(config=config(), market_data=market(), recovery=recovery(), intent=None, senior_context=senior_context(), snapshot=snapshot())
     assert not result.readiness.ready
     assert result.gateway is None
     assert executor.calls == 0
