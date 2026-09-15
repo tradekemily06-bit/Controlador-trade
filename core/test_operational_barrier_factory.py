@@ -51,3 +51,21 @@ def test_global_barrier_never_reports_ready_when_safety_store_cannot_be_read(tmp
     assert decision.status is BarrierStatus.BLOCKED
     assert not decision.operationally_allowed
     assert "operational-safety-store" in decision.blocking_components
+
+
+def test_global_barrier_uses_persisted_kill_switch_from_another_worker(tmp_path: Path) -> None:
+    runtime_a = build_operational_runtime(tmp_path)
+    runtime_b = build_operational_runtime(tmp_path)
+
+    # Simulate worker A activating the authoritative persisted kill switch.
+    runtime_a.kill_switch.activate("emergência em outro worker")
+
+    # Worker B still has its old in-memory state, but the global barrier must
+    # read the persisted source of truth and remain blocked.
+    assert runtime_b.kill_switch.state.enabled is False
+    decision = build_global_operational_barrier(runtime_b).evaluate()
+
+    assert decision.status is BarrierStatus.BLOCKED
+    assert not decision.operationally_allowed
+    assert "kill-switch" in decision.blocking_components
+    assert "emergência em outro worker" in decision.reason
