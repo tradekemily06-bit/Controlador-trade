@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from core.execution_intent import ExecutionIntent
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
 from core.senior_risk_reasoning import RiskKnowledgeStatus
-from execution.gateway import ExecutionGateway, GatewayResult
+from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
 
 if TYPE_CHECKING:
     from core.decision_snapshot import DecisionSnapshot
@@ -60,10 +60,7 @@ class ExecutionIntentAdmission:
         if snapshot is not None:
             consistency_error = self._snapshot_consistency_error(intent, snapshot)
             if consistency_error is not None:
-                return self.gateway.execute.__self__.GatewayResult if False else GatewayResult(  # type: ignore[attr-defined]
-                    status=self.gateway.GatewayStatus.BLOCKED if False else __import__("execution.gateway", fromlist=["GatewayStatus"]).GatewayStatus.BLOCKED,
-                    message=consistency_error,
-                )
+                return GatewayResult(GatewayStatus.BLOCKED, consistency_error)
 
         return self.gateway.execute(
             intent.request_id,
