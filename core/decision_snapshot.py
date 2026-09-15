@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from .decision_engine import DecisionResult
@@ -32,6 +33,7 @@ class DecisionSnapshot:
     symbol: str | None
     timeframe: str | None
     risk_state_fingerprint: str | None = None
+    created_at: datetime | None = None
 
     @classmethod
     def from_results(
@@ -42,6 +44,7 @@ class DecisionSnapshot:
         decision: DecisionResult,
         market_context: MarketContextResult | None,
         operational_state: OperationalState | None,
+        created_at: datetime | None = None,
     ) -> "DecisionSnapshot":
         return cls(
             signal=analysis.signal.value,
@@ -61,6 +64,7 @@ class DecisionSnapshot:
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
             risk_state_fingerprint=(risk_state_fingerprint(operational_state) if operational_state is not None else None),
+            created_at=created_at,
         )
 
     def explain(self) -> str:
@@ -96,4 +100,5 @@ class DecisionSnapshot:
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "risk_state_fingerprint": self.risk_state_fingerprint,
+            "created_at": self.created_at,
         }
