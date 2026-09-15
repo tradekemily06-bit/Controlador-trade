@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Callable, TYPE_CHECKING
+from typing import Any, Callable
 
 from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.kill_switch import KillSwitch
 from execution.broker_registry import BrokerRegistry
 from execution.gateway import ExecutionGateway
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
-
-if TYPE_CHECKING:
-    from core.global_operational_barrier import GlobalOperationalBarrier
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
 
