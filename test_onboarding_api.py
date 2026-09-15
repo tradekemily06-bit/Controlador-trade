@@ -34,9 +34,10 @@ def test_onboarding_endpoint_exposes_guided_first_use_without_execution_authorit
         "RISK",
         "LEARNING",
         "MEMORY",
+        "SECURITY",
+        "RECOVERY",
         "HISTORY",
         "CONNECTIONS",
-        "SECURITY",
         "SETTINGS",
         "HELP",
     ]
