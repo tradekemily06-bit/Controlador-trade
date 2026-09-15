@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.decision_audit import DecisionAudit
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
@@ -109,4 +110,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     gateway.set_market_data_fingerprint_provider(
         lambda: runtime.market_data.report.fingerprint if runtime.market_data.report is not None else None
     )
+    gateway.set_decision_freshness_policy(DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0))
     return runtime
