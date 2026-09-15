@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
+from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
@@ -48,6 +49,7 @@ class ExecutionGateway:
         lifecycle: ExecutionLifecycleStore | None = None,
         maintenance: MaintenanceManager | None = None,
         safety_store: OperationalSafetyStore | None = None,
+        incident_manager: EcosystemIncidentManager | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -55,6 +57,8 @@ class ExecutionGateway:
             raise ValueError("kill_switch é obrigatório.")
         if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
             raise ValueError("safety_store inválido.")
+        if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
+            raise ValueError("incident_manager inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -62,16 +66,11 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._maintenance = maintenance
         self._safety_store = safety_store
+        self._incident_manager = incident_manager
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def _refresh_kill_switch(self) -> str | None:
-        """Refresh the authoritative persisted kill switch before dispatch.
-
-        A process-local KillSwitch cannot observe a safety change made by a
-        different worker. When a durable safety store is configured, every
-        execution attempt therefore re-reads the persisted state. Any read or
-        validation failure fails closed and no executor dispatch is allowed.
-        """
+        """Refresh the authoritative persisted kill switch before dispatch."""
         if self._safety_store is None:
             return None
         try:
@@ -81,8 +80,24 @@ class ExecutionGateway:
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {type(exc).__name__}"
 
+    def _incident_error(self) -> str | None:
+        """Technical incident is a global fail-closed barrier."""
+        if self._incident_manager is None:
+            return None
+        try:
+            if self._incident_manager.execution_blocked():
+                status = self._incident_manager.status()
+                reason = status.get("reason") or "problema técnico ativo ou estado de incidente indisponível"
+                return f"execução bloqueada por incidente técnico: {reason}"
+            return None
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            return f"estado de incidente indisponível: {type(exc).__name__}"
+
     def _final_safety_barrier(self, *, now: datetime) -> str | None:
-        """Re-check global safety immediately before executor dispatch."""
+        """Re-check every authoritative operational barrier immediately before dispatch."""
+        incident_error = self._incident_error()
+        if incident_error is not None:
+            return incident_error
         refresh_error = self._refresh_kill_switch()
         if refresh_error is not None:
             return refresh_error
@@ -117,6 +132,9 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
         event_time = timestamp or datetime.now(timezone.utc)
+        preflight_incident_error = self._incident_error()
+        if preflight_incident_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, preflight_incident_error)
         if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
 
@@ -130,9 +148,6 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        # The ledger reservation is the atomic cross-process idempotency barrier.
-        # Checking memory first is only an optimization; reserve() is the
-        # authoritative decision and must happen before dispatch.
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
         if self._ledger is not None:
@@ -170,10 +185,12 @@ class ExecutionGateway:
             result = self._executor.execute(request)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            self._open_incident_on_executor_failure(exc)
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            self._open_incident_on_executor_failure("resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
@@ -199,7 +216,7 @@ class ExecutionGateway:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas persistência do ciclo falhou: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou: {exc}", result)
 
         self._processed_request_ids.add(request_id)
         recorded_operation = None
@@ -207,6 +224,16 @@ class ExecutionGateway:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+
+    def _open_incident_on_executor_failure(self, error: object) -> None:
+        if self._incident_manager is None:
+            return
+        try:
+            self._incident_manager.open_incident(title="Falha técnica no executor", message=f"O executor apresentou uma falha e novas operações foram bloqueadas: {error}")
+        except Exception:
+            # Failure to publish the incident must never turn a failed safety
+            # path into an executable path. The request is already UNKNOWN.
+            pass
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         if self._ledger is not None:
