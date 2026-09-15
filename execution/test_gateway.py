@@ -172,3 +172,22 @@ def test_gateway_allows_execution_after_maintenance_completes():
     result = gateway.execute("req-after", request(), timestamp=now + timedelta(minutes=20))
 
     assert result.status is GatewayStatus.ACCEPTED
+
+
+def test_gateway_rechecks_maintenance_after_persistence_before_executor():
+    class ActivatesOnFinalCheck:
+        def __init__(self):
+            self.calls = 0
+
+        def execution_blocked(self, *, now):
+            self.calls += 1
+            return self.calls >= 2
+
+    maintenance = ActivatesOnFinalCheck()
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
+
+    result = gateway.execute("req-final-maintenance", request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()
