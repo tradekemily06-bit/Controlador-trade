@@ -12,8 +12,12 @@ from execution.ports import ExecutionMode, ExecutionRequest
 def test_runtime_build_wires_fresh_global_barrier(tmp_path: Path) -> None:
     runtime = build_operational_runtime(tmp_path)
 
+    # A newly constructed runtime has no market snapshot yet. That must be
+    # fail-closed rather than pretending the ecosystem is operational.
     first = build_global_operational_barrier(runtime).evaluate()
-    assert first.status is BarrierStatus.READY
+    assert first.status is BarrierStatus.BLOCKED
+    assert not first.operationally_allowed
+    assert "market-data-integrity" in first.blocking_components
 
     runtime.kill_switch.activate("teste de bloqueio")
     second = build_global_operational_barrier(runtime).evaluate()
@@ -21,6 +25,7 @@ def test_runtime_build_wires_fresh_global_barrier(tmp_path: Path) -> None:
     assert second.status is BarrierStatus.BLOCKED
     assert not second.operationally_allowed
     assert "kill-switch" in second.blocking_components
+    assert "market-data-integrity" in second.blocking_components
 
 
 def test_gateway_stops_after_runtime_kill_switch_changes(tmp_path: Path) -> None:
