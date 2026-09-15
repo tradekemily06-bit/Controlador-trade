@@ -1,7 +1,7 @@
 """Production-facing service guard for the global fail-closed barrier."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from core.models import AnalysisResult, Signal
 from core.operational_barrier_factory import build_global_operational_barrier
@@ -27,7 +27,7 @@ class GuardedEcosystemService(ConfiguredEcosystemService):
     def remediate_operational_barrier(self) -> dict[str, object]:
         """Attempt only repairs explicitly classified as AUTO_SAFE.
 
-        A successful repair never grants authorization.  The barrier is rebuilt
+        A successful repair never grants authorization. The barrier is rebuilt
         and evaluated again before anything operational can proceed.
         """
         before = self.operational_barrier().evaluate()
@@ -72,6 +72,17 @@ class GuardedEcosystemService(ConfiguredEcosystemService):
             )
             return self._record_analysis(result, persist=persist, owner=owner)
         return super().analyze(payload, persist=persist, subject_id=subject_id, tenant_id=tenant_id)
+
+    def replay(self, cases: Iterable[dict[str, Any]], *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        """Replay is research/simulation and never authorizes live operations."""
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        from core.replay_policy import prevalidate_replay_cases
+        accepted_cases = prevalidate_replay_cases(cases)
+        records = []
+        for payload in accepted_cases:
+            records.append(super().analyze(payload, persist=False, subject_id=owner.subject_id if owner else None, tenant_id=owner.tenant_id if owner else None))
+        self._persist_records(records)
+        return [{"step": index, **record.to_dict()} for index, record in enumerate(records, start=1)]
 
     def risk_status(self) -> dict[str, Any]:
         decision = self.operational_barrier().evaluate()
