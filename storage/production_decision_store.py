@@ -14,7 +14,7 @@ class TenantScopedDecisionProvider(Protocol):
     def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         ...
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         ...
 
 
@@ -79,10 +79,10 @@ class ProductionDecisionStore:
             raise RuntimeError("production provider returned a record outside the requested scope")
         return record
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[DecisionRecord]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[DecisionRecord]:
         tenant, subject = self._scope(tenant_id=tenant_id, subject_id=subject_id)
-        if limit < 1:
-            raise ValueError("limit must be greater than zero")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be greater than zero when provided")
         records = [self._record(item) for item in self.provider.list(tenant_id=tenant, subject_id=subject, limit=limit)]
         if any(not record.owned_by(subject_id=subject, tenant_id=tenant) for record in records):
             raise RuntimeError("production provider returned records outside the requested scope")
