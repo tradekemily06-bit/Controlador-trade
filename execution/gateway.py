@@ -147,9 +147,6 @@ class ExecutionGateway:
 
     def _decision_snapshot_error(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> str | None:
         """Require and validate the immutable decision record at the operational boundary."""
-        # The fully composed operational runtime has both the global barrier and
-        # freshness policy. In that context, a request without its originating
-        # snapshot is not an executable decision and must fail closed.
         if self._operational_barrier_provider is not None and self._decision_freshness_policy is not None and snapshot is None:
             return "execução bloqueada: snapshot da decisão é obrigatório no runtime operacional"
         if snapshot is None:
@@ -210,9 +207,6 @@ class ExecutionGateway:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
-        snapshot_error = self._decision_snapshot_error(request, snapshot)
-        if snapshot_error is not None:
-            return GatewayResult(GatewayStatus.BLOCKED, snapshot_error)
         event_time = timestamp or datetime.now(timezone.utc)
         freshness_error = self._decision_freshness_error(created_at=event_time)
         if freshness_error is not None:
@@ -220,6 +214,12 @@ class ExecutionGateway:
         preflight_incident_error = self._incident_error()
         if preflight_incident_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, preflight_incident_error)
+        barrier_error = self._global_barrier_error()
+        if barrier_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
+        snapshot_error = self._decision_snapshot_error(request, snapshot)
+        if snapshot_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, snapshot_error)
         market_data_error = self._market_data_fingerprint_error(request)
         if market_data_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, market_data_error)
