@@ -66,12 +66,11 @@ class LearningMaterialReview:
 
 
 class LearningMaterialReviewer:
-    """Reviews supplied learning material without turning it into trading authority.
+    """Reviews supplied learning material without granting trading authority.
 
-    The reviewer is deliberately evidence-based: a URL alone is not treated as proof.
-    A transcript, extracted claim, observation, or backtest evidence must be supplied
-    before the ecosystem can judge the proposition. Unsupported claims remain
-    UNVERIFIED rather than being promoted into knowledge.
+    A URL alone is never evidence. Claims must be compared with reviewed
+    knowledge and/or explicit evidence. Conceptual consistency and strategy
+    effectiveness are separate assessments.
     """
 
     def review(
@@ -81,6 +80,7 @@ class LearningMaterialReviewer:
         claims: tuple[str, ...] | list[str],
         references: tuple[KnowledgeReference, ...] | list[KnowledgeReference] = (),
         contradicted_reference_ids: tuple[str, ...] | list[str] = (),
+        contradicted_claims: dict[str, tuple[str, ...] | list[str]] | None = None,
         effectiveness: MaterialEffectivenessReview | None = None,
         material_content_verified: bool = False,
     ) -> LearningMaterialReview:
@@ -89,7 +89,7 @@ class LearningMaterialReviewer:
         if not material_content_verified:
             unknown_claims = tuple(
                 MaterialClaimReview(
-                    claim=claim,
+                    claim=claim.strip(),
                     verdict=MaterialVerdict.UNVERIFIED,
                     rationale="O conteúdo do material ainda não foi verificado; o link/vídeo, sozinho, não prova a afirmação.",
                 )
@@ -105,22 +105,50 @@ class LearningMaterialReviewer:
                 limitations=("Conteúdo externo ainda não verificado.",),
             )
 
+        ref_by_id = {item.reference_id: item for item in references if item.reference_id.strip()}
         ref_by_statement = {item.statement.strip().casefold(): item for item in references if item.statement.strip()}
-        contradicted = {item.strip() for item in contradicted_reference_ids if item.strip()}
+        legacy_ids = {item.strip() for item in contradicted_reference_ids if item.strip()}
+        explicit_contradictions = {
+            str(claim).strip().casefold(): tuple(
+                ref_id.strip() for ref_id in ref_ids if str(ref_id).strip() in ref_by_id
+            )
+            for claim, ref_ids in (contradicted_claims or {}).items()
+        }
+
         reviewed: list[MaterialClaimReview] = []
         for claim in claims:
             normalized = claim.strip()
             if not normalized:
                 continue
+            contradiction_ids = explicit_contradictions.get(normalized.casefold(), ())
+            if contradiction_ids:
+                reviewed.append(MaterialClaimReview(
+                    normalized,
+                    MaterialVerdict.CONTRADICTED,
+                    "A afirmação está explicitamente associada a referência(s) revisada(s) que a contradizem; exige revisão antes de ser tratada como conhecimento.",
+                    contradiction_ids,
+                    0.9,
+                ))
+                continue
             exact = ref_by_statement.get(normalized.casefold())
             if exact is not None:
-                reviewed.append(MaterialClaimReview(normalized, MaterialVerdict.KNOWN, "A afirmação coincide com conhecimento revisado do ecossistema.", (exact.reference_id,), 1.0))
+                reviewed.append(MaterialClaimReview(
+                    normalized,
+                    MaterialVerdict.KNOWN,
+                    "A afirmação coincide com conhecimento revisado do ecossistema.",
+                    (exact.reference_id,),
+                    1.0,
+                ))
                 continue
-            matched = tuple(item.reference_id for item in references if item.reference_id in contradicted)
-            if matched:
-                reviewed.append(MaterialClaimReview(normalized, MaterialVerdict.CONTRADICTED, "A afirmação entra em conflito com referência revisada; exige revisão antes de ser tratada como conhecimento.", matched, 0.9))
-            else:
-                reviewed.append(MaterialClaimReview(normalized, MaterialVerdict.UNVERIFIED, "O material foi verificado, mas esta afirmação não possui evidência suficiente no conhecimento revisado fornecido.", (), 0.0))
+            # Legacy contradiction input is deliberately conservative: an ID by
+            # itself cannot contradict an arbitrary claim. It is only accepted
+            # when that reference is explicitly represented in the new mapping.
+            _ = legacy_ids
+            reviewed.append(MaterialClaimReview(
+                normalized,
+                MaterialVerdict.UNVERIFIED,
+                "O material foi verificado, mas esta afirmação não possui evidência suficiente no conhecimento revisado fornecido.",
+            ))
 
         verdicts = {item.verdict for item in reviewed}
         if MaterialVerdict.CONTRADICTED in verdicts:
