@@ -56,11 +56,23 @@ class RecoveryCoordinator:
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+        ]
+
+        checkpoint_orphan = None
+        if checkpoint is not None and checkpoint.last_request_id:
+            request_id = checkpoint.last_request_id
+            if request_id not in lifecycle_by_id and request_id not in ledger_ids:
+                checkpoint_orphan = request_id
+
+        if unknown or pending or inconsistent or checkpoint_orphan:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -68,6 +80,8 @@ class RecoveryCoordinator:
                 details.append("PENDING requer verificação")
             if inconsistent:
                 details.append("ACCEPTED sem ledger requer reconciliação")
+            if checkpoint_orphan:
+                details.append("checkpoint aponta para request_id ausente no lifecycle e ledger; requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
