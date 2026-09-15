@@ -36,6 +36,8 @@ class ExecutionIntentAdmission:
             return "sinal da intenção diverge do snapshot da decisão; admissão bloqueada."
         if snapshot.timeframe is None:
             return "timeframe da decisão indisponível; admissão bloqueada."
+        if snapshot.created_at is not None and snapshot.created_at != intent.created_at:
+            return "timestamp da intenção diverge do timestamp da decisão; admissão bloqueada."
         return None
 
     def admit(
