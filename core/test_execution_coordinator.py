@@ -10,6 +10,7 @@ from core.kill_switch import KillSwitch
 from core.models import AnalysisResult, Signal
 from core.signal_quality import SignalLevel, SignalQuality
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from data.feed import MarketDataResult
 from data.models import Candle
@@ -37,6 +38,18 @@ def make_senior_context(quality=SeniorContextQuality.COMPLETE, knowledge_ids=())
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="HIGH",
+        reasons=("fixture profissionalmente avaliado",),
+        strengths=("evidência suficiente",),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("fixture",),
+        evidence_against=(),
+        independent_confluences=("estrutura", "confirmação"),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="execution-coordinator-test",
         whole_graph=None,
@@ -48,6 +61,7 @@ def make_senior_context(quality=SeniorContextQuality.COMPLETE, knowledge_ids=())
         unresolved_questions=(),
         quality=quality,
         execution_authorized=False,
+        operation_assessment=operation,
     )
 
 
