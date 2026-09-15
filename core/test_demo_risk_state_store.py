@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 
 import pytest
@@ -20,7 +20,7 @@ def state(**overrides):
         "net_position": 0.0,
         "exposure": 0.0,
         "market_open": True,
-        "last_processed_candle": datetime(2026, 9, 15, 19, 0, tzinfo=timezone.utc),
+        "last_processed_candle": datetime.now(timezone.utc),
     }
     values.update(overrides)
     return OperationalState(**values)
@@ -86,4 +86,30 @@ def test_unsupported_version_fails_closed(tmp_path):
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(DemoRiskStateUnavailable):
+        store.current()
+
+
+def test_stale_risk_state_fails_closed(tmp_path):
+    path = tmp_path / "demo-risk.json"
+    store = DemoRiskStateStore(path, max_age_seconds=30)
+    store.replace(state(), source="demo-account-adapter")
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["updated_at"] = (datetime.now(timezone.utc) - timedelta(seconds=31)).isoformat()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(DemoRiskStateUnavailable, match="desatualizado"):
+        store.fingerprint()
+
+
+def test_future_dated_risk_state_fails_closed(tmp_path):
+    path = tmp_path / "demo-risk.json"
+    store = DemoRiskStateStore(path)
+    store.replace(state(), source="demo-account-adapter")
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["updated_at"] = (datetime.now(timezone.utc) + timedelta(seconds=3)).isoformat()
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(DemoRiskStateUnavailable, match="futuro"):
         store.current()
