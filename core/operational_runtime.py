@@ -52,9 +52,10 @@ def build_operational_runtime(
     """Compose one shared runtime with durable, fail-closed safety state.
 
     When no external authoritative risk provider is supplied, the runtime uses
-    its own durable DEMO risk-state store. A decision carrying a risk identity
-    can therefore execute only after that store has been synchronized by a
-    trusted DEMO adapter/reconciliation boundary.
+    its durable DEMO risk-state store for the risk identity. The default paper
+    executor also uses the store's dispatch lock for local atomicity. Explicit
+    broker/executor injection remains an edge-owned responsibility and is not
+    silently wrapped by the core.
     """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -93,13 +94,14 @@ def build_operational_runtime(
     health = RuntimeHealthMonitor(ledger=ledger, lifecycle=lifecycle, checkpoint_store=checkpoint, recovery=recovery)
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
 
-    effective_executor: ExecutionPort = executor or PaperExecutor()
-    if risk_state_fingerprint_provider is None:
-        effective_executor = DemoRiskDispatchGuard(
-            effective_executor,
+    if executor is None:
+        effective_executor: ExecutionPort = DemoRiskDispatchGuard(
+            PaperExecutor(),
             risk_store=demo_risk_state,
             risk_fingerprint_provider=demo_risk_state.fingerprint,
         )
+    else:
+        effective_executor = executor
 
     gateway = ExecutionGateway(
         effective_executor,
@@ -127,8 +129,6 @@ def build_operational_runtime(
         demo_risk_state=demo_risk_state,
     )
 
-    # Wire authoritative providers only after every runtime component exists.
-    # Each provider is evaluated again immediately before dispatch.
     from core.operational_barrier_factory import build_global_operational_barrier
     gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
     gateway.set_market_data_fingerprint_provider(
