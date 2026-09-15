@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing
+from datetime import datetime, timezone
 from pathlib import Path
 
 from core.kill_switch import KillSwitch
@@ -30,6 +31,11 @@ class _CountingExecutor:
         with self._counter_lock:
             self._counter.value += 1
         return ExecutionResult(accepted=True, message="executado")
+
+
+class _NoopExecutor:
+    def execute(self, _request: ExecutionRequest) -> ExecutionResult:
+        raise AssertionError("executor não deveria ser chamado")
 
 
 def _gateway_worker(ledger_path: str, lifecycle_path: str, barrier, counter, counter_lock, results) -> None:
@@ -84,14 +90,14 @@ def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_pat
         ExecutionLifecycleRecord(
             "conflict-request",
             ExecutionLifecycleState.PENDING,
-            __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            datetime.now(timezone.utc),
             "existing cycle",
         )
     )
 
     ledger = ExecutionLedger(ledger_path)
     gateway = ExecutionGateway(
-        _CountingExecutor(*multiprocessing.Value("i", 0),) if False else _NoopExecutor(),
+        _NoopExecutor(),
         KillSwitch(),
         ledger=ledger,
         lifecycle=lifecycle,
@@ -101,8 +107,3 @@ def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_pat
 
     assert result.status is GatewayStatus.DUPLICATE
     assert ledger.status("conflict-request") is ExecutionLedgerStatus.UNKNOWN
-
-
-class _NoopExecutor:
-    def execute(self, _request: ExecutionRequest) -> ExecutionResult:
-        raise AssertionError("executor não deveria ser chamado")
