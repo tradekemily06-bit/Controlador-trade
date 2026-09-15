@@ -10,7 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from core.global_operational_barrier import BarrierDecision, BarrierStatus, RemediationResult
+from core.global_operational_barrier import (
+    BarrierDecision,
+    BarrierStatus,
+    RemediationResult,
+)
 
 
 class RecoveryActionKind(str, Enum):
@@ -42,11 +46,11 @@ class EcosystemRecoveryGuide:
     def build(
         self,
         decision: BarrierDecision,
-        remediation: RemediationResult | None = None,
+        remediation: tuple[RemediationResult, ...] = (),
     ) -> RecoveryGuide:
         if not isinstance(decision, BarrierDecision):
             raise ValueError("decisão da barreira é obrigatória.")
-        if remediation is not None and not isinstance(remediation, RemediationResult):
+        if not isinstance(remediation, tuple) or not all(isinstance(item, RemediationResult) for item in remediation):
             raise ValueError("resultado de remediação inválido.")
 
         if decision.status is BarrierStatus.READY:
@@ -66,12 +70,12 @@ class EcosystemRecoveryGuide:
             )
 
         items: list[RecoveryGuideItem] = []
-        if remediation is not None and remediation.repaired_components:
-            repaired = ", ".join(remediation.repaired_components)
+        repaired = tuple(item.component for item in remediation if item.attempted and item.succeeded)
+        if repaired:
             items.append(
                 RecoveryGuideItem(
                     "Correção segura realizada",
-                    f"O ecossistema conseguiu corrigir automaticamente, de forma reversível e sem alterar autoridade financeira: {repaired}.",
+                    f"O ecossistema conseguiu corrigir automaticamente, de forma reversível e sem alterar autoridade financeira: {', '.join(repaired)}.",
                     RecoveryActionKind.AUTO_SAFE,
                     "A barreira precisa ser reavaliada antes de qualquer retomada.",
                 )
