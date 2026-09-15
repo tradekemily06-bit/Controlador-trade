@@ -3,31 +3,65 @@
 The bridge validates the boundary, builds OperationalState, delegates policy to
 RiskManager, and optionally reconciles a calculated leverage assessment with
 the same operation's operational exposure. It never grants execution authority.
+
+Operational approval is also fail-closed against the global runtime barrier.
+Pure calculations remain available elsewhere, but this bridge is an operational
+boundary and must never approve risk when the ecosystem runtime is unavailable,
+blocked, or indeterminate.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from core.ecosystem_incidents import EcosystemIncidentManager
+from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.leverage_operation import LeverageRequest, LeverageStatus, assess_leverage
 from core.operational_state import OperationalState, OperationalStateValidationError
 from core.point_value_engine import PointValueRequest
 from core.risk_manager import RiskDecision, RiskManager
 
 
+def _missing_runtime_barrier() -> GlobalOperationalBarrier:
+    """Return a deliberately blocked barrier for unbound operational callers."""
+    return GlobalOperationalBarrier(
+        components=(
+            SafetyComponent(
+                name="operational-runtime",
+                healthy=False,
+                reason="runtime operacional não foi fornecido ao bridge de risco",
+            ),
+        )
+    )
+
+
 class OperationalRiskBridge:
     """Fail-closed adapter between application payloads and RiskManager."""
 
-    def __init__(self, risk_manager: RiskManager, incident_manager: EcosystemIncidentManager | None = None) -> None:
+    def __init__(
+        self,
+        risk_manager: RiskManager,
+        incident_manager: EcosystemIncidentManager | None = None,
+        operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+    ) -> None:
         if not isinstance(risk_manager, RiskManager):
             raise ValueError("risk_manager must be RiskManager")
         if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
             raise ValueError("incident_manager must be EcosystemIncidentManager")
         self.risk_manager = risk_manager
         self.incident_manager = incident_manager
+        self.operational_barrier_provider = operational_barrier_provider or _missing_runtime_barrier
+
+    def _barrier_blocked(self) -> bool:
+        try:
+            barrier = self.operational_barrier_provider()
+            if not isinstance(barrier, GlobalOperationalBarrier):
+                return True
+            return not barrier.evaluate().operationally_allowed
+        except Exception:
+            return True
 
     def _incident_blocked(self) -> bool:
         if self.incident_manager is None:
@@ -37,9 +71,12 @@ class OperationalRiskBridge:
         except (OSError, ValueError, TypeError, RuntimeError):
             return True
 
+    def _operational_blocked(self) -> bool:
+        return self._barrier_blocked() or self._incident_blocked()
+
     def evaluate(self, payload: Mapping[str, Any]) -> RiskDecision:
-        if self._incident_blocked():
-            return RiskDecision(False, "Operação bloqueada: incidente técnico ativo ou estado de segurança indisponível.")
+        if self._operational_blocked():
+            return RiskDecision(False, "Operação bloqueada: barreira operacional global não está READY.")
         try:
             state = self.build_state(payload)
         except (TypeError, ValueError, OperationalStateValidationError):
@@ -49,12 +86,15 @@ class OperationalRiskBridge:
         if not base.allowed:
             return base
 
-        if self._incident_blocked():
-            return RiskDecision(False, "Operação bloqueada: incidente técnico detectado durante a avaliação de risco.")
+        if self._operational_blocked():
+            return RiskDecision(False, "Operação bloqueada: barreira operacional detectada durante a avaliação de risco.")
 
         leverage_decision = self._evaluate_leverage(payload, state)
         if leverage_decision is not None and not leverage_decision.allowed:
             return leverage_decision
+
+        if self._operational_blocked():
+            return RiskDecision(False, "Operação bloqueada: barreira operacional mudou antes da conclusão do risco.")
         return base
 
     @staticmethod
