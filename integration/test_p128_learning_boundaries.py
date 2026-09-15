@@ -69,12 +69,22 @@ def test_professor_activity_requires_validated_knowledge_and_is_not_trade_author
             "knowledge_validated": False,
         })
 
+    service.add_learning_resource({
+        "resource_id": "k-2",
+        "title": "Conhecimento validado",
+        "content_type": "ARTICLE",
+        "source_url": "https://example.com/validated",
+    })
+    source = service.learning_sources["k-2"]
+    source = service.validate_learning_source(source, content_verified=True, security_checked=True)
+    service.admit_learning_knowledge(source, knowledge_validated=True)
+
     activity = service.generate_professor_activity({
         "activity_id": "quiz-2",
         "knowledge_id": "k-2",
         "statement": "Afirmação validada",
         "concept": "contexto",
-        "knowledge_validated": True,
+        "knowledge_validated": False,
     })
     assert activity.activity_id == "quiz-2"
     assert service.learning_summary()["learning_authorizes_trading"] is False
@@ -82,9 +92,6 @@ def test_professor_activity_requires_validated_knowledge_and_is_not_trade_author
 
 def test_configured_professor_cannot_trust_browser_validation_claim():
     """SaaS-scoped learning must derive validation from stored tenant state."""
-    # This test uses the concrete scoped service boundary without requiring a
-    # production database; trusted identity is established directly for the
-    # service-layer contract under test.
     from security.http_identity import TrustedHttpIdentity, _current_identity
     from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
