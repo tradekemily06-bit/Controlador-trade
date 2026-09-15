@@ -15,7 +15,7 @@ class TenantDecisionRepository(Protocol):
     def load(self, decision_id: str, *, tenant_id: str, subject_id: str) -> DecisionRecord | None:
         ...
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[DecisionRecord]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[DecisionRecord]:
         ...
 
 
@@ -92,9 +92,9 @@ class ProductionTenantDecisionRepository:
             raise PermissionError("stored decision ownership does not match trusted scope")
         return record
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[DecisionRecord]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[DecisionRecord]:
         tenant, subject = self._validate_scope(tenant_id, subject_id)
-        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
             raise ValueError("limit must be greater than zero")
         records = [self._to_record(item) for item in self.store.list(tenant_id=tenant, subject_id=subject, limit=limit)]
         for record in records:
