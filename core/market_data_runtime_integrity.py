@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from core.market_data_fingerprint import fingerprint_candles
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrity, MarketDataIntegrityReport
 
@@ -28,6 +29,7 @@ class MarketDataRuntimeReport:
     gap_count: int
     stale: bool
     message: str
+    fingerprint: str | None = None
 
     @property
     def safe_for_analysis(self) -> bool:
@@ -44,6 +46,7 @@ class MarketDataRuntimeReport:
             "stale": self.stale,
             "message": self.message,
             "safe_for_analysis": self.safe_for_analysis,
+            "fingerprint": self.fingerprint,
         }
 
 
@@ -87,4 +90,5 @@ class MarketDataRuntimeIntegrity:
             gap_count=report.gap_count,
             stale=report.stale,
             message=report.message,
+            fingerprint=(fingerprint_candles(snapshot.candles) if report.health is MarketDataHealth.HEALTHY else None),
         )
