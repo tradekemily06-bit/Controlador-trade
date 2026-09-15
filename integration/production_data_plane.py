@@ -28,7 +28,11 @@ class ProductionDataPlane:
         provider, policy = build_production_provider(cfg)
         if provider is None:
             return None
-        if not policy.authorize_write(authenticated=True, tenant_id="configured"):
+        if not policy.authorize_write(
+            authenticated=True,
+            tenant_id="configured",
+            subject_id="configured",
+        ):
             raise RuntimeError("production data plane provider is not authorized by its storage policy")
         if not cfg.database_path:
             raise RuntimeError("production database path is required for durable auxiliary state")
