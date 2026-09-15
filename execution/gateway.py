@@ -84,8 +84,8 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
         # The ledger reservation is the atomic cross-process idempotency barrier.
-        # Checking contains()/memory first is only an optimization; reserve() is
-        # the authoritative decision and must happen before dispatch.
+        # Checking memory first is only an optimization; reserve() is the
+        # authoritative decision and must happen before dispatch.
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
         if self._ledger is not None:
@@ -104,8 +104,6 @@ class ExecutionGateway:
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
-                # A ledger reservation normally catches this first. Keep this
-                # second guard for legacy lifecycle state and recovery scenarios.
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
@@ -139,6 +137,7 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+            self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
@@ -154,6 +153,7 @@ class ExecutionGateway:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas persistência do ciclo falhou: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
 
+        self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
