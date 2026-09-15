@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from .kill_switch import KillSwitch, KillSwitchState
 
 
 class OperationalSafetyStore:
-    """Persists the validated operational audit, execution audit and kill-switch state."""
+    """Persists validated operational audit and kill-switch state atomically."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -39,10 +40,7 @@ class OperationalSafetyStore:
         if not isinstance(data, dict):
             raise ValueError("auditoria persistida inválida.")
         try:
-            return DecisionAuditRecord(
-                timestamp=datetime.fromisoformat(str(data["timestamp"])),
-                snapshot=cls._snapshot(data["snapshot"]),
-            )
+            return DecisionAuditRecord(timestamp=datetime.fromisoformat(str(data["timestamp"])), snapshot=cls._snapshot(data["snapshot"]))
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("auditoria persistida inválida.") from exc
 
@@ -84,6 +82,22 @@ class OperationalSafetyStore:
             raise ValueError("estado de segurança deve ser um objeto.")
         return payload
 
+    def _write_payload(self, payload: dict[str, object]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        try:
+            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            with temporary.open("r+b") as handle:
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            try:
+                if temporary.exists():
+                    temporary.unlink()
+            except OSError:
+                pass
+
     def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
@@ -95,13 +109,11 @@ class OperationalSafetyStore:
         if not isinstance(execution_audit, list):
             raise ValueError("auditoria de execução persistida inválida.")
         execution_audit = [self._execution_audit_item(item) for item in execution_audit]
-        payload = {
+        self._write_payload({
             "audit": [self._audit_dict(record) for record in audit.records()],
             "kill_switch": {"enabled": state.enabled, "reason": state.reason},
             "execution_audit": execution_audit,
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        })
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
@@ -112,9 +124,7 @@ class OperationalSafetyStore:
         kill_switch = payload.get("kill_switch", {})
         if not isinstance(audit, list) or not isinstance(kill_switch, dict):
             raise ValueError("estado de segurança inválido.")
-        payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        self._write_payload({"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized})
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         payload = self._read_payload()
@@ -124,9 +134,9 @@ class OperationalSafetyStore:
         return tuple(self._execution_audit_item(item) for item in raw)
 
     def load(self) -> tuple[DecisionAudit, KillSwitch]:
-        audit, kill_switch = DecisionAudit(), KillSwitch()
+        audit = DecisionAudit()
         if not self.path.exists():
-            return audit, kill_switch
+            return audit, KillSwitch()
         payload = self._read_payload()
         try:
             audit_payload = payload.get("audit", [])
@@ -138,6 +148,7 @@ class OperationalSafetyStore:
             if not isinstance(raw_state, dict):
                 raise ValueError("estado do kill switch inválido.")
             state = KillSwitchState(enabled=raw_state.get("enabled", False), reason=raw_state.get("reason"))
+            kill_switch = KillSwitch()
             if state.enabled:
                 kill_switch.activate(state.reason or "estado persistido")
             else:
