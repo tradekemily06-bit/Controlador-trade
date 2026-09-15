@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,8 +37,26 @@ class OperationalRuntime:
     safety_audit: DecisionAudit
 
 
+def _public_saas_multi_instance() -> bool:
+    public = os.environ.get("CONTROLADOR_SAAS_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+    multi_instance = os.environ.get("CONTROLADOR_MULTI_INSTANCE", "").strip().lower() in {"1", "true", "yes", "on"}
+    return public and multi_instance
+
+
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
-    """Compose one shared runtime with durable, fail-closed safety state."""
+    """Compose one shared runtime with durable, fail-closed safety state.
+
+    The operational safety, ledger, lifecycle and checkpoint stores below are
+    local-file state. They are valid for DEMO/single-instance operation, but
+    cannot be authoritative in a multi-instance public SaaS deployment. Fail
+    closed before creating those stores rather than allowing two instances to
+    diverge silently.
+    """
+    if _public_saas_multi_instance():
+        raise RuntimeError(
+            "multi-instance public SaaS requires a shared authoritative operational state provider"
+        )
+
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
