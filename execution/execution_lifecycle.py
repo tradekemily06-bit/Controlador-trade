@@ -37,11 +37,13 @@ class ExecutionLifecycleStore:
 
     def _load(self) -> None:
         if not self.path.exists():
+            self._records = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            loaded: dict[str, ExecutionLifecycleRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -52,9 +54,10 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
-                self._records[record.request_id] = record
+                loaded[record.request_id] = record
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
+        self._records = loaded
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
