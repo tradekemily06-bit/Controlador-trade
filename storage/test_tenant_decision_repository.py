@@ -16,9 +16,9 @@ class FakeProductionStore:
     def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict | None:
         return self.records.get((tenant_id, subject_id, record_id))
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[dict]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict]:
         items = [record for (scope, owner, _), record in self.records.items() if scope == tenant_id and owner == subject_id]
-        return items[:limit]
+        return items if limit is None else items[:limit]
 
 
 def sample_record(decision_id: str, *, tenant_id: str = "tenant-a", subject_id: str = "user-a") -> DecisionRecord:
@@ -64,6 +64,12 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
         self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a", subject_id="user-a")], ["a"])
         self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-a", subject_id="user-b")], ["other-user"])
         self.assertEqual([item.decision_id for item in self.repository.list(tenant_id="tenant-b", subject_id="user-b")], ["other-tenant"])
+
+    def test_large_history_is_not_truncated_by_default(self) -> None:
+        for index in range(150):
+            self.repository.save(sample_record(f"decision-{index}"), tenant_id="tenant-a", subject_id="user-a")
+        self.assertEqual(len(self.repository.list(tenant_id="tenant-a", subject_id="user-a")), 150)
+        self.assertEqual(len(self.repository.list(tenant_id="tenant-a", subject_id="user-a", limit=25)), 25)
 
     def test_owner_and_tenant_must_match_on_save(self) -> None:
         with self.assertRaises(PermissionError):
