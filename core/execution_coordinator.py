@@ -33,7 +33,6 @@ def _decision_identity(orchestration: OrchestrationResult) -> str:
         "decision_reason": orchestration.decision.reason,
         "snapshot": orchestration.snapshot.as_dict(),
         "timestamp": orchestration.timestamp.isoformat(),
-        "market_data_fingerprint": orchestration.market_data.fingerprint,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -114,10 +113,10 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
         if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
-        if plan.decision_identity != _decision_identity(orchestration):
-            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: decisão/orquestração mudou desde a criação do plano.")
         if plan.request.market_data_fingerprint != orchestration.market_data.fingerprint:
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: plano não corresponde aos dados de mercado que originaram a decisão.")
+        if plan.decision_identity != _decision_identity(orchestration):
+            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: decisão/orquestração mudou desde a criação do plano.")
         if entry_conditions is not None:
             if not isinstance(entry_conditions, tuple) or not all(isinstance(item, str) for item in entry_conditions):
                 return GatewayResult(GatewayStatus.INVALID_REQUEST, "condições de entrada inválidas.")
