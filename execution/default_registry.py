@@ -12,7 +12,12 @@ from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMark
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
 
 
-def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
+def build_demo_registry(
+    *,
+    mt5_module: Any = None,
+    symbol: str | None = None,
+    operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+) -> BrokerRegistry:
     """Build the broker registry used by the DEMO execution boundary.
 
     Registration is local and side-effect free: creating the registry does not
@@ -25,6 +30,7 @@ def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) ->
         ICMarketsMT5DemoAdapter(
             ICMarketsMT5DemoConfig(symbol=symbol),
             mt5_module=mt5_module,
+            operational_barrier_provider=operational_barrier_provider,
         ),
     )
     return registry
@@ -78,9 +84,6 @@ def build_ic_markets_mt5_demo_gateway(
     becoming a bypass around the production runtime's decision identity and
     risk/market freshness protections.
     """
-    registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
-    adapter = registry.get(IC_MARKETS_MT5_DEMO)
-
     required_context_missing = (
         operational_barrier_provider is None
         or market_data_fingerprint_provider is None
@@ -91,6 +94,13 @@ def build_ic_markets_mt5_demo_gateway(
         provider = _missing_runtime_barrier if operational_barrier_provider is None else _missing_execution_context_barrier
     else:
         provider = operational_barrier_provider
+
+    registry = build_demo_registry(
+        mt5_module=mt5_module,
+        symbol=symbol,
+        operational_barrier_provider=provider,
+    )
+    adapter = registry.get(IC_MARKETS_MT5_DEMO)
 
     gateway = ExecutionGateway(
         adapter,
