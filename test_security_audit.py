@@ -51,6 +51,13 @@ def test_public_saas_requires_durable_audit(monkeypatch):
         SecurityAudit()
 
 
+def test_public_saas_rejects_unsupported_multi_instance_audit(monkeypatch, tmp_path):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
+    monkeypatch.setenv("CONTROLADOR_MULTI_INSTANCE", "1")
+    with pytest.raises(RuntimeError, match="shared security audit provider"):
+        SecurityAudit(database_path=str(tmp_path / "security-audit.sqlite3"))
+
+
 def test_public_saas_durable_audit_does_not_fallback_on_write_failure(monkeypatch, tmp_path):
     monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
     database = tmp_path / "security-audit.sqlite3"
