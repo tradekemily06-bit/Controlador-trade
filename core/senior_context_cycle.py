@@ -42,6 +42,7 @@ class SeniorContextCycle:
     quality: SeniorContextQuality
     execution_authorized: bool = False
     operation_assessment: SeniorOperationAssessment | None = None
+    intelligence_assessment: SeniorIntelligenceAssessment | None = None
 
 
 class SeniorContextCycleBoundary:
@@ -80,6 +81,8 @@ class SeniorContextCycleBoundary:
             raise ValueError("senior assessment cannot authorize execution")
         if risk_assessment.execution_authorized:
             raise ValueError("risk assessment cannot authorize execution")
+        if intelligence_assessment is not None and intelligence_assessment.execution_authorized:
+            raise ValueError("intelligence assessment cannot authorize execution")
 
         knowledge = self._normalize_ids(validated_knowledge_ids)
         questions = tuple(
@@ -105,10 +108,23 @@ class SeniorContextCycleBoundary:
                 )
             )
 
+        if intelligence_assessment is not None:
+            questions = tuple(
+                dict.fromkeys(
+                    (
+                        *questions,
+                        *intelligence_assessment.gaps,
+                        *intelligence_assessment.required_reassessment,
+                    )
+                )
+            )
+
         quality = SeniorContextQuality.COMPLETE
         if whole_graph.status is WholeGraphStatus.PARTIAL:
             quality = SeniorContextQuality.PARTIAL
         if market_reading.status is not ReadingStatus.SUPPORTED or risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
+            quality = SeniorContextQuality.REASSESS
+        if intelligence_assessment is not None and intelligence_assessment.status.value != "READY":
             quality = SeniorContextQuality.REASSESS
 
         operation_assessment = self.operation_assessor.assess(
@@ -133,6 +149,7 @@ class SeniorContextCycleBoundary:
             quality=quality,
             execution_authorized=False,
             operation_assessment=operation_assessment,
+            intelligence_assessment=intelligence_assessment,
         )
 
     @staticmethod
