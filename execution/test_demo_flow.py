@@ -8,6 +8,7 @@ from core.operational_state import OperationalState
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrityReport
 from core.recovery_coordinator import RecoveryAssessment, RecoveryState
 from core.risk_manager import RiskManager
+from core.risk_state_fingerprint import risk_state_fingerprint
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel
 from core.demo_readiness import DemoReadiness
@@ -88,6 +89,7 @@ def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor, KillSwitch]:
     executor = PaperExecutor()
     kill_switch = KillSwitch()
     gateway = ExecutionGateway(executor, kill_switch)
+    gateway.set_risk_state_fingerprint_provider(lambda: risk_state_fingerprint(make_state()))
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
     return DemoFlow(decision_engine=DecisionEngine(RiskManager()), demo_coordinator=coordinator, audit_logger=logger, request_id_factory=lambda: "demo-flow-1", clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc)), logger, executor, kill_switch
