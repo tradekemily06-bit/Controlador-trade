@@ -12,6 +12,7 @@ from core.operational_state import OperationalState
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrityReport
 from core.recovery_coordinator import RecoveryAssessment, RecoveryState
 from core.risk_manager import RiskManager
+from core.risk_state_fingerprint import risk_state_fingerprint
 from core.runtime_config import RuntimeConfig
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
@@ -90,6 +91,7 @@ def make_demo_flow(risk_manager=None):
     executor = PaperExecutor()
     kill_switch = KillSwitch()
     gateway = ExecutionGateway(executor, kill_switch)
+    gateway.set_risk_state_fingerprint_provider(lambda: risk_state_fingerprint(make_state()))
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
     flow = DemoFlow(
