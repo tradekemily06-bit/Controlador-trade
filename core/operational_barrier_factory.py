@@ -9,7 +9,7 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
     """Create a fresh barrier from authoritative runtime state.
 
     The barrier is intentionally rebuilt for every decision/check so no stale
-    health snapshot can accidentally authorize an operation.  Diagnostics can
+    health snapshot can accidentally authorize an operation. Diagnostics can
     still run while the barrier is blocked; only operationally meaningful
     decisions are denied.
     """
@@ -64,10 +64,32 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
             "market-data-integrity",
             market.get("safe_for_analysis") is True,
             str(market.get("message") or "dados de mercado não estão seguros para análise"),
-            RemediationMode.AUTO_SAFE,
+            RemediationMode.MANUAL_REQUIRED,
         ))
     except Exception as exc:
-        components.append(SafetyComponent("market-data-integrity", False, f"integridade de mercado indisponível: {type(exc).__name__}", RemediationMode.AUTO_SAFE))
+        components.append(SafetyComponent("market-data-integrity", False, f"integridade de mercado indisponível: {type(exc).__name__}", RemediationMode.MANUAL_REQUIRED))
+
+    try:
+        recovery = runtime.recovery.assess()
+        components.append(SafetyComponent(
+            "execution-recovery",
+            recovery.can_resume,
+            recovery.message,
+            RemediationMode.MANUAL_REQUIRED,
+        ))
+    except Exception as exc:
+        components.append(SafetyComponent("execution-recovery", False, f"estado de recuperação indisponível: {type(exc).__name__}"))
+
+    try:
+        health = runtime.health.assess()
+        components.append(SafetyComponent(
+            "runtime-health",
+            health.state.value == "HEALTHY",
+            health.message,
+            RemediationMode.MANUAL_REQUIRED,
+        ))
+    except Exception as exc:
+        components.append(SafetyComponent("runtime-health", False, f"saúde do runtime indisponível: {type(exc).__name__}"))
 
     try:
         runtime.safety_store.load()
