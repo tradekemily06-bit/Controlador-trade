@@ -50,6 +50,7 @@ class ExecutionCoordinator:
         symbol = orchestration.analysis.symbol
         if not symbol:
             raise ValueError("decisão executável precisa de símbolo.")
+        fingerprint = orchestration.market_data.fingerprint
         return ExecutionPlan(
             request_id=request_id,
             request=ExecutionRequest(
@@ -59,6 +60,7 @@ class ExecutionCoordinator:
                 duration_seconds=duration_seconds,
                 mode=mode,
                 request_id=request_id,
+                market_data_fingerprint=fingerprint,
             ),
         )
 
@@ -77,6 +79,8 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
         if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
+        if plan.request.market_data_fingerprint != orchestration.market_data.fingerprint:
+            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: plano não corresponde aos dados de mercado que originaram a decisão.")
         intent = ExecutionIntent(
             request_id=plan.request_id,
             symbol=plan.request.symbol,
@@ -85,6 +89,7 @@ class ExecutionCoordinator:
             duration_seconds=plan.request.duration_seconds,
             mode=plan.request.mode,
             created_at=orchestration.timestamp,
+            market_data_fingerprint=orchestration.market_data.fingerprint,
         )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
