@@ -8,6 +8,7 @@ from core.operational_state import OperationalState
 from core.risk_manager import RiskManager
 from core.market_data import Candle
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
@@ -38,6 +39,18 @@ def senior_context():
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="HIGH",
+        reasons=("contexto profissional explicitamente validado no teste",),
+        strengths=("evidência suficiente", "sem contradição material"),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("sinal confirmado", "contexto favorável"),
+        evidence_against=(),
+        independent_confluences=("estrutura", "confirmação"),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="core-integration-senior-context",
         whole_graph=None,
@@ -49,6 +62,7 @@ def senior_context():
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
         execution_authorized=False,
+        operation_assessment=operation,
     )
 
 
@@ -107,8 +121,8 @@ def test_risk_blocks_execution():
     )
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
-        market_context=context,
         operational_state=state(realized_pnl=-100),
+        market_context=context,
     )
     assert result.decision == FinalDecision.BLOQUEAR
 
