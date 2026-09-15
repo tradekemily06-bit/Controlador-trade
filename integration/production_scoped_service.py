@@ -13,13 +13,17 @@ from security.http_identity import current_trusted_identity, saas_public_mode
 
 
 class ProductionScopedServiceMixin:
-    """Replace process-global decision state with durable scoped state.
+    """Replace process-global decision state with durable scoped state."""
 
-    Local/test mode keeps the existing DecisionStore behavior. Once a
-    production data plane is configured, owned records are read and written
-    through that provider. Public SaaS mode fails closed if no provider is
-    configured instead of falling back to process memory.
-    """
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        # ConfiguredEcosystemService historically implemented these methods
+        # directly. Replace those legacy class methods at class construction so
+        # trusted tenant validation cannot be bypassed by an older override.
+        if "generate_professor_activity" in cls.__dict__:
+            cls.generate_professor_activity = ProductionScopedServiceMixin._scoped_generate_professor_activity
+        if "generate_professional_questions" in cls.__dict__:
+            cls.generate_professional_questions = ProductionScopedServiceMixin._scoped_generate_professional_questions
 
     def __init__(self, *args: Any, production_data_plane: ProductionDataPlane | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -28,12 +32,6 @@ class ProductionScopedServiceMixin:
             self.production_storage = self.production_data_plane.policy
             from security.production_operation_gate import ProductionOperationGate
             self.production_gate = ProductionOperationGate(self.production_storage)
-        # ConfiguredEcosystemService historically defined these methods itself.
-        # Bind the hardened instance implementations so the trusted tenant
-        # boundary wins even when a subclass still contains a legacy method.
-        if hasattr(self, "scoped_learning") and hasattr(self, "_learning_scope"):
-            self.generate_professor_activity = self._scoped_generate_professor_activity
-            self.generate_professional_questions = self._scoped_generate_professional_questions
 
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
