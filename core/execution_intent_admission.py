@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from core.execution_intent import ExecutionIntent
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus
 from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
 
@@ -53,6 +54,10 @@ class ExecutionIntentAdmission:
             raise ValueError("contexto sênior não pode conceder autoridade de execução.")
         if senior_context.quality is not SeniorContextQuality.COMPLETE:
             raise ValueError("contexto sênior incompleto; admissão bloqueada.")
+        if senior_context.operation_assessment is None:
+            return GatewayResult(GatewayStatus.BLOCKED, "avaliação profissional da operação ausente; admissão bloqueada.")
+        if senior_context.operation_assessment.disposition is not SeniorOperationDisposition.SUITABLE:
+            return GatewayResult(GatewayStatus.BLOCKED, "avaliação profissional não considera a operação adequada; admissão bloqueada.")
         if senior_context.risk_assessment.execution_authorized:
             raise ValueError("avaliação sênior de risco não pode conceder autoridade de execução.")
         if senior_context.risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
