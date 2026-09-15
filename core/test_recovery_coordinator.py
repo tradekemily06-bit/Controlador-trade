@@ -26,6 +26,7 @@ def test_checkpoint_allows_safe_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
     coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.REJECTED, now, "rejected"))
+    coordinator.execution_ledger.reserve("req-3")
     coordinator.execution_ledger.mark_rejected("req-3")
     coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", now))
     result = coordinator.assess()
