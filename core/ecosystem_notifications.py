@@ -1,9 +1,3 @@
-"""Prioritized notifications for material ecosystem events.
-
-All material events can be recorded; only important/critical events surface by
-default so the operational screen stays clean. Notifications never decide or
-authorize trades.
-"""
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -50,14 +44,6 @@ class EcosystemNotification:
 
 
 class EcosystemNotificationCenter:
-    """Notification state isolated by trusted tenant+subject scope.
-
-    Events emitted without a trusted identity are global system events. Scoped
-    events are private to one tenant+subject pair. When a durable state store is
-    supplied, both global and scoped notification histories survive restart.
-    The in-process scoped cache is bounded and only accelerates access.
-    """
-
     NAMESPACE = "ecosystem.notifications.v1"
     GLOBAL_TENANT = "__system__"
     GLOBAL_SUBJECT = "__global__"
@@ -84,9 +70,7 @@ class EcosystemNotificationCenter:
             return None
         tenant_id = str(identity.tenant_id).strip()
         subject_id = str(identity.subject_id).strip()
-        if not tenant_id or not subject_id:
-            return None
-        return tenant_id, subject_id
+        return (tenant_id, subject_id) if tenant_id and subject_id else None
 
     @staticmethod
     def _decode(payload: object) -> list[EcosystemNotification]:
@@ -130,6 +114,16 @@ class EcosystemNotificationCenter:
             self._scoped_notifications.popitem(last=False)
         return events
 
+    def _replace_cache(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> None:
+        if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT):
+            self._global_notifications = events
+            self._global_loaded = True
+            return
+        self._scoped_notifications[scope] = events
+        self._scoped_notifications.move_to_end(scope)
+        while len(self._scoped_notifications) > self._cache_size:
+            self._scoped_notifications.popitem(last=False)
+
     def _current(self) -> tuple[EcosystemNotification, ...]:
         scope = self._trusted_scope()
         scoped = tuple(self._scoped(scope)) if scope is not None else ()
@@ -140,15 +134,11 @@ class EcosystemNotificationCenter:
             raise ValueError("notification is required")
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
-        scope = self._trusted_scope()
-        if scope is None:
-            events = self._global()
-            events.append(notification)
-            self._save((self.GLOBAL_TENANT, self.GLOBAL_SUBJECT), events)
-        else:
-            events = self._scoped(scope)
-            events.append(notification)
-            self._save(scope, events)
+        scope = self._trusted_scope() or (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT)
+        events = self._load(scope)
+        events.append(notification)
+        self._save(scope, events)
+        self._replace_cache(scope, events)
         return notification
 
     def new_id(self, prefix: str = "event") -> str:
@@ -166,9 +156,7 @@ class EcosystemNotificationCenter:
 
     def visible(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
         events = self._current()
-        if include_info:
-            return events
-        return tuple(n for n in events if n.severity is not NotificationSeverity.INFO)
+        return events if include_info else tuple(n for n in events if n.severity is not NotificationSeverity.INFO)
 
     def critical(self) -> tuple[EcosystemNotification, ...]:
         return tuple(n for n in self._current() if n.severity is NotificationSeverity.CRITICAL)
