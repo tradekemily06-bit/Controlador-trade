@@ -106,4 +106,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     # snapshots while keeping construction free of circular imports.
     from core.operational_barrier_factory import build_global_operational_barrier
     gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
+    gateway.set_market_data_fingerprint_provider(
+        lambda: runtime.market_data.report.fingerprint if runtime.market_data.report is not None else None
+    )
     return runtime
