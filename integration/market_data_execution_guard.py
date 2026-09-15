@@ -13,7 +13,11 @@ class MarketDataExecutionGuard:
 
     This boundary never fetches data and never selects a broker. It only permits
     an already-created execution request to reach the gateway when the runtime
-    holds a HEALTHY market-data report for the same symbol.
+    holds a HEALTHY market-data report for the same symbol *and* the request
+    carries the exact market-data identity that was validated. The gateway can
+    then re-check that identity immediately before dispatch, closing the
+    check-to-dispatch gap instead of treating a one-time health check as proof
+    that the market context is still the same.
     """
 
     market_data: MarketDataRuntimeState
@@ -35,5 +39,15 @@ class MarketDataExecutionGuard:
             return GatewayResult(
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.",
+            )
+        if not isinstance(report.fingerprint, str) or len(report.fingerprint) != 64:
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "execução bloqueada: identidade do snapshot de mercado não está disponível.",
+            )
+        if request.market_data_fingerprint != report.fingerprint:
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "execução bloqueada: identidade de mercado da requisição não corresponde ao snapshot validado.",
             )
         return self.gateway.execute(request_id, request, **kwargs)
