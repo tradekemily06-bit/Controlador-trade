@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.execution_intent import ExecutionIntent
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
@@ -81,6 +82,30 @@ def test_ready_demo_reaches_gateway_once():
     assert result.gateway.status is GatewayStatus.ACCEPTED
     assert result.executed
     assert executor.calls == 1
+
+
+def test_demo_preserves_intent_timestamp_for_freshness_gate():
+    executor = FakeExecutor()
+    now = datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc)
+    gateway = ExecutionGateway(
+        executor,
+        KillSwitch(),
+        decision_freshness_policy=DecisionFreshnessPolicy(max_age_seconds=30),
+        decision_clock=lambda: now,
+    )
+    readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=KillSwitch()))
+    demo_coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
+    result = demo_coordinator.execute(
+        config=config(),
+        market_data=market(),
+        recovery=recovery(),
+        intent=intent(),
+        senior_context=senior_context(),
+    )
+    assert result.gateway is not None
+    assert result.gateway.status is GatewayStatus.BLOCKED
+    assert "expirada" in result.gateway.message
+    assert executor.calls == 0
 
 
 def test_missing_senior_context_never_calls_executor():
