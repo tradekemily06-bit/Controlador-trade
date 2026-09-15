@@ -36,7 +36,7 @@ def test_gateway_stops_after_runtime_kill_switch_changes(tmp_path: Path) -> None
     result = runtime.gateway.execute("blocked-after-runtime-change", request)
 
     assert result.accepted is False
-    assert "kill" in result.message.lower()
+    assert "bloqueio de segurança" in result.message.lower()
 
 
 def test_global_barrier_never_reports_ready_when_safety_store_cannot_be_read(tmp_path: Path, monkeypatch) -> None:
