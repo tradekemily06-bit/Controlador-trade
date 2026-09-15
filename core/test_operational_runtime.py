@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from integration.ecosystem_service import EcosystemService
@@ -25,6 +26,26 @@ def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_p
     assert snapshot["kill_switch"]["state"] == "CLEAR"
     assert snapshot["runtime_health"]["state"] == "HEALTHY"
     assert snapshot["market_data"]["health"] == "NOT_CONNECTED"
+
+
+def test_public_saas_multi_instance_runtime_fails_before_local_state_creation(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
+    monkeypatch.setenv("CONTROLADOR_MULTI_INSTANCE", "true")
+
+    with pytest.raises(RuntimeError, match="shared authoritative operational state provider"):
+        build_operational_runtime(tmp_path)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_public_saas_single_instance_runtime_remains_supported(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
+    monkeypatch.delenv("CONTROLADOR_MULTI_INSTANCE", raising=False)
+
+    runtime = build_operational_runtime(tmp_path)
+
+    assert runtime.gateway._ledger is runtime.execution_ledger
+    assert (tmp_path / "operational-safety.json").exists()
 
 
 def test_pending_runtime_is_visible_and_blocks_operation(tmp_path):
