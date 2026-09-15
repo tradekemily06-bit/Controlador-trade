@@ -21,6 +21,10 @@ class ProductionScopedServiceMixin:
     def __init__(self, *args: Any, production_data_plane: ProductionDataPlane | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.production_data_plane = production_data_plane if production_data_plane is not None else ProductionDataPlane.from_config()
+        if self.production_data_plane is not None:
+            self.production_storage = self.production_data_plane.policy
+            from security.production_operation_gate import ProductionOperationGate
+            self.production_gate = ProductionOperationGate(self.production_storage)
 
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
@@ -61,9 +65,7 @@ class ProductionScopedServiceMixin:
             return
 
         if saas_public_mode():
-            if unowned or not owned:
-                raise RuntimeError("production storage provider is not configured; local decision fallback is disabled")
-            raise RuntimeError("production storage provider is not configured")
+            raise RuntimeError("production storage provider is not configured; local decision fallback is disabled")
 
         super()._persist_records(records)
 
@@ -73,11 +75,13 @@ class ProductionScopedServiceMixin:
             return super().record_outcome(decision_id, outcome, subject_id=subject_id, tenant_id=tenant_id)
         if owner is None:
             raise PermissionError("trusted tenant and subject scope are required for production outcome updates")
+        if self.production_data_plane is None:
+            raise RuntimeError("production storage provider is not configured")
         record = self.production_data_plane.load(
             decision_id,
             tenant_id=owner.tenant_id,
             subject_id=owner.subject_id,
-        ) if self.production_data_plane is not None else None
+        )
         if record is None:
             raise ValueError("decision_id não encontrado")
         updated = record.with_outcome(outcome)
