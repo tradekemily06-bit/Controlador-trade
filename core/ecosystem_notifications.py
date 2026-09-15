@@ -72,11 +72,9 @@ class EcosystemNotificationCenter:
         subject_id = str(identity.subject_id).strip()
         return (tenant_id, subject_id) if tenant_id and subject_id else None
 
-    def _required_scope(self) -> tuple[str, str]:
+    def _required_scope(self) -> tuple[str, str] | None:
         scope = self._trusted_scope()
-        if scope is None:
-            if self._require_durable or self._state_store is not None:
-                raise PermissionError("trusted scope is required for notification state")
+        if scope is None and (self._require_durable or self._state_store is not None):
             raise PermissionError("trusted scope is required for notification state")
         return scope
 
@@ -138,6 +136,8 @@ class EcosystemNotificationCenter:
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
         scope = self._required_scope()
+        if scope is None:
+            return tuple(self._global())
         return tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
@@ -146,6 +146,12 @@ class EcosystemNotificationCenter:
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
         scope = self._required_scope()
+        if scope is None:
+            events = list(self._global())
+            events.append(notification)
+            self._global_notifications = events
+            self._global_loaded = True
+            return notification
         events = self._load(scope)
         events.append(notification)
         self._save(scope, events)
