@@ -10,7 +10,7 @@ here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Mapping
 from uuid import uuid4
 
 from data.models import Candle
@@ -113,6 +113,9 @@ class SeniorContextOrchestrator:
         for value in request.validated_knowledge_ids:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("validated_knowledge_ids must contain non-empty strings")
+        for item in request.trusted_knowledge:
+            if not isinstance(item, TrustedKnowledge):
+                raise ValueError("trusted_knowledge must contain TrustedKnowledge values")
         trusted_ids = {item.knowledge_id for item in request.trusted_knowledge}
         unknown_ids = {value.strip() for value in request.validated_knowledge_ids} - trusted_ids
         if unknown_ids:
@@ -120,6 +123,3 @@ class SeniorContextOrchestrator:
         for domain in request.available_risk_domains:
             if not isinstance(domain, RiskDomain):
                 raise ValueError("available_risk_domains must contain RiskDomain values")
-        for item in request.trusted_knowledge:
-            if not isinstance(item, TrustedKnowledge):
-                raise ValueError("trusted_knowledge must contain TrustedKnowledge values")
