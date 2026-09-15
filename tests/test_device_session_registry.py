@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from core.device_session_registry import DeviceSessionRegistry
@@ -46,3 +47,9 @@ def test_state_survives_new_registry_instance(tmp_path):
     second = DeviceSessionRegistry(path)
     active = second.active(subject_id="user-1", tenant_id="tenant-1")
     assert [item.session_id for item in active] == [session.session_id]
+
+
+def test_local_registry_fails_closed_when_multi_instance_is_enabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_MULTI_INSTANCE", "true")
+    with pytest.raises(RuntimeError, match="not safe for multi-instance"):
+        DeviceSessionRegistry(tmp_path / "sessions.sqlite3")
