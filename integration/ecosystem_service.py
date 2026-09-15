@@ -188,7 +188,10 @@ class EcosystemService:
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
-        activity = self.learning_professor.build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        spec = ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE")))
+        source = self.learning_sources.get(spec.knowledge_id)
+        validated = bool(source is not None and source.status is LearningSourceStatus.VALIDATED and source.knowledge_validated and not source.operation_eligible)
+        activity = self.learning_professor.build_activity(spec, knowledge_validated=validated)
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
@@ -243,13 +246,20 @@ class EcosystemService:
         return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
 
     def public_status(self) -> dict[str, Any]:
-        """Return only safe, intentionally public runtime information."""
+        """Return only safe, intentionally public runtime information.
+
+        The public surface intentionally does not mirror internal readiness warnings.
+        Internal configuration/readiness details belong to authenticated operator/admin
+        surfaces.  A public deployment is SAFE when no CRITICAL condition is present;
+        execution remains disabled regardless of this presentation-level status.
+        """
         alerts = self.health_alerts()
+        critical_alerts = [alert for alert in alerts if str(alert.get("severity", "")).upper() == NotificationSeverity.CRITICAL.value]
         return {
             "execution_allowed": False,
-            "health": "WARNING" if alerts else "SAFE",
+            "health": "CRITICAL" if critical_alerts else "SAFE",
             "real": "DESABILITADO",
-            "alerts": alerts,
+            "alerts": critical_alerts,
         }
 
     def system_status(self) -> dict[str, Any]:
