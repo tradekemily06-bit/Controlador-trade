@@ -27,6 +27,11 @@ class ProfessionalQuestion:
     source_basis: tuple[str, ...] = ()
 
 
+# Stable public name used by the professor/service layer. Keep both names so
+# older callers of ProfessionalQuestion continue to work without a migration.
+ProfessionalLearningQuestion = ProfessionalQuestion
+
+
 class ProfessionalLearningQuestionEngine:
     """Generates senior-level educational questions from validated knowledge.
 
