@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from typing import Callable
 
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -26,16 +28,48 @@ class RealGatewayResult:
 
 
 class RealExecutionGateway:
-    """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
+    """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway.
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    REAL dispatch is fail-closed against the ecosystem-wide operational barrier.
+    A missing provider is itself unsafe: unit/integration callers must explicitly
+    supply a barrier provider before REAL dispatch can reach a broker.
+    """
+
+    def __init__(
+        self,
+        adapter_gateway: BrokerAdapterGateway,
+        ledger: ExecutionLedger,
+        operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+    ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._operational_barrier_provider = operational_barrier_provider
         self._processed_request_ids: set[str] = set(ledger.records())
+
+    def set_operational_barrier_provider(
+        self, provider: Callable[[], GlobalOperationalBarrier] | None
+    ) -> None:
+        """Replace the barrier provider; passing None deliberately fail-closes REAL."""
+        self._operational_barrier_provider = provider
+
+    def _global_barrier_error(self) -> str | None:
+        provider = self._operational_barrier_provider
+        if provider is None:
+            return "barreira operacional global não configurada; execução REAL bloqueada"
+        try:
+            barrier = provider()
+            if not isinstance(barrier, GlobalOperationalBarrier):
+                return "provedor da barreira operacional global retornou um objeto inválido"
+            decision = barrier.evaluate()
+        except Exception as exc:
+            return f"estado da barreira operacional global indisponível: {type(exc).__name__}"
+        if not decision.operationally_allowed:
+            return f"barreira operacional global bloqueou REAL: {decision.reason}"
+        return None
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -54,6 +88,9 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
+        barrier_error = self._global_barrier_error()
+        if barrier_error is not None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
