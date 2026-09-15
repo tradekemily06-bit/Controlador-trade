@@ -11,7 +11,7 @@ from wsgiref.simple_server import make_server
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
-from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+from integration.guarded_ecosystem_service import GuardedEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
@@ -24,7 +24,7 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+SERVICE = GuardedEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
 PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
 PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/psychology/status", "/api/saas/status"}
