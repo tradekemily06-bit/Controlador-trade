@@ -1,3 +1,6 @@
+from datetime import datetime, timezone, timedelta
+
+from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -129,3 +132,62 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_blocks_active_maintenance_before_executor():
+    now = datetime(2026, 9, 14, 20, 0, tzinfo=timezone.utc)
+    maintenance = MaintenanceManager()
+    maintenance.schedule(
+        maintenance_id="maint-1",
+        title="Atualização",
+        message="Manutenção programada",
+        starts_at=now + timedelta(minutes=5),
+        duration_minutes=30,
+        now=now,
+    )
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
+
+    scheduled = gateway.execute("req-scheduled", request(), timestamp=now + timedelta(minutes=2))
+    active = gateway.execute("req-active", request(), timestamp=now + timedelta(minutes=10))
+
+    assert scheduled.status is GatewayStatus.ACCEPTED
+    assert active.status is GatewayStatus.BLOCKED
+    assert len(executor.executions()) == 1
+
+
+def test_gateway_allows_execution_after_maintenance_completes():
+    now = datetime(2026, 9, 14, 20, 0, tzinfo=timezone.utc)
+    maintenance = MaintenanceManager()
+    maintenance.schedule(
+        maintenance_id="maint-1",
+        title="Atualização",
+        message="Manutenção programada",
+        starts_at=now + timedelta(minutes=5),
+        duration_minutes=10,
+        now=now,
+    )
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), maintenance=maintenance)
+
+    result = gateway.execute("req-after", request(), timestamp=now + timedelta(minutes=20))
+
+    assert result.status is GatewayStatus.ACCEPTED
+
+
+def test_gateway_rechecks_maintenance_after_persistence_before_executor():
+    class ActivatesOnFinalCheck:
+        def __init__(self):
+            self.calls = 0
+
+        def execution_blocked(self, *, now):
+            self.calls += 1
+            return self.calls >= 2
+
+    maintenance = ActivatesOnFinalCheck()
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
+
+    result = gateway.execute("req-final-maintenance", request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()

@@ -5,10 +5,13 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
+from core.ecosystem_incidents import EcosystemIncidentManager
+from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.operational_safety_store import OperationalSafetyStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
 
@@ -44,17 +47,76 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        maintenance: MaintenanceManager | None = None,
+        safety_store: OperationalSafetyStore | None = None,
+        incident_manager: EcosystemIncidentManager | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
             raise ValueError("kill_switch é obrigatório.")
+        if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
+            raise ValueError("safety_store inválido.")
+        if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
+            raise ValueError("incident_manager inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._maintenance = maintenance
+        self._safety_store = safety_store
+        self._incident_manager = incident_manager
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+
+    def _refresh_kill_switch(self) -> str | None:
+        """Refresh the authoritative persisted kill switch before dispatch."""
+        if self._safety_store is None:
+            return None
+        try:
+            _audit, persisted = self._safety_store.load()
+            self._kill_switch.synchronize(persisted.state)
+            return None
+        except (OSError, ValueError, TypeError) as exc:
+            return f"estado de segurança indisponível: {type(exc).__name__}"
+
+    def _incident_error(self) -> str | None:
+        """Technical incident is a global fail-closed barrier."""
+        if self._incident_manager is None:
+            return None
+        try:
+            if self._incident_manager.execution_blocked():
+                status = self._incident_manager.status()
+                reason = status.get("reason") or "problema técnico ativo ou estado de incidente indisponível"
+                return f"execução bloqueada por incidente técnico: {reason}"
+            return None
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            return f"estado de incidente indisponível: {type(exc).__name__}"
+
+    def _final_safety_barrier(self, *, now: datetime) -> str | None:
+        """Re-check every authoritative operational barrier immediately before dispatch."""
+        incident_error = self._incident_error()
+        if incident_error is not None:
+            return incident_error
+        refresh_error = self._refresh_kill_switch()
+        if refresh_error is not None:
+            return refresh_error
+        if not self._kill_switch.allows_execution():
+            return f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}"
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=now):
+            return "execução bloqueada durante manutenção ativa do ecossistema."
+        return None
+
+    def _abandon_reserved_request(self, request_id: str) -> None:
+        """Never leave a reservation falsely reusable after a lifecycle conflict."""
+        if self._ledger is None:
+            return
+        try:
+            current = self._ledger.status(request_id)
+            if current is ExecutionLedgerStatus.RESERVED:
+                self._ledger.mark_unknown(request_id)
+        except (OSError, ValueError):
+            pass
 
     def execute(
         self,
@@ -70,46 +132,82 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
         event_time = timestamp or datetime.now(timezone.utc)
+        preflight_incident_error = self._incident_error()
+        if preflight_incident_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, preflight_incident_error)
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
+            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
+
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
 
+        refresh_error = self._refresh_kill_switch()
+        if refresh_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, refresh_error)
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+        if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                current = self._ledger.status(request_id)
+                if current is not None:
+                    self._processed_request_ids.add(request_id)
+                    if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                        return GatewayResult(GatewayStatus.BLOCKED, "request_id está em estado incerto; reconciliação explícita obrigatória antes de novo envio.")
+                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar request_id com segurança: {exc}")
+            self._processed_request_ids.add(request_id)
 
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
+                self._abandon_reserved_request(request_id)
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
-                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+                return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
+                self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+
+        final_safety_error = self._final_safety_barrier(now=event_time)
+        if final_safety_error is not None:
+            self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
 
         try:
             result = self._executor.execute(request)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            self._open_incident_on_executor_failure(exc)
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            self._open_incident_on_executor_failure("resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+            self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
@@ -117,17 +215,34 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
-        self._processed_request_ids.add(request_id)
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas persistência do ciclo falhou: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou: {exc}", result)
 
+        self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
+    def _open_incident_on_executor_failure(self, error: object) -> None:
+        if self._incident_manager is None:
+            return
+        try:
+            self._incident_manager.open_incident(title="Falha técnica no executor", message=f"O executor apresentou uma falha e novas operações foram bloqueadas: {error}")
+        except Exception:
+            # Failure to publish the incident must never turn a failed safety
+            # path into an executable path. The request is already UNKNOWN.
+            pass
+
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        if self._ledger is not None:
+            try:
+                current_status = self._ledger.status(request_id)
+                if current_status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                    self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:

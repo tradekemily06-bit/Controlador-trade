@@ -69,12 +69,50 @@ def test_professor_activity_requires_validated_knowledge_and_is_not_trade_author
             "knowledge_validated": False,
         })
 
+    service.add_learning_resource({
+        "resource_id": "k-2",
+        "title": "Conhecimento validado",
+        "content_type": "ARTICLE",
+        "source_url": "https://example.com/validated",
+    })
+    source = service.learning_sources["k-2"]
+    source = service.validate_learning_source(source, content_verified=True, security_checked=True)
+    service.admit_learning_knowledge(source, knowledge_validated=True)
+    service.add_learning_observation({
+        "resource_id": "k-2",
+        "statement": "Afirmação validada armazenada no tenant",
+        "concepts": ["contexto"],
+        "validated": True,
+    })
+
     activity = service.generate_professor_activity({
         "activity_id": "quiz-2",
         "knowledge_id": "k-2",
-        "statement": "Afirmação validada",
-        "concept": "contexto",
+        "statement": "TENTATIVA DE INJETAR OUTRA AFIRMAÇÃO",
+        "concept": "TENTATIVA DE INJETAR OUTRO CONCEITO",
         "knowledge_validated": True,
     })
     assert activity.activity_id == "quiz-2"
+    assert "Afirmação validada armazenada no tenant" in activity.prompt
+    assert "TENTATIVA DE INJETAR" not in activity.prompt
     assert service.learning_summary()["learning_authorizes_trading"] is False
+
+
+def test_configured_professor_cannot_trust_browser_validation_claim():
+    """SaaS-scoped learning must derive validation from stored tenant state."""
+    from security.http_identity import TrustedHttpIdentity, _current_identity
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    token = _current_identity.set(TrustedHttpIdentity("user-a", "tenant-a", "admin"))
+    try:
+        service = ConfiguredEcosystemService()
+        with pytest.raises(ValueError, match="validated knowledge from the current tenant"):
+            service.generate_professor_activity({
+                "activity_id": "spoofed-quiz",
+                "knowledge_id": "unvalidated-source",
+                "statement": "Conteúdo que não passou pelo gate",
+                "concept": "contexto",
+                "knowledge_validated": True,
+            })
+    finally:
+        _current_identity.reset(token)
