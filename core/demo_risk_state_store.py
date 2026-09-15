@@ -12,7 +12,7 @@ must fail closed at the execution boundary.
 import json
 import os
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -30,11 +30,16 @@ class DemoRiskStateStore:
 
     VERSION = 1
     TRUSTED_SOURCES = frozenset({"demo-account-adapter", "reconciliation"})
+    DEFAULT_MAX_AGE_SECONDS = 30.0
+    MAX_FUTURE_SKEW_SECONDS = 2.0
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, max_age_seconds: float = DEFAULT_MAX_AGE_SECONDS) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
+        if not isinstance(max_age_seconds, (int, float)) or max_age_seconds <= 0:
+            raise ValueError("max_age_seconds deve ser maior que zero.")
         self.path = Path(path)
+        self.max_age_seconds = float(max_age_seconds)
 
     def _lock(self):
         return exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock"))
@@ -89,22 +94,31 @@ class DemoRiskStateStore:
             raise DemoRiskStateUnavailable("versão do estado de risco DEMO não suportada")
         return payload
 
-    @classmethod
-    def _validate_payload(cls, payload: dict[str, object]) -> tuple[OperationalState, str, str]:
+    def _validate_payload(self, payload: dict[str, object], *, now: datetime | None = None) -> tuple[OperationalState, str, str]:
         source = payload.get("source")
         stored_fingerprint = payload.get("fingerprint")
         updated_at = payload.get("updated_at")
-        if source not in cls.TRUSTED_SOURCES:
+        if source not in self.TRUSTED_SOURCES:
             raise DemoRiskStateUnavailable("origem do estado de risco DEMO não é confiável")
         if not isinstance(stored_fingerprint, str) or len(stored_fingerprint) != 64:
             raise DemoRiskStateUnavailable("fingerprint do estado de risco DEMO inválido")
         if not isinstance(updated_at, str) or not updated_at.strip():
             raise DemoRiskStateUnavailable("timestamp do estado de risco DEMO ausente")
         try:
-            datetime.fromisoformat(updated_at)
+            updated_dt = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
         except ValueError as exc:
             raise DemoRiskStateUnavailable("timestamp do estado de risco DEMO inválido") from exc
-        state = cls._decode_state(payload.get("state"))
+        if updated_dt.tzinfo is None:
+            raise DemoRiskStateUnavailable("timestamp do estado de risco DEMO deve conter timezone")
+        reference = now or datetime.now(timezone.utc)
+        if reference.tzinfo is None:
+            reference = reference.replace(tzinfo=timezone.utc)
+        age = (reference - updated_dt).total_seconds()
+        if age < -self.MAX_FUTURE_SKEW_SECONDS:
+            raise DemoRiskStateUnavailable("estado de risco DEMO possui timestamp futuro inválido")
+        if age > self.max_age_seconds:
+            raise DemoRiskStateUnavailable("estado de risco DEMO está desatualizado")
+        state = self._decode_state(payload.get("state"))
         if risk_state_fingerprint(state) != stored_fingerprint:
             raise DemoRiskStateUnavailable("fingerprint do estado de risco DEMO não confere")
         if not state.risk_fields_available():
