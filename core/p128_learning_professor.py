@@ -15,7 +15,7 @@ class QuizMode(str, Enum):
     DIAGNOSTIC = "DIAGNOSTIC"
     CONSOLIDATION = "CONSOLIDATION"
     REMEDIATION = "REMEDIATION"
-    MASTERy = "MASTERY"
+    MASTERY = "MASTERY"
     MATERIAL_REVIEW = "MATERIAL_REVIEW"
 
 
@@ -38,11 +38,7 @@ class ProfessorActivitySpec:
 
 @dataclass(frozen=True)
 class QuizPlan:
-    """Evidence-driven plan for the current assessment session.
-
-    The count is deliberately dynamic. It is not a storage/history limit and
-    does not cap the learner's future assessments or learning material.
-    """
+    """Evidence-driven plan for the current assessment session."""
 
     mode: QuizMode
     question_types: tuple[QuestionType, ...]
@@ -68,9 +64,9 @@ class AnswerAssessment:
 class LearningProfessor:
     """Senior-teacher boundary for validated market knowledge.
 
-    The professor may explain validated knowledge, choose an appropriate
-    assessment depth, and grade reasoning. It never treats a lesson, quiz, or
-    user score as authorization to trade.
+    The professor may explain validated knowledge, choose assessment depth,
+    and grade reasoning. It never treats a lesson, quiz, or score as trading
+    authorization.
     """
 
     def __init__(self, question_engine: ProfessionalLearningQuestionEngine | None = None) -> None:
@@ -149,29 +145,41 @@ class LearningProfessor:
             mode = QuizMode.CONSOLIDATION
             reasons.append("o conhecimento já foi estudado e precisa de consolidação")
 
-        types = list((
+        all_types = (
             QuestionType.CONTEXT,
             QuestionType.SCENARIO,
             QuestionType.EVIDENCE,
             QuestionType.COUNTERFACTUAL,
             QuestionType.RISK,
+            QuestionType.EXECUTION_DISCIPLINE,
             QuestionType.STATISTICAL_VALIDATION,
             QuestionType.MARKET_STRUCTURE,
             QuestionType.SELF_CRITIQUE,
-            QuestionType.EXECUTION_DISCIPLINE,
-        ))
+        )
         if mode == QuizMode.DIAGNOSTIC:
-            selected = types[:5]
+            selected = all_types[:5]
         elif mode == QuizMode.REMEDIATION:
-            selected = [QuestionType.CONTEXT, QuestionType.EVIDENCE, QuestionType.COUNTERFACTUAL, QuestionType.RISK, QuestionType.SELF_CRITIQUE]
+            selected = (
+                QuestionType.CONTEXT,
+                QuestionType.EVIDENCE,
+                QuestionType.COUNTERFACTUAL,
+                QuestionType.RISK,
+                QuestionType.SELF_CRITIQUE,
+            )
             if recent_gap_count >= 3:
-                selected += [QuestionType.STATISTICAL_VALIDATION, QuestionType.MARKET_STRUCTURE]
+                selected += (QuestionType.STATISTICAL_VALIDATION, QuestionType.MARKET_STRUCTURE)
         elif mode == QuizMode.MATERIAL_REVIEW:
-            selected = [QuestionType.EVIDENCE, QuestionType.COUNTERFACTUAL, QuestionType.STATISTICAL_VALIDATION, QuestionType.SELF_CRITIQUE, QuestionType.RISK]
+            selected = (
+                QuestionType.EVIDENCE,
+                QuestionType.COUNTERFACTUAL,
+                QuestionType.STATISTICAL_VALIDATION,
+                QuestionType.SELF_CRITIQUE,
+                QuestionType.RISK,
+            )
         elif mode == QuizMode.MASTERY:
-            selected = types
+            selected = all_types
         else:
-            selected = types[:6]
+            selected = all_types[:6]
 
         if objective:
             reasons.append(f"objetivo atual: {objective.strip()}")
@@ -184,7 +192,7 @@ class LearningProfessor:
 
         return QuizPlan(
             mode=mode,
-            question_types=tuple(selected),
+            question_types=selected,
             question_count=len(selected),
             rationale=tuple(reasons),
             completion_rule=(
@@ -252,10 +260,8 @@ class LearningProfessor:
         else:
             result = "WEAK"
 
-        strengths = tuple(covered)
-        gaps = tuple(missing)
         if result == "STRONG":
-            feedback = "Boa cobertura dos critérios esperados. Ainda revise qualquer evidência ausente antes de considerar o domínio consolidado."
+            feedback = "Boa cobertura dos critérios esperados. Revise qualquer evidência ausente antes de considerar o domínio consolidado."
         elif result == "PARTIAL":
             feedback = "A resposta demonstra parte do raciocínio, mas ainda faltam critérios importantes; a próxima avaliação deve explorar essas lacunas."
         elif result == "INSUFFICIENT":
@@ -266,17 +272,17 @@ class LearningProfessor:
         return AnswerAssessment(
             result=result,
             score=round(coverage * 100, 2),
-            covered_evidence=strengths,
-            missing_evidence=gaps,
-            strengths=strengths,
-            gaps=gaps,
+            covered_evidence=tuple(covered),
+            missing_evidence=tuple(missing),
+            strengths=tuple(covered),
+            gaps=tuple(missing),
             feedback=feedback,
             trading_authorized=False,
         )
 
     @staticmethod
     def grade_attempt(*, activity: LearningActivity, answer: str, evidence_based: bool) -> tuple[bool | None, str]:
-        """Backward-compatible grading surface; legacy flag is only a signal."""
+        """Backward-compatible surface; legacy flag is only a signal."""
         if not isinstance(activity, LearningActivity):
             raise ValueError("invalid learning activity")
         if not isinstance(answer, str) or not answer.strip():
