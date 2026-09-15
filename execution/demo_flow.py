@@ -62,7 +62,17 @@ class DemoFlow:
             market_context=market_context,
             operational_state=operational_state,
         )
-        intent = ExecutionIntent(request_id=self.request_id_factory(), symbol=symbol, signal=decision.signal, amount=amount, duration_seconds=duration_seconds, mode=ExecutionMode.DEMO, created_at=self.clock())
+        intent = ExecutionIntent(
+            request_id=self.request_id_factory(),
+            symbol=symbol,
+            signal=decision.signal,
+            amount=amount,
+            duration_seconds=duration_seconds,
+            mode=ExecutionMode.DEMO,
+            created_at=self.clock(),
+            market_data_fingerprint=market_data.fingerprint,
+            risk_state_fingerprint=snapshot.risk_state_fingerprint,
+        )
         execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context, snapshot=snapshot)
         execution = execution_result.gateway.execution if execution_result.gateway is not None else None
         readiness_message = "; ".join(execution_result.readiness.reasons)
