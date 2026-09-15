@@ -28,6 +28,12 @@ class ProductionScopedServiceMixin:
             self.production_storage = self.production_data_plane.policy
             from security.production_operation_gate import ProductionOperationGate
             self.production_gate = ProductionOperationGate(self.production_storage)
+        # ConfiguredEcosystemService historically defined these methods itself.
+        # Bind the hardened instance implementations so the trusted tenant
+        # boundary wins even when a subclass still contains a legacy method.
+        if hasattr(self, "scoped_learning") and hasattr(self, "_learning_scope"):
+            self.generate_professor_activity = self._scoped_generate_professor_activity
+            self.generate_professional_questions = self._scoped_generate_professional_questions
 
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
@@ -48,11 +54,7 @@ class ProductionScopedServiceMixin:
         if self.production_data_plane is None:
             raise RuntimeError("production storage provider is required for owned decision state")
         self._require_trusted_owner(owner)
-        return self.production_data_plane.list(
-            tenant_id=owner.tenant_id,
-            subject_id=owner.subject_id,
-            limit=limit,
-        )
+        return self.production_data_plane.list(tenant_id=owner.tenant_id, subject_id=owner.subject_id, limit=limit)
 
     def _scoped_memory(self, owner):
         if self.production_data_plane is not None or saas_public_mode():
@@ -64,7 +66,6 @@ class ProductionScopedServiceMixin:
             return
         owned = [record for record in records if record.subject_id is not None or record.tenant_id is not None]
         unowned = [record for record in records if record.subject_id is None and record.tenant_id is None]
-
         if self.production_data_plane is not None:
             if unowned:
                 raise PermissionError("production decision records require tenant and subject ownership")
@@ -74,16 +75,10 @@ class ProductionScopedServiceMixin:
             for record in owned:
                 if record.tenant_id != identity.tenant_id or record.subject_id != identity.subject_id:
                     raise PermissionError("decision record ownership does not match trusted identity")
-                self.production_data_plane.save(
-                    record,
-                    tenant_id=record.tenant_id,
-                    subject_id=record.subject_id,
-                )
+                self.production_data_plane.save(record, tenant_id=record.tenant_id, subject_id=record.subject_id)
             return
-
         if saas_public_mode():
             raise RuntimeError("production storage provider is not configured; local decision fallback is disabled")
-
         super()._persist_records(records)
 
     def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
@@ -95,19 +90,11 @@ class ProductionScopedServiceMixin:
         self._require_trusted_owner(owner)
         if self.production_data_plane is None:
             raise RuntimeError("production storage provider is not configured")
-        record = self.production_data_plane.load(
-            decision_id,
-            tenant_id=owner.tenant_id,
-            subject_id=owner.subject_id,
-        )
+        record = self.production_data_plane.load(decision_id, tenant_id=owner.tenant_id, subject_id=owner.subject_id)
         if record is None:
             raise ValueError("decision_id não encontrado")
         updated = record.with_outcome(outcome)
-        self.production_data_plane.save(
-            updated,
-            tenant_id=owner.tenant_id,
-            subject_id=owner.subject_id,
-        )
+        self.production_data_plane.save(updated, tenant_id=owner.tenant_id, subject_id=owner.subject_id)
         return updated
 
     def statistics(self, *, subject_id: str | None = None, tenant_id: str | None = None) -> dict[str, Any]:
@@ -116,17 +103,7 @@ class ProductionScopedServiceMixin:
             return super().statistics(subject_id=subject_id, tenant_id=tenant_id)
         scoped = self._production_records(owner, limit=None)
         breakdowns = summarize_breakdowns(scoped)
-        return {
-            **asdict(summarize(scoped)),
-            "periods": summarize_periods(scoped),
-            "breakdowns": {
-                **breakdowns,
-                "by_symbol": breakdowns["symbols"],
-                "by_timeframe": breakdowns["timeframes"],
-                "by_signal": breakdowns["signals"],
-                "by_score_band": breakdowns["score_bands"],
-            },
-        }
+        return {**asdict(summarize(scoped)), "periods": summarize_periods(scoped), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
 
     def memory_view(self, limit: int = 50, *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
         if limit < 1:
@@ -138,14 +115,12 @@ class ProductionScopedServiceMixin:
         return [item.to_dict() for item in records[:limit]]
 
     def _scoped_professor(self) -> ScopedProfessorAssessment | None:
-        """Return the tenant-scoped professor boundary when the service has one."""
         if not hasattr(self, "scoped_learning") or not hasattr(self, "_learning_scope"):
             return None
         professor = getattr(self, "learning_professor", None)
         return ScopedProfessorAssessment(professor if isinstance(professor, LearningProfessor) else LearningProfessor())
 
-    def generate_professor_activity(self, payload: dict[str, Any]):
-        """Generate teaching only from stored validated knowledge, never payload claims."""
+    def _scoped_generate_professor_activity(self, payload: dict[str, Any]):
         boundary = self._scoped_professor()
         if boundary is None:
             return super().generate_professor_activity(payload)
@@ -153,30 +128,20 @@ class ProductionScopedServiceMixin:
         if scope is None:
             raise PermissionError("trusted tenant and subject scope are required for professor activity")
         knowledge_id = str(payload.get("knowledge_id", "")).strip()
-        # Validate existence/ownership first. The helper derives the actual
-        # statement and concept from the tenant's validated observation.
         observation = boundary._validated_observation(scope, knowledge_id)
         from core.learning_content import LearningActivity
+        from core.p128_learning_professor import ProfessorActivitySpec
         activity_id = str(payload.get("activity_id", "")).strip()
         if activity_id in scope.activities:
             raise ValueError("activity_id já cadastrado")
-        activity = boundary.professor.build_activity(
-            __import__("core.p128_learning_professor", fromlist=["ProfessorActivitySpec"]).ProfessorActivitySpec(
-                activity_id=activity_id,
-                knowledge_id=knowledge_id,
-                statement=observation.statement,
-                concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado",
-                difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
-            ),
-            knowledge_validated=True,
-        )
+        activity = boundary.professor.build_activity(ProfessorActivitySpec(activity_id=activity_id, knowledge_id=knowledge_id, statement=observation.statement, concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado", difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=True)
         if not isinstance(activity, LearningActivity):
             raise RuntimeError("professor returned an invalid activity")
         scope.activities[activity.activity_id] = activity
         self._persist_learning_scope()
         return activity
 
-    def generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
+    def _scoped_generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
         boundary = self._scoped_professor()
         if boundary is None:
             return super().generate_professional_questions(payload)
@@ -186,18 +151,8 @@ class ProductionScopedServiceMixin:
         knowledge_id = str(payload.get("knowledge_id", "")).strip()
         observation = boundary._validated_observation(scope, knowledge_id)
         from core.p128_learning_professor import ProfessorActivitySpec
-        spec = ProfessorActivitySpec(
-            activity_id=str(payload.get("activity_id", "question-set")),
-            knowledge_id=knowledge_id,
-            statement=observation.statement,
-            concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado",
-            difficulty=str(payload.get("difficulty", "ADVANCED")),
-        )
-        return boundary.professor.build_professional_questions(
-            spec,
-            knowledge_validated=True,
-            context=str(payload.get("context", "")),
-        )
+        spec = ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "question-set")), knowledge_id=knowledge_id, statement=observation.statement, concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado", difficulty=str(payload.get("difficulty", "ADVANCED")))
+        return boundary.professor.build_professional_questions(spec, knowledge_validated=True, context=str(payload.get("context", "")))
 
     def generate_adaptive_professor_quiz(self, payload: dict[str, Any]):
         boundary = self._scoped_professor()
@@ -206,25 +161,8 @@ class ProductionScopedServiceMixin:
         scope = self._learning_scope()
         if scope is None:
             raise PermissionError("trusted tenant and subject scope are required for adaptive quiz")
-        plan, questions = boundary.build_adaptive_quiz(
-            scope,
-            activity_id=str(payload.get("activity_id", "")),
-            knowledge_id=str(payload.get("knowledge_id", "")),
-            confidence=payload.get("confidence"),
-            objective=str(payload.get("objective", "")),
-        )
-        return {
-            "plan": {
-                "mode": plan.mode.value,
-                "question_types": [item.value for item in plan.question_types],
-                "question_count": plan.question_count,
-                "rationale": list(plan.rationale),
-                "completion_rule": plan.completion_rule,
-            },
-            "questions": [asdict(item) | {"question_type": item.question_type.value} for item in questions],
-            "execution_allowed": False,
-            "learning_authorizes_trading": False,
-        }
+        plan, questions = boundary.build_adaptive_quiz(scope, activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), confidence=payload.get("confidence"), objective=str(payload.get("objective", "")))
+        return {"plan": {"mode": plan.mode.value, "question_types": [item.value for item in plan.question_types], "question_count": plan.question_count, "rationale": list(plan.rationale), "completion_rule": plan.completion_rule}, "questions": [asdict(item) | {"question_type": item.question_type.value} for item in questions], "execution_allowed": False, "learning_authorizes_trading": False}
 
     def grade_professor_answer(self, payload: dict[str, Any], *, question: ProfessionalLearningQuestion) -> dict[str, Any]:
         boundary = self._scoped_professor()
@@ -233,11 +171,6 @@ class ProductionScopedServiceMixin:
         scope = self._learning_scope()
         if scope is None:
             raise PermissionError("trusted tenant and subject scope are required for professor grading")
-        assessment = boundary.grade_and_record(
-            scope,
-            activity_id=str(payload.get("activity_id", "")),
-            question=question,
-            answer=str(payload.get("answer", "")),
-        )
+        assessment = boundary.grade_and_record(scope, activity_id=str(payload.get("activity_id", "")), question=question, answer=str(payload.get("answer", "")))
         self._persist_learning_scope()
         return asdict(assessment) | {"execution_allowed": False, "learning_authorizes_trading": False}
