@@ -64,3 +64,16 @@ def test_production_scope_rejects_browser_supplied_foreign_owner(tmp_path):
             probe._production_records(type("Owner", (), {"tenant_id": "tenant-b", "subject_id": "user-b"})())
     finally:
         clear_trusted_identity()
+
+
+def test_production_provider_isolates_cross_tenant_history(tmp_path):
+    config = ProductionProviderConfig(provider="sqlite", database_path=str(tmp_path / "production.db"), multi_instance=False)
+    plane = ProductionDataPlane.from_config(config)
+    _identity("tenant-a", "user-a")
+    try:
+        plane.save(_record(1, "tenant-a", "user-a"), tenant_id="tenant-a", subject_id="user-a")
+        plane.save(_record(2, "tenant-b", "user-b"), tenant_id="tenant-b", subject_id="user-b")
+        own = plane.list(tenant_id="tenant-a", subject_id="user-a", limit=None)
+        assert [item.decision_id for item in own] == ["decision-1"]
+    finally:
+        clear_trusted_identity()
