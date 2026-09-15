@@ -44,7 +44,7 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None) -> None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -55,6 +55,8 @@ class ExecutionGateway:
             raise ValueError("incident_manager inválido.")
         if operational_barrier_provider is not None and not callable(operational_barrier_provider):
             raise ValueError("operational_barrier_provider inválido.")
+        if market_data_fingerprint_provider is not None and not callable(market_data_fingerprint_provider):
+            raise ValueError("market_data_fingerprint_provider inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -64,6 +66,7 @@ class ExecutionGateway:
         self._safety_store = safety_store
         self._incident_manager = incident_manager
         self._operational_barrier_provider = operational_barrier_provider
+        self._market_data_fingerprint_provider = market_data_fingerprint_provider
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def set_operational_barrier_provider(self, provider: Callable[[], GlobalOperationalBarrier]) -> None:
@@ -71,6 +74,12 @@ class ExecutionGateway:
         if not callable(provider):
             raise ValueError("operational barrier provider inválido.")
         self._operational_barrier_provider = provider
+
+    def set_market_data_fingerprint_provider(self, provider: Callable[[], str | None]) -> None:
+        """Attach the authoritative runtime market-data identity after composition."""
+        if not callable(provider):
+            raise ValueError("market-data fingerprint provider inválido.")
+        self._market_data_fingerprint_provider = provider
 
     def _refresh_kill_switch(self) -> str | None:
         if self._safety_store is None:
@@ -109,6 +118,23 @@ class ExecutionGateway:
         except Exception as exc:
             return f"barreira operacional global indisponível: {type(exc).__name__}"
 
+    def _market_data_fingerprint_error(self, request: ExecutionRequest) -> str | None:
+        expected = request.market_data_fingerprint
+        if expected is None:
+            return None
+        provider = self._market_data_fingerprint_provider
+        if provider is None:
+            return "execução bloqueada: identidade dos dados de mercado não está vinculada ao runtime operacional"
+        try:
+            current = provider()
+        except Exception as exc:
+            return f"execução bloqueada: identidade dos dados de mercado indisponível: {type(exc).__name__}"
+        if current is None:
+            return "execução bloqueada: runtime não possui snapshot de mercado validado"
+        if current != expected:
+            return "execução bloqueada: dados de mercado mudaram desde a decisão; nova avaliação obrigatória"
+        return None
+
     def _final_safety_barrier(self, *, now: datetime) -> str | None:
         incident_error = self._incident_error()
         if incident_error is not None:
@@ -140,6 +166,9 @@ class ExecutionGateway:
         preflight_incident_error = self._incident_error()
         if preflight_incident_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, preflight_incident_error)
+        market_data_error = self._market_data_fingerprint_error(request)
+        if market_data_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, market_data_error)
         if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
         audit_record = None
@@ -180,6 +209,10 @@ class ExecutionGateway:
         if final_safety_error is not None:
             self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
+        final_market_data_error = self._market_data_fingerprint_error(request)
+        if final_market_data_error is not None:
+            self._mark_unknown(request_id, event_time, f"identidade de mercado mudou antes do dispatch: {final_market_data_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_market_data_error)
         try:
             result = self._executor.execute(request)
         except Exception as exc:
@@ -262,4 +295,6 @@ class ExecutionGateway:
             return "Valor da execução deve ser positivo."
         if request.duration_seconds <= 0:
             return "Duração deve ser positiva."
+        if request.market_data_fingerprint is not None and (not isinstance(request.market_data_fingerprint, str) or len(request.market_data_fingerprint) != 64):
+            return "identidade dos dados de mercado inválida."
         return None
