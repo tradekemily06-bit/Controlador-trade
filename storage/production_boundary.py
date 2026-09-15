@@ -24,6 +24,7 @@ class ProductionStoragePolicy:
     required: bool = True
     provider_configured: bool = False
     tenant_scoped: bool = True
+    subject_scoped: bool = True
     durable: bool = False
 
     def status(self) -> dict[str, object]:
@@ -33,6 +34,8 @@ class ProductionStoragePolicy:
             state = "NOT_CONFIGURED"
         elif not self.tenant_scoped:
             state = "UNSAFE_TENANT_SCOPE"
+        elif not self.subject_scoped:
+            state = "UNSAFE_SUBJECT_SCOPE"
         elif not self.durable:
             state = "NOT_DURABLE"
         else:
@@ -42,27 +45,54 @@ class ProductionStoragePolicy:
             "required": self.required,
             "provider": "CONFIGURED" if self.provider_configured else "NOT_CONFIGURED",
             "tenant_scope": "ENFORCED" if self.tenant_scoped else "NOT_ENFORCED",
+            "subject_scope": "ENFORCED" if self.subject_scoped else "NOT_ENFORCED",
             "durability": "DURABLE" if self.durable else "NOT_DURABLE",
             "state": state,
         }
 
-    def authorize_write(self, *, authenticated: bool, tenant_id: str | None) -> bool:
+    def authorize_write(
+        self,
+        *,
+        authenticated: bool,
+        tenant_id: str | None,
+        subject_id: str | None,
+    ) -> bool:
         if not self.required:
             return True
-        return bool(authenticated and tenant_id and tenant_id.strip() and self.provider_configured and self.tenant_scoped and self.durable)
+        return bool(
+            authenticated
+            and tenant_id
+            and tenant_id.strip()
+            and subject_id
+            and subject_id.strip()
+            and self.provider_configured
+            and self.tenant_scoped
+            and self.subject_scoped
+            and self.durable
+        )
 
-    def authorize_read(self, *, authenticated: bool, tenant_id: str | None) -> bool:
-        return self.authorize_write(authenticated=authenticated, tenant_id=tenant_id)
+    def authorize_read(
+        self,
+        *,
+        authenticated: bool,
+        tenant_id: str | None,
+        subject_id: str | None,
+    ) -> bool:
+        return self.authorize_write(
+            authenticated=authenticated,
+            tenant_id=tenant_id,
+            subject_id=subject_id,
+        )
 
 
 class UnconfiguredProductionStore:
     """Explicit fail-closed placeholder until deployment supplies a real provider."""
 
-    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str | None = None) -> None:
+    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str) -> None:
         raise RuntimeError("production storage provider is not configured")
 
-    def load(self, record_id: str, *, tenant_id: str, subject_id: str | None = None) -> dict[str, Any] | None:
+    def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         raise RuntimeError("production storage provider is not configured")
 
-    def list(self, *, tenant_id: str, subject_id: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         raise RuntimeError("production storage provider is not configured")
