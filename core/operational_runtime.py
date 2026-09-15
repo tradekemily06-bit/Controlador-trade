@@ -65,12 +65,9 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     kill_switch.set_on_change(persist_safety)
 
     if not safety_state_valid:
-        # Replace the invalid persisted state with a minimal valid blocked state.
-        safety_store._write_payload({
-            "audit": [],
-            "kill_switch": {"enabled": True, "reason": initial_reason},
-            "execution_audit": [],
-        })
+        # Replace the invalid persisted state through the store's recovery API;
+        # runtime composition must not reach into store internals.
+        safety_store.replace_with_fail_closed_state(initial_reason or "estado de segurança indisponível")
     elif not initial_enabled:
         safety_store.save(safety_audit, kill_switch)
 
