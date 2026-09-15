@@ -67,3 +67,14 @@ def test_put_does_not_mutate_memory_when_persistence_fails(tmp_path, monkeypatch
 
     assert store.get("req-1") == original
     assert ExecutionLifecycleStore(path).get("req-1") == original
+
+
+def test_reload_reflects_external_removal_without_stale_memory(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    path.unlink()
+
+    assert store.get("req-1") is None
+    assert store.records() == ()
