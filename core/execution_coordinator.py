@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, is_dataclass
+from datetime import datetime
+from enum import Enum
 import hashlib
 import json
 
@@ -13,28 +15,46 @@ from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
+def _canonical_value(value):
+    """Convert decision inputs to deterministic JSON-safe values."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if is_dataclass(value):
+        return _canonical_value(asdict(value))
+    if isinstance(value, dict):
+        return {str(key): _canonical_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_canonical_value(item) for item in value]
+    return value
+
+
 def _decision_identity(orchestration: OrchestrationResult) -> str:
     """Deterministic identity for the exact decision context used by a plan."""
-    def _value(value):
-        return value.value if hasattr(value, "value") else value
-
     payload = {
-        "signal": _value(orchestration.analysis.signal),
+        "signal": orchestration.analysis.signal,
         "score": orchestration.analysis.score,
         "reason": orchestration.analysis.reason,
         "confirmed": orchestration.analysis.confirmed,
         "symbol": orchestration.analysis.symbol,
         "timeframe": orchestration.analysis.timeframe,
         "quality_score": orchestration.quality.score,
-        "quality_level": _value(orchestration.quality.level),
+        "quality_level": orchestration.quality.level,
         "actionable": orchestration.quality.actionable,
-        "decision": _value(orchestration.decision.decision),
-        "decision_signal": _value(orchestration.decision.signal),
+        "decision": orchestration.decision.decision,
+        "decision_signal": orchestration.decision.signal,
         "decision_reason": orchestration.decision.reason,
         "snapshot": orchestration.snapshot.as_dict(),
+        "senior_context": orchestration.senior_context,
         "timestamp": orchestration.timestamp.isoformat(),
     }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    canonical = json.dumps(
+        _canonical_value(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
