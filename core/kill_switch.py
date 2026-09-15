@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 
 class KillSwitchValidationError(ValueError):
@@ -22,22 +23,34 @@ class KillSwitchState:
 
 
 class KillSwitch:
-    """Safety gate independent from broker or execution adapter."""
+    """Safety gate independent from broker or execution adapter.
 
-    def __init__(self) -> None:
+    An optional change callback lets the runtime persist safety state. The
+    callback is invoked only after a validated state transition; it cannot
+    authorize execution and persistence failures are allowed to surface.
+    """
+
+    def __init__(self, on_change: Callable[[KillSwitchState], None] | None = None) -> None:
+        if on_change is not None and not callable(on_change):
+            raise ValueError("on_change deve ser chamável ou None.")
         self._state = KillSwitchState()
+        self._on_change = on_change
 
     @property
     def state(self) -> KillSwitchState:
         return self._state
 
+    def _commit(self, state: KillSwitchState) -> KillSwitchState:
+        self._state = state
+        if self._on_change is not None:
+            self._on_change(state)
+        return state
+
     def activate(self, reason: str) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=True, reason=reason)
-        return self._state
+        return self._commit(KillSwitchState(enabled=True, reason=reason))
 
     def deactivate(self) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=False, reason=None)
-        return self._state
+        return self._commit(KillSwitchState(enabled=False, reason=None))
 
     def allows_execution(self) -> bool:
         return not self._state.enabled
