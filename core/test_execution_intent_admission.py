@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from core.decision_snapshot import DecisionSnapshot
 from core.execution_intent import ExecutionIntent
 from core.execution_intent_admission import ExecutionIntentAdmission
 from core.models import Signal
@@ -21,15 +22,36 @@ class RecordingExecutor:
         return ExecutionResult(True, "demo accepted", "demo-1")
 
 
-def make_intent():
+def make_intent(signal=Signal.COMPRA, symbol="EURUSD"):
     return ExecutionIntent(
         request_id="req-27",
-        symbol="EURUSD",
-        signal=Signal.COMPRA,
+        symbol=symbol,
+        signal=signal,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def make_snapshot(signal="COMPRA", symbol="EURUSD", timeframe="M5", decision="EXECUTAR", actionable=True):
+    return DecisionSnapshot(
+        signal=signal,
+        analysis_score=90.0,
+        confirmed=True,
+        quality_score=90.0,
+        quality_level="A",
+        actionable=actionable,
+        decision=decision,
+        decision_reason="decisão validada",
+        market_context="TREND",
+        market_direction="UP",
+        market_score=90.0,
+        operational_state_available=True,
+        trades_today=0,
+        consecutive_losses=0,
+        symbol=symbol,
+        timeframe=timeframe,
     )
 
 
@@ -111,5 +133,43 @@ def test_kill_switch_blocks_before_executor():
     switch.activate("P27 test")
     gateway = ExecutionGateway(executor, switch)
     result = ExecutionIntentAdmission(gateway).admit(make_intent(), senior_context=make_senior_context())
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.calls == 0
+
+
+def test_snapshot_symbol_mismatch_blocks_before_executor():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(symbol="GBPUSD"),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(symbol="EURUSD"),
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "símbolo" in result.message
+    assert executor.calls == 0
+
+
+def test_snapshot_signal_mismatch_blocks_before_executor():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(signal=Signal.VENDA),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(signal="COMPRA"),
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "sinal" in result.message
+    assert executor.calls == 0
+
+
+def test_non_executable_snapshot_blocks_before_executor():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(decision="AGUARDAR", actionable=False),
+    )
     assert result.status is GatewayStatus.BLOCKED
     assert executor.calls == 0
