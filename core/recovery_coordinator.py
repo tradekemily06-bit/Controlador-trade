@@ -12,6 +12,7 @@ class RecoveryState(str, Enum):
     FRESH = "FRESH"
     SAFE_TO_RESUME = "SAFE_TO_RESUME"
     REQUIRES_RECONCILIATION = "REQUIRES_RECONCILIATION"
+    SESSION_MISMATCH = "SESSION_MISMATCH"
     INVALID = "INVALID"
 
 
@@ -48,7 +49,10 @@ class RecoveryCoordinator:
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
 
-    def assess(self) -> RecoveryAssessment:
+    def assess(self, *, session_id: str | None = None) -> RecoveryAssessment:
+        if session_id is not None and (not isinstance(session_id, str) or not session_id.strip()):
+            raise ValueError("session_id inválido.")
+
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
@@ -88,6 +92,15 @@ class RecoveryCoordinator:
                 pending,
                 unknown,
                 "; ".join(details),
+            )
+
+        if checkpoint is not None and session_id is not None and checkpoint.session_id != session_id:
+            return RecoveryAssessment(
+                RecoveryState.SESSION_MISMATCH,
+                checkpoint,
+                (),
+                (),
+                "checkpoint pertence a outra sessão; retomada automática bloqueada",
             )
 
         state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
