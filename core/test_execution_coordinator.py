@@ -12,6 +12,7 @@ from core.signal_quality import SignalLevel, SignalQuality
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from data.feed import MarketDataResult
+from data.models import Candle
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode
@@ -101,8 +102,16 @@ def test_coordinator_blocks_plan_when_market_data_identity_changes():
     changed = executable_orchestration()
     changed = OrchestrationResult(
         market_data=MarketDataResult(
-            candles=(),
-            source="different-source",
+            candles=(
+                Candle(
+                    timestamp=datetime(2026, 9, 15, tzinfo=timezone.utc),
+                    open=1.0,
+                    high=1.1,
+                    low=0.9,
+                    close=1.05,
+                ),
+            ),
+            source="test",
             received_at=changed.timestamp,
         ),
         analysis=changed.analysis,
