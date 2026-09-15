@@ -69,10 +69,15 @@ class ExecutionIntentAdmission:
             if consistency_error is not None:
                 return GatewayResult(GatewayStatus.BLOCKED, consistency_error)
 
+        # When a decision snapshot carries its immutable creation time, that
+        # timestamp is the freshness authority. The intent timestamp remains
+        # part of the identity/consistency contract, but must not make an old
+        # decision look fresh merely because a new intent was constructed.
+        freshness_timestamp = snapshot.created_at if snapshot is not None and snapshot.created_at is not None else intent.created_at
         return self.gateway.execute(
             intent.request_id,
             intent.as_execution_request(),
             snapshot=snapshot,
-            timestamp=intent.created_at,
+            timestamp=freshness_timestamp,
             entry_conditions=entry_conditions,
         )
