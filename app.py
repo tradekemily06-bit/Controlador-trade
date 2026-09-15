@@ -101,6 +101,24 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id, script_nonce=script_nonce)
     start_response("200 OK", headers); _audit(environ, request_id, 200); return [body]
 
+def _learning_source_for_request(source_id: str):
+    """Resolve a learning source through the scoped service view, never a process-global map."""
+    wanted = str(source_id).strip()
+    for item in SERVICE.learning_sources_view():
+        if str(item.get("source_id", "")) == wanted:
+            from core.p128_learning_source_gate import LearningSource, LearningSourceStatus, LearningSourceType
+            return LearningSource(
+                source_id=wanted,
+                source_type=LearningSourceType(str(item["source_type"]).upper()),
+                uri=str(item["uri"]),
+                status=LearningSourceStatus(str(item["status"]).upper()),
+                content_verified=bool(item.get("content_verified", False)),
+                security_checked=bool(item.get("security_checked", False)),
+                knowledge_validated=bool(item.get("knowledge_validated", False)),
+                operation_eligible=False,
+            )
+    raise ValueError("source_id não encontrado")
+
 def application(environ, start_response):
     request_id = SECURITY.request_id(); path = environ.get("PATH_INFO", "/"); method = environ.get("REQUEST_METHOD", "GET").upper()
     if not SECURITY.allow(environ): return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
@@ -148,12 +166,10 @@ def application(environ, start_response):
         if path == "/api/learning/sources/screen" and method == "POST":
             source = SERVICE.screen_learning_source(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"source": {**source.__dict__, "source_type": source.source_type.value, "status": source.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/sources/validate" and method == "POST":
-            data = _read_json(environ); source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
-            if source is None: raise ValueError("source_id não encontrado")
+            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
             updated = SERVICE.validate_learning_source(source, content_verified=bool(data.get("content_verified", False)), security_checked=bool(data.get("security_checked", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/sources/admit" and method == "POST":
-            data = _read_json(environ); source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
-            if source is None: raise ValueError("source_id não encontrado")
+            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
             updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=bool(data.get("knowledge_validated", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "POST":
