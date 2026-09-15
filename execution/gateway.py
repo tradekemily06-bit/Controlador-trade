@@ -81,6 +81,28 @@ class ExecutionGateway:
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {type(exc).__name__}"
 
+    def _final_safety_barrier(self, *, now: datetime) -> str | None:
+        """Re-check global safety immediately before executor dispatch."""
+        refresh_error = self._refresh_kill_switch()
+        if refresh_error is not None:
+            return refresh_error
+        if not self._kill_switch.allows_execution():
+            return f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}"
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=now):
+            return "execução bloqueada durante manutenção ativa do ecossistema."
+        return None
+
+    def _abandon_reserved_request(self, request_id: str) -> None:
+        """Never leave a reservation falsely reusable after a lifecycle conflict."""
+        if self._ledger is None:
+            return
+        try:
+            current = self._ledger.status(request_id)
+            if current is ExecutionLedgerStatus.RESERVED:
+                self._ledger.mark_unknown(request_id)
+        except (OSError, ValueError):
+            pass
+
     def execute(
         self,
         request_id: str,
@@ -129,19 +151,20 @@ class ExecutionGateway:
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
+                self._abandon_reserved_request(request_id)
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
-                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+                return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
-                if self._ledger is not None:
-                    try:
-                        self._ledger.mark_unknown(request_id)
-                    except (OSError, ValueError):
-                        pass
+                self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+
+        final_safety_error = self._final_safety_barrier(now=event_time)
+        if final_safety_error is not None:
+            self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
 
         try:
             result = self._executor.execute(request)
