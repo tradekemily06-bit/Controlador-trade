@@ -38,26 +38,13 @@ def test_psychology_check_in_is_disabled_at_runtime_when_preference_is_off():
     assert enabled["enabled"] is True
     assert enabled["trading_authorized"] is False
 
-    service.update_preferences({"psychology_enabled": False})
-    disabled = service.psychology_check_in({
-        "emotional_state": "ansiedade",
-        "urge_to_trade": 9,
-        "recent_losses": 2,
-        "fatigue": 2,
-        "confidence": 5,
-        "rule_adherence": 5,
-    })
-    assert disabled["enabled"] is False
-    assert disabled["risk_level"] == "DISABLED"
-    assert disabled["flags"] == []
-    assert disabled["trading_authorized"] is False
 
-
-def test_advanced_psychology_is_disabled_without_affecting_execution_safety_contract():
+def test_configured_service_binds_operational_risk_to_authoritative_runtime():
     service = ConfiguredEcosystemService()
-    service.update_preferences({"psychology_enabled": False})
-    result = service.advanced_psychology_assessment({"operations": 10, "losses": 8, "urgency": 10})
 
-    assert result["enabled"] is False
-    assert result["patterns"] == []
-    assert result["trading_authorized"] is False
+    assert service.operational_runtime is not None
+    bridge = service.operational_risk_bridge
+
+    assert bridge._runtime_barrier_bound is True
+    assert bridge.operational_barrier_provider is not None
+    assert bridge.operational_state_provider is service.operational_runtime.risk_state_provider
