@@ -6,29 +6,37 @@ from analysis.decision_record import DecisionRecord
 from storage.production_decision_store import ProductionDecisionStore
 from storage.production_provider import ProductionProviderConfig, build_production_provider
 from storage.production_boundary import ProductionStoragePolicy
+from storage.scoped_state_store import SQLiteScopedStateStore
 
 
 @dataclass(frozen=True)
 class ProductionDataPlane:
-    """Application-facing durable decision data plane.
+    """Application-facing durable decision and auxiliary state plane.
 
-    The facade makes the production storage dependency explicit at the
-    application boundary. It never falls back to DecisionStore or process
-    memory. A missing provider therefore remains a hard configuration error
-    for owned/public data rather than becoming a silent local-data fallback.
+    It never falls back to process memory for owned/public data. SQLite is only
+    a single-instance provider; the deployment gate rejects multi-instance
+    configuration until a shared provider is supplied.
     """
 
     store: ProductionDecisionStore
     policy: ProductionStoragePolicy
+    state_store: SQLiteScopedStateStore
 
     @classmethod
     def from_config(cls, config: ProductionProviderConfig | None = None) -> "ProductionDataPlane | None":
-        provider, policy = build_production_provider(config)
+        cfg = config or ProductionProviderConfig.from_environment()
+        provider, policy = build_production_provider(cfg)
         if provider is None:
             return None
         if not policy.authorize_write(authenticated=True, tenant_id="configured"):
             raise RuntimeError("production data plane provider is not authorized by its storage policy")
-        return cls(store=ProductionDecisionStore(provider), policy=policy)
+        if not cfg.database_path:
+            raise RuntimeError("production database path is required for durable auxiliary state")
+        return cls(
+            store=ProductionDecisionStore(provider),
+            policy=policy,
+            state_store=SQLiteScopedStateStore(cfg.database_path),
+        )
 
     @staticmethod
     def require_scope(*, tenant_id: str | None, subject_id: str | None) -> tuple[str, str]:
@@ -49,3 +57,11 @@ class ProductionDataPlane:
     def list(self, *, tenant_id: str | None, subject_id: str | None, limit: int = 100) -> list[DecisionRecord]:
         tenant, subject = self.require_scope(tenant_id=tenant_id, subject_id=subject_id)
         return self.store.list(tenant_id=tenant, subject_id=subject, limit=limit)
+
+    def get_state(self, *, tenant_id: str | None, subject_id: str | None, namespace: str):
+        tenant, subject = self.require_scope(tenant_id=tenant_id, subject_id=subject_id)
+        return self.state_store.get(tenant_id=tenant, subject_id=subject, namespace=namespace)
+
+    def put_state(self, *, tenant_id: str | None, subject_id: str | None, namespace: str, payload: object) -> None:
+        tenant, subject = self.require_scope(tenant_id=tenant_id, subject_id=subject_id)
+        self.state_store.put(tenant_id=tenant, subject_id=subject, namespace=namespace, payload=payload)
