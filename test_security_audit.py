@@ -1,4 +1,5 @@
 from security_audit import SecurityAudit
+import pytest
 
 
 def test_audit_records_without_raw_client_identifier():
@@ -42,3 +43,21 @@ def test_persistent_audit_retention_is_bounded(tmp_path):
     events = audit.snapshot()
     assert len(events) == 2
     assert [event["request_id"] for event in events] == ["req-1", "req-2"]
+
+
+def test_public_saas_requires_durable_audit(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
+    with pytest.raises(RuntimeError, match="durable security audit provider is required"):
+        SecurityAudit()
+
+
+def test_public_saas_durable_audit_does_not_fallback_on_write_failure(monkeypatch, tmp_path):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "1")
+    database = tmp_path / "security-audit.sqlite3"
+    audit = SecurityAudit(database_path=str(database))
+    audit.record(request_id="req-1", method="GET", path="/api/status", status=200, client_key="client")
+
+    database.unlink()
+    database.mkdir()
+    with pytest.raises(RuntimeError, match="durable security audit write failed"):
+        audit.record(request_id="req-2", method="GET", path="/api/status", status=200, client_key="client")
