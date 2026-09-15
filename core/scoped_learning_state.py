@@ -195,6 +195,12 @@ class ScopedLearningState:
             if self._require_durable:
                 raise PermissionError("trusted tenant and subject scope are required for learning state")
             return None
+        # Durable state is authoritative. Reload on every scoped read so a
+        # long-lived worker cannot serve stale learning data after another
+        # worker/process updates the same tenant+subject scope. The bounded
+        # cache remains useful for non-durable/local mode only.
+        if self._state_store is not None:
+            return self._cache(scope, self._load(scope))
         cached = self._scopes.get(scope)
         if cached is not None:
             self._scopes.move_to_end(scope)
