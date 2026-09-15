@@ -115,3 +115,33 @@ def test_production_service_never_reads_global_process_memory(tmp_path) -> None:
             service.memory_view(subject_id="user-b", tenant_id="tenant-a")
     finally:
         clear_trusted_identity()
+
+
+def test_production_service_replaces_legacy_local_store_with_fail_closed_block(tmp_path) -> None:
+    plane = _plane(tmp_path)
+    service = ConfiguredEcosystemService(production_data_plane=plane)
+
+    assert service.memory == []
+    with pytest.raises(RuntimeError, match="local decision store is unavailable"):
+        service.store.load()
+    with pytest.raises(RuntimeError, match="local decision store is unavailable"):
+        service.store.save_many([])
+
+
+def test_production_service_cannot_retain_preloaded_legacy_decisions(tmp_path) -> None:
+    class LegacyStore:
+        def load(self):
+            return ["legacy-local-record"]
+
+        def save(self, _record):
+            raise AssertionError("legacy store write must not be authoritative")
+
+        def save_many(self, _records):
+            raise AssertionError("legacy store write must not be authoritative")
+
+    plane = _plane(tmp_path)
+    service = ConfiguredEcosystemService(decision_store=LegacyStore(), production_data_plane=plane)
+
+    assert service.memory == []
+    with pytest.raises(RuntimeError, match="local decision store is unavailable"):
+        service.store.save(object())
