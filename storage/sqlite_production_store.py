@@ -93,18 +93,19 @@ class SQLiteProductionStore:
             ).fetchone()
         return json.loads(row["payload"]) if row is not None else None
 
-    def list(self, *, tenant_id: str, subject_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         tenant, subject = self._require_scope(tenant_id, subject_id)
-        if limit < 1:
-            raise ValueError("limit must be greater than zero")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be greater than zero when provided")
+        query = (
+            "SELECT payload FROM production_records "
+            "WHERE tenant_id = ? AND subject_id = ? "
+            "ORDER BY updated_at DESC, record_id DESC"
+        )
+        params: tuple[Any, ...] = (tenant, subject)
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (tenant, subject, int(limit))
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                """
-                SELECT payload FROM production_records
-                WHERE tenant_id = ? AND subject_id = ?
-                ORDER BY updated_at DESC, record_id DESC
-                LIMIT ?
-                """,
-                (tenant, subject, int(limit)),
-            ).fetchall()
+            rows = connection.execute(query, params).fetchall()
         return [json.loads(row["payload"]) for row in rows]
