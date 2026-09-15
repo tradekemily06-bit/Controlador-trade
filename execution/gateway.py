@@ -6,6 +6,7 @@ from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_maintenance import MaintenanceManager
+from core.ecosystem_incidents import EcosystemIncidentManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
@@ -48,6 +49,7 @@ class ExecutionGateway:
         lifecycle: ExecutionLifecycleStore | None = None,
         maintenance: MaintenanceManager | None = None,
         safety_store: OperationalSafetyStore | None = None,
+        incident_manager: EcosystemIncidentManager | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -55,6 +57,8 @@ class ExecutionGateway:
             raise ValueError("kill_switch é obrigatório.")
         if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
             raise ValueError("safety_store inválido.")
+        if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
+            raise ValueError("incident_manager inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -62,6 +66,7 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._maintenance = maintenance
         self._safety_store = safety_store
+        self._incident_manager = incident_manager
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def _refresh_kill_switch(self) -> str | None:
@@ -90,6 +95,9 @@ class ExecutionGateway:
             return f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}"
         if self._maintenance is not None and self._maintenance.execution_blocked(now=now):
             return "execução bloqueada durante manutenção ativa do ecossistema."
+        if self._incident_manager is not None and self._incident_manager.execution_blocked():
+            active_ids = ", ".join(item.incident_id for item in self._incident_manager.active())
+            return f"execução bloqueada por incidente técnico ativo: {active_ids}"
         return None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
@@ -119,6 +127,9 @@ class ExecutionGateway:
         event_time = timestamp or datetime.now(timezone.utc)
         if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
+        if self._incident_manager is not None and self._incident_manager.execution_blocked():
+            active_ids = ", ".join(item.incident_id for item in self._incident_manager.active())
+            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada por incidente técnico ativo: {active_ids}")
 
         audit_record = None
         if snapshot is not None and self._recorder is not None:
@@ -170,10 +181,26 @@ class ExecutionGateway:
             result = self._executor.execute(request)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            if self._incident_manager is not None:
+                try:
+                    self._incident_manager.open_incident(
+                        title="Falha técnica na execução",
+                        message=f"O executor apresentou uma falha inesperada ({type(exc).__name__}). O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.",
+                    )
+                except (ValueError, RuntimeError):
+                    pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            if self._incident_manager is not None:
+                try:
+                    self._incident_manager.open_incident(
+                        title="Resposta técnica inválida",
+                        message="O executor retornou um formato inválido. O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.",
+                    )
+                except (ValueError, RuntimeError):
+                    pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
