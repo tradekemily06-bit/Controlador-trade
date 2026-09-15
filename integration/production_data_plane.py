@@ -14,8 +14,8 @@ class ProductionDataPlane:
     """Application-facing durable decision and auxiliary state plane.
 
     It never falls back to process memory for owned/public data. SQLite is only
-    a single-instance provider; the deployment gate rejects multi-instance
-    configuration until a shared provider is supplied.
+    a single-instance provider; a declared multi-instance deployment therefore
+    fails closed until both decision and auxiliary state have a shared provider.
     """
 
     store: ProductionDecisionStore
@@ -28,6 +28,8 @@ class ProductionDataPlane:
         provider, policy = build_production_provider(cfg)
         if provider is None:
             return None
+        if cfg.multi_instance:
+            raise RuntimeError("multi-instance production requires a shared auxiliary state provider; SQLiteScopedStateStore is single-instance")
         if not policy.authorize_write(
             authenticated=True,
             tenant_id="configured",
