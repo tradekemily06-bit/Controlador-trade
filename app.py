@@ -107,16 +107,7 @@ def _learning_source_for_request(source_id: str):
     for item in SERVICE.learning_sources_view():
         if str(item.get("source_id", "")) == wanted:
             from core.p128_learning_source_gate import LearningSource, LearningSourceStatus, LearningSourceType
-            return LearningSource(
-                source_id=wanted,
-                source_type=LearningSourceType(str(item["source_type"]).upper()),
-                uri=str(item["uri"]),
-                status=LearningSourceStatus(str(item["status"]).upper()),
-                content_verified=bool(item.get("content_verified", False)),
-                security_checked=bool(item.get("security_checked", False)),
-                knowledge_validated=bool(item.get("knowledge_validated", False)),
-                operation_eligible=False,
-            )
+            return LearningSource(source_id=wanted, source_type=LearningSourceType(str(item["source_type"]).upper()), uri=str(item["uri"]), status=LearningSourceStatus(str(item["status"]).upper()), content_verified=bool(item.get("content_verified", False)), security_checked=bool(item.get("security_checked", False)), knowledge_validated=bool(item.get("knowledge_validated", False)), operation_eligible=False)
     raise ValueError("source_id não encontrado")
 
 def application(environ, start_response):
@@ -127,7 +118,7 @@ def application(environ, start_response):
         identity = require_trusted_identity(environ) if saas_public_mode() else None
         owner_kwargs = {"subject_id": identity.subject_id, "tenant_id": identity.tenant_id} if identity is not None else {}
         if path == "/api/health" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"ok": True} if saas_public_mode() else {"ok": True, **SERVICE.system_status()}, request_id, environ)
-        if path == "/api/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.public_status() if saas_public_mode() else SERVICE.system_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide(); return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
         if path == "/api/preferences" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
