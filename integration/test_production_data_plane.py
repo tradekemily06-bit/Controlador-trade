@@ -3,8 +3,7 @@ from __future__ import annotations
 import pytest
 
 from analysis.decision_record import DecisionRecord
-from analysis.models import AnalysisResult
-from core.models import Signal
+from core.models import AnalysisResult, Signal
 from integration.production_data_plane import ProductionDataPlane
 from storage.production_provider import ProductionProviderConfig
 
