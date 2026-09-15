@@ -69,3 +69,16 @@ def test_concurrent_scopes_merge_material_reviews_without_dropping_either():
         tenant_id="tenant-a", subject_id="user-a"
     )
     assert set(final.material_reviews) == {"left", "right"}
+
+
+def test_long_lived_reader_refreshes_after_another_worker_writes():
+    store = MemoryStateStore()
+    first = ScopedLearningState(state_store=store, require_durable=True)
+    second = ScopedLearningState(state_store=store, require_durable=True)
+    assert first.get(tenant_id="tenant-a", subject_id="user-a").material_reviews == {}
+
+    second.get(tenant_id="tenant-a", subject_id="user-a").material_reviews["new"] = _review("new")
+    second.persist(tenant_id="tenant-a", subject_id="user-a")
+
+    refreshed = first.get(tenant_id="tenant-a", subject_id="user-a")
+    assert set(refreshed.material_reviews) == {"new"}
