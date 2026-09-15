@@ -145,7 +145,6 @@ class OperationalSafetyStore:
         return records
 
     def replace_with_fail_closed_state(self, reason: str) -> None:
-        """Replace an unreadable safety file without reading the corrupt payload."""
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason é obrigatório.")
         with self._lock():
@@ -162,11 +161,11 @@ class OperationalSafetyStore:
             execution_audit = payload.get("execution_audit", [])
             if not isinstance(execution_audit, list):
                 raise ValueError("auditoria de execução persistida inválida.")
+            normalized_execution = [self._execution_audit_item(item) for item in execution_audit]
             merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
             persisted_state = payload.get("kill_switch", {})
             if not isinstance(persisted_state, dict):
                 raise ValueError("estado do kill switch inválido.")
-            # Ordinary audit writes may never clear a kill switch enabled by another writer.
             safe_state = {
                 "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
                 "reason": state.reason if state.enabled else persisted_state.get("reason"),
@@ -174,7 +173,6 @@ class OperationalSafetyStore:
             self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
 
     def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
-        """Explicitly change the persisted kill switch under the shared file lock."""
         if not isinstance(enabled, bool):
             raise TypeError("enabled deve ser bool.")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
