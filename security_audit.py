@@ -29,8 +29,9 @@ class SecurityAudit:
     Stores no raw IP, credentials, authorization tokens or request bodies.
     Local development may use the in-memory fallback, but public SaaS requires
     a durable audit database so a storage failure cannot silently erase the
-    security trail. Centralized multi-instance storage remains a deployment
-    boundary concern and is therefore rejected by the current provider setup.
+    security trail. The current SQLite provider is single-instance only, so a
+    declared multi-instance public deployment fails closed rather than splitting
+    the security trail across independent nodes.
     """
 
     def __init__(
@@ -48,6 +49,8 @@ class SecurityAudit:
         self._database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_SECURITY_AUDIT_DB")
         self._require_durable = self._public_saas_mode() if require_durable is None else bool(require_durable)
         self._db_lock = Lock()
+        if self._require_durable and self._multi_instance_mode():
+            raise RuntimeError("shared security audit provider is required for multi-instance SaaS")
         if self._require_durable and not self._database_path:
             raise RuntimeError("durable security audit provider is required")
         if self._database_path:
@@ -56,6 +59,10 @@ class SecurityAudit:
     @staticmethod
     def _public_saas_mode() -> bool:
         return os.environ.get("CONTROLADOR_SAAS_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @staticmethod
+    def _multi_instance_mode() -> bool:
+        return os.environ.get("CONTROLADOR_MULTI_INSTANCE", "").strip().lower() in {"1", "true", "yes", "on"}
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._database_path or ":memory:", timeout=5)
@@ -66,6 +73,8 @@ class SecurityAudit:
             if path.parent != Path("."):
                 path.parent.mkdir(parents=True, exist_ok=True)
             with self._db_lock, self._connect() as connection:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("PRAGMA synchronous=FULL")
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS security_events (
