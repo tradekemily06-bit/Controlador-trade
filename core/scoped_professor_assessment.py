@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from typing import Any
 
 from .learning_material_review import EffectivenessVerdict, MaterialVerdict
 from .p128_learning_professor import AnswerAssessment, LearningProfessor, ProfessorActivitySpec, QuizPlan
@@ -105,24 +104,28 @@ class ScopedProfessorAssessment:
         self,
         scope: LearningScope,
         *,
+        activity_id: str,
         question: ProfessionalLearningQuestion,
         answer: str,
     ) -> AnswerAssessment:
+        activity_key = str(activity_id).strip()
+        if activity_key not in scope.activities:
+            raise ValueError("activity_id não encontrado no tenant atual")
         assessment = self.professor.grade_answer(question=question, answer=answer)
         # LearningAttempt remains the durable event format. Keep the detailed
         # professional result in feedback so the existing storage contract stays
         # backward compatible while remediation can count failed attempts.
         from .learning_content import LearningAttempt
+        import json
 
         feedback = {
             "assessment": asdict(assessment),
             "question_id": question.question_id,
             "result": assessment.result,
         }
-        import json
         scope.attempts.append(
             LearningAttempt(
-                activity_id=question.question_id,
+                activity_id=activity_key,
                 answer=answer,
                 correct=assessment.result == "STRONG",
                 feedback=json.dumps(feedback, ensure_ascii=False, sort_keys=True),
