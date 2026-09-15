@@ -17,15 +17,26 @@ def _plane(tmp_path):
 
 
 def _payload(score: float = 91):
+    candles = []
+    closes = (1.1000, 1.1008, 1.1011, 1.1006, 1.1014, 1.1020, 1.1017, 1.1024)
+    for index, close in enumerate(closes):
+        timestamp = f"2026-09-15T00:0{index}:00+00:00"
+        candles.append(
+            {
+                "open": close - 0.0004,
+                "high": close + 0.0006,
+                "low": close - 0.0007,
+                "close": close,
+                "timestamp": timestamp,
+            }
+        )
     return {
         "score": score,
         "confirmed": True,
         "filters_ok": True,
         "symbol": "EURUSD",
         "timeframe": "M5",
-        "candles": [
-            {"open": 1.1000, "high": 1.1020, "low": 1.0990, "close": 1.1015, "timestamp": "2026-09-15T00:00:00+00:00"}
-        ],
+        "candles": candles,
         "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
         "observed_nodes": ["market_data", "price_history", "risk", "execution", "security"],
         "relationships_reviewed": ["market_data->risk", "price_history->risk", "risk->execution", "security->execution"],
