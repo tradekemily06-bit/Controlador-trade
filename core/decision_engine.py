@@ -26,10 +26,10 @@ class DecisionEngine:
     """
     Orquestra sinal, contexto de mercado, contexto sênior, estado operacional e risco.
 
-    Fail-closed: uma decisão EXECUTAR exige contexto sênior completo e, quando
-    o ciclo foi produzido pela fronteira sênior atual, uma avaliação explícita
-    de qualidade da oportunidade. Essa avaliação responde se a oportunidade
-    realmente sobreviveu à revisão profissional; ela nunca concede autoridade
+    Fail-closed: uma decisão EXECUTAR exige uma avaliação profissional explícita
+    da oportunidade. A ausência dessa avaliação nunca é tratada como aprovação
+    implícita, mesmo em ciclos sintéticos/legados. A avaliação responde se a
+    oportunidade sobreviveu à revisão profissional; ela nunca concede autoridade
     de execução. Gates determinísticos anteriores continuam podendo explicar
     primeiro por que uma operação não é elegível.
     """
@@ -86,19 +86,21 @@ class DecisionEngine:
         if senior_context.quality is not SeniorContextQuality.COMPLETE:
             return DecisionResult(FinalDecision.AGUARDAR, analysis.signal, "Contexto sênior incompleto ou requer reavaliação.")
 
-        # New senior cycles carry an explicit opportunity-quality judgment.
-        # Legacy synthetic contexts without it remain compatible here, while
-        # every production cycle assembled by SeniorContextCycleBoundary has it.
         operation_assessment = senior_context.operation_assessment
-        if operation_assessment is not None:
-            if operation_assessment.execution_authorized:
-                return DecisionResult(FinalDecision.BLOQUEAR, analysis.signal, "A avaliação de oportunidade sênior não pode conceder autoridade de execução.")
-            if operation_assessment.disposition is not SeniorOperationDisposition.SUITABLE:
-                return DecisionResult(
-                    FinalDecision.AGUARDAR,
-                    analysis.signal,
-                    f"Avaliação profissional da oportunidade: {operation_assessment.quality_level}. Reavaliação necessária antes de qualquer execução.",
-                )
+        if operation_assessment is None:
+            return DecisionResult(
+                FinalDecision.AGUARDAR,
+                analysis.signal,
+                "Avaliação profissional da oportunidade ausente; reavaliação obrigatória antes de qualquer execução.",
+            )
+        if operation_assessment.execution_authorized:
+            return DecisionResult(FinalDecision.BLOQUEAR, analysis.signal, "A avaliação de oportunidade sênior não pode conceder autoridade de execução.")
+        if operation_assessment.disposition is not SeniorOperationDisposition.SUITABLE:
+            return DecisionResult(
+                FinalDecision.AGUARDAR,
+                analysis.signal,
+                f"Avaliação profissional da oportunidade: {operation_assessment.quality_level}. Reavaliação necessária antes de qualquer execução.",
+            )
 
         senior_risk = self.senior_risk_gate.evaluate(
             senior_risk=senior_context.risk_assessment,
