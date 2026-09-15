@@ -6,6 +6,7 @@ from typing import Callable
 
 from core.decision_audit import DecisionAudit
 from core.decision_freshness import DecisionFreshnessPolicy
+from core.demo_risk_state_store import DemoRiskStateStore
 from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
@@ -16,6 +17,7 @@ from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.technical_incident_store import TechnicalIncidentStore
+from execution.demo_risk_dispatch_guard import DemoRiskDispatchGuard
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
@@ -39,6 +41,7 @@ class OperationalRuntime:
     market_data: MarketDataRuntimeState
     safety_store: OperationalSafetyStore
     safety_audit: DecisionAudit
+    demo_risk_state: DemoRiskStateStore | None = None
 
 
 def build_operational_runtime(
@@ -48,12 +51,15 @@ def build_operational_runtime(
 ) -> OperationalRuntime:
     """Compose one shared runtime with durable, fail-closed safety state.
 
-    The risk-state provider is deliberately injected at the edge. The core
-    cannot infer account/exposure state from an untrusted decision payload.
+    When no external authoritative risk provider is supplied, the runtime uses
+    its own durable DEMO risk-state store. A decision carrying a risk identity
+    can therefore execute only after that store has been synchronized by a
+    trusted DEMO adapter/reconciliation boundary.
     """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    demo_risk_state = DemoRiskStateStore(root / "demo-risk-state.json")
     try:
         safety_audit, persisted_switch = safety_store.load()
         initial_enabled = persisted_switch.state.enabled
@@ -86,8 +92,17 @@ def build_operational_runtime(
     recovery = RecoveryCoordinator(checkpoint_store=checkpoint, lifecycle_store=lifecycle, execution_ledger=ledger)
     health = RuntimeHealthMonitor(ledger=ledger, lifecycle=lifecycle, checkpoint_store=checkpoint, recovery=recovery)
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+
+    effective_executor: ExecutionPort = executor or PaperExecutor()
+    if risk_state_fingerprint_provider is None:
+        effective_executor = DemoRiskDispatchGuard(
+            effective_executor,
+            risk_store=demo_risk_state,
+            risk_fingerprint_provider=demo_risk_state.fingerprint,
+        )
+
     gateway = ExecutionGateway(
-        executor or PaperExecutor(),
+        effective_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
@@ -109,6 +124,7 @@ def build_operational_runtime(
         market_data=market_data,
         safety_store=safety_store,
         safety_audit=safety_audit,
+        demo_risk_state=demo_risk_state,
     )
 
     # Wire authoritative providers only after every runtime component exists.
@@ -120,5 +136,7 @@ def build_operational_runtime(
     )
     if risk_state_fingerprint_provider is not None:
         gateway.set_risk_state_fingerprint_provider(risk_state_fingerprint_provider)
+    else:
+        gateway.set_risk_state_fingerprint_provider(demo_risk_state.fingerprint)
     gateway.set_decision_freshness_policy(DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0))
     return runtime
