@@ -91,6 +91,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         ledger=ledger,
         lifecycle=lifecycle,
         maintenance=maintenance,
+        safety_store=safety_store,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
