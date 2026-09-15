@@ -29,9 +29,9 @@ class DecisionSnapshot:
     operational_state_available: bool
     trades_today: int | None
     consecutive_losses: int | None
-    risk_state_fingerprint: str | None
     symbol: str | None
     timeframe: str | None
+    risk_state_fingerprint: str | None = None
 
     @classmethod
     def from_results(
@@ -58,9 +58,9 @@ class DecisionSnapshot:
             operational_state_available=operational_state is not None,
             trades_today=(operational_state.trades_today if operational_state is not None else None),
             consecutive_losses=(operational_state.consecutive_losses if operational_state is not None else None),
-            risk_state_fingerprint=(risk_state_fingerprint(operational_state) if operational_state is not None else None),
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
+            risk_state_fingerprint=(risk_state_fingerprint(operational_state) if operational_state is not None else None),
         )
 
     def explain(self) -> str:
@@ -93,7 +93,7 @@ class DecisionSnapshot:
             "operational_state_available": self.operational_state_available,
             "trades_today": self.trades_today,
             "consecutive_losses": self.consecutive_losses,
-            "risk_state_fingerprint": self.risk_state_fingerprint,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "risk_state_fingerprint": self.risk_state_fingerprint,
         }
