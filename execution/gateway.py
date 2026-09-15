@@ -172,6 +172,14 @@ class ExecutionGateway:
             return "execução bloqueada: timeframe do snapshot da decisão está indisponível"
         return None
 
+    def _decision_created_at(self, *, snapshot: DecisionSnapshot | None, event_time: datetime) -> datetime:
+        """Use the immutable decision timestamp for freshness, never request arrival time."""
+        if snapshot is not None and snapshot.created_at is not None:
+            return snapshot.created_at
+        if self._operational_barrier_provider is not None and self._decision_freshness_policy is not None:
+            raise ValueError("snapshot operacional sem created_at autoritativo")
+        return event_time
+
     def _market_data_fingerprint_error(self, request: ExecutionRequest) -> str | None:
         expected = request.market_data_fingerprint
         if expected is None:
@@ -235,7 +243,14 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
         event_time = timestamp or datetime.now(timezone.utc)
-        freshness_error = self._decision_freshness_error(created_at=event_time)
+        snapshot_error = self._decision_snapshot_error(request, snapshot)
+        if snapshot_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, snapshot_error)
+        try:
+            decision_time = self._decision_created_at(snapshot=snapshot, event_time=event_time)
+        except Exception as exc:
+            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada: timestamp autoritativo da decisão indisponível: {type(exc).__name__}")
+        freshness_error = self._decision_freshness_error(created_at=decision_time, now=event_time)
         if freshness_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, freshness_error)
         preflight_incident_error = self._incident_error()
@@ -244,9 +259,6 @@ class ExecutionGateway:
         barrier_error = self._global_barrier_error()
         if barrier_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
-        snapshot_error = self._decision_snapshot_error(request, snapshot)
-        if snapshot_error is not None:
-            return GatewayResult(GatewayStatus.BLOCKED, snapshot_error)
         market_data_error = self._market_data_fingerprint_error(request)
         if market_data_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, market_data_error)
@@ -293,7 +305,7 @@ class ExecutionGateway:
         if final_safety_error is not None:
             self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
-        final_freshness_error = self._decision_freshness_error(created_at=event_time)
+        final_freshness_error = self._decision_freshness_error(created_at=decision_time, now=event_time)
         if final_freshness_error is not None:
             self._mark_unknown(request_id, event_time, f"decisão expirou antes do dispatch: {final_freshness_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_freshness_error)
