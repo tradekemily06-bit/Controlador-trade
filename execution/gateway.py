@@ -8,6 +8,7 @@ from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.operational_safety_store import OperationalSafetyStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
@@ -46,18 +47,39 @@ class ExecutionGateway:
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
         maintenance: MaintenanceManager | None = None,
+        safety_store: OperationalSafetyStore | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
             raise ValueError("kill_switch é obrigatório.")
+        if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
+            raise ValueError("safety_store inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._maintenance = maintenance
+        self._safety_store = safety_store
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+
+    def _refresh_kill_switch(self) -> str | None:
+        """Refresh the authoritative persisted kill switch before dispatch.
+
+        A process-local KillSwitch cannot observe a safety change made by a
+        different worker. When a durable safety store is configured, every
+        execution attempt therefore re-reads the persisted state. Any read or
+        validation failure fails closed and no executor dispatch is allowed.
+        """
+        if self._safety_store is None:
+            return None
+        try:
+            _audit, persisted = self._safety_store.load()
+            self._kill_switch.synchronize(persisted.state)
+            return None
+        except (OSError, ValueError, TypeError) as exc:
+            return f"estado de segurança indisponível: {type(exc).__name__}"
 
     def execute(
         self,
@@ -80,6 +102,9 @@ class ExecutionGateway:
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
 
+        refresh_error = self._refresh_kill_switch()
+        if refresh_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, refresh_error)
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
