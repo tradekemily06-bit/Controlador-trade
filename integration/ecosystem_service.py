@@ -12,11 +12,13 @@ from core.ecosystem_maintenance import MaintenanceStatus
 from core.ecosystem_notifications import NotificationSeverity
 from core.ecosystem_preferences import EcosystemPreferencesStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
+from core.learning_material_review import LearningMaterialReview
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
+from core.professional_learning_question_engine import ProfessionalLearningQuestion, QuestionType
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
@@ -192,6 +194,12 @@ class EcosystemService:
         self.learning_activities[activity.activity_id] = activity
         return activity
 
+    def generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
+        spec = ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "question-set")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "ADVANCED")))
+        source = self.learning_sources.get(spec.knowledge_id)
+        validated = bool(source is not None and source.status is LearningSourceStatus.VALIDATED and source.knowledge_validated and not source.operation_eligible)
+        return self.learning_professor.build_professional_questions(spec, knowledge_validated=validated, context=str(payload.get("context", "")))
+
     def learning_activities_view(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in self.learning_activities.values()]
 
@@ -248,33 +256,3 @@ class EcosystemService:
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
-
-    def public_status(self) -> dict[str, Any]:
-        """Tenant-safe status surface for public SaaS clients.
-
-        It exposes only product-safe state and explicit execution safety. Internal
-        provider policy, runtime recovery identifiers, storage paths and global
-        infrastructure diagnostics stay behind the authenticated operator surface.
-        """
-        psychology_enabled = True
-        preferences = getattr(self, "preferences", None)
-        if preferences is not None:
-            psychology_enabled = bool(preferences.preferences.psychology_enabled)
-        maintenance_status = "NOT_CONFIGURED"
-        if hasattr(self, "maintenance"):
-            maintenance_status = str(self.maintenance.status().get("status", "UNKNOWN"))
-        return {
-            "mode": "SIMULACAO",
-            "execution_allowed": False,
-            "execution": "bloqueada_por_padrao",
-            "decision_engine": "ONLINE",
-            "risk_gate": "ONLINE",
-            "learning": "ONLINE",
-            "psychology": "ONLINE" if psychology_enabled else "DISABLED",
-            "news": "AGUARDANDO_FONTE",
-            "mt5_demo": "DEMO_VALIDADO",
-            "real": "DESABILITADO",
-            "maintenance": {"status": maintenance_status},
-            "health": "SAFE",
-            "alerts": [],
-        }
