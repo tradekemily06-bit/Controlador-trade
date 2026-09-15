@@ -21,6 +21,7 @@ class ExecutionRequest:
     mode: ExecutionMode
     request_id: str | None = None
     market_data_fingerprint: str | None = None
+    risk_state_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
