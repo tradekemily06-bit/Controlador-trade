@@ -4,6 +4,8 @@ import os
 from contextvars import ContextVar
 from dataclasses import dataclass
 
+from storage.production_provider import ProductionProviderConfig, build_production_provider
+
 
 SAAS_PUBLIC_ENV = "CONTROLADOR_SAAS_PUBLIC"
 TRUSTED_SUBJECT_KEY = "controlador.trusted_subject_id"
@@ -80,5 +82,21 @@ def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
 
 
 def require_tenant_scoped_data_plane() -> None:
-    """Public SaaS must not expose process-global state as if it were tenant-isolated."""
-    raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
+    """Allow public SaaS only when durable tenant-scoped storage is actually configured.
+
+    The check intentionally reconstructs the provider policy from deployment
+    configuration rather than trusting a browser-supplied value or falling back
+    to process memory. SQLite remains single-instance; multi-instance deployment
+    therefore fails closed until a shared durable provider is implemented.
+    """
+    cfg = ProductionProviderConfig.from_environment()
+    try:
+        provider, policy = build_production_provider(cfg)
+    except (RuntimeError, ValueError) as exc:
+        raise PublicSaaSNotReady("tenant-scoped data plane is not safely configured") from exc
+    if provider is None or not cfg.database_path:
+        raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
+    if not policy.authorize_write(authenticated=True, tenant_id="configured"):
+        raise PublicSaaSNotReady("tenant-scoped data plane is not authorized")
+    if not policy.durable or not policy.tenant_scoped:
+        raise PublicSaaSNotReady("tenant-scoped data plane must be durable and tenant-scoped")
