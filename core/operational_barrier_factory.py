@@ -12,6 +12,11 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
     health snapshot can accidentally authorize an operation. Diagnostics can
     still run while the barrier is blocked; only operationally meaningful
     decisions are denied.
+
+    The persisted safety store is also authoritative for the kill switch. This
+    matters for multi-worker deployments: a worker that did not receive the
+    in-memory state change must still be blocked immediately after another
+    worker activates the persisted kill switch.
     """
     if runtime is None:
         return GlobalOperationalBarrier((
@@ -37,15 +42,39 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
         components.append(SafetyComponent("technical-incident", False, f"estado de incidente indisponível: {type(exc).__name__}"))
 
     try:
-        kill = runtime.kill_switch.state
+        local_kill = runtime.kill_switch.state
+        _audit, persisted_kill = runtime.safety_store.load()
+        persisted_enabled = persisted_kill.state.enabled
+        local_enabled = local_kill.enabled
         components.append(SafetyComponent(
             "kill-switch",
-            kill.enabled is False,
-            kill.reason or "kill switch ativo",
+            local_enabled is False and persisted_enabled is False,
+            (
+                persisted_kill.state.reason
+                or local_kill.reason
+                or "kill switch ativo"
+            ),
+            RemediationMode.NEVER_AUTO,
+        ))
+        components.append(SafetyComponent(
+            "operational-safety-store",
+            True,
+            "estado de segurança persistido legível e consistente",
             RemediationMode.NEVER_AUTO,
         ))
     except Exception as exc:
-        components.append(SafetyComponent("kill-switch", False, f"estado do kill switch indisponível: {type(exc).__name__}", RemediationMode.NEVER_AUTO))
+        components.append(SafetyComponent(
+            "kill-switch",
+            False,
+            f"estado autoritativo do kill switch indisponível: {type(exc).__name__}",
+            RemediationMode.NEVER_AUTO,
+        ))
+        components.append(SafetyComponent(
+            "operational-safety-store",
+            False,
+            f"estado de segurança indisponível: {type(exc).__name__}",
+            RemediationMode.NEVER_AUTO,
+        ))
 
     try:
         maintenance = runtime.maintenance.status()
@@ -73,7 +102,7 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
         recovery = runtime.recovery.assess()
         components.append(SafetyComponent(
             "execution-recovery",
-            recovery.can_resume,
+            recovery.can_resume is True,
             recovery.message,
             RemediationMode.MANUAL_REQUIRED,
         ))
@@ -90,21 +119,5 @@ def build_global_operational_barrier(runtime: OperationalRuntime | None) -> Glob
         ))
     except Exception as exc:
         components.append(SafetyComponent("runtime-health", False, f"saúde do runtime indisponível: {type(exc).__name__}"))
-
-    try:
-        runtime.safety_store.load()
-        components.append(SafetyComponent(
-            "operational-safety-store",
-            True,
-            "estado de segurança persistido legível",
-            RemediationMode.NEVER_AUTO,
-        ))
-    except Exception as exc:
-        components.append(SafetyComponent(
-            "operational-safety-store",
-            False,
-            f"estado de segurança indisponível: {type(exc).__name__}",
-            RemediationMode.NEVER_AUTO,
-        ))
 
     return GlobalOperationalBarrier(components)
