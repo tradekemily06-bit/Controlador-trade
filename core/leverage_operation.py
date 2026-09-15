@@ -1,5 +1,6 @@
 """Operation-scoped leverage assessment; calculation only, never authorization."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
@@ -91,9 +92,12 @@ def assess_leverage(request: LeverageRequest) -> LeverageAssessment:
         if _decimal(point_request.quantity) != quantity or _decimal(point_request.price) != price:
             return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, ("point_value_quantity_or_price_mismatch",), True)
         point_result = assess_point_value(point_request, movement_price_units=stop_distance)
-        if point_result.status is not PointValueStatus.READY:
+        if point_result.status is not PointValueStatus.READY or point_result.value_per_price_unit is None:
             return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, point_result.reasons, True)
-        value_per_unit = point_result.value_per_price_unit
+        derived_value = point_result.value_per_price_unit
+        if value_per_unit is not None and derived_value != value_per_unit:
+            return LeverageAssessment(request.request_id, request.profile_id, LeverageStatus.REASSESS, None, None, None, None, ("conflicting_point_value_sources",), True)
+        value_per_unit = derived_value
 
     assert value_per_unit is not None
     exposure = capital * leverage
