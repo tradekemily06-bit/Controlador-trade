@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from core.decision_audit import DecisionAudit
 from core.decision_freshness import DecisionFreshnessPolicy
@@ -40,8 +41,16 @@ class OperationalRuntime:
     safety_audit: DecisionAudit
 
 
-def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
-    """Compose one shared runtime with durable, fail-closed safety state."""
+def build_operational_runtime(
+    root: str | Path,
+    executor: ExecutionPort | None = None,
+    risk_state_fingerprint_provider: Callable[[], str | None] | None = None,
+) -> OperationalRuntime:
+    """Compose one shared runtime with durable, fail-closed safety state.
+
+    The risk-state provider is deliberately injected at the edge. The core
+    cannot infer account/exposure state from an untrusted decision payload.
+    """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
@@ -102,13 +111,14 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         safety_audit=safety_audit,
     )
 
-    # Wire the complete barrier only after every runtime component exists.
-    # The provider rebuilds the barrier on every dispatch, avoiding stale
-    # snapshots while keeping construction free of circular imports.
+    # Wire authoritative providers only after every runtime component exists.
+    # Each provider is evaluated again immediately before dispatch.
     from core.operational_barrier_factory import build_global_operational_barrier
     gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
     gateway.set_market_data_fingerprint_provider(
         lambda: runtime.market_data.report.fingerprint if runtime.market_data.report is not None else None
     )
+    if risk_state_fingerprint_provider is not None:
+        gateway.set_risk_state_fingerprint_provider(risk_state_fingerprint_provider)
     gateway.set_decision_freshness_policy(DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0))
     return runtime
