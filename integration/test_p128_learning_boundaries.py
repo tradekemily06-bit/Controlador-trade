@@ -78,15 +78,23 @@ def test_professor_activity_requires_validated_knowledge_and_is_not_trade_author
     source = service.learning_sources["k-2"]
     source = service.validate_learning_source(source, content_verified=True, security_checked=True)
     service.admit_learning_knowledge(source, knowledge_validated=True)
+    service.add_learning_observation({
+        "resource_id": "k-2",
+        "statement": "Afirmação validada armazenada no tenant",
+        "concepts": ["contexto"],
+        "validated": True,
+    })
 
     activity = service.generate_professor_activity({
         "activity_id": "quiz-2",
         "knowledge_id": "k-2",
-        "statement": "Afirmação validada",
-        "concept": "contexto",
-        "knowledge_validated": False,
+        "statement": "TENTATIVA DE INJETAR OUTRA AFIRMAÇÃO",
+        "concept": "TENTATIVA DE INJETAR OUTRO CONCEITO",
+        "knowledge_validated": True,
     })
     assert activity.activity_id == "quiz-2"
+    assert "Afirmação validada armazenada no tenant" in activity.prompt
+    assert "TENTATIVA DE INJETAR" not in activity.prompt
     assert service.learning_summary()["learning_authorizes_trading"] is False
 
 
