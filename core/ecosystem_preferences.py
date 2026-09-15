@@ -129,6 +129,20 @@ class EcosystemPreferencesStore:
                 return value
         return self._default_preferences
 
+    def _fresh_current(self) -> EcosystemPreferences:
+        """Reload durable scoped state before a write so stale caches cannot clobber it."""
+        scope = self._trusted_scope()
+        if scope is None or self._state_store is None:
+            return self._current()
+        payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
+        if payload is None:
+            value = self._default_preferences
+        else:
+            value = self._decode(payload)
+            self._validate(value)
+        self._scoped[scope] = value
+        return value
+
     @property
     def preferences(self) -> EcosystemPreferences:
         return self._current()
@@ -145,13 +159,15 @@ class EcosystemPreferencesStore:
         return value
 
     def update(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._current(), **changes))
+        return self._save(replace(self._fresh_current(), **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._current(), candle=replace(self._current().candle, **changes)))
+        current = self._fresh_current()
+        return self._save(replace(current, candle=replace(current.candle, **changes)))
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._current(), notifications=replace(self._current().notifications, **changes)))
+        current = self._fresh_current()
+        return self._save(replace(current, notifications=replace(current.notifications, **changes)))
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
