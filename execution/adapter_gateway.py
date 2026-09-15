@@ -20,6 +20,11 @@ class AdapterExecutionResult:
 class BrokerAdapterGateway:
     """Thin broker boundary; it never contains trading or signal logic."""
 
+    @staticmethod
+    def _safe_error(exc: Exception) -> str:
+        """Expose only the exception type across the broker boundary."""
+        return type(exc).__name__
+
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
@@ -27,12 +32,12 @@ class BrokerAdapterGateway:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
-            return AdapterExecutionResult(False, str(exc))
+            return AdapterExecutionResult(False, f"broker registry rejected request: {self._safe_error(exc)}")
 
         try:
             available = bool(adapter.is_available())
         except Exception as exc:
-            return AdapterExecutionResult(False, f"disponibilidade do adapter falhou: {exc}")
+            return AdapterExecutionResult(False, f"adapter availability check failed: {self._safe_error(exc)}")
 
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
@@ -40,7 +45,7 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            return AdapterExecutionResult(False, f"adapter execution failed; execution not confirmed: {self._safe_error(exc)}")
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
