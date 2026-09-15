@@ -33,11 +33,17 @@ def test_any_unhealthy_component_blocks_operation() -> None:
 
 
 def test_safety_source_failure_is_unknown_and_blocks() -> None:
-    class ExplodingComponents:
-        def __iter__(self):
+    class ExplodingComponent:
+        name = "incident"
+        detail = ""
+        remediation_mode = RemediationMode.MANUAL_REQUIRED
+        repair = None
+
+        @property
+        def healthy(self):
             raise RuntimeError("store indisponível")
 
-    decision = GlobalOperationalBarrier(ExplodingComponents()).evaluate()
+    decision = GlobalOperationalBarrier([ExplodingComponent()]).evaluate()
 
     assert decision.status is BarrierStatus.UNKNOWN
     assert not decision.operationally_allowed
@@ -64,8 +70,6 @@ def test_safe_repair_is_allowed_but_never_grants_authorization() -> None:
     assert repaired == ["temporary-state"]
     assert results[0].attempted is True
     assert results[0].succeeded is True
-    # The component remains unhealthy in this immutable snapshot.  A repair
-    # therefore cannot silently turn a blocked snapshot into READY.
     assert not barrier.evaluate().operationally_allowed
 
 
