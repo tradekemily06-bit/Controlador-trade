@@ -131,6 +131,7 @@ class SeniorContextCycleBoundary:
             graph=whole_graph,
             reading=market_reading,
             reasoning=senior_assessment,
+            risk_assessment=risk_assessment,
             intelligence=intelligence_assessment,
         )
 
