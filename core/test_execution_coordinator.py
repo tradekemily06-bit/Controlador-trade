@@ -89,6 +89,7 @@ def test_build_plan_preserves_market_data_fingerprint():
         duration_seconds=60,
     )
     assert plan.request.market_data_fingerprint == orchestration.market_data.fingerprint
+    assert plan.decision_identity
 
 
 def test_coordinator_blocks_plan_when_market_data_identity_changes():
@@ -125,6 +126,67 @@ def test_coordinator_blocks_plan_when_market_data_identity_changes():
     result = ExecutionCoordinator(gateway).execute_plan(plan, orchestration=changed)
     assert result.status is GatewayStatus.BLOCKED
     assert "dados de mercado" in result.message
+    assert gateway.calls == []
+
+
+def test_coordinator_blocks_when_decision_identity_changes():
+    orchestration = executable_orchestration()
+    plan = ExecutionCoordinator.build_plan(
+        orchestration,
+        request_id="req-decision-change",
+        amount=10.0,
+        duration_seconds=60,
+    )
+    changed_analysis = AnalysisResult(
+        signal=Signal.VENDA,
+        score=82.0,
+        reason="sinal alterado",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    changed_quality = SignalQuality(score=91.0, level=SignalLevel.FORTE, actionable=True)
+    changed_decision = DecisionResult(FinalDecision.EXECUTAR, Signal.VENDA, "decisão alterada")
+    changed_snapshot = DecisionSnapshot.from_results(
+        analysis=changed_analysis,
+        quality=changed_quality,
+        decision=changed_decision,
+        market_context=None,
+        operational_state=None,
+    )
+    changed = OrchestrationResult(
+        market_data=orchestration.market_data,
+        analysis=changed_analysis,
+        quality=changed_quality,
+        decision=changed_decision,
+        snapshot=changed_snapshot,
+        timestamp=orchestration.timestamp,
+        senior_context=orchestration.senior_context,
+    )
+    gateway = FakeGateway()
+    result = ExecutionCoordinator(gateway).execute_plan(plan, orchestration=changed)
+    assert result.status is GatewayStatus.BLOCKED
+    assert "decisão/orquestração mudou" in result.message
+    assert gateway.calls == []
+
+
+def test_coordinator_blocks_when_entry_conditions_change():
+    orchestration = executable_orchestration()
+    plan = ExecutionCoordinator.build_plan(
+        orchestration,
+        request_id="req-entry-change",
+        amount=10.0,
+        duration_seconds=60,
+        entry_conditions=("rejeicao", "confirmacao_fechamento"),
+    )
+    gateway = FakeGateway()
+    result = ExecutionCoordinator(gateway).execute_plan(
+        plan,
+        orchestration=orchestration,
+        entry_conditions=("rompimento",),
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "condições de entrada mudaram" in result.message
     assert gateway.calls == []
 
 
