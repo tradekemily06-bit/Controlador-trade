@@ -88,6 +88,27 @@ class ScopedLearningState:
             return
         self._state_store.put(tenant_id=scope_key[0], subject_id=scope_key[1], namespace=self.NAMESPACE, payload=self._encode(scope))
 
+    @staticmethod
+    def _merge(latest: LearningScope, current: LearningScope) -> LearningScope:
+        """Merge additive concurrent learning writes without dropping newer durable data."""
+        merged = LearningScope(
+            sources=dict(latest.sources),
+            resources=dict(latest.resources),
+            observations=list(latest.observations),
+            activities=dict(latest.activities),
+            attempts=list(latest.attempts),
+        )
+        merged.sources.update(current.sources)
+        merged.resources.update(current.resources)
+        merged.activities.update(current.activities)
+        for item in current.observations:
+            if item not in merged.observations:
+                merged.observations.append(item)
+        for item in current.attempts:
+            if item not in merged.attempts:
+                merged.attempts.append(item)
+        return merged
+
     def _cache(self, scope_key: tuple[str, str], scope: LearningScope) -> LearningScope:
         self._scopes[scope_key] = scope
         self._scopes.move_to_end(scope_key)
@@ -116,4 +137,8 @@ class ScopedLearningState:
         current = self._scopes.get(scope)
         if current is None:
             current = self._cache(scope, self._load(scope))
+        if self._state_store is not None:
+            latest = self._load(scope)
+            current = self._merge(latest, current)
+        self._cache(scope, current)
         self._save(scope, current)
