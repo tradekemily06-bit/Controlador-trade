@@ -153,8 +153,6 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
 
-        # An accepted REAL result without a durable broker/exchange reference is
-        # ambiguous: the external order may exist but cannot be safely reconciled.
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
                 self._ledger.mark_unknown(request_id)
@@ -169,10 +167,34 @@ class RealExecutionGateway:
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        """Legacy reconciliation hook; never resubmits the order.
+
+        New production callers should use reconcile_unknown_with_evidence so the
+        terminal state is tied to an auditable external observation.
+        """
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        self._ledger.reconcile(request_id, executed=executed)
+
+    def reconcile_unknown_with_evidence(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> None:
+        """Resolve uncertainty only when explicit external evidence is supplied."""
+        if self._ledger.status(request_id) not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
+            raise ValueError("request_id não está em estado incerto reconciliável.")
+        if not isinstance(evidence_id, str) or not evidence_id.strip():
+            raise ValueError("evidência externa exige evidence_id")
+        if not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("evidência externa exige evidence_source")
         self._ledger.reconcile(request_id, executed=executed)
