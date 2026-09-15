@@ -23,12 +23,7 @@ class KillSwitchState:
 
 
 class KillSwitch:
-    """Safety gate independent from broker or execution adapter.
-
-    An optional change callback lets the runtime persist safety state. The
-    callback is invoked only after a validated state transition; it cannot
-    authorize execution and persistence failures are allowed to surface.
-    """
+    """Safety gate independent from broker or execution adapter."""
 
     def __init__(self, on_change: Callable[[KillSwitchState], None] | None = None) -> None:
         if on_change is not None and not callable(on_change):
@@ -39,6 +34,12 @@ class KillSwitch:
     @property
     def state(self) -> KillSwitchState:
         return self._state
+
+    def set_on_change(self, callback: Callable[[KillSwitchState], None] | None) -> None:
+        """Attach persistence/observation after trusted state restoration."""
+        if callback is not None and not callable(callback):
+            raise ValueError("callback deve ser chamável ou None.")
+        self._on_change = callback
 
     def _commit(self, state: KillSwitchState) -> KillSwitchState:
         self._state = state
