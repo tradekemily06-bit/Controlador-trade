@@ -70,7 +70,6 @@ class DemoFlow:
             duration_seconds=duration_seconds,
             mode=ExecutionMode.DEMO,
             created_at=self.clock(),
-            market_data_fingerprint=market_data.fingerprint,
             risk_state_fingerprint=snapshot.risk_state_fingerprint,
         )
         execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context, snapshot=snapshot)
