@@ -10,7 +10,9 @@ def test_sqlite_provider_is_ready_only_for_single_instance(tmp_path):
     assert provider is not None
     assert policy.provider_configured is True
     assert policy.tenant_scoped is True
+    assert policy.subject_scoped is True
     assert policy.durable is True
+    assert policy.authorize_write(authenticated=True, tenant_id="tenant-a", subject_id="user-a") is True
 
 
 def test_sqlite_provider_fails_closed_for_multi_instance(tmp_path):
