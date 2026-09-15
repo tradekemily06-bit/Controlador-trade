@@ -35,17 +35,20 @@ Este documento é o mapa de execução da auditoria profunda. A ordem é deliber
 - estados UNKNOWN/reconciliação;
 - impedir efeitos parciais e resultados inventados;
 - verificar todas as superfícies equivalentes.
+- reserva de `request_id` usada como barreira de idempotência entre processos;
+- conflito entre ledger e lifecycle não pode deixar uma reserva nova permanentemente em `RESERVED`;
+- gateway possui uma barreira final de segurança imediatamente antes do executor.
 
 ### FASE B — Data plane SaaS real
 
-**B1. Armazenamento durável tenant-scoped** — PENDENTE
+**B1. Armazenamento durável tenant-scoped** — BASE EXISTENTE / PROVIDER COMPARTILHADO PENDENTE
 - contrato de produção compartilhado;
 - isolamento por tenant e sujeito;
 - índices/consultas corretos;
 - migração sem perda silenciosa;
 - consistência, concorrência e recuperação.
 
-**B2. HTTP → identidade → serviço → armazenamento** — PENDENTE
+**B2. HTTP → identidade → serviço → armazenamento** — PARCIALMENTE RESOLVIDO / AUDITORIA CONTÍNUA
 - `/api/analyze`;
 - `/api/replay`;
 - `/api/outcome`;
@@ -55,7 +58,7 @@ Este documento é o mapa de execução da auditoria profunda. A ordem é deliber
 - aprendizagem;
 - qualquer nova superfície futura.
 
-**B3. Estado por usuário/tenant** — PENDENTE
+**B3. Estado por usuário/tenant** — PARCIALMENTE RESOLVIDO / DISTRIBUIÇÃO PENDENTE
 - remover dependência de estado global de processo para SaaS;
 - preservar o modo local/teste separado;
 - testar isolamento cruzado e não divulgação de existência.
@@ -68,18 +71,18 @@ Este documento é o mapa de execução da auditoria profunda. A ordem é deliber
 - sem teto artificial;
 - crescimento futuro permitido.
 
-**C2. Currículo financeiro profissional** — BASE EXISTENTE / VALIDAÇÃO E PROVENIÊNCIA PENDENTES
-O currículo já cobre uma trilha ampla de educação financeira, sistema financeiro, renda fixa, ações/fundos/ETFs, derivativos, microestrutura, price action, fundamental, macro, quantitativo, carteiras, risco, metodologias, psicologia, execução, automação, regulação/ética, prática profissional e pesquisa contínua.
+**C2. Currículo financeiro profissional** — BASE AUDITÁVEL EXISTENTE / VALIDAÇÃO E PROVENIÊNCIA CONTÍNUAS
+O currículo cobre uma trilha ampla de educação financeira, sistema financeiro, renda fixa, ações/fundos/ETFs, derivativos, microestrutura, price action, fundamental, macro, quantitativo, carteiras, risco, metodologias, psicologia, execução, automação, regulação/ética, prática profissional e pesquisa contínua. A matriz sênior agora representa competências, evidências, revisão e status sem conceder autoridade de execução.
 
-Próximo trabalho: transformar esse mapa em uma matriz de conhecimento profissional auditável: `domínio → competência → fonte → versão/data → validação → teste → evidência → status → atualização`. Não declarar cursos, diplomas ou certificações que não existam.
+Próximo trabalho: preencher e revisar evidências reais na matriz: `domínio → competência → fonte → versão/data → validação → teste → evidência → status → atualização`. Não declarar cursos, diplomas ou certificações que não existam.
 
 **C3. Gestão de riscos profissional** — BASE EXISTENTE / EXPANSÃO CONTÍNUA
 O sênior deve raciocinar sobre risco de capital, posição, drawdown, alavancagem/margem, concentração, correlação, liquidez, custos, execução, cenários adversos, incerteza e recuperação. Isso vale para operação automatizada **e manual**: o usuário precisa conseguir aprender a gerir o próprio risco como trader profissional.
 
-**C4. Gestão financeira profissional** — INICIADA / VALIDAÇÃO PENDENTE
-Inclui gestão de capital, orçamento, fluxo de caixa, reserva de liquidez, alocação, dimensionamento de posição, concentração, drawdown, alavancagem, custos, desempenho, portfólio, contingência, registros e organização financeira relacionada à atividade de trading. A gestão financeira deve distinguir dinheiro disponível, capital destinado ao trading, capital em risco, liquidez de reserva, exposição e resultado realizado/não realizado.
+**C4. Gestão financeira profissional** — INTEGRADA AO CURRÍCULO / VALIDAÇÃO E PROVENIÊNCIA CONTÍNUAS
+Inclui gestão de capital, orçamento, fluxo de caixa, reserva de liquidez, alocação, dimensionamento de posição, concentração, drawdown, alavancagem, custos, desempenho, portfólio, contingência, registros e organização financeira relacionada à atividade de trading. A capacidade analítica permanece sem autoridade de execução e a profundidade financeira está ligada à cobertura curricular e à matriz de conhecimento.
 
-Foi adicionada uma capacidade analítica inicial em `core/senior_financial_management.py`, sem autoridade de execução. A próxima etapa é integrar essa capacidade ao currículo, ao raciocínio sênior, ao risco e ao ensino, com fontes e validações.
+Próximo trabalho: fortalecer fontes, validações e integração pedagógica; nenhum conhecimento financeiro deve promover autorização operacional ou REAL.
 
 **C5. Conhecimento operacionalmente seguro** — PENDENTE
 - separar conhecimento estudado de conhecimento validado;
@@ -89,7 +92,7 @@ Foi adicionada uma capacidade analítica inicial em `core/senior_financial_manag
 
 ### FASE D — Valor monetário de pontos/ticks/pips e alavancagem
 
-**D1. PointValueEngine central** — EM IMPLEMENTAÇÃO
+**D1. PointValueEngine central** — IMPLEMENTADO / AUDITORIA CONTÍNUA
 - normalizar ponto/tick/pip conforme instrumento;
 - usar especificação do broker/instrumento;
 - calcular valor monetário por unidade de movimento e quantidade;
@@ -97,7 +100,7 @@ Foi adicionada uma capacidade analítica inicial em `core/senior_financial_manag
 - anexar timestamp, frescor e proveniência;
 - exigir REASSESS/AGUARDAR quando o cálculo depender de conversão desatualizada.
 
-**D2. Integração** — PENDENTE
+**D2. Integração** — RESOLVIDO / AUDITORIA CONTÍNUA
 - operação normal;
 - risco;
 - position sizing;
@@ -107,10 +110,10 @@ Foi adicionada uma capacidade analítica inicial em `core/senior_financial_manag
 - alavancagem;
 - replay/laboratório com especificações históricas quando disponíveis.
 
-**D3. Alavancagem sem dupla contagem** — PENDENTE
+**D3. Alavancagem sem dupla contagem** — RESOLVIDO / AUDITORIA CONTÍNUA
 - valor do ponto não é multiplicado pela alavancagem;
 - alavancagem altera exposição/margem/relação de capital conforme o modelo do broker;
-- revisar `margin_required`, atualmente simplificado, contra especificação real do instrumento/broker.
+- reconciliação de fontes de valor do ponto bloqueia divergências em vez de somar a mesma grandeza duas vezes.
 
 ### FASE E — Replay, escala e recursos
 
@@ -142,7 +145,7 @@ Foi adicionada uma capacidade analítica inicial em `core/senior_financial_manag
 - CSRF quando houver cookies/sessão;
 - rotação/revogação e recuperação.
 
-**F2. Superfícies de estado** — PENDENTE
+**F2. Superfícies de estado** — PARCIALMENTE RESOLVIDO / AUDITORIA CONTÍNUA
 - outcome;
 - preferences;
 - notifications;
