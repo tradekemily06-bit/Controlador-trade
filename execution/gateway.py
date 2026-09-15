@@ -145,6 +145,27 @@ class ExecutionGateway:
         except Exception as exc:
             return f"execução bloqueada: estado de frescor da decisão indisponível: {type(exc).__name__}"
 
+    def _decision_snapshot_error(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> str | None:
+        """Require and validate the immutable decision record at the operational boundary."""
+        # The fully composed operational runtime has both the global barrier and
+        # freshness policy. In that context, a request without its originating
+        # snapshot is not an executable decision and must fail closed.
+        if self._operational_barrier_provider is not None and self._decision_freshness_policy is not None and snapshot is None:
+            return "execução bloqueada: snapshot da decisão é obrigatório no runtime operacional"
+        if snapshot is None:
+            return None
+        if not snapshot.actionable:
+            return "execução bloqueada: snapshot da decisão não é acionável"
+        if str(snapshot.decision).upper() != "EXECUTAR":
+            return "execução bloqueada: snapshot da decisão não é EXECUTAR"
+        if snapshot.symbol != request.symbol:
+            return "execução bloqueada: símbolo da requisição diverge do snapshot da decisão"
+        if snapshot.signal != request.signal.value:
+            return "execução bloqueada: sinal da requisição diverge do snapshot da decisão"
+        if not isinstance(snapshot.timeframe, str) or not snapshot.timeframe.strip():
+            return "execução bloqueada: timeframe do snapshot da decisão está indisponível"
+        return None
+
     def _market_data_fingerprint_error(self, request: ExecutionRequest) -> str | None:
         expected = request.market_data_fingerprint
         if expected is None:
@@ -189,6 +210,9 @@ class ExecutionGateway:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
+        snapshot_error = self._decision_snapshot_error(request, snapshot)
+        if snapshot_error is not None:
+            return GatewayResult(GatewayStatus.BLOCKED, snapshot_error)
         event_time = timestamp or datetime.now(timezone.utc)
         freshness_error = self._decision_freshness_error(created_at=event_time)
         if freshness_error is not None:
@@ -243,6 +267,10 @@ class ExecutionGateway:
         if final_freshness_error is not None:
             self._mark_unknown(request_id, event_time, f"decisão expirou antes do dispatch: {final_freshness_error}")
             return GatewayResult(GatewayStatus.BLOCKED, final_freshness_error)
+        final_snapshot_error = self._decision_snapshot_error(request, snapshot)
+        if final_snapshot_error is not None:
+            self._mark_unknown(request_id, event_time, f"snapshot da decisão mudou ou deixou de estar disponível: {final_snapshot_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_snapshot_error)
         final_market_data_error = self._market_data_fingerprint_error(request)
         if final_market_data_error is not None:
             self._mark_unknown(request_id, event_time, f"identidade de mercado mudou antes do dispatch: {final_market_data_error}")
