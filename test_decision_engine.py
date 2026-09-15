@@ -4,6 +4,7 @@ from core.decision_engine import DecisionEngine, FinalDecision
 from core.operational_state import OperationalState
 from core.market_context import MarketContext, MarketContextResult, MarketDirection
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
@@ -24,7 +25,7 @@ def favorable_context(direction):
     )
 
 
-def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorized=False):
+def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorized=False, operation_assessment=True):
     senior_risk = SeniorRiskAssessment(
         status=RiskKnowledgeStatus.ASSESSED,
         observations=(),
@@ -34,6 +35,20 @@ def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorize
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    assessment = None
+    if operation_assessment:
+        assessment = SeniorOperationAssessment(
+            disposition=SeniorOperationDisposition.SUITABLE,
+            quality_level="SÊNIOR",
+            reasons=("fixture aprovado",),
+            strengths=("evidência suficiente",),
+            weaknesses=(),
+            invalidators=(),
+            evidence_for=("fixture",),
+            evidence_against=(),
+            independent_confluences=2,
+            execution_authorized=False,
+        )
     return SeniorContextCycle(
         cycle_id="test-cycle",
         whole_graph=None,
@@ -45,6 +60,7 @@ def senior_context(quality=SeniorContextQuality.COMPLETE, *, execution_authorize
         unresolved_questions=(),
         quality=quality,
         execution_authorized=execution_authorized,
+        operation_assessment=assessment,
     )
 
 
@@ -199,3 +215,15 @@ def test_contexto_senior_nunca_pode_conceder_autorizacao():
         senior_context=senior_context(execution_authorized=True),
     )
     assert result.decision == FinalDecision.BLOQUEAR
+
+
+def test_aguarda_sem_avaliacao_profissional_da_oportunidade():
+    analysis = AnalysisResult(signal=Signal.COMPRA, score=90, reason="Score forte.", confirmed=True)
+    result = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(),
+        senior_context=senior_context(operation_assessment=False),
+    )
+    assert result.decision == FinalDecision.AGUARDAR
+    assert "avaliação profissional" in result.reason
