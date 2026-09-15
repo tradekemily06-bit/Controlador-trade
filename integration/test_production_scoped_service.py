@@ -26,6 +26,9 @@ def _payload(score: float = 91):
         "candles": [
             {"open": 1.1000, "high": 1.1020, "low": 1.0990, "close": 1.1015, "timestamp": "2026-09-15T00:00:00+00:00"}
         ],
+        "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
+        "observed_nodes": ["market_data", "price_history", "risk", "execution", "security"],
+        "relationships_reviewed": ["market_data->risk", "price_history->risk", "risk->execution", "security->execution"],
     }
 
 
@@ -82,9 +85,12 @@ def test_outcome_update_uses_durable_record_not_process_memory(tmp_path) -> None
 def test_public_saas_without_provider_fails_closed(monkeypatch) -> None:
     monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
     service = ConfiguredEcosystemService()
-
-    with pytest.raises(RuntimeError, match="production storage provider"):
-        service.analyze(_payload(), subject_id="user-a", tenant_id="tenant-a")
+    _identity()
+    try:
+        with pytest.raises(RuntimeError, match="production storage provider"):
+            service.analyze(_payload(), subject_id="user-a", tenant_id="tenant-a")
+    finally:
+        clear_trusted_identity()
 
 
 def test_production_service_never_reads_global_process_memory(tmp_path) -> None:
