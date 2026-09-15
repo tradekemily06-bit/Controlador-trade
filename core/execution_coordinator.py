@@ -93,6 +93,7 @@ class ExecutionCoordinator:
                 mode=mode,
                 request_id=request_id,
                 market_data_fingerprint=fingerprint,
+                risk_state_fingerprint=orchestration.snapshot.risk_state_fingerprint,
             ),
             decision_identity=_decision_identity(orchestration),
             entry_conditions=entry_conditions,
@@ -115,6 +116,8 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
         if plan.request.market_data_fingerprint != orchestration.market_data.fingerprint:
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: plano não corresponde aos dados de mercado que originaram a decisão.")
+        if plan.request.risk_state_fingerprint != orchestration.snapshot.risk_state_fingerprint:
+            return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: plano não corresponde ao estado de risco que originou a decisão.")
         if plan.decision_identity != _decision_identity(orchestration):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: decisão/orquestração mudou desde a criação do plano.")
         if entry_conditions is not None:
@@ -131,6 +134,7 @@ class ExecutionCoordinator:
             mode=plan.request.mode,
             created_at=orchestration.timestamp,
             market_data_fingerprint=orchestration.market_data.fingerprint,
+            risk_state_fingerprint=orchestration.snapshot.risk_state_fingerprint,
         )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
