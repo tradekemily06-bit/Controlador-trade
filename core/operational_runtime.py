@@ -42,20 +42,22 @@ class OperationalRuntime:
     safety_store: OperationalSafetyStore
     safety_audit: DecisionAudit
     demo_risk_state: DemoRiskStateStore | None = None
+    risk_state_provider: Callable[[], object] | None = None
 
 
 def build_operational_runtime(
     root: str | Path,
     executor: ExecutionPort | None = None,
     risk_state_fingerprint_provider: Callable[[], str | None] | None = None,
+    risk_state_provider: Callable[[], object] | None = None,
 ) -> OperationalRuntime:
     """Compose one shared runtime with durable, fail-closed safety state.
 
     When no external authoritative risk provider is supplied, the runtime uses
-    its durable DEMO risk-state store for the risk identity. The default paper
-    executor also uses the store's dispatch lock for local atomicity. Explicit
-    broker/executor injection remains an edge-owned responsibility and is not
-    silently wrapped by the core.
+    its durable DEMO risk-state store for the risk identity and state. The
+    default paper executor also uses the store's dispatch lock for local
+    atomicity. Explicit broker/executor injection remains an edge-owned
+    responsibility and is not silently wrapped by the core.
     """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
@@ -127,6 +129,7 @@ def build_operational_runtime(
         safety_store=safety_store,
         safety_audit=safety_audit,
         demo_risk_state=demo_risk_state,
+        risk_state_provider=risk_state_provider or demo_risk_state.current,
     )
 
     from core.operational_barrier_factory import build_global_operational_barrier
