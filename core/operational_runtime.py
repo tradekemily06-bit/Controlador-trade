@@ -53,9 +53,8 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
         safety_state_valid = False
 
-    # Restore the state before attaching the persistence callback. This is
-    # essential for corrupt-state recovery: activating the fail-closed state
-    # must not attempt to read the same corrupt file again.
+    # Restore before attaching persistence. A corrupt/invalid file must never
+    # be read again while establishing the fail-closed state.
     kill_switch = KillSwitch()
     if initial_enabled:
         kill_switch.activate(initial_reason or "estado de segurança persistido")
@@ -63,20 +62,17 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     def persist_safety(_state) -> None:
         safety_store.save(safety_audit, kill_switch)
 
-    kill_switch = KillSwitch(on_change=persist_safety)
-    if initial_enabled:
-        kill_switch.activate(initial_reason or "estado de segurança persistido")
-    elif safety_state_valid:
-        safety_store.save(safety_audit, kill_switch)
+    kill_switch.set_on_change(persist_safety)
 
-    # A corrupt prior file is replaced only after the safe state has been
-    # constructed, avoiding recursive reads of invalid data.
     if not safety_state_valid:
+        # Replace the invalid persisted state with a minimal valid blocked state.
         safety_store._write_payload({
             "audit": [],
             "kill_switch": {"enabled": True, "reason": initial_reason},
             "execution_audit": [],
         })
+    elif not initial_enabled:
+        safety_store.save(safety_audit, kill_switch)
 
     maintenance = MaintenanceManager(root / "maintenance.json")
     ledger = ExecutionLedger(root / "execution-ledger.json")
