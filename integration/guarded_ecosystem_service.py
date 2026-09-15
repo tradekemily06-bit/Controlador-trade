@@ -6,10 +6,24 @@ from typing import Any, Iterable
 from core.models import AnalysisResult, Signal
 from core.operational_barrier_factory import build_global_operational_barrier
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+from integration.p137_operational_risk_bridge import OperationalRiskBridge
 
 
 class GuardedEcosystemService(ConfiguredEcosystemService):
     """Configured service that cannot emit an operational BUY/SELL while blocked."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # Bind the risk boundary to the same runtime barrier used here. The
+        # provider is evaluated fresh on every risk decision, so a kill switch,
+        # incident, maintenance state, stale market-data state, or runtime
+        # failure cannot be hidden behind a startup snapshot.
+        if self.operational_runtime is not None:
+            self.operational_risk_bridge = OperationalRiskBridge(
+                self.risk,
+                incident_manager=self.operational_runtime.incident_manager,
+                operational_barrier_provider=lambda: build_global_operational_barrier(self.operational_runtime),
+            )
 
     def operational_barrier(self):
         return build_global_operational_barrier(self.operational_runtime)
