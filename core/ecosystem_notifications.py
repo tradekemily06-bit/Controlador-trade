@@ -6,6 +6,7 @@ authorize trades.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Iterable
@@ -54,15 +55,20 @@ class EcosystemNotificationCenter:
     Events emitted without a trusted identity are global system events. Scoped
     events are private to one tenant+subject pair. When a durable state store is
     supplied, both global and scoped notification histories survive restart.
+    The in-process scoped cache is bounded and only accelerates access.
     """
 
     NAMESPACE = "ecosystem.notifications.v1"
     GLOBAL_TENANT = "__system__"
     GLOBAL_SUBJECT = "__global__"
+    DEFAULT_CACHE_SIZE = 256
 
-    def __init__(self, *, state_store=None, require_durable: bool = False) -> None:
+    def __init__(self, *, state_store=None, require_durable: bool = False, cache_size: int = DEFAULT_CACHE_SIZE) -> None:
+        if cache_size < 1:
+            raise ValueError("cache_size must be greater than zero")
         self._global_notifications: list[EcosystemNotification] = []
-        self._scoped_notifications: dict[tuple[str, str], list[EcosystemNotification]] = {}
+        self._scoped_notifications: OrderedDict[tuple[str, str], list[EcosystemNotification]] = OrderedDict()
+        self._cache_size = int(cache_size)
         self._state_store = state_store
         self._require_durable = bool(require_durable)
         self._global_loaded = False
@@ -113,9 +119,16 @@ class EcosystemNotificationCenter:
         return self._global_notifications
 
     def _scoped(self, scope: tuple[str, str]) -> list[EcosystemNotification]:
-        if scope not in self._scoped_notifications:
-            self._scoped_notifications[scope] = self._load(scope)
-        return self._scoped_notifications[scope]
+        cached = self._scoped_notifications.get(scope)
+        if cached is not None:
+            self._scoped_notifications.move_to_end(scope)
+            return cached
+        events = self._load(scope)
+        self._scoped_notifications[scope] = events
+        self._scoped_notifications.move_to_end(scope)
+        while len(self._scoped_notifications) > self._cache_size:
+            self._scoped_notifications.popitem(last=False)
+        return events
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
         scope = self._trusted_scope()
