@@ -13,6 +13,7 @@ from core.signal_quality import SignalLevel
 from core.demo_readiness import DemoReadiness
 from core.kill_switch import KillSwitch
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.unified_safety_gate import UnifiedSafetyGate
 from execution.demo_coordinator import DemoExecutionCoordinator
@@ -43,6 +44,18 @@ def make_senior_context() -> SeniorContextCycle:
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation_assessment = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="SÊNIOR",
+        reasons=("fixture de execução DEMO",),
+        strengths=("contexto sintético completo",),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("fixture",),
+        evidence_against=(),
+        independent_confluences=2,
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="demo-test-cycle",
         whole_graph=None,
@@ -54,6 +67,7 @@ def make_senior_context() -> SeniorContextCycle:
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
         execution_authorized=False,
+        operation_assessment=operation_assessment,
     )
 
 
