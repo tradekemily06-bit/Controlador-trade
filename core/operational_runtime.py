@@ -75,6 +75,35 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
     recovery = RecoveryCoordinator(checkpoint_store=checkpoint, lifecycle_store=lifecycle, execution_ledger=ledger)
     health = RuntimeHealthMonitor(ledger=ledger, lifecycle=lifecycle, checkpoint_store=checkpoint, recovery=recovery)
-    gateway = ExecutionGateway(executor or PaperExecutor(), kill_switch, ledger=ledger, lifecycle=lifecycle, maintenance=maintenance, safety_store=safety_store, incident_manager=incident_manager)
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
-    return OperationalRuntime(kill_switch=kill_switch, maintenance=maintenance, incident_manager=incident_manager, incident_store=incident_store, execution_ledger=ledger, execution_lifecycle=lifecycle, checkpoint_store=checkpoint, recovery=recovery, health=health, gateway=gateway, market_data=market_data, safety_store=safety_store, safety_audit=safety_audit)
+    gateway = ExecutionGateway(
+        executor or PaperExecutor(),
+        kill_switch,
+        ledger=ledger,
+        lifecycle=lifecycle,
+        maintenance=maintenance,
+        safety_store=safety_store,
+        incident_manager=incident_manager,
+    )
+    runtime = OperationalRuntime(
+        kill_switch=kill_switch,
+        maintenance=maintenance,
+        incident_manager=incident_manager,
+        incident_store=incident_store,
+        execution_ledger=ledger,
+        execution_lifecycle=lifecycle,
+        checkpoint_store=checkpoint,
+        recovery=recovery,
+        health=health,
+        gateway=gateway,
+        market_data=market_data,
+        safety_store=safety_store,
+        safety_audit=safety_audit,
+    )
+
+    # Wire the complete barrier only after every runtime component exists.
+    # The provider rebuilds the barrier on every dispatch, avoiding stale
+    # snapshots while keeping construction free of circular imports.
+    from core.operational_barrier_factory import build_global_operational_barrier
+    gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
+    return runtime
