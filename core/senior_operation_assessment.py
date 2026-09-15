@@ -70,7 +70,7 @@ class SeniorOperationAssessor:
             return self._result(
                 SeniorOperationDisposition.INSUFFICIENT,
                 "INSUFICIENTE",
-                reasons=("O contexto disponível não é suficiente para avaliar a oportunidade como um profissional experiente." ,),
+                reasons=("O contexto disponível não é suficiente para avaliar a oportunidade como um profissional experiente.",),
                 weaknesses=("Há informação estrutural ausente.",),
                 invalidators=("Completar o contexto material antes de considerar a oportunidade novamente.",),
                 reading=reading,
@@ -94,7 +94,6 @@ class SeniorOperationAssessor:
 
         if independent < 2:
             weaknesses.append("Há pouca confluência independente para uma leitura de grau sênior.")
-            invalidators.append("Buscar confirmação independente real, sem contar duas vezes o mesmo fenômeno.")
         else:
             strengths.append(f"Há {independent} domínio(s) de evidência independente(s) contabilizado(s).")
 
