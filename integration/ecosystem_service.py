@@ -187,21 +187,36 @@ class EcosystemService:
         self.learning_activities[activity.activity_id] = activity
         return activity
 
-    def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
-        spec = ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE")))
-        source = self.learning_sources.get(spec.knowledge_id)
+    def _validated_professor_spec(self, payload: dict[str, Any]) -> ProfessorActivitySpec:
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        source = self.learning_sources.get(knowledge_id)
         validated = bool(source is not None and source.status is LearningSourceStatus.VALIDATED and source.knowledge_validated and not source.operation_eligible)
-        activity = self.learning_professor.build_activity(spec, knowledge_validated=validated)
+        if not validated:
+            raise ValueError("only validated knowledge can generate professor activities")
+        observations = [item for item in self.learning_observations if item.resource_id == knowledge_id and item.validated and item.statement.strip()]
+        if not observations:
+            raise ValueError("validated knowledge from the current tenant has no validated observation")
+        observation = observations[-1]
+        concept = observation.concepts[0] if observation.concepts else "raciocínio de mercado"
+        return ProfessorActivitySpec(
+            activity_id=str(payload.get("activity_id", "")),
+            knowledge_id=knowledge_id,
+            statement=observation.statement,
+            concept=concept,
+            difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+        )
+
+    def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
+        spec = self._validated_professor_spec(payload)
+        activity = self.learning_professor.build_activity(spec, knowledge_validated=True)
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
         return activity
 
     def generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
-        spec = ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "question-set")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "ADVANCED")))
-        source = self.learning_sources.get(spec.knowledge_id)
-        validated = bool(source is not None and source.status is LearningSourceStatus.VALIDATED and source.knowledge_validated and not source.operation_eligible)
-        return self.learning_professor.build_professional_questions(spec, knowledge_validated=validated, context=str(payload.get("context", "")))
+        spec = self._validated_professor_spec({**payload, "activity_id": str(payload.get("activity_id", "question-set"))})
+        return self.learning_professor.build_professional_questions(spec, knowledge_validated=True, context=str(payload.get("context", "")))
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in self.learning_activities.values()]
@@ -246,13 +261,7 @@ class EcosystemService:
         return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
 
     def public_status(self) -> dict[str, Any]:
-        """Return a deliberately minimal public status without internal readiness data."""
-        return {
-            "execution_allowed": False,
-            "health": "SAFE",
-            "real": "DESABILITADO",
-            "alerts": [],
-        }
+        return {"execution_allowed": False, "health": "SAFE", "real": "DESABILITADO", "alerts": []}
 
     def system_status(self) -> dict[str, Any]:
         production_storage = self.production_storage.status()
