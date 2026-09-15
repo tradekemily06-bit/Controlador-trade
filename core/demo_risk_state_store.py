@@ -14,6 +14,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Iterator
 
 from .file_lock import exclusive_file_lock
 from .operational_state import OperationalState
@@ -37,6 +38,17 @@ class DemoRiskStateStore:
 
     def _lock(self):
         return exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock"))
+
+    def dispatch_lock(self) -> Iterator[None]:
+        """Serialize DEMO state publication against the final dispatch window.
+
+        The execution gateway may hold this lock across its final risk identity
+        check and the local DEMO executor call. A trusted adapter therefore
+        cannot publish a new account/exposure state in the middle of that
+        critical section. This closes the local read/check/dispatch race while
+        preserving fail-closed behavior when the lock is unavailable.
+        """
+        return self._lock()
 
     @staticmethod
     def _encode_datetime(value: datetime | None) -> str | None:
