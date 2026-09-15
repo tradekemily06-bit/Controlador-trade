@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.risk_manager import RiskManager
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
 
@@ -37,6 +38,20 @@ def _leverage():
     }
 
 
+def _ready_barrier():
+    return GlobalOperationalBarrier(
+        components=(SafetyComponent(name="test-runtime", healthy=True, reason="ready"),)
+    )
+
+
+def _bridge(**kwargs):
+    return OperationalRiskBridge(
+        RiskManager(),
+        operational_barrier_provider=lambda: _ready_barrier(),
+        **kwargs,
+    )
+
+
 def test_bridge_preserves_explicit_operational_state():
     state = OperationalRiskBridge.build_state(_payload())
     assert state.trades_today == 2
@@ -44,8 +59,14 @@ def test_bridge_preserves_explicit_operational_state():
     assert state.balance == 2000
 
 
+def test_bridge_without_runtime_barrier_fails_closed():
+    decision = OperationalRiskBridge(RiskManager()).evaluate(_payload())
+    assert decision.allowed is False
+    assert "barreira operacional global" in decision.reason
+
+
 def test_bridge_missing_state_fails_closed():
-    decision = OperationalRiskBridge(RiskManager()).evaluate({})
+    decision = _bridge().evaluate({})
     assert decision.allowed is False
     assert "Estado operacional de risco inválido" in decision.reason
 
@@ -53,13 +74,17 @@ def test_bridge_missing_state_fails_closed():
 def test_bridge_missing_required_counters_cannot_approve():
     payload = _payload()
     payload["operational_state"].pop("trades_today")
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "obrigatórias" in decision.reason
 
 
 def test_bridge_respects_existing_risk_manager_limits():
-    decision = OperationalRiskBridge(RiskManager(max_operations=2)).evaluate(_payload())
+    bridge = OperationalRiskBridge(
+        RiskManager(max_operations=2),
+        operational_barrier_provider=lambda: _ready_barrier(),
+    )
+    decision = bridge.evaluate(_payload())
     assert decision.allowed is False
     assert "Limite de operações" in decision.reason
 
@@ -67,7 +92,7 @@ def test_bridge_respects_existing_risk_manager_limits():
 def test_bridge_rejects_malformed_operational_state():
     payload = _payload()
     payload["operational_state"]["consecutive_losses"] = "zero"
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
 
 
@@ -75,7 +100,7 @@ def test_bridge_accepts_reconciled_leverage_exposure():
     payload = _payload()
     payload["operational_state"]["exposure"] = 4000
     payload["leverage_request"] = _leverage()
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is True
 
 
@@ -85,7 +110,7 @@ def test_bridge_blocks_leverage_when_loss_exceeds_budget():
     leverage = _leverage()
     leverage["maximum_loss"] = 5
     payload["leverage_request"] = leverage
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "orçamento" in decision.reason
 
@@ -94,6 +119,23 @@ def test_bridge_blocks_exposure_mismatch_instead_of_double_counting():
     payload = _payload()
     payload["operational_state"]["exposure"] = 3999
     payload["leverage_request"] = _leverage()
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "diverge" in decision.reason
+
+
+def test_bridge_blocks_when_barrier_changes_during_evaluation():
+    calls = {"count": 0}
+
+    def provider():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return _ready_barrier()
+        return GlobalOperationalBarrier(
+            components=(SafetyComponent(name="kill-switch", healthy=False, reason="activated"),)
+        )
+
+    bridge = OperationalRiskBridge(RiskManager(), operational_barrier_provider=provider)
+    decision = bridge.evaluate(_payload())
+    assert decision.allowed is False
+    assert "barreira operacional" in decision.reason
