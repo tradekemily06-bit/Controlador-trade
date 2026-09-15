@@ -25,6 +25,37 @@ class _ProductionLocalDecisionStoreBlock:
         raise RuntimeError("local decision store is unavailable for production-scoped service")
 
 
+class _ProductionLocalLearningStateBlock:
+    """Fail-closed sentinel preventing legacy process-local learning state in production."""
+
+    def _blocked(self):
+        raise RuntimeError("local learning state is unavailable for production-scoped service")
+
+    def __contains__(self, _item):
+        self._blocked()
+
+    def __iter__(self):
+        self._blocked()
+
+    def __len__(self):
+        self._blocked()
+
+    def __getitem__(self, _item):
+        self._blocked()
+
+    def __setitem__(self, _item, _value):
+        self._blocked()
+
+    def __delitem__(self, _item):
+        self._blocked()
+
+    def append(self, _item):
+        self._blocked()
+
+    def values(self):
+        self._blocked()
+
+
 class ProductionScopedServiceMixin:
     """Replace process-global decision state with durable scoped state."""
 
@@ -53,6 +84,19 @@ class ProductionScopedServiceMixin:
             # legacy constructor so it cannot be read by a future bypass.
             self.store = _ProductionLocalDecisionStoreBlock()
             self.memory = []
+            # Learning state had the same historical split: the configured
+            # service now uses ScopedLearningState, while older inherited
+            # methods can still reach the process-local dictionaries/lists.
+            # Replace those containers with fail-closed sentinels so an
+            # accidental fallback cannot create a second production source of
+            # truth. DEMO/local mode is untouched because this branch runs only
+            # when a production data plane exists.
+            local_learning_state = _ProductionLocalLearningStateBlock()
+            self.learning_sources = local_learning_state
+            self.learning_resources = local_learning_state
+            self.learning_observations = local_learning_state
+            self.learning_activities = local_learning_state
+            self.learning_attempts = local_learning_state
 
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
