@@ -246,20 +246,12 @@ class EcosystemService:
         return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
 
     def public_status(self) -> dict[str, Any]:
-        """Return only safe, intentionally public runtime information.
-
-        The public surface intentionally does not mirror internal readiness warnings.
-        Internal configuration/readiness details belong to authenticated operator/admin
-        surfaces.  A public deployment is SAFE when no CRITICAL condition is present;
-        execution remains disabled regardless of this presentation-level status.
-        """
-        alerts = self.health_alerts()
-        critical_alerts = [alert for alert in alerts if str(alert.get("severity", "")).upper() == NotificationSeverity.CRITICAL.value]
+        """Return a deliberately minimal public status without internal readiness data."""
         return {
             "execution_allowed": False,
-            "health": "CRITICAL" if critical_alerts else "SAFE",
+            "health": "SAFE",
             "real": "DESABILITADO",
-            "alerts": critical_alerts,
+            "alerts": [],
         }
 
     def system_status(self) -> dict[str, Any]:
