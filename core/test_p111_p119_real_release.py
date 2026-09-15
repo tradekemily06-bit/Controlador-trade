@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from core.global_operational_barrier import GlobalOperationalBarrier
+from core.global_operational_barrier import BarrierDecision, BarrierStatus, GlobalOperationalBarrier
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -44,6 +44,11 @@ class UnknownAdapter:
 
     def execute(self, request):
         raise TimeoutError("timeout after dispatch")
+
+
+class _BlockedBarrier(GlobalOperationalBarrier):
+    def evaluate(self):
+        return BarrierDecision(BarrierStatus.BLOCKED, "componente crítico indisponível", ("critical",))
 
 
 def _barrier_provider():
@@ -168,8 +173,6 @@ def test_real_gateway_blocks_when_global_barrier_is_unhealthy(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    blocked = GlobalOperationalBarrier()
-    blocked = GlobalOperationalBarrier([])
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), lambda: _BlockedBarrier())
     auth = _authorization()
     admission = _admission(auth)
@@ -265,9 +268,3 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
-
-
-class _BlockedBarrier(GlobalOperationalBarrier):
-    def evaluate(self):
-        from core.global_operational_barrier import BarrierDecision, BarrierStatus
-        return BarrierDecision(BarrierStatus.BLOCKED, "componente crítico indisponível", ("critical",))
