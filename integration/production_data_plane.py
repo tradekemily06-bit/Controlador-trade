@@ -54,7 +54,7 @@ class ProductionDataPlane:
         tenant, subject = self.require_scope(tenant_id=tenant_id, subject_id=subject_id)
         return self.store.load(decision_id, tenant_id=tenant, subject_id=subject)
 
-    def list(self, *, tenant_id: str | None, subject_id: str | None, limit: int = 100) -> list[DecisionRecord]:
+    def list(self, *, tenant_id: str | None, subject_id: str | None, limit: int | None = None) -> list[DecisionRecord]:
         tenant, subject = self.require_scope(tenant_id=tenant_id, subject_id=subject_id)
         return self.store.list(tenant_id=tenant, subject_id=subject, limit=limit)
 
