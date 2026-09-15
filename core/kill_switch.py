@@ -53,6 +53,18 @@ class KillSwitch:
     def deactivate(self) -> KillSwitchState:
         return self._commit(KillSwitchState(enabled=False, reason=None))
 
+    def synchronize(self, state: KillSwitchState) -> KillSwitchState:
+        """Adopt trusted persisted state without invoking persistence callbacks.
+
+        This is intentionally separate from activate/deactivate so a runtime
+        can refresh a cross-process safety decision without rewriting the
+        source of truth it just read.
+        """
+        if not isinstance(state, KillSwitchState):
+            raise KillSwitchValidationError("state deve ser KillSwitchState.")
+        self._state = state
+        return state
+
     def allows_execution(self) -> bool:
         return not self._state.enabled
 
