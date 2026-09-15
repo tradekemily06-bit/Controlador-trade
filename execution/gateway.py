@@ -324,9 +324,10 @@ class ExecutionGateway:
         try:
             result = self._executor.execute(request)
         except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            safe_error = type(exc).__name__
+            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {safe_error}")
             self._open_incident_on_executor_failure(exc)
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {safe_error}")
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             self._open_incident_on_executor_failure("resultado inválido")
@@ -364,7 +365,8 @@ class ExecutionGateway:
         if self._incident_manager is None:
             return
         try:
-            self._incident_manager.open_incident(title="Falha técnica no executor", message=f"O executor apresentou uma falha e novas operações foram bloqueadas: {error}")
+            error_type = type(error).__name__
+            self._incident_manager.open_incident(title="Falha técnica no executor", message=f"O executor apresentou uma falha e novas operações foram bloqueadas. tipo={error_type}")
         except Exception:
             pass
 
