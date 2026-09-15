@@ -78,3 +78,26 @@ def test_professor_activity_requires_validated_knowledge_and_is_not_trade_author
     })
     assert activity.activity_id == "quiz-2"
     assert service.learning_summary()["learning_authorizes_trading"] is False
+
+
+def test_configured_professor_cannot_trust_browser_validation_claim():
+    """SaaS-scoped learning must derive validation from stored tenant state."""
+    # This test uses the concrete scoped service boundary without requiring a
+    # production database; trusted identity is established directly for the
+    # service-layer contract under test.
+    from security.http_identity import TrustedHttpIdentity, _current_identity
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    token = _current_identity.set(TrustedHttpIdentity("user-a", "tenant-a", "admin"))
+    try:
+        service = ConfiguredEcosystemService()
+        with pytest.raises(ValueError, match="validated knowledge from the current tenant"):
+            service.generate_professor_activity({
+                "activity_id": "spoofed-quiz",
+                "knowledge_id": "unvalidated-source",
+                "statement": "Conteúdo que não passou pelo gate",
+                "concept": "contexto",
+                "knowledge_validated": True,
+            })
+    finally:
+        _current_identity.reset(token)
