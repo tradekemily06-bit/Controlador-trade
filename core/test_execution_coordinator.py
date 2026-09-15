@@ -79,70 +79,54 @@ def executable_orchestration(senior_context=None) -> OrchestrationResult:
     )
 
 
-def test_build_plan_only_allows_executable_decision():
+def test_build_plan_preserves_market_data_fingerprint():
+    orchestration = executable_orchestration()
     plan = ExecutionCoordinator.build_plan(
-        executable_orchestration(), request_id="req-1", amount=10.0, duration_seconds=60
+        orchestration,
+        request_id="req-fingerprint",
+        amount=10.0,
+        duration_seconds=60,
     )
-    assert isinstance(plan, ExecutionPlan)
-    assert plan.request.signal is Signal.COMPRA
-    assert plan.request.mode is ExecutionMode.DEMO
+    assert plan.request.market_data_fingerprint == orchestration.market_data.fingerprint
 
 
-def test_build_plan_rejects_non_executable_decision():
+def test_coordinator_blocks_plan_when_market_data_identity_changes():
     orchestration = executable_orchestration()
-    non_executable = OrchestrationResult(
-        market_data=orchestration.market_data,
-        analysis=orchestration.analysis,
-        quality=orchestration.quality,
-        decision=DecisionResult(FinalDecision.AGUARDAR, Signal.COMPRA, "aguardar"),
-        snapshot=orchestration.snapshot,
-        timestamp=orchestration.timestamp,
-        senior_context=orchestration.senior_context,
+    plan = ExecutionCoordinator.build_plan(
+        orchestration,
+        request_id="req-fingerprint-change",
+        amount=10.0,
+        duration_seconds=60,
     )
-    with pytest.raises(ValueError, match="EXECUTAR"):
-        ExecutionCoordinator.build_plan(
-            non_executable, request_id="req-2", amount=10.0, duration_seconds=60
-        )
-
-
-def test_coordinator_forwards_plan_only_after_senior_admission():
-    fake = FakeGateway()
-    coordinator = ExecutionCoordinator(fake)
-    orchestration = executable_orchestration()
-    plan = coordinator.build_plan(
-        orchestration, request_id="req-3", amount=10.0, duration_seconds=60
+    changed = executable_orchestration()
+    changed = OrchestrationResult(
+        market_data=MarketDataResult(
+            candles=(),
+            source="different-source",
+            received_at=changed.timestamp,
+        ),
+        analysis=changed.analysis,
+        quality=changed.quality,
+        decision=changed.decision,
+        snapshot=changed.snapshot,
+        timestamp=changed.timestamp,
+        senior_context=changed.senior_context,
     )
-    result = coordinator.execute_plan(
-        plan, orchestration=orchestration, entry_conditions=("teste",)
-    )
-    assert result == "executed"
-    assert fake.calls[0][0][0] == "req-3"
-    assert fake.calls[0][1]["snapshot"] is orchestration.snapshot
-    assert fake.calls[0][1]["entry_conditions"] == ("teste",)
-
-
-def test_coordinator_blocks_missing_senior_context():
-    fake = FakeGateway()
-    coordinator = ExecutionCoordinator(fake)
-    orchestration = executable_orchestration(senior_context=None)
-    orchestration = OrchestrationResult(
-        market_data=orchestration.market_data,
-        analysis=orchestration.analysis,
-        quality=orchestration.quality,
-        decision=orchestration.decision,
-        snapshot=orchestration.snapshot,
-        timestamp=orchestration.timestamp,
-        senior_context=None,
-    )
-    with pytest.raises(ValueError, match="contexto sênior obrigatório"):
-        coordinator.build_plan(orchestration, request_id="req-missing", amount=10.0, duration_seconds=60)
-    assert fake.calls == []
+    gateway = FakeGateway()
+    result = ExecutionCoordinator(gateway).execute_plan(plan, orchestration=changed)
+    assert result.status is GatewayStatus.BLOCKED
+    assert "dados de mercado" in result.message
+    assert gateway.calls == []
 
 
 def test_coordinator_integrates_with_demo_gateway():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
-    coordinator = ExecutionCoordinator(gateway)
     orchestration = executable_orchestration()
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        market_data_fingerprint_provider=lambda: orchestration.market_data.fingerprint,
+    )
+    coordinator = ExecutionCoordinator(gateway)
     plan = coordinator.build_plan(
         orchestration, request_id="req-4", amount=10.0, duration_seconds=60
     )
