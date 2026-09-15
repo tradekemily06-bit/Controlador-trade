@@ -5,6 +5,9 @@ from typing import Any
 
 from analysis.decision_record import DecisionRecord
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
+from core.p128_learning_professor import LearningProfessor
+from core.professional_learning_question_engine import ProfessionalLearningQuestion
+from core.scoped_professor_assessment import ScopedProfessorAssessment
 from integration.production_data_plane import ProductionDataPlane
 from security.http_identity import current_trusted_identity, saas_public_mode
 
@@ -133,3 +136,108 @@ class ProductionScopedServiceMixin:
             return super().memory_view(limit=limit, subject_id=subject_id, tenant_id=tenant_id)
         records = self._production_records(owner, limit=limit)
         return [item.to_dict() for item in records[:limit]]
+
+    def _scoped_professor(self) -> ScopedProfessorAssessment | None:
+        """Return the tenant-scoped professor boundary when the service has one."""
+        if not hasattr(self, "scoped_learning") or not hasattr(self, "_learning_scope"):
+            return None
+        professor = getattr(self, "learning_professor", None)
+        return ScopedProfessorAssessment(professor if isinstance(professor, LearningProfessor) else LearningProfessor())
+
+    def generate_professor_activity(self, payload: dict[str, Any]):
+        """Generate teaching only from stored validated knowledge, never payload claims."""
+        boundary = self._scoped_professor()
+        if boundary is None:
+            return super().generate_professor_activity(payload)
+        scope = self._learning_scope()
+        if scope is None:
+            raise PermissionError("trusted tenant and subject scope are required for professor activity")
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        # Validate existence/ownership first. The helper derives the actual
+        # statement and concept from the tenant's validated observation.
+        observation = boundary._validated_observation(scope, knowledge_id)
+        from core.learning_content import LearningActivity
+        activity_id = str(payload.get("activity_id", "")).strip()
+        if activity_id in scope.activities:
+            raise ValueError("activity_id já cadastrado")
+        activity = boundary.professor.build_activity(
+            __import__("core.p128_learning_professor", fromlist=["ProfessorActivitySpec"]).ProfessorActivitySpec(
+                activity_id=activity_id,
+                knowledge_id=knowledge_id,
+                statement=observation.statement,
+                concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado",
+                difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+            ),
+            knowledge_validated=True,
+        )
+        if not isinstance(activity, LearningActivity):
+            raise RuntimeError("professor returned an invalid activity")
+        scope.activities[activity.activity_id] = activity
+        self._persist_learning_scope()
+        return activity
+
+    def generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
+        boundary = self._scoped_professor()
+        if boundary is None:
+            return super().generate_professional_questions(payload)
+        scope = self._learning_scope()
+        if scope is None:
+            raise PermissionError("trusted tenant and subject scope are required for professional questions")
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        observation = boundary._validated_observation(scope, knowledge_id)
+        from core.p128_learning_professor import ProfessorActivitySpec
+        spec = ProfessorActivitySpec(
+            activity_id=str(payload.get("activity_id", "question-set")),
+            knowledge_id=knowledge_id,
+            statement=observation.statement,
+            concept=observation.concepts[0] if observation.concepts else "raciocínio de mercado",
+            difficulty=str(payload.get("difficulty", "ADVANCED")),
+        )
+        return boundary.professor.build_professional_questions(
+            spec,
+            knowledge_validated=True,
+            context=str(payload.get("context", "")),
+        )
+
+    def generate_adaptive_professor_quiz(self, payload: dict[str, Any]):
+        boundary = self._scoped_professor()
+        if boundary is None:
+            raise PermissionError("scoped professor boundary is required")
+        scope = self._learning_scope()
+        if scope is None:
+            raise PermissionError("trusted tenant and subject scope are required for adaptive quiz")
+        plan, questions = boundary.build_adaptive_quiz(
+            scope,
+            activity_id=str(payload.get("activity_id", "")),
+            knowledge_id=str(payload.get("knowledge_id", "")),
+            confidence=payload.get("confidence"),
+            objective=str(payload.get("objective", "")),
+        )
+        return {
+            "plan": {
+                "mode": plan.mode.value,
+                "question_types": [item.value for item in plan.question_types],
+                "question_count": plan.question_count,
+                "rationale": list(plan.rationale),
+                "completion_rule": plan.completion_rule,
+            },
+            "questions": [asdict(item) | {"question_type": item.question_type.value} for item in questions],
+            "execution_allowed": False,
+            "learning_authorizes_trading": False,
+        }
+
+    def grade_professor_answer(self, payload: dict[str, Any], *, question: ProfessionalLearningQuestion) -> dict[str, Any]:
+        boundary = self._scoped_professor()
+        if boundary is None:
+            raise PermissionError("scoped professor boundary is required")
+        scope = self._learning_scope()
+        if scope is None:
+            raise PermissionError("trusted tenant and subject scope are required for professor grading")
+        assessment = boundary.grade_and_record(
+            scope,
+            activity_id=str(payload.get("activity_id", "")),
+            question=question,
+            answer=str(payload.get("answer", "")),
+        )
+        self._persist_learning_scope()
+        return asdict(assessment) | {"execution_allowed": False, "learning_authorizes_trading": False}
