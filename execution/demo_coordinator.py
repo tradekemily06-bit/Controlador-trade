@@ -67,8 +67,12 @@ class DemoExecutionCoordinator:
         if senior_context.risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             return DemoExecutionResult(readiness=readiness, gateway=None)
 
+        # Preserve the immutable decision timestamp. Never replace an old
+        # intent's creation time with the current dispatch time, otherwise a
+        # stale decision could incorrectly appear fresh at the gateway.
         gateway_result = self.gateway.execute(
             intent.request_id,
             intent.as_execution_request(),
+            timestamp=intent.created_at,
         )
         return DemoExecutionResult(readiness=readiness, gateway=gateway_result)
