@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.risk_manager import RiskManager
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
 
@@ -35,13 +36,26 @@ def _payload(*, exposure=2000):
     }
 
 
+def _ready_barrier():
+    return GlobalOperationalBarrier(
+        components=(SafetyComponent(name="test-runtime", healthy=True, detail="ready"),)
+    )
+
+
+def _bridge():
+    return OperationalRiskBridge(
+        RiskManager(),
+        operational_barrier_provider=_ready_barrier,
+    )
+
+
 def test_leverage_and_operational_exposure_must_reconcile():
-    decision = OperationalRiskBridge(RiskManager()).evaluate(_payload())
+    decision = _bridge().evaluate(_payload())
     assert decision.allowed is True
 
 
 def test_conflicting_exposure_fails_closed():
-    decision = OperationalRiskBridge(RiskManager()).evaluate(_payload(exposure=1999))
+    decision = _bridge().evaluate(_payload(exposure=1999))
     assert decision.allowed is False
     assert "diverge" in decision.reason
 
@@ -49,7 +63,7 @@ def test_conflicting_exposure_fails_closed():
 def test_missing_exposure_fails_closed_when_leverage_is_present():
     payload = _payload()
     payload["operational_state"]["exposure"] = None
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "Exposição operacional ausente" in decision.reason
 
@@ -57,7 +71,7 @@ def test_missing_exposure_fails_closed_when_leverage_is_present():
 def test_leverage_loss_budget_blocks_even_when_operational_limits_are_clear():
     payload = _payload()
     payload["leverage_request"]["maximum_loss"] = 9
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "orçamento" in decision.reason
 
@@ -65,6 +79,6 @@ def test_leverage_loss_budget_blocks_even_when_operational_limits_are_clear():
 def test_partial_leverage_payload_never_gets_silent_approval():
     payload = _payload()
     payload["leverage_request"].pop("margin_required")
-    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    decision = _bridge().evaluate(payload)
     assert decision.allowed is False
     assert "reavaliação" in decision.reason
