@@ -29,7 +29,7 @@ class ProductionScopedServiceMixin:
     def _production_scope_required(self) -> bool:
         return bool(self.production_data_plane is not None or saas_public_mode())
 
-    def _production_records(self, owner, *, limit: int = 100) -> list[DecisionRecord]:
+    def _production_records(self, owner, *, limit: int | None = None) -> list[DecisionRecord]:
         if owner is None:
             if self._production_scope_required():
                 raise PermissionError("trusted tenant and subject scope are required for production decision state")
@@ -96,7 +96,9 @@ class ProductionScopedServiceMixin:
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         if self.production_data_plane is None and not saas_public_mode():
             return super().statistics(subject_id=subject_id, tenant_id=tenant_id)
-        scoped = self._production_records(owner)
+        # Statistics are aggregates over the complete scoped history. They must
+        # never silently inherit a UI pagination limit.
+        scoped = self._production_records(owner, limit=None)
         breakdowns = summarize_breakdowns(scoped)
         return {
             **asdict(summarize(scoped)),
@@ -116,5 +118,6 @@ class ProductionScopedServiceMixin:
         owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         if self.production_data_plane is None and not saas_public_mode():
             return super().memory_view(limit=limit, subject_id=subject_id, tenant_id=tenant_id)
+        # This limit is presentation pagination, not a cap on stored history.
         records = self._production_records(owner, limit=limit)
         return [item.to_dict() for item in records[:limit]]
