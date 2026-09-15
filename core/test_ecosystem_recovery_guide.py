@@ -2,6 +2,7 @@ from core.ecosystem_recovery_guide import EcosystemRecoveryGuide, RecoveryAction
 from core.global_operational_barrier import (
     BarrierDecision,
     BarrierStatus,
+    RemediationMode,
     RemediationResult,
 )
 
@@ -19,14 +20,18 @@ def test_ready_recovery_guide_never_grants_execution_authority():
 def test_safe_repair_is_explained_but_requires_re_evaluation():
     decision = BarrierDecision(
         BarrierStatus.BLOCKED,
-        "incident ativo",
+        "incidente ativo",
         ("technical-incident",),
         (),
     )
-    remediation = RemediationResult(
-        attempted=True,
-        repaired_components=("temporary-cache",),
-        failed_components=(),
+    remediation = (
+        RemediationResult(
+            component="temporary-cache",
+            mode=RemediationMode.AUTO_SAFE,
+            attempted=True,
+            succeeded=True,
+            detail="reparo seguro concluído; revalidação obrigatória",
+        ),
     )
 
     guide = EcosystemRecoveryGuide().build(decision, remediation)
