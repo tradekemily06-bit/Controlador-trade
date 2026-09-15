@@ -38,7 +38,7 @@ class OperationalRuntime:
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
-    """Compose one shared runtime with fail-closed durable safety state."""
+    """Compose one shared runtime with durable, fail-closed safety state."""
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
@@ -53,10 +53,12 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
         safety_state_valid = False
 
-    # Persist only after the KillSwitch has been constructed. A corrupt or
-    # unavailable prior state is replaced by a minimal, valid fail-closed
-    # state rather than recursively reading the corrupt payload during startup.
-    kill_switch: KillSwitch
+    # Restore the state before attaching the persistence callback. This is
+    # essential for corrupt-state recovery: activating the fail-closed state
+    # must not attempt to read the same corrupt file again.
+    kill_switch = KillSwitch()
+    if initial_enabled:
+        kill_switch.activate(initial_reason or "estado de segurança persistido")
 
     def persist_safety(_state) -> None:
         safety_store.save(safety_audit, kill_switch)
@@ -66,6 +68,15 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         kill_switch.activate(initial_reason or "estado de segurança persistido")
     elif safety_state_valid:
         safety_store.save(safety_audit, kill_switch)
+
+    # A corrupt prior file is replaced only after the safe state has been
+    # constructed, avoiding recursive reads of invalid data.
+    if not safety_state_valid:
+        safety_store._write_payload({
+            "audit": [],
+            "kill_switch": {"enabled": True, "reason": initial_reason},
+            "execution_audit": [],
+        })
 
     maintenance = MaintenanceManager(root / "maintenance.json")
     ledger = ExecutionLedger(root / "execution-ledger.json")
