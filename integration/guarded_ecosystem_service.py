@@ -1,0 +1,92 @@
+"""Production-facing service guard for the global fail-closed barrier."""
+from __future__ import annotations
+
+from typing import Any
+
+from core.models import AnalysisResult, Signal
+from core.operational_barrier_factory import build_global_operational_barrier
+from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+
+class GuardedEcosystemService(ConfiguredEcosystemService):
+    """Configured service that cannot emit an operational BUY/SELL while blocked."""
+
+    def operational_barrier(self):
+        return build_global_operational_barrier(self.operational_runtime)
+
+    def operational_barrier_status(self) -> dict[str, object]:
+        decision = self.operational_barrier().evaluate()
+        return {
+            "status": decision.status.value,
+            "operationally_allowed": decision.operationally_allowed,
+            "reason": decision.reason,
+            "blocking_components": list(decision.blocking_components),
+            "repaired_components": list(decision.repaired_components),
+        }
+
+    def remediate_operational_barrier(self) -> dict[str, object]:
+        """Attempt only repairs explicitly classified as AUTO_SAFE.
+
+        A successful repair never grants authorization.  The barrier is rebuilt
+        and evaluated again before anything operational can proceed.
+        """
+        before = self.operational_barrier().evaluate()
+        repairs = self.operational_barrier().remediate()
+        after = self.operational_barrier().evaluate()
+        return {
+            "before": {
+                "status": before.status.value,
+                "reason": before.reason,
+                "blocking_components": list(before.blocking_components),
+            },
+            "repairs": [
+                {
+                    "component": item.component,
+                    "mode": item.mode.value,
+                    "attempted": item.attempted,
+                    "succeeded": item.succeeded,
+                    "detail": item.detail,
+                }
+                for item in repairs
+            ],
+            "after": {
+                "status": after.status.value,
+                "operationally_allowed": after.operationally_allowed,
+                "reason": after.reason,
+                "blocking_components": list(after.blocking_components),
+            },
+            "authorization_rule": "repair_success_never_authorizes; full revalidation required",
+        }
+
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None):
+        decision = self.operational_barrier().evaluate()
+        if not decision.operationally_allowed:
+            owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+            result = AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=float(payload.get("score", 0)),
+                reason=f"Análise operacional bloqueada: {decision.reason}.",
+                confirmed=False,
+                symbol=payload.get("symbol"),
+                timeframe=payload.get("timeframe"),
+            )
+            return self._record_analysis(result, persist=persist, owner=owner)
+        return super().analyze(payload, persist=persist, subject_id=subject_id, tenant_id=tenant_id)
+
+    def risk_status(self) -> dict[str, Any]:
+        decision = self.operational_barrier().evaluate()
+        if not decision.operationally_allowed:
+            return {
+                "allowed": False,
+                "reason": f"operação bloqueada pela barreira global: {decision.reason}",
+                "configured_limits": {
+                    "daily_loss_limit": self.risk.daily_loss_limit,
+                    "max_operations": self.risk.max_operations,
+                    "max_consecutive_losses": self.risk.max_consecutive_losses,
+                },
+                "news_provider": "UNCONFIGURED",
+                "global_barrier": self.operational_barrier_status(),
+            }
+        result = super().risk_status()
+        result["global_barrier"] = self.operational_barrier_status()
+        return result
