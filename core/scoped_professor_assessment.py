@@ -37,8 +37,6 @@ class ScopedProfessorAssessment:
         ]
         if not candidates:
             raise ValueError("validated knowledge from the current tenant has no validated observation")
-        # The latest stored observation is the authoritative educational
-        # statement. Client-supplied text is never used to replace it.
         return candidates[-1]
 
     @staticmethod
@@ -46,13 +44,20 @@ class ScopedProfessorAssessment:
         review = scope.material_reviews.get(str(knowledge_id).strip())
         if review is None:
             return False, 0, ""
-        contradictions = sum(1 for claim in review.claims if claim.verdict is MaterialVerdict.CONTRADICTED)
+        contradictions = sum(
+            1 for claim in review.claims if claim.verdict == MaterialVerdict.CONTRADICTED
+        )
+        if contradictions == 0 and review.overall_verdict == MaterialVerdict.CONTRADICTED:
+            # A persisted review is authoritative; if an older serialized review
+            # retained only the aggregate verdict, keep the safety signal rather
+            # than silently downgrading the material to ordinary consolidation.
+            contradictions = 1
         context_parts: list[str] = []
-        if review.effectiveness.verdict is EffectivenessVerdict.NOT_ESTABLISHED:
+        if review.effectiveness.verdict == EffectivenessVerdict.NOT_ESTABLISHED:
             context_parts.append("A eficácia operacional do material não está estabelecida; trate-a como hipótese a testar, não como fato.")
-        elif review.effectiveness.verdict is EffectivenessVerdict.MIXED:
+        elif review.effectiveness.verdict == EffectivenessVerdict.MIXED:
             context_parts.append("A evidência de eficácia é mista; procure condições em que o resultado muda.")
-        elif review.effectiveness.verdict is EffectivenessVerdict.SUPPORTED:
+        elif review.effectiveness.verdict == EffectivenessVerdict.SUPPORTED:
             context_parts.append("Há evidência de eficácia apoiando o material, mas valide contexto, amostra e limites.")
         if contradictions:
             context_parts.append(f"Há {contradictions} afirmação(ões) explicitamente contradita(s) pelo conhecimento revisado.")
@@ -112,9 +117,6 @@ class ScopedProfessorAssessment:
         if activity_key not in scope.activities:
             raise ValueError("activity_id não encontrado no tenant atual")
         assessment = self.professor.grade_answer(question=question, answer=answer)
-        # LearningAttempt remains the durable event format. Keep the detailed
-        # professional result in feedback so the existing storage contract stays
-        # backward compatible while remediation can count failed attempts.
         from .learning_content import LearningAttempt
         import json
 
