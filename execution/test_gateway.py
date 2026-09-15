@@ -100,6 +100,20 @@ def test_gateway_fails_closed_when_executor_raises():
     assert retry.status is GatewayStatus.EXECUTOR_ERROR
 
 
+def test_gateway_does_not_expose_executor_exception_detail():
+    class BrokenExecutor:
+        def execute(self, _request):
+            raise RuntimeError("segredo-interno-nao-deve-vazar")
+
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch())
+
+    result = gateway.execute("req-safe-error", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert "segredo-interno-nao-deve-vazar" not in result.message
+    assert "RuntimeError" in result.message
+
+
 def test_gateway_rejects_invalid_executor_result():
     class InvalidExecutor:
         def execute(self, _request):
@@ -161,7 +175,7 @@ def test_gateway_allows_execution_after_maintenance_completes():
     maintenance = MaintenanceManager()
     maintenance.schedule(
         maintenance_id="maint-1",
-        title="Atualização",
+        title="Manutenção programada",
         message="Manutenção programada",
         starts_at=now + timedelta(minutes=5),
         duration_minutes=10,
