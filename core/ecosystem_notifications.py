@@ -55,7 +55,7 @@ class EcosystemNotificationCenter:
     Events emitted without a trusted identity are global system events. Scoped
     events are private to one tenant+subject pair. When a durable state store is
     supplied, both global and scoped notification histories survive restart.
-    The in-process scoped cache is bounded and only accelerates access.
+    The in-process scoped cache is bounded and only accelerates reads.
     """
 
     NAMESPACE = "ecosystem.notifications.v1"
@@ -130,6 +130,17 @@ class EcosystemNotificationCenter:
             self._scoped_notifications.popitem(last=False)
         return events
 
+    def _replace_cache(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> list[EcosystemNotification]:
+        if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT):
+            self._global_notifications = events
+            self._global_loaded = True
+            return events
+        self._scoped_notifications[scope] = events
+        self._scoped_notifications.move_to_end(scope)
+        while len(self._scoped_notifications) > self._cache_size:
+            self._scoped_notifications.popitem(last=False)
+        return events
+
     def _current(self) -> tuple[EcosystemNotification, ...]:
         scope = self._trusted_scope()
         scoped = tuple(self._scoped(scope)) if scope is not None else ()
@@ -140,15 +151,14 @@ class EcosystemNotificationCenter:
             raise ValueError("notification is required")
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
-        scope = self._trusted_scope()
-        if scope is None:
-            events = self._global()
-            events.append(notification)
-            self._save((self.GLOBAL_TENANT, self.GLOBAL_SUBJECT), events)
-        else:
-            events = self._scoped(scope)
-            events.append(notification)
-            self._save(scope, events)
+        scope = self._trusted_scope() or (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT)
+        # Reload immediately before the durable read/modify/write operation so
+        # another notification center instance cannot be overwritten by a stale
+        # in-process cache. The cache remains a read-performance layer only.
+        events = self._load(scope)
+        events.append(notification)
+        self._save(scope, events)
+        self._replace_cache(scope, events)
         return notification
 
     def new_id(self, prefix: str = "event") -> str:
