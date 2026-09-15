@@ -119,12 +119,10 @@ class OperationalSafetyStore:
         for item in persisted:
             record = cls._audit_record(item)
             normalized = cls._audit_dict(record)
-            key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
-            merged[key] = normalized
+            merged[json.dumps(normalized, ensure_ascii=False, sort_keys=True)] = normalized
         for record in current:
             normalized = cls._audit_dict(record)
-            key = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
-            merged[key] = normalized
+            merged[json.dumps(normalized, ensure_ascii=False, sort_keys=True)] = normalized
         records = list(merged.values())
         records.sort(key=lambda item: str(item["timestamp"]))
         return records
@@ -164,13 +162,32 @@ class OperationalSafetyStore:
             execution_audit = payload.get("execution_audit", [])
             if not isinstance(execution_audit, list):
                 raise ValueError("auditoria de execução persistida inválida.")
-            normalized_execution = [self._execution_audit_item(item) for item in execution_audit]
             merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
-            self._write_payload({
-                "audit": merged_audit,
-                "kill_switch": {"enabled": state.enabled, "reason": state.reason},
-                "execution_audit": normalized_execution,
-            })
+            persisted_state = payload.get("kill_switch", {})
+            if not isinstance(persisted_state, dict):
+                raise ValueError("estado do kill switch inválido.")
+            # Ordinary audit writes may never clear a kill switch enabled by another writer.
+            safe_state = {
+                "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
+                "reason": state.reason if state.enabled else persisted_state.get("reason"),
+            }
+            self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
+
+    def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+        """Explicitly change the persisted kill switch under the shared file lock."""
+        if not isinstance(enabled, bool):
+            raise TypeError("enabled deve ser bool.")
+        if enabled and (not isinstance(reason, str) or not reason.strip()):
+            raise ValueError("reason é obrigatório ao ativar o kill switch.")
+        with self._lock():
+            payload = self._read_payload()
+            audit = payload.get("audit", [])
+            execution_audit = payload.get("execution_audit", [])
+            if not isinstance(audit, list) or not isinstance(execution_audit, list):
+                raise ValueError("estado de segurança inválido.")
+            state = {"enabled": enabled, "reason": reason if enabled else None}
+            self._write_payload({"audit": audit, "kill_switch": state, "execution_audit": execution_audit})
+        return KillSwitchState(enabled=enabled, reason=reason if enabled else None)
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
