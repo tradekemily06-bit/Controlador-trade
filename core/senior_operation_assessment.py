@@ -1,9 +1,10 @@
 """Senior-grade assessment of whether an opportunity is actually suitable.
 
 This module answers a narrower question than execution: does the currently
-observed opportunity survive a professional quality review?  It never grants
-execution authority.  A suitable opportunity still has to pass every
-operational, risk, freshness, market-identity and execution gate.
+observed opportunity survive a professional quality review? It explicitly
+includes market context, evidence, counterevidence and risk context. It never
+grants execution authority. A suitable opportunity still has to pass every
+operational, freshness, market-identity and execution gate.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from enum import Enum
 from .integrated_market_reading import IntegratedMarketReading, ReadingStatus
 from .senior_market_intelligence import SeniorIntelligenceAssessment, SeniorIntelligenceStatus
 from .senior_market_reasoning import ReasoningPosture, SeniorMarketAssessment
+from .senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from .whole_graph_observation import WholeGraphObservation, WholeGraphStatus
 
 
@@ -49,6 +51,7 @@ class SeniorOperationAssessor:
         graph: WholeGraphObservation,
         reading: IntegratedMarketReading,
         reasoning: SeniorMarketAssessment,
+        risk_assessment: SeniorRiskAssessment | None = None,
         intelligence: SeniorIntelligenceAssessment | None = None,
     ) -> SeniorOperationAssessment:
         if not isinstance(graph, WholeGraphObservation):
@@ -57,6 +60,8 @@ class SeniorOperationAssessor:
             raise ValueError("integrated market reading is required")
         if not isinstance(reasoning, SeniorMarketAssessment):
             raise ValueError("senior market assessment is required")
+        if risk_assessment is not None and not isinstance(risk_assessment, SeniorRiskAssessment):
+            raise ValueError("invalid senior risk assessment")
         if intelligence is not None and not isinstance(intelligence, SeniorIntelligenceAssessment):
             raise ValueError("invalid senior intelligence assessment")
 
@@ -109,6 +114,21 @@ class SeniorOperationAssessor:
         elif reasoning.posture is ReasoningPosture.ACT:
             strengths.append("A postura profissional considera o contexto suficientemente coerente para uma oportunidade.")
 
+        if risk_assessment is None:
+            weaknesses.append("A avaliação sênior de risco da oportunidade não foi fornecida.")
+            invalidators.append("Avaliar capital, posição, exposição, execução e riscos materiais antes de considerar entrada.")
+        elif risk_assessment.status is RiskKnowledgeStatus.INSUFFICIENT:
+            weaknesses.append("A avaliação sênior de risco considera o contexto insuficiente.")
+            invalidators.append("Completar os domínios de risco materiais antes de considerar entrada.")
+        elif risk_assessment.status is RiskKnowledgeStatus.REASSESS:
+            weaknesses.append("A avaliação sênior de risco exige reavaliação.")
+            invalidators.append("Resolver os gatilhos de reavaliação de risco antes de considerar entrada.")
+        else:
+            strengths.append("A oportunidade também passou por uma avaliação sênior de risco.")
+            if risk_assessment.material_risks:
+                weaknesses.extend(risk_assessment.material_risks)
+                invalidators.extend(risk_assessment.reassessment_triggers)
+
         if intelligence is not None:
             if intelligence.status is SeniorIntelligenceStatus.INSUFFICIENT:
                 weaknesses.append("A camada de inteligência sênior considera o contexto insuficiente.")
@@ -122,6 +142,9 @@ class SeniorOperationAssessor:
             or reading.status is not ReadingStatus.SUPPORTED
             or reading.possible_false_breakout
             or reasoning.posture is not ReasoningPosture.ACT
+            or risk_assessment is None
+            or risk_assessment.status is not RiskKnowledgeStatus.ASSESSED
+            or bool(risk_assessment.material_risks)
         )
         suitable = (
             not hard_reassessment
@@ -133,11 +156,11 @@ class SeniorOperationAssessor:
         if suitable:
             disposition = SeniorOperationDisposition.SUITABLE
             quality = "SÊNIOR"
-            reasons.append("A oportunidade sobreviveu à revisão contextual, de evidência, independência e contraprova.")
+            reasons.append("A oportunidade sobreviveu à revisão contextual, de evidência, independência, contraprova e risco.")
         elif hard_reassessment:
             disposition = SeniorOperationDisposition.REASSESS
             quality = "REAVALIAR"
-            reasons.append("A oportunidade ainda contém contexto, evidência ou postura profissional que exige reavaliação.")
+            reasons.append("A oportunidade ainda contém contexto, evidência, postura ou risco que exige reavaliação.")
         else:
             disposition = SeniorOperationDisposition.WAIT
             quality = "AGUARDAR"
