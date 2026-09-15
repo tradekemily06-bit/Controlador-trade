@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.decision_audit import DecisionAudit
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -31,13 +33,37 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    safety_store: OperationalSafetyStore
+    safety_audit: DecisionAudit
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
-    """Compose one shared runtime; broker selection is injected at the edge."""
+    """Compose one shared runtime; broker selection is injected at the edge.
+
+    The kill switch is restored from durable safety state. If that state cannot
+    be trusted, the runtime starts fail-closed with the kill switch active.
+    """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
-    kill_switch = KillSwitch()
+    safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    try:
+        safety_audit, persisted_switch = safety_store.load()
+        initial_enabled = persisted_switch.state.enabled
+        initial_reason = persisted_switch.state.reason
+    except (OSError, ValueError, TypeError) as exc:
+        safety_audit = DecisionAudit()
+        initial_enabled = True
+        initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
+
+    def persist_safety(_state) -> None:
+        safety_store.save(safety_audit, kill_switch)
+
+    kill_switch = KillSwitch(on_change=persist_safety)
+    if initial_enabled:
+        kill_switch.activate(initial_reason or "estado de segurança persistido")
+    else:
+        safety_store.save(safety_audit, kill_switch)
+
     maintenance = MaintenanceManager(root / "maintenance.json")
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
@@ -73,4 +99,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        safety_store=safety_store,
+        safety_audit=safety_audit,
     )
