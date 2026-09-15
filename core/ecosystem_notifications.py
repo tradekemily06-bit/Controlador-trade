@@ -72,6 +72,14 @@ class EcosystemNotificationCenter:
         subject_id = str(identity.subject_id).strip()
         return (tenant_id, subject_id) if tenant_id and subject_id else None
 
+    def _required_scope(self) -> tuple[str, str]:
+        scope = self._trusted_scope()
+        if scope is None:
+            if self._require_durable or self._state_store is not None:
+                raise PermissionError("trusted scope is required for notification state")
+            raise PermissionError("trusted scope is required for notification state")
+        return scope
+
     @staticmethod
     def _decode(payload: object) -> list[EcosystemNotification]:
         if not isinstance(payload, list):
@@ -97,8 +105,10 @@ class EcosystemNotificationCenter:
         self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
 
     def _global(self) -> list[EcosystemNotification]:
+        if self._state_store is not None or self._require_durable:
+            raise PermissionError("global notification scope is reserved for system control plane")
         if not self._global_loaded:
-            self._global_notifications = self._load((self.GLOBAL_TENANT, self.GLOBAL_SUBJECT))
+            self._global_notifications = []
             self._global_loaded = True
         return self._global_notifications
 
@@ -116,6 +126,8 @@ class EcosystemNotificationCenter:
 
     def _replace_cache(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> None:
         if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT):
+            if self._state_store is not None or self._require_durable:
+                raise PermissionError("global notification scope is reserved for system control plane")
             self._global_notifications = events
             self._global_loaded = True
             return
@@ -125,22 +137,16 @@ class EcosystemNotificationCenter:
             self._scoped_notifications.popitem(last=False)
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
-        scope = self._trusted_scope()
-        scoped = tuple(self._scoped(scope)) if scope is not None else ()
-        return tuple(self._global()) + scoped
+        scope = self._required_scope()
+        return tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):
             raise ValueError("notification is required")
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
-        scope = self._trusted_scope() or (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT)
-        if self._state_store is None:
-            if self._require_durable:
-                raise RuntimeError("durable notification state provider is required")
-            events = list(self._global_notifications if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT) else self._scoped_notifications.get(scope, []))
-        else:
-            events = self._load(scope)
+        scope = self._required_scope()
+        events = self._load(scope)
         events.append(notification)
         self._save(scope, events)
         self._replace_cache(scope, events)
