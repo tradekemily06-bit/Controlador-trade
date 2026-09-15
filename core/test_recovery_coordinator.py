@@ -29,9 +29,22 @@ def test_checkpoint_allows_safe_resume(tmp_path):
     coordinator.execution_ledger.reserve("req-3")
     coordinator.execution_ledger.mark_rejected("req-3")
     coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", now))
-    result = coordinator.assess()
+    result = coordinator.assess(session_id="s1")
     assert result.state is RecoveryState.SAFE_TO_RESUME
     assert result.checkpoint.last_cycle == 3
+
+
+def test_checkpoint_from_different_session_cannot_resume_implicitly(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.REJECTED, now, "rejected"))
+    coordinator.execution_ledger.reserve("req-3")
+    coordinator.execution_ledger.mark_rejected("req-3")
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("old-session", 3, "req-3", now))
+    result = coordinator.assess(session_id="new-session")
+    assert result.state is RecoveryState.SESSION_MISMATCH
+    assert result.can_resume is False
+    assert result.checkpoint.session_id == "old-session"
 
 
 def test_orphan_checkpoint_requires_reconciliation(tmp_path):
