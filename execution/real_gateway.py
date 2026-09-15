@@ -122,6 +122,18 @@ class RealExecutionGateway:
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
+        # A primeira barrier check protects admission. This second check is
+        # deliberately immediately before the external broker boundary so a
+        # kill switch/incident/maintenance transition racing this request
+        # cannot turn a previously-ready decision into a live dispatch.
+        barrier_error = self._global_barrier_error()
+        if barrier_error is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
+
         try:
             result = self._gateway.execute(broker, request)
         except Exception as exc:
