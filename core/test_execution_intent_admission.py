@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.decision_snapshot import DecisionSnapshot
 from core.execution_intent import ExecutionIntent
 from core.execution_intent_admission import ExecutionIntentAdmission
@@ -24,6 +25,7 @@ class RecordingExecutor:
 
 
 INTENT_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+NOW = datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc)
 
 
 def make_intent(signal=Signal.COMPRA, symbol="EURUSD", created_at=INTENT_TIME):
@@ -191,6 +193,25 @@ def test_snapshot_timestamp_mismatch_blocks_before_executor():
     )
     assert result.status is GatewayStatus.BLOCKED
     assert "timestamp" in result.message
+    assert executor.calls == 0
+
+
+def test_stale_snapshot_is_not_made_fresh_by_a_new_intent_timestamp():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(
+        executor,
+        KillSwitch(),
+        decision_freshness_policy=DecisionFreshnessPolicy(max_age_seconds=30),
+        decision_clock=lambda: NOW,
+    )
+    stale_time = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    result = ExecutionIntentAdmission(gateway).admit(
+        make_intent(created_at=stale_time),
+        senior_context=make_senior_context(),
+        snapshot=make_snapshot(created_at=stale_time),
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "expirada" in result.message
     assert executor.calls == 0
 
 
