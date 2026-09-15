@@ -248,3 +248,33 @@ class EcosystemService:
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
+
+    def public_status(self) -> dict[str, Any]:
+        """Tenant-safe status surface for public SaaS clients.
+
+        It exposes only product-safe state and explicit execution safety. Internal
+        provider policy, runtime recovery identifiers, storage paths and global
+        infrastructure diagnostics stay behind the authenticated operator surface.
+        """
+        psychology_enabled = True
+        preferences = getattr(self, "preferences", None)
+        if preferences is not None:
+            psychology_enabled = bool(preferences.preferences.psychology_enabled)
+        maintenance_status = "NOT_CONFIGURED"
+        if hasattr(self, "maintenance"):
+            maintenance_status = str(self.maintenance.status().get("status", "UNKNOWN"))
+        return {
+            "mode": "SIMULACAO",
+            "execution_allowed": False,
+            "execution": "bloqueada_por_padrao",
+            "decision_engine": "ONLINE",
+            "risk_gate": "ONLINE",
+            "learning": "ONLINE",
+            "psychology": "ONLINE" if psychology_enabled else "DISABLED",
+            "news": "AGUARDANDO_FONTE",
+            "mt5_demo": "DEMO_VALIDADO",
+            "real": "DESABILITADO",
+            "maintenance": {"status": maintenance_status},
+            "health": "SAFE",
+            "alerts": [],
+        }
