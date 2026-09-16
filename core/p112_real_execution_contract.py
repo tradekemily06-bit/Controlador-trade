@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 
 _REAL_AUTHORIZATION_ISSUER_TOKEN = object()
+_REAL_AUTHORIZATION_ISSUER_CAPABILITY = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +17,7 @@ class _RealAuthorizationProof:
             raise PermissionError("prova de emissão REAL inválida.")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class RealExecutionAuthorization:
     """Immutable authorization bound to one exact REAL operation.
 
@@ -53,7 +54,10 @@ class RealExecutionAuthorization:
     def _issue(
         cls, *, authorization_id: str, audit_id: str, broker_id: str,
         adapter_id: str, request_id: str, symbol: str,
+        issuer_capability: object,
     ) -> "RealExecutionAuthorization":
+        if issuer_capability is not _REAL_AUTHORIZATION_ISSUER_CAPABILITY:
+            raise PermissionError("emissão de autorização REAL exige a capacidade privada do emissor autorizado.")
         identity = (authorization_id, audit_id, broker_id, adapter_id, request_id, symbol)
         proof = _RealAuthorizationProof(identity, _REAL_AUTHORIZATION_ISSUER_TOKEN)
         return cls(
