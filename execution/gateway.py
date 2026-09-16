@@ -85,6 +85,7 @@ class ExecutionGateway:
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
         self._operational_barrier_provider = operational_barrier_provider
+        self._operational_barrier_provider_locked = operational_barrier_provider is not None
         self._decision_freshness_policy = decision_freshness_policy
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
@@ -92,9 +93,19 @@ class ExecutionGateway:
     def set_operational_barrier_provider(
         self, provider: Callable[[], GlobalOperationalBarrier] | None
     ) -> None:
+        """Bind the barrier once; an established provider cannot be replaced or removed.
+
+        The consolidated runtime uses this method exactly once during composition.
+        This prevents callers that receive ``runtime.gateway`` from replacing the
+        authoritative global barrier with a weaker or unrelated provider.
+        """
+        if self._operational_barrier_provider_locked:
+            raise RuntimeError("barreira operacional já está vinculada e não pode ser substituída")
         if provider is not None and not callable(provider):
             raise ValueError("operational_barrier_provider inválido.")
         self._operational_barrier_provider = provider
+        if provider is not None:
+            self._operational_barrier_provider_locked = True
 
     def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy | None) -> None:
         if policy is not None and not isinstance(policy, DecisionFreshnessPolicy):
