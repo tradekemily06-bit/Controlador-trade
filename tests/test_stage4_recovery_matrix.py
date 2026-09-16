@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -54,7 +56,6 @@ def test_unknown_lifecycle_survives_restart_and_requires_reconciliation(tmp_path
 
 def test_reserved_ledger_blocks_resume_even_if_lifecycle_is_missing(tmp_path):
     coordinator, ledger, _, _ = _coordinator(tmp_path)
-    # Reserve through the durable ledger API rather than mutating persisted state.
     ledger.reserve("req-reserved")
 
     assessment = coordinator.assess()
@@ -102,3 +103,39 @@ def test_clean_checkpoint_without_pending_state_can_resume(tmp_path):
 
     assert assessment.state is RecoveryState.SAFE_TO_RESUME
     assert assessment.can_resume
+
+
+def _reserve_worker(ledger_path: str, start_event, result_queue) -> None:
+    start_event.wait(timeout=10)
+    ledger = ExecutionLedger(Path(ledger_path))
+    try:
+        ledger.reserve("shared-request")
+    except ValueError:
+        result_queue.put("rejected")
+    else:
+        result_queue.put("reserved")
+
+
+def test_cross_process_reservation_has_single_winner(tmp_path):
+    ledger_path = tmp_path / "shared-ledger.json"
+    context = multiprocessing.get_context("spawn")
+    start_event = context.Event()
+    result_queue = context.Queue()
+    processes = [
+        context.Process(
+            target=_reserve_worker,
+            args=(str(ledger_path), start_event, result_queue),
+        )
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+
+    start_event.set()
+    results = sorted(result_queue.get(timeout=10) for _ in processes)
+    for process in processes:
+        process.join(timeout=10)
+
+    assert results == ["rejected", "reserved"]
+    assert ExecutionLedger(ledger_path).status("shared-request") is ExecutionLedgerStatus.RESERVED
+    assert all(process.exitcode == 0 for process in processes)
