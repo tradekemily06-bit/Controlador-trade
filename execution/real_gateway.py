@@ -184,6 +184,12 @@ class RealExecutionGateway:
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {self._safe_error(exc)}")
+        if getattr(result, "uncertain", False):
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto e persistência do estado falhou: {self._safe_error(exc)}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "adapter REAL foi acionado, mas o resultado terminal não pôde ser confirmado; reconciliação explícita necessária.", result.execution)
         if result.execution is None:
             try:
                 self._ledger.mark_unknown(request_id)
