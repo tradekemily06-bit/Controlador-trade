@@ -96,3 +96,29 @@ def test_real_dispatch_is_serialized_across_processes(tmp_path: Path) -> None:
     ledger = ExecutionLedger(ledger_path)
     assert ledger.status("real-concurrent-a") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.status("real-concurrent-b") is ExecutionLedgerStatus.ACCEPTED
+
+
+def test_same_request_id_concurrent_processes_can_dispatch_at_most_once(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "same-request-ledger.json"
+    log_path = tmp_path / "same-request.log"
+    request_id = "real-same-request"
+    context = multiprocessing.get_context("spawn")
+    queue = context.Queue()
+    processes = [
+        context.Process(target=_worker, args=(str(ledger_path), str(log_path), request_id, queue))
+        for _ in range(2)
+    ]
+
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(20)
+        assert process.exitcode == 0
+
+    results = [queue.get(timeout=2)[1] for _ in processes]
+    assert sorted(results) == sorted([RealGatewayStatus.ADMITTED, RealGatewayStatus.UNKNOWN])
+
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    assert lines == [f"{request_id}:start", f"{request_id}:end"]
+    ledger = ExecutionLedger(ledger_path)
+    assert ledger.status(request_id) is ExecutionLedgerStatus.ACCEPTED
