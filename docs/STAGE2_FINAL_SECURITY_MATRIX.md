@@ -28,14 +28,17 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - CI concurrency cancels superseded branch runs and the CI job timeout is bounded.
 - The application startup path has regression coverage for explicit PORT selection in addition to the production WSGI container path.
 - Multiprocess coverage proves one-winner request reservation, reconciliation/dispatch races, conflicting transitions, abrupt lock-holder termination and interrupted temp-file recovery.
+- The public `BrokerAdapterGateway.execute(...)` compatibility surface is now non-dispatching for REAL; executable REAL dispatch requires the private gateway capability held by `RealExecutionGateway`.
+- The REAL gateway invokes the adapter gateway only through `execute_from_real_gateway(...)` with the exact private capability, preserving the authoritative dispatch chain.
+- Ledger persistence fsyncs the temporary file before atomic replacement and now fsyncs the parent directory after `os.replace`, closing the previously documented rename-to-directory durability gap on supported POSIX filesystems.
 
 ## Remaining Stage 2 gates
 
-### 1. REAL broker authority / adapter API — 🔴 OPEN
+### 1. REAL broker authority / adapter API — 🟡 IMPLEMENTED, CONSOLIDATED VALIDATION REQUIRED
 
-The deep authority audit found a real alternate execution route: `BrokerAdapterGateway.execute(...)` is currently callable directly and can resolve an executable adapter and dispatch a REAL request without entering `RealExecutionGateway`, without reserving the ExecutionLedger request_id and without the REAL global/admission barriers.
+The deep authority audit found a real alternate execution route: `BrokerAdapterGateway.execute(...)` was callable directly and could resolve an executable adapter and dispatch a REAL request without entering `RealExecutionGateway`, without reserving the ExecutionLedger request_id and without the REAL global/admission barriers.
 
-This is a genuine authority-model gap, not a missing Ledger unit test. The correct fix must seal the broker gateway behind the authoritative REAL gateway boundary and add one consolidated regression proving both sides of the contract: direct adapter-gateway dispatch is blocked, while the legitimate REAL gateway path still reaches the adapter. The fix must be made at the authority boundary rather than by adding more isolated Ledger tests.
+The authority boundary has now been hardened: the public `execute(...)` surface no longer dispatches, while the executable method requires the private REAL gateway capability and is called by `RealExecutionGateway` only after its validation, ledger reservation and dispatch-lock barriers. This is the implementation fix; final closure still requires consolidated adversarial coverage proving the direct route is blocked and the legitimate route remains executable under the complete Stage 2 harness.
 
 ### 2. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
 
@@ -57,7 +60,7 @@ The ledger reconciliation contract requires explicit external evidence identity 
 
 ### 5. Configuration / environment side doors — 🟡 PARTIALLY VERIFIED
 
-DEMO provider configuration rejects known REAL provider aliases, and factory composition tests cover the intended production construction boundaries. The remaining audit must cover every production configuration/factory surface, including app/core integration paths, and prove that configuration cannot select an execution route outside the authoritative gateway.
+DEMO provider configuration rejects known REAL provider aliases, and factory composition tests cover the intended production construction boundaries. The remaining audit must cover every production configuration/factory surface, including app/core integration paths, and prove that configuration cannot select an execution route outside the authoritative gateway. Current app configuration selects DEMO/paper providers only; environment variables do not directly select a REAL adapter gateway.
 
 ### 6. Identity mutation / cross-context reuse — 🟡 PARTIALLY VERIFIED
 
@@ -65,15 +68,17 @@ REAL authorization/admission objects are identity-bound and immutable, and reque
 
 ### 7. Cross-process authority / recovery matrix — 🟢 STRONG COVERAGE, FINAL CLOSURE PENDING
 
-Multiprocess tests cover reservation races, reconciliation races, conflicting transitions, abrupt lock-holder termination, crash-after-external-acceptance, restart without replay and interrupted temp-file recovery. Final closure still depends on the complete authority graph, including the broker API side door and any remaining configuration/reconstruction routes.
+Multiprocess tests cover reservation races, reconciliation races, conflicting transitions, abrupt lock-holder termination, crash-after-external-acceptance, restart without replay and interrupted temp-file recovery. Final closure still depends on the complete authority graph, including configuration/reconstruction routes and the final broker boundary regression.
 
-### 8. Durability boundary — 🟡 DOCUMENTED LIMIT
+### 8. Durability boundary — 🟡 IMPLEMENTED, VALIDATION REQUIRED
 
-Ledger writes fsync the temporary file before atomic replacement. The current implementation does not explicitly fsync the parent directory after `os.replace`, so absolute filesystem durability across a physical power-loss window immediately after rename is not yet a proven Stage 2 property. This must either be hardened or explicitly excluded from the Stage 2 durability contract before closure.
+Ledger writes fsync the temporary file, atomically replace the target, and then fsync the parent directory. This establishes the intended file-plus-directory persistence sequence for supported POSIX filesystems. Final Stage 2 closure still requires CI/adversarial validation of the persistence path and explicit confirmation of the supported filesystem contract; the implementation no longer relies solely on the pre-rename file fsync.
 
 ## Current CI evidence
 
-The current Stage 2 head is **`dd0f81395990ec82a9869472ec64d4254c1f5c73`**. CI run **#1656** completed successfully for that commit. This proves the consolidated tree at that head passed CI; it does **not** close the newly identified broker-gateway authority gap.
+The current Stage 2 head is **`dd98a56ab32f2fa62434d6e64064029cb1f665db`**. CI run **#1662** completed successfully for that commit, including the full test suite, dependency security audit, Python compilation, production container build and production health smoke test.
+
+The subsequent commits **`529ea4c3247114515cdd3a4eb5a55b7dfe059fbb`** and this matrix update are newer than that successful CI run, so the current final tree is **not yet CI-validated**. A new CI run must complete successfully on the latest head before any Stage 2 closure claim.
 
 The branch remains validation-only and must not be merged until the remaining authority gates above are closed.
 
