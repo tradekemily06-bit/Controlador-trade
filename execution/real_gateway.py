@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 import math
 
 from core.decision_snapshot import DecisionSnapshot
+from core.file_lock import exclusive_file_lock
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -48,6 +50,7 @@ class RealExecutionGateway:
         self._risk_state_provider = risk_state_provider
         self._real_safety_provider = real_safety_provider
         self._processed_request_ids: set[str] = set(ledger.records())
+        self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.real-dispatch.lock")
 
     @staticmethod
     def _safe_error(exc: BaseException) -> str:
@@ -104,38 +107,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "estado de segurança REAL mudou desde a admissão; novo ciclo de admissão obrigatório antes do dispatch.")
         return None
 
-    def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
-                authorization: RealExecutionAuthorization, admission: RealAdmission,
-                safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not isinstance(authorization, RealExecutionAuthorization):
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de autorização REAL inválido.")
-        if not isinstance(admission, RealAdmission):
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de admissão REAL inválido.")
-        if not isinstance(safety, RealSafetyReport):
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de segurança REAL inválido.")
-        if not authorization.active:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
-        if not admission.admitted:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
-        if admission.audit_id.strip() != authorization.audit_id.strip():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "auditoria da admissão REAL difere da autorização; novo ciclo obrigatório.")
-        safety_result = self._revalidate_safety(safety)
-        if safety_result is not None:
-            return safety_result
-        if not self._valid_request(request):
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if not isinstance(broker, str) or not broker.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        normalized_broker = broker.strip().lower()
-        if normalized_broker != authorization.broker_id.strip().lower():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
-        if not isinstance(admission.broker_id, str) or not admission.broker_id.strip():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL sem broker válido.")
-        if normalized_broker != admission.broker_id.strip().lower():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
-
+    def _dispatch_locked(self, broker: str, request_id: str, request: ExecutionRequest,
+                         safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
+        """Hold a shared process lock from reservation through final barriers and adapter dispatch."""
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -143,8 +117,6 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.")
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
-        # Revalidate safety and risk before reserving, then repeat both checks
-        # after reservation to close the final stale-state window before dispatch.
         risk_result = self._revalidate_risk(snapshot)
         if risk_result is not None:
             return risk_result
@@ -213,6 +185,45 @@ class RealExecutionGateway:
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {self._safe_error(exc)}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+
+    def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
+                authorization: RealExecutionAuthorization, admission: RealAdmission,
+                safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
+        if not isinstance(request_id, str) or not request_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(authorization, RealExecutionAuthorization):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de autorização REAL inválido.")
+        if not isinstance(admission, RealAdmission):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de admissão REAL inválido.")
+        if not isinstance(safety, RealSafetyReport):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de segurança REAL inválido.")
+        if not authorization.active:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
+        if not admission.admitted:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
+        if admission.audit_id.strip() != authorization.audit_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "auditoria da admissão REAL difere da autorização; novo ciclo obrigatório.")
+        safety_result = self._revalidate_safety(safety)
+        if safety_result is not None:
+            return safety_result
+        if not self._valid_request(request):
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if not isinstance(broker, str) or not broker.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
+        normalized_broker = broker.strip().lower()
+        if normalized_broker != authorization.broker_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        if not isinstance(admission.broker_id, str) or not admission.broker_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL sem broker válido.")
+        if normalized_broker != admission.broker_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
+
+        lock = exclusive_file_lock(self._dispatch_lock_path)
+        try:
+            with lock:
+                return self._dispatch_locked(broker, request_id, request, safety, snapshot)
+        except OSError as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a barreira de dispatch REAL: {self._safe_error(exc)}")
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
