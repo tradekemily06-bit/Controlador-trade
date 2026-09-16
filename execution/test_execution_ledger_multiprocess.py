@@ -215,9 +215,11 @@ def test_interrupted_write_preserves_last_committed_ledger(tmp_path: Path):
     crashed.join(10)
     assert crashed.exitcode == 92
 
+    temporary = path.with_name(f".{path.name}.tmp")
+    assert temporary.exists(), "interrupted temp file should remain before recovery"
     restored = ExecutionLedger(path)
     assert restored.status("baseline") is ExecutionLedgerStatus.RESERVED
     assert restored.status("crash-only") is None
     restored.reserve("after-interrupted-write")
     assert restored.status("after-interrupted-write") is ExecutionLedgerStatus.RESERVED
-    assert restored.path.with_name(f".{restored.path.name}.tmp").exists()
+    assert not temporary.exists(), "successful recovery write should replace the stale temp file"
