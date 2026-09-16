@@ -18,6 +18,7 @@ from core.recovery_coordinator import RecoveryCoordinator
 from core.risk_state_provider import RiskStateProvider
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.technical_incident_store import TechnicalIncidentStore
+from execution.demo_broker_port import DemoBrokerExecutionPort, GatewayBoundDemoExecutionPort
 from execution.demo_risk_dispatch_guard import DemoRiskDispatchGuard
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
@@ -58,13 +59,7 @@ def build_operational_runtime(
     *,
     risk_state_provider: RiskStateProvider | None = None,
 ) -> OperationalRuntime:
-    """Compose one authoritative, fail-closed operational runtime.
-
-    Local durable stores are intentionally refused for public multi-instance SaaS
-    until a shared authoritative operational state implementation exists. DEMO
-    may use the durable local risk store; injected broker executors must still
-    receive an explicit authoritative risk provider.
-    """
+    """Compose one authoritative, fail-closed operational runtime."""
     if _public_saas_multi_instance():
         raise RuntimeError("multi-instance public SaaS requires a shared authoritative operational state provider")
 
@@ -115,7 +110,10 @@ def build_operational_runtime(
     else:
         if risk_state_provider is None:
             raise RuntimeError("non-PAPER DEMO execution requires an authoritative risk-state provider")
-        effective_executor = executor
+        if isinstance(executor, DemoBrokerExecutionPort):
+            effective_executor = GatewayBoundDemoExecutionPort(executor)
+        else:
+            effective_executor = executor
 
     runtime_risk_provider = risk_state_provider or demo_risk_state
 

@@ -5,12 +5,7 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionPort, Exec
 
 
 class DemoBrokerExecutionPort:
-    """Broker-bound DEMO port whose public execute method cannot dispatch directly.
-
-    The concrete adapter is private. Actual broker-side dispatch is exposed only
-    through ``execute_from_gateway``, which the authoritative ExecutionGateway
-    recognizes as an internal execution capability.
-    """
+    """Broker-bound DEMO port whose public execute method cannot dispatch directly."""
 
     def __init__(self, adapter: ICMarketsMT5DemoAdapter) -> None:
         if not isinstance(adapter, ICMarketsMT5DemoAdapter):
@@ -29,6 +24,21 @@ class DemoBrokerExecutionPort:
 
     def is_available(self) -> bool:
         return bool(self.__adapter.is_available())
+
+
+class GatewayBoundDemoExecutionPort:
+    """Internal runtime binding that exposes broker dispatch only to the gateway."""
+
+    def __init__(self, port: DemoBrokerExecutionPort) -> None:
+        if not isinstance(port, DemoBrokerExecutionPort):
+            raise ValueError("porta DEMO inválida")
+        self._port = port
+
+    def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        return self._port.execute_from_gateway(request)
+
+    def is_available(self) -> bool:
+        return self._port.is_available()
 
 
 def build_ic_markets_mt5_demo_port(*, symbol: str | None = None) -> ExecutionPort:
