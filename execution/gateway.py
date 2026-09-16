@@ -259,10 +259,12 @@ class ExecutionGateway:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
         if request.amount <= 0:
             return "Valor da execução deve ser positivo."
         if request.duration_seconds <= 0:
             return "Duração deve ser positiva."
+        if request.request_id is not None and request.request_id != request_id:
+            return "request_id externo difere da identidade da requisição."
         return None
