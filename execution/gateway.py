@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -9,6 +10,7 @@ from core.decision_freshness import DecisionFreshnessPolicy
 from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
+from core.file_lock import exclusive_file_lock
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
@@ -78,27 +80,24 @@ class ExecutionGateway:
         self._decision_freshness_policy = decision_freshness_policy
         self._decision_clock = decision_clock or (lambda: datetime.now(timezone.utc))
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
 
     def set_operational_barrier_provider(self, provider: Callable[[], GlobalOperationalBarrier]) -> None:
-        """Attach the authoritative global barrier after runtime composition."""
         if not callable(provider):
             raise ValueError("operational barrier provider inválido.")
         self._operational_barrier_provider = provider
 
     def set_market_data_fingerprint_provider(self, provider: Callable[[], str | None]) -> None:
-        """Attach the authoritative runtime market-data identity after composition."""
         if not callable(provider):
             raise ValueError("market-data fingerprint provider inválido.")
         self._market_data_fingerprint_provider = provider
 
     def set_risk_state_fingerprint_provider(self, provider: Callable[[], str | None]) -> None:
-        """Attach the authoritative runtime risk-state identity after composition."""
         if not callable(provider):
             raise ValueError("risk-state fingerprint provider inválido.")
         self._risk_state_fingerprint_provider = provider
 
     def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy, *, clock: Callable[[], datetime] | None = None) -> None:
-        """Attach the authoritative freshness policy after runtime composition."""
         if not isinstance(policy, DecisionFreshnessPolicy):
             raise ValueError("decision freshness policy inválida.")
         if clock is not None and not callable(clock):
@@ -155,7 +154,6 @@ class ExecutionGateway:
             return f"execução bloqueada: estado de frescor da decisão indisponível: {type(exc).__name__}"
 
     def _decision_snapshot_error(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> str | None:
-        """Require and validate the immutable decision record at the operational boundary."""
         if self._operational_barrier_provider is not None and self._decision_freshness_policy is not None and snapshot is None:
             return "execução bloqueada: snapshot da decisão é obrigatório no runtime operacional"
         if snapshot is None:
@@ -173,7 +171,6 @@ class ExecutionGateway:
         return None
 
     def _decision_created_at(self, *, snapshot: DecisionSnapshot | None, event_time: datetime) -> datetime:
-        """Use the immutable decision timestamp for freshness, never request arrival time."""
         if snapshot is not None and snapshot.created_at is not None:
             return snapshot.created_at
         if self._operational_barrier_provider is not None and self._decision_freshness_policy is not None:
@@ -198,7 +195,6 @@ class ExecutionGateway:
         return None
 
     def _risk_state_fingerprint_error(self, request: ExecutionRequest) -> str | None:
-        """Require authoritative risk identity whenever the decision captured one."""
         expected = request.risk_state_fingerprint
         if expected is None:
             return None
@@ -227,6 +223,33 @@ class ExecutionGateway:
         if self._maintenance is not None and self._maintenance.execution_blocked(now=now):
             return "execução bloqueada durante manutenção ativa do ecossistema."
         return self._global_barrier_error()
+
+    def _dispatch_with_authoritative_barriers(self, *, request: ExecutionRequest, snapshot: DecisionSnapshot | None, decision_time: datetime, event_time: datetime) -> tuple[ExecutionResult | None, str | None]:
+        """Hold one shared cross-process lock across final reads and the side effect.
+
+        This is deliberately wider than the ledger's per-mutation lock. The lock
+        closes the TOCTOU window for different request IDs: worker A cannot pass
+        the final safety checks while worker B changes the shared operational
+        state and dispatches concurrently.
+        """
+        lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
+        with lock:
+            safety_error = self._final_safety_barrier(now=event_time)
+            if safety_error is not None:
+                return None, safety_error
+            freshness_error = self._decision_freshness_error(created_at=decision_time, now=event_time)
+            if freshness_error is not None:
+                return None, freshness_error
+            snapshot_error = self._decision_snapshot_error(request, snapshot)
+            if snapshot_error is not None:
+                return None, snapshot_error
+            market_error = self._market_data_fingerprint_error(request)
+            if market_error is not None:
+                return None, market_error
+            risk_error = self._risk_state_fingerprint_error(request)
+            if risk_error is not None:
+                return None, risk_error
+            return self._executor.execute(request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
         if self._ledger is None:
@@ -301,33 +324,15 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
-        final_safety_error = self._final_safety_barrier(now=event_time)
-        if final_safety_error is not None:
-            self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_safety_error}")
-            return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
-        final_freshness_error = self._decision_freshness_error(created_at=decision_time, now=event_time)
-        if final_freshness_error is not None:
-            self._mark_unknown(request_id, event_time, f"decisão expirou antes do dispatch: {final_freshness_error}")
-            return GatewayResult(GatewayStatus.BLOCKED, final_freshness_error)
-        final_snapshot_error = self._decision_snapshot_error(request, snapshot)
-        if final_snapshot_error is not None:
-            self._mark_unknown(request_id, event_time, f"snapshot da decisão mudou ou deixou de estar disponível: {final_snapshot_error}")
-            return GatewayResult(GatewayStatus.BLOCKED, final_snapshot_error)
-        final_market_data_error = self._market_data_fingerprint_error(request)
-        if final_market_data_error is not None:
-            self._mark_unknown(request_id, event_time, f"identidade de mercado mudou antes do dispatch: {final_market_data_error}")
-            return GatewayResult(GatewayStatus.BLOCKED, final_market_data_error)
-        final_risk_state_error = self._risk_state_fingerprint_error(request)
-        if final_risk_state_error is not None:
-            self._mark_unknown(request_id, event_time, f"estado de risco mudou ou ficou indisponível antes do dispatch: {final_risk_state_error}")
-            return GatewayResult(GatewayStatus.BLOCKED, final_risk_state_error)
         try:
-            result = self._executor.execute(request)
+            result, final_error = self._dispatch_with_authoritative_barriers(request=request, snapshot=snapshot, decision_time=decision_time, event_time=event_time)
         except Exception as exc:
-            safe_error = type(exc).__name__
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {safe_error}")
+            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}")
             self._open_incident_on_executor_failure(exc)
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {safe_error}")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}")
+        if final_error is not None:
+            self._mark_unknown(request_id, event_time, f"barreira de segurança bloqueou o dispatch: {final_error}")
+            return GatewayResult(GatewayStatus.BLOCKED, final_error)
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             self._open_incident_on_executor_failure("resultado inválido")
@@ -399,7 +404,7 @@ class ExecutionGateway:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
         if request.amount <= 0:
             return "Valor da execução deve ser positivo."
