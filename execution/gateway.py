@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Callable
@@ -168,6 +168,13 @@ class ExecutionGateway:
             return freshness_error
         return self._risk_state_barrier(snapshot)
 
+    def _request_for_dispatch(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> ExecutionRequest:
+        if snapshot is None or snapshot.risk_state_identity is None:
+            return request
+        if request.risk_state_fingerprint not in (None, snapshot.risk_state_identity):
+            raise ValueError("identidade de risco da requisição difere do snapshot; dispatch bloqueado.")
+        return replace(request, risk_state_fingerprint=snapshot.risk_state_identity)
+
     def _dispatch_with_authoritative_barriers(
         self, request: ExecutionRequest, snapshot: DecisionSnapshot | None
     ) -> tuple[ExecutionResult | None, str | None]:
@@ -179,7 +186,11 @@ class ExecutionGateway:
             )
             if final_safety_error is not None:
                 return None, final_safety_error
-            return self._executor.execute(request), None
+            try:
+                effective_request = self._request_for_dispatch(request, snapshot)
+            except ValueError as exc:
+                return None, str(exc)
+            return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
         if self._ledger is None:
@@ -221,14 +232,14 @@ class ExecutionGateway:
         if self._ledger is not None:
             try:
                 self._ledger.reserve(request_id)
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError):
                 current = self._ledger.status(request_id)
                 if current is not None:
                     self._processed_request_ids.add(request_id)
                     if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                         return GatewayResult(GatewayStatus.BLOCKED, "request_id está em estado incerto; reconciliação explícita obrigatória antes de novo envio.")
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível reservar request_id com segurança")
             self._processed_request_ids.add(request_id)
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
@@ -239,9 +250,9 @@ class ExecutionGateway:
                 return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError):
                 self._abandon_reserved_request(request_id)
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {self._safe_error(exc)}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
         try:
             result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
         except Exception as exc:
@@ -269,7 +280,7 @@ class ExecutionGateway:
                     self._ledger.mark_rejected(request_id)
                 except (OSError, ValueError):
                     self._mark_unknown(request_id, event_time, "execução rejeitada, mas ledger não foi persistido")
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução rejeitada, mas persistência falhou; estado UNKNOWN: persistência", result)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução rejeitada, mas persistência falhou; estado UNKNOWN", result)
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             self._processed_request_ids.add(request_id)
@@ -279,13 +290,13 @@ class ExecutionGateway:
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError):
                 self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas ledger não foi persistido; estado UNKNOWN: persistência", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas ledger não foi persistido; estado UNKNOWN", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError):
                 self._mark_unknown(request_id, event_time, "execução aceita, mas persistência do ciclo falhou")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: persistência", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN", result)
         self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
