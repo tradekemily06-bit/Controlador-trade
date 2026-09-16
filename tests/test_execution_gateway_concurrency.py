@@ -71,7 +71,7 @@ def _gateway_worker(ledger_path: str, lifecycle_path: str, barrier, counter, cou
     results.put(result.status.value)
 
 
-def _different_request_worker(ledger_path: str, lifecycle_path: str, safety_path: str, barrier, entered, release, counter, counter_lock, results, request_id: str) -> None:
+def _different_request_worker(ledger_path: str, lifecycle_path: str, safety_path: str, entered, release, counter, counter_lock, results, request_id: str) -> None:
     safety_store = OperationalSafetyStore(safety_path)
     gateway = ExecutionGateway(
         _SafetyChangingExecutor(request_id, safety_path, entered, release, counter, counter_lock),
@@ -80,7 +80,6 @@ def _different_request_worker(ledger_path: str, lifecycle_path: str, safety_path
         lifecycle=ExecutionLifecycleStore(lifecycle_path),
         safety_store=safety_store,
     )
-    barrier.wait(timeout=15)
     result = gateway.execute(request_id, _request())
     results.put((request_id, result.status.value))
 
@@ -131,7 +130,7 @@ def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path
 
     request_a = ctx.Process(
         target=_different_request_worker,
-        args=(ledger_path, lifecycle_path, safety_path, None, entered, release, counter, counter_lock, results, "request-a"),
+        args=(ledger_path, lifecycle_path, safety_path, entered, release, counter, counter_lock, results, "request-a"),
     )
     request_a.start()
 
@@ -139,7 +138,7 @@ def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path
 
     request_b = ctx.Process(
         target=_different_request_worker,
-        args=(ledger_path, lifecycle_path, safety_path, None, entered, release, counter, counter_lock, results, "request-b"),
+        args=(ledger_path, lifecycle_path, safety_path, entered, release, counter, counter_lock, results, "request-b"),
     )
     request_b.start()
 
