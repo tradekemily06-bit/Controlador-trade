@@ -202,7 +202,9 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {self._safe_error(exc)}")
 
-        final_safety_error = self._final_safety_barrier(now=event_time)
+        # Use wall-clock time for the final safety check. The decision timestamp
+        # can be historical or delayed; it must never extend a maintenance window.
+        final_safety_error = self._final_safety_barrier(now=datetime.now(timezone.utc))
         if final_safety_error is not None:
             self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
             return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
