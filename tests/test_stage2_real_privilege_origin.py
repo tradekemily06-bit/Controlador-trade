@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p115_shadow_validation import ShadowValidationBoundary
@@ -43,7 +44,11 @@ def _release_audit():
 
 def _registry():
     registry = BrokerRegistry()
-    registry.register("fake", type("Adapter", (), {"is_available": lambda self: True, "execute": lambda self, request: None})(), adapter_id="fake-adapter")
+    adapter = type("Adapter", (), {
+        "is_available": lambda self: True,
+        "execute": lambda self, request: None,
+    })()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     return registry
 
 
@@ -65,7 +70,7 @@ def test_authoritative_issuer_derives_adapter_and_operation_identity():
     registry = _registry()
     gateway = BrokerAdapterGateway(registry)
     issuer = RealPrivilegeIssuer(gateway)
-    request = ExecutionRequest("TEST", "COMPRA", 1.0, 60, ExecutionMode.REAL, request_id="req")
+    request = ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id="req")
     authorization = issuer.issue_authorization(
         authorization_id="auth", release_audit=_release_audit(), broker="fake",
         request=request, explicit_real_enablement=True,
