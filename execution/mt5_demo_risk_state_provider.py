@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timezone
 import math
 from typing import Any, Callable
 
@@ -73,27 +73,18 @@ class MT5DemoRiskStateProvider:
             unrealized = self._number(account, "profit")
 
             scoped_positions = self._scope_positions(positions)
-            open_positions = len(scoped_positions)
-            net_position = self._net_position(scoped_positions, mt5)
-            exposure = self._exposure(scoped_positions, mt5)
-            trades_today = self._trades_today(deals, mt5)
-            consecutive_losses = self._consecutive_losses(deals, mt5)
-            realized_pnl = self._realized_pnl(deals, mt5)
-            market_open = self._market_open(mt5)
-            candle = self._last_candle(mt5)
-
             return OperationalState(
                 balance=balance,
                 equity=equity,
-                realized_pnl=realized_pnl,
+                realized_pnl=self._realized_pnl(deals, mt5),
                 unrealized_pnl=unrealized,
-                trades_today=trades_today,
-                consecutive_losses=consecutive_losses,
-                open_positions=open_positions,
-                net_position=net_position,
-                exposure=exposure,
-                market_open=market_open,
-                last_processed_candle=candle,
+                trades_today=self._trades_today(deals, mt5),
+                consecutive_losses=self._consecutive_losses(deals, mt5),
+                open_positions=len(scoped_positions),
+                net_position=self._net_position(scoped_positions, mt5),
+                exposure=self._exposure(scoped_positions, mt5),
+                market_open=self._market_open(mt5),
+                last_processed_candle=self._last_candle(mt5),
             )
         except MT5RiskStateProviderError:
             raise
@@ -155,7 +146,7 @@ class MT5DemoRiskStateProvider:
 
     @staticmethod
     def _exposure(positions: tuple[Any, ...], mt5: Any) -> float | None:
-        """Return aggregate price-notional exposure where symbol metadata supports it."""
+        """Aggregate current price-notional exposure where symbol metadata supports it."""
         total = 0.0
         for position in positions:
             volume = getattr(position, "volume", None)
@@ -203,11 +194,7 @@ class MT5DemoRiskStateProvider:
 
     @classmethod
     def _trades_today(cls, deals: Any, mt5: Any) -> int | None:
-        count = 0
-        for deal in deals:
-            if cls._is_entry(deal, mt5):
-                count += 1
-        return count
+        return sum(1 for deal in deals if cls._is_entry(deal, mt5))
 
     @classmethod
     def _consecutive_losses(cls, deals: Any, mt5: Any) -> int | None:
@@ -235,11 +222,18 @@ class MT5DemoRiskStateProvider:
                 total += result
         return total
 
-    @staticmethod
-    def _market_open(mt5: Any) -> bool | None:
-        if not hasattr(mt5, "symbol_info_tick"):
+    def _market_open(self, mt5: Any) -> bool | None:
+        symbol = self.config.symbol
+        if not symbol or not hasattr(mt5, "symbol_info_tick"):
             return None
-        return None
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return False
+        bid = getattr(tick, "bid", None)
+        ask = getattr(tick, "ask", None)
+        if not all(isinstance(value, (int, float)) and math.isfinite(float(value)) and value > 0 for value in (bid, ask)):
+            return False
+        return True
 
     def _last_candle(self, mt5: Any) -> datetime | None:
         symbol = self.config.symbol
