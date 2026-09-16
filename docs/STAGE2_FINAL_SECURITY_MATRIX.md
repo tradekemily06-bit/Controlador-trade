@@ -20,14 +20,15 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - Active REAL authorization can only be constructed through the private issuer boundary; direct construction of an active authorization fails closed.
 - Active REAL admission can only be constructed through the private issuer boundary; the legacy public admission path can only produce BLOCKED state and cannot manufacture an admitted privilege.
 - RealPrivilegeIssuer derives adapter identity from the authoritative BrokerAdapterGateway and admission identity from the already-issued authorization.
-- Issuer negative coverage now checks direct active authorization/admission construction, inactive/forged admission attempts, audit failures and safety failures.
+- An executable AST scan now checks production surfaces for direct active REAL authorization/admission constructors and asserts the issuer is the sole active authorization factory.
+- Issuer negative coverage checks direct active authorization/admission construction, inactive/forged admission attempts, audit failures and safety failures.
 - CI concurrency was changed to cancel superseded branch runs and a 30-minute job timeout was added.
 
 ## Remaining Stage 2 gates
 
 ### 1. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
 
-The authoritative issuer and private active-object issuance boundary are now present. The remaining proof is not implementation but complete coverage of every legacy/reconstruction path and the full consolidated suite.
+The authoritative issuer and private active-object issuance boundary are now present, and executable source scanning verifies the intended production constructor boundary. The remaining proof is complete legacy/reconstruction coverage and the full consolidated suite.
 
 Required evidence before Stage 2 closure:
 
@@ -44,7 +45,7 @@ The gate remains pending only until the consolidated CI/test suite proves these 
 
 ### 3. CI consolidated validation — 🔴 OPEN / INFRASTRUCTURE QUEUE
 
-The newest validation run for the current branch is the authoritative run to watch. A queued run is not a failure and is not evidence of a green build. Stage 2 cannot close until the current consolidated tree actually starts and completes successfully.
+The newest validation run for the current branch is the authoritative run to watch. A queued/pending run is not a failure and is not evidence of a green build. Stage 2 cannot close until the current consolidated tree actually starts and completes successfully.
 
 ## Stage 2 closure rule
 
