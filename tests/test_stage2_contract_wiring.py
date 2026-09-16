@@ -79,7 +79,7 @@ def test_freshness_policy_blocks_expired_snapshot_before_executor() -> None:
         decision_freshness_policy=DecisionFreshnessPolicy(max_age_seconds=30.0),
     )
     stale = snapshot_for(state, created_at=datetime.now(timezone.utc) - timedelta(minutes=2))
-    result = gateway.execute("req-stale", request(), snapshot=stale)
+    result = gateway.execute("req-stale", request("req-stale"), snapshot=stale)
     assert result.status is GatewayStatus.BLOCKED
     assert executor.requests == []
 

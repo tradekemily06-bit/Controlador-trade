@@ -48,7 +48,7 @@ def test_gateway_fails_closed_when_authoritative_safety_state_is_corrupt(tmp_pat
     executor = PaperExecutor()
     gateway = ExecutionGateway(executor, KillSwitch(), safety_store=OperationalSafetyStore(safety_path))
 
-    result = gateway.execute("corrupt-safety", request())
+    result = gateway.execute("corrupt-safety", request("corrupt-safety"))
 
     assert result.status is GatewayStatus.BLOCKED
     assert "estado de segurança indisponível" in result.message

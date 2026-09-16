@@ -1,3 +1,4 @@
+from dataclasses import replace
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -104,7 +105,7 @@ def test_risk_barrier_blocks_provider_failure() -> None:
 def test_risk_barrier_blocks_missing_decision_identity() -> None:
     state = OperationalState(trades_today=1, consecutive_losses=0)
     snapshot = snapshot_for(state)
-    snapshot = DecisionSnapshot(**{**snapshot.__dict__, "risk_state_identity": None})
+    snapshot = replace(snapshot, risk_state_identity=None, risk_state_fingerprint=None)
 
     result = gateway(Provider(state))._risk_state_barrier(snapshot)
     assert result is not None
