@@ -34,7 +34,7 @@ class RealGatewayResult:
 
 
 class RealExecutionGateway:
-    """Single REAL dispatch boundary with authoritative risk, safety and reconciliation checks."""
+    """Single REAL dispatch boundary with authoritative identity and safety checks."""
 
     def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger,
                  risk_state_provider: RiskStateProvider, real_safety_provider: RealSafetyProvider,
@@ -170,7 +170,7 @@ class RealExecutionGateway:
             if result is not None:
                 return result
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve_real(request_id, broker_id=broker, symbol=request.symbol)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
@@ -215,9 +215,9 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted_real(request_id, external_id=result.execution.external_id)
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {self._safe_error(exc)}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência da identidade falhou: {self._safe_error(exc)}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, self._safe_execution_message(result.execution, "ordem REAL aceita."), result.execution)
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
@@ -272,16 +272,34 @@ class RealExecutionGateway:
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
-            raise ValueError("evidência externa exige evidence_source")
+            raise ValueError("evidence_source da evidência externa é obrigatório")
         verifier = self._reconciliation_evidence_verifier
         if verifier is None:
             raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
-                if self._ledger.status(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                status = self._ledger.status(request_id)
+                if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                     raise ValueError("request_id não está em estado incerto reconciliável.")
+                context = self._ledger.execution_context(request_id)
+                if context is None:
+                    raise ValueError("identidade persistida da operação REAL está ausente; reconciliação bloqueada")
+                context_broker = context.get("broker_id")
+                context_symbol = context.get("symbol")
+                if not isinstance(context_broker, str) or not context_broker.strip() or not isinstance(context_symbol, str) or not context_symbol.strip():
+                    raise ValueError("identidade persistida da operação REAL está inválida; reconciliação bloqueada")
+                persisted_external_id = context.get("external_id")
+                if isinstance(persisted_external_id, str) and persisted_external_id.strip() and persisted_external_id.strip() != evidence_id.strip():
+                    raise ValueError("evidence_id difere do external_id emitido pelo broker para esta operação")
                 try:
-                    verified = bool(verifier.verify(request_id=request_id, evidence_id=evidence_id.strip(), evidence_source=evidence_source.strip(), executed=executed))
+                    verified = bool(verifier.verify(
+                        request_id=request_id,
+                        evidence_id=evidence_id.strip(),
+                        evidence_source=evidence_source.strip(),
+                        broker_id=context_broker.strip(),
+                        symbol=context_symbol.strip(),
+                        executed=executed,
+                    ))
                 except Exception as exc:
                     raise RuntimeError(f"autoridade de evidência REAL indisponível: {self._safe_error(exc)}") from exc
                 if not verified:
