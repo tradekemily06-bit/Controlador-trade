@@ -41,10 +41,12 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, f"broker registry rejected request: {self._safe_error(exc)}")
 
         try:
-            available = bool(adapter.is_available())
+            available = adapter.is_available()
         except Exception as exc:
             return AdapterExecutionResult(False, f"adapter availability check failed: {self._safe_error(exc)}")
 
+        if not isinstance(available, bool):
+            return AdapterExecutionResult(False, "adapter availability returned an invalid non-boolean state.")
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
@@ -55,5 +57,9 @@ class BrokerAdapterGateway:
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+        if not isinstance(result.accepted, bool):
+            return AdapterExecutionResult(False, "adapter retornou estado de aceite inválido.")
+        if not isinstance(result.message, str):
+            return AdapterExecutionResult(False, "adapter retornou mensagem inválida.")
 
         return AdapterExecutionResult(result.accepted, result.message, result)
