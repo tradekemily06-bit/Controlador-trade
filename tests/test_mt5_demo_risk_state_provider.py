@@ -4,7 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from core.operational_state import OperationalState
-from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5DemoRiskStateProvider, MT5RiskStateProviderError
+from execution.mt5_demo_risk_state_provider import (
+    MT5DemoRiskStateConfig,
+    MT5DemoRiskStateProvider,
+    MT5RiskStateProviderError,
+)
 
 
 class FakeMT5:
@@ -20,7 +24,7 @@ class FakeMT5:
         self.demo = demo
         self.positions = list(positions or [])
         self.deals = list(deals or [])
-        self.rates = rates if rates is not None else [("time", 1778889600)]
+        self.rates = rates if rates is not None else [SimpleNamespace(time=1778889600)]
         self.initialized = 0
         self.shutdowns = 0
 
@@ -66,7 +70,7 @@ def provider(fake, symbol="EURUSD"):
 def test_reads_authoritative_demo_account_and_positions():
     fake = FakeMT5(
         positions=[
-            SimpleNamespace(symbol="EURUSD", volume=0.1, type=fake_type := FakeMT5.POSITION_TYPE_BUY, price_current=1.1)
+            SimpleNamespace(symbol="EURUSD", volume=0.1, type=FakeMT5.POSITION_TYPE_BUY, price_current=1.1)
         ],
         deals=[
             SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
@@ -86,6 +90,7 @@ def test_reads_authoritative_demo_account_and_positions():
     assert state.consecutive_losses == 1
     assert state.realized_pnl == -11.0
     assert state.market_open is True
+    assert state.last_processed_candle is not None
     assert fake.shutdowns == 1
 
 
@@ -104,12 +109,6 @@ def test_missing_history_fails_closed():
     fake = BrokenHistory()
     with pytest.raises(MT5RiskStateProviderError):
         provider(fake).current_risk_state()
-
-
-def test_unknown_unsupported_fields_do_not_become_fake_zero():
-    fake = FakeMT5(positions=[SimpleNamespace(symbol="EURUSD", volume=0.1, type=FakeMT5.POSITION_TYPE_BUY, price_current=1.1)])
-    state = provider(fake).current_risk_state()
-    assert state.last_processed_candle is not None
 
 
 def test_invalid_account_value_fails_closed():
