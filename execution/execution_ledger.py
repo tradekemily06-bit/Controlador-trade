@@ -53,7 +53,8 @@ class ExecutionLedger:
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
 
-        if "states" not in payload and "reconciliation_evidence" not in payload:
+        envelope_keys = set(payload).issubset({"states", "reconciliation_evidence"}) and "states" in payload
+        if not envelope_keys:
             states_payload = payload
             evidence_payload: object = {}
         else:
@@ -74,6 +75,11 @@ class ExecutionLedger:
         evidence: dict[str, dict[str, str]] = {}
         for request_id, raw_evidence in evidence_payload.items():
             if request_id not in states or not isinstance(raw_evidence, dict):
+                raise ValueError("ledger de execução inválido.")
+            if states[request_id] not in (
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
                 raise ValueError("ledger de execução inválido.")
             evidence_id = raw_evidence.get("evidence_id")
             evidence_source = raw_evidence.get("evidence_source")
