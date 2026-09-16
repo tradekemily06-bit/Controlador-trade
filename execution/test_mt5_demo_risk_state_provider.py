@@ -23,7 +23,6 @@ class FakeMT5:
     DEAL_ENTRY_OUT_BY = 3
 
     def __init__(self, *, demo=True):
-        self.demo = demo
         self.initialized = 0
         self.shutdowns = 0
         self.account = SimpleNamespace(
@@ -159,15 +158,9 @@ def test_provider_fails_closed_when_required_history_is_unavailable():
     assert mt5.shutdowns == 1
 
 
-def test_provider_keeps_optional_market_and_candle_fields_unknown_when_unsupported():
+def test_provider_keeps_optional_market_and_candle_fields_unknown_without_symbol_config():
     mt5 = FakeMT5()
-    provider = MT5DemoRiskStateProvider(
-        MT5DemoRiskStateConfig(symbol="EURUSD", timeframe=5),
-        mt5_module=mt5,
-        now=lambda: NOW,
-    )
-    del mt5.symbol_info_tick
-    del mt5.copy_rates_from_pos
+    provider = MT5DemoRiskStateProvider(mt5_module=mt5, now=lambda: NOW)
 
     state = provider.current_risk_state()
 
