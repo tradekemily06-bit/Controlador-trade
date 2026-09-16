@@ -41,12 +41,14 @@ class RealExecutionAuthorization:
                 raise ValueError(f"{name} é obrigatório.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
-        # Public reconstruction with active flags is never accepted.  A valid
-        # issued proof is required; an altered proof simply becomes inactive so
-        # callers can carry a rejected/rebound object to the gateway, where the
-        # final authorization barrier blocks it without allowing privilege.
-        if self.explicitly_enabled and self.real_execution_allowed and self._issuer_token is None:
+        # Active REAL privilege can never be reconstructed from public fields.
+        # This also makes dataclasses.replace/copy-style rebinding fail closed:
+        # once identity differs from the immutable issuer proof, construction is
+        # rejected before the object can reach any execution boundary.
+        if self.explicitly_enabled and self.real_execution_allowed and not self.issuer_valid:
             raise PermissionError("autorização REAL ativa só pode ser emitida pela autoridade REAL autorizada.")
+        if self._issuer_token is not None and not self.issuer_valid:
+            raise PermissionError("prova de autorização REAL não corresponde à identidade autorizada.")
 
     @classmethod
     def _issue(
