@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -43,18 +44,7 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(
-        self,
-        executor: ExecutionPort,
-        kill_switch: KillSwitch,
-        recorder: P4OperationalRecorder | None = None,
-        ledger: ExecutionLedger | None = None,
-        lifecycle: ExecutionLifecycleStore | None = None,
-        maintenance: MaintenanceManager | None = None,
-        safety_store: OperationalSafetyStore | None = None,
-        incident_manager: EcosystemIncidentManager | None = None,
-        risk_state_provider: RiskStateProvider | None = None,
-    ) -> None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, risk_state_provider: RiskStateProvider | None = None) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -75,25 +65,13 @@ class ExecutionGateway:
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
-        self._dispatch_lock_path = (
-            ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
-            if ledger is not None
-            else None
-        )
+        self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
 
     @staticmethod
     def _safe_error(exc: BaseException) -> str:
-        """Expose only a stable exception type, never provider/internal details."""
         return type(exc).__name__
 
     def _refresh_kill_switch(self) -> str | None:
-        """Refresh the authoritative persisted kill switch before dispatch.
-
-        A process-local KillSwitch cannot observe a safety change made by a
-        different worker. When a durable safety store is configured, every
-        execution attempt therefore re-reads the persisted state. Any read or
-        validation failure fails closed and no executor dispatch is allowed.
-        """
         if self._safety_store is None:
             return None
         try:
@@ -104,7 +82,6 @@ class ExecutionGateway:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
 
     def _risk_state_barrier(self, snapshot: DecisionSnapshot | None) -> str | None:
-        """Revalidate the full authoritative risk state immediately before dispatch."""
         if self._risk_state_provider is None:
             return None
         if snapshot is None or not snapshot.risk_state_identity:
@@ -119,7 +96,6 @@ class ExecutionGateway:
         return None
 
     def _final_safety_barrier(self, *, now: datetime) -> str | None:
-        """Re-check global safety immediately before executor dispatch."""
         refresh_error = self._refresh_kill_switch()
         if refresh_error is not None:
             return refresh_error
@@ -131,25 +107,17 @@ class ExecutionGateway:
             return "execução bloqueada por incidente técnico ativo."
         return None
 
-    def _dispatch_with_authoritative_barriers(
-        self,
-        request: ExecutionRequest,
-        snapshot: DecisionSnapshot | None,
-    ) -> tuple[ExecutionResult | None, str | None]:
+    def _dispatch_with_authoritative_barriers(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> tuple[ExecutionResult | None, str | None]:
         """Serialize the final safety/risk read with the actual broker dispatch.
 
-        The ledger already serializes request reservations. This separate lock
-        closes the remaining application-level TOCTOU window: when multiple
-        workers share the same durable ledger, only one worker at a time can
-        perform the authoritative risk read and the following executor call.
-        A provider or broker may still change independently outside this process;
-        therefore the provider remains authoritative and fail-closed.
+        The durable ledger serializes request reservations. This separate lock
+        closes the application-level TOCTOU window for workers sharing that
+        ledger: one worker at a time performs the authoritative risk read and
+        the following executor call. External broker changes remain visible only
+        through the authoritative provider and therefore still fail closed when
+        the provider reports a different state.
         """
-        lock = (
-            exclusive_file_lock(self._dispatch_lock_path)
-            if self._dispatch_lock_path is not None
-            else nullcontext()
-        )
+        lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
         with lock:
             final_safety_error = self._final_safety_barrier(now=datetime.now(timezone.utc))
             if final_safety_error is not None:
@@ -160,7 +128,6 @@ class ExecutionGateway:
             return self._executor.execute(request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
-        """Never leave a reservation falsely reusable after a lifecycle conflict."""
         if self._ledger is None:
             return
         try:
@@ -170,38 +137,23 @@ class ExecutionGateway:
         except (OSError, ValueError):
             pass
 
-    def execute(
-        self,
-        request_id: str,
-        request: ExecutionRequest,
-        *,
-        snapshot: DecisionSnapshot | None = None,
-        timestamp: datetime | None = None,
-        entry_conditions: tuple[str, ...] = (),
-    ) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
-
         event_time = timestamp or datetime.now(timezone.utc)
         if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
         if self._incident_manager is not None and self._incident_manager.execution_blocked():
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada por incidente técnico ativo.")
-
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
-
         refresh_error = self._refresh_kill_switch()
         if refresh_error is not None:
             return GatewayResult(GatewayStatus.BLOCKED, refresh_error)
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
-
-        # The ledger reservation is the atomic cross-process idempotency barrier.
-        # Checking memory first is only an optimization; reserve() is the
-        # authoritative decision and must happen before dispatch.
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
         if self._ledger is not None:
@@ -216,7 +168,6 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
             self._processed_request_ids.add(request_id)
-
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
@@ -229,21 +180,16 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {self._safe_error(exc)}")
-
         try:
             result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:
                 try:
-                    self._incident_manager.open_incident(
-                        title="Falha técnica na execução",
-                        message=f"O executor apresentou uma falha inesperada ({self._safe_error(exc)}). O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.",
-                    )
+                    self._incident_manager.open_incident(title="Falha técnica na execução", message=f"O executor apresentou uma falha inesperada ({self._safe_error(exc)}). O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.")
                 except (ValueError, RuntimeError):
                     pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
-
         if barrier_error is not None:
             self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
             return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
@@ -251,14 +197,10 @@ class ExecutionGateway:
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             if self._incident_manager is not None:
                 try:
-                    self._incident_manager.open_incident(
-                        title="Resposta técnica inválida",
-                        message="O executor retornou um formato inválido. O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.",
-                    )
+                    self._incident_manager.open_incident(title="Resposta técnica inválida", message="O executor retornou um formato inválido. O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.")
                 except (ValueError, RuntimeError):
                     pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
-
         if not result.accepted:
             if self._ledger is not None:
                 try:
@@ -270,7 +212,6 @@ class ExecutionGateway:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
-
         if self._ledger is not None:
             try:
                 self._ledger.mark_accepted(request_id)
@@ -283,12 +224,10 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, "execução aceita, mas persistência do ciclo falhou")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {self._safe_error(exc)}", result)
-
         self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
-
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
