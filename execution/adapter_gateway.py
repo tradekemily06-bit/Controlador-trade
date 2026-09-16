@@ -14,6 +14,9 @@ class AdapterGatewayError(RuntimeError):
     """Raised when an adapter cannot safely receive an execution request."""
 
 
+_REAL_ADAPTER_GATEWAY_CAPABILITY = object()
+
+
 @dataclass(frozen=True)
 class AdapterExecutionResult:
     accepted: bool
@@ -43,6 +46,13 @@ class BrokerAdapterGateway:
             raise AdapterGatewayError(f"adapter identity unavailable: {self._safe_error(exc)}") from exc
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+        """Public compatibility port; REAL dispatch is denied outside RealExecutionGateway."""
+        return AdapterExecutionResult(False, "dispatch REAL direto pelo BrokerAdapterGateway está bloqueado; use o RealExecutionGateway.")
+
+    def execute_from_real_gateway(self, broker: str, request: ExecutionRequest, *, capability: object) -> AdapterExecutionResult:
+        """Dispatch REAL only for the private capability held by RealExecutionGateway."""
+        if capability is not _REAL_ADAPTER_GATEWAY_CAPABILITY:
+            return AdapterExecutionResult(False, "capacidade de dispatch REAL inválida; execução bloqueada.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
 
