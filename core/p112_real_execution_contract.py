@@ -5,15 +5,22 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RealExecutionAuthorization:
+    """Immutable authorization bound to one exact REAL operation."""
+
     authorization_id: str
     audit_id: str
     broker_id: str
     adapter_id: str
+    request_id: str
+    symbol: str
     explicitly_enabled: bool = False
     real_execution_allowed: bool = False
 
     def __post_init__(self) -> None:
-        for name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
+        for name in (
+            "authorization_id", "audit_id", "broker_id", "adapter_id",
+            "request_id", "symbol",
+        ):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} é obrigatório.")
