@@ -89,6 +89,7 @@ class TradingOrchestrator:
             decision=decision,
             market_context=market_context,
             operational_state=operational_state,
+            created_at=timestamp,
         )
         return OrchestrationResult(
             market_data=market_data,
