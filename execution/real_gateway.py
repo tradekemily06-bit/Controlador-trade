@@ -7,6 +7,7 @@ from core.decision_snapshot import DecisionSnapshot
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.real_safety_provider import RealSafetyProvider, read_authoritative_real_safety
 from core.risk_state_fingerprint import risk_state_identity
 from core.risk_state_provider import read_authoritative_risk_state, RiskStateProvider
 from execution.adapter_gateway import BrokerAdapterGateway
@@ -32,16 +33,20 @@ class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
     def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger,
-                 risk_state_provider: RiskStateProvider) -> None:
+                 risk_state_provider: RiskStateProvider,
+                 real_safety_provider: RealSafetyProvider) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         if not isinstance(risk_state_provider, RiskStateProvider):
             raise ValueError("risk_state_provider autoritativo é obrigatório para execução REAL.")
+        if not isinstance(real_safety_provider, RealSafetyProvider):
+            raise ValueError("real_safety_provider autoritativo é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._risk_state_provider = risk_state_provider
+        self._real_safety_provider = real_safety_provider
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -83,6 +88,22 @@ class RealExecutionGateway:
             )
         return None
 
+    def _revalidate_safety(self, safety: RealSafetyReport) -> RealGatewayResult | None:
+        if not isinstance(safety, RealSafetyReport):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto de segurança REAL inválido.")
+        try:
+            current_safety = read_authoritative_real_safety(self._real_safety_provider)
+        except Exception as exc:
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"não foi possível revalidar a segurança REAL antes do dispatch: {self._safe_error(exc)}",
+            )
+        if not current_safety.ready:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta no momento do dispatch.")
+        if current_safety != safety:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "estado de segurança REAL mudou desde a admissão; novo ciclo de admissão obrigatório antes do dispatch.")
+        return None
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
@@ -98,8 +119,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
-        if not safety.ready:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
+        safety_result = self._revalidate_safety(safety)
+        if safety_result is not None:
+            return safety_result
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(broker, str) or not broker.strip():
@@ -114,11 +136,14 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.")
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
-        # Revalidate once before reserving and once after reservation. The second
-        # check closes the stale-snapshot window immediately before broker dispatch.
+        # Revalidate safety and risk before reserving, then repeat both checks
+        # after reservation to close the final stale-state window before dispatch.
         risk_result = self._revalidate_risk(snapshot)
         if risk_result is not None:
             return risk_result
+        safety_result = self._revalidate_safety(safety)
+        if safety_result is not None:
+            return safety_result
 
         try:
             self._ledger.reserve(request_id)
@@ -135,6 +160,16 @@ class RealExecutionGateway:
             if risk_result.status == RealGatewayStatus.UNKNOWN:
                 return risk_result
             return RealGatewayResult(RealGatewayStatus.BLOCKED, risk_result.message)
+
+        safety_result = self._revalidate_safety(safety)
+        if safety_result is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            if safety_result.status == RealGatewayStatus.UNKNOWN:
+                return safety_result
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, safety_result.message)
 
         try:
             result = self._gateway.execute(broker, request)
