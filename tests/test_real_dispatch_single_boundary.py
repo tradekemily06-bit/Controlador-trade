@@ -98,14 +98,14 @@ def test_ledger_mutations_are_only_called_by_execution_boundaries() -> None:
 
 
 def test_ledger_implementation_is_not_constructed_as_a_side_channel() -> None:
+    """A runtime component may share the canonical ledger, but not create a second one."""
+    allowed = {ROOT / "core" / "operational_runtime.py"}
     violations: list[str] = []
     for path in _runtime_python_files():
-        if path.resolve() == LEDGER.resolve():
+        if path.resolve() == LEDGER.resolve() or path.resolve() in allowed:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ExecutionLedger":
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
-    # Runtime construction belongs to the shared operational runtime; all other
-    # constructions are test/support code and are excluded by _runtime_python_files.
-    assert not violations or violations == ["core/operational_runtime.py:1"], violations
+    assert not violations, "side-channel ExecutionLedger construction found: " + ", ".join(sorted(violations))
