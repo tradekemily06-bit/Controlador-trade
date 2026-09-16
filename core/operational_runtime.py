@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from core.decision_audit import DecisionAudit
 from core.decision_freshness import DecisionFreshnessPolicy
@@ -16,6 +15,7 @@ from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
+from core.risk_state_provider import RiskStateProvider
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.technical_incident_store import TechnicalIncidentStore
 from execution.demo_risk_dispatch_guard import DemoRiskDispatchGuard
@@ -43,7 +43,7 @@ class OperationalRuntime:
     safety_store: OperationalSafetyStore
     safety_audit: DecisionAudit
     demo_risk_state: DemoRiskStateStore | None = None
-    risk_state_provider: Callable[[], object] | None = None
+    risk_state_provider: RiskStateProvider | None = None
 
 
 def _public_saas_multi_instance() -> bool:
@@ -56,8 +56,7 @@ def build_operational_runtime(
     root: str | Path,
     executor: ExecutionPort | None = None,
     *,
-    risk_state_provider: Callable[[], object] | None = None,
-    risk_state_fingerprint_provider: Callable[[], str | None] | None = None,
+    risk_state_provider: RiskStateProvider | None = None,
 ) -> OperationalRuntime:
     """Compose one authoritative, fail-closed operational runtime.
 
@@ -118,8 +117,7 @@ def build_operational_runtime(
             raise RuntimeError("non-PAPER DEMO execution requires an authoritative risk-state provider")
         effective_executor = executor
 
-    runtime_risk_provider = risk_state_provider or demo_risk_state.current
-    runtime_risk_fingerprint = risk_state_fingerprint_provider or demo_risk_state.fingerprint
+    runtime_risk_provider = risk_state_provider or demo_risk_state
 
     gateway = ExecutionGateway(
         effective_executor,
@@ -129,7 +127,7 @@ def build_operational_runtime(
         maintenance=maintenance,
         safety_store=safety_store,
         incident_manager=incident_manager,
-        risk_state_fingerprint_provider=runtime_risk_fingerprint,
+        risk_state_provider=runtime_risk_provider,
     )
     runtime = OperationalRuntime(
         kill_switch=kill_switch,
@@ -151,9 +149,6 @@ def build_operational_runtime(
 
     from core.operational_barrier_factory import build_global_operational_barrier
     gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
-    gateway.set_market_data_fingerprint_provider(
-        lambda: runtime.market_data.report.fingerprint if runtime.market_data.report is not None else None
-    )
     gateway.set_decision_freshness_policy(
         DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0)
     )
