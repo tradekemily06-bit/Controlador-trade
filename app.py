@@ -23,7 +23,6 @@ WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
-EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 
 
 def _build_authoritative_risk_provider():
@@ -40,7 +39,19 @@ def _build_authoritative_risk_provider():
 
 
 RISK_STATE_PROVIDER = _build_authoritative_risk_provider()
-OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR, risk_state_provider=RISK_STATE_PROVIDER)
+if EXECUTION_PROVIDER == "paper":
+    # PAPER is composed by the operational runtime itself so it receives the
+    # same authoritative DEMO risk store and dispatch guard as every other
+    # safe default path. Supplying a bare PaperExecutor here would bypass that
+    # composition contract.
+    OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR)
+else:
+    EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
+    OPERATIONAL_RUNTIME = build_operational_runtime(
+        RUNTIME_DIR,
+        executor=EXECUTOR,
+        risk_state_provider=RISK_STATE_PROVIDER,
+    )
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
 PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
@@ -201,37 +212,37 @@ def application(environ, start_response):
             resource = SERVICE.add_learning_resource(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"resource": {**resource.__dict__, "content_type": resource.content_type.value, "status": resource.status.value}, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/sources" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"sources": SERVICE.learning_sources_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/sources/screen" and method == "POST":
-            source = SERVICE.screen_learning_source(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"source": {**source.__dict__, "source_type": source.source_type.value, "status": source.status.value}, "operation_eligible": False}, request_id, environ)
+            source = SERVICE.screen_learning_source(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"source": source.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/sources/validate" and method == "POST":
-            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
-            updated = SERVICE.validate_learning_source(source, content_verified=bool(data.get("content_verified", False)), security_checked=bool(data.get("security_checked", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
+            source = _learning_source_for_request(str(_read_json(environ).get("source_id", ""))); result = SERVICE.validate_learning_source(source); return _json_response(start_response, HTTPStatus.OK, {"source": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/sources/admit" and method == "POST":
-            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
-            updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=bool(data.get("knowledge_validated", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
-        if path == "/api/learning/observations" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
+            source = _learning_source_for_request(str(_read_json(environ).get("source_id", ""))); result = SERVICE.admit_learning_source(source); return _json_response(start_response, HTTPStatus.OK, {"source": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "POST":
-            observation = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": observation.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
-        if path == "/api/learning/activities" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"activities": SERVICE.learning_activities_view(), "execution_allowed": False}, request_id, environ)
+            result = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/activities" and method == "POST":
-            activity = SERVICE.add_learning_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False}, request_id, environ)
+            result = SERVICE.create_learning_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/professor/activity" and method == "POST":
-            activity = SERVICE.generate_professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
+            result = SERVICE.professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/attempts" and method == "POST":
-            attempt = SERVICE.add_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
-        if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
-        if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json", request_id, environ)
-        if path.startswith("/api/") and method in {"GET", "POST"}: return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
+            result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result, "execution_allowed": False}, request_id, environ)
+        if path == "/" and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
+        if path.startswith("/web/") and method == "GET":
+            candidate = (ROOT / path.lstrip("/")).resolve()
+            if WEB_DIR not in candidate.parents: return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
+            if not candidate.is_file(): return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
+            content_type = "text/html; charset=utf-8" if candidate.suffix == ".html" else "text/javascript; charset=utf-8" if candidate.suffix == ".js" else "text/css; charset=utf-8" if candidate.suffix == ".css" else "application/octet-stream"
+            return _file_response(start_response, candidate, content_type, request_id, environ)
         return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-    except Exception as exc:
-        status = HTTPStatus.SERVICE_UNAVAILABLE if exc.__class__.__name__ == "PublicSaaSNotReady" else (HTTPStatus.FORBIDDEN if isinstance(exc, PermissionError) else HTTPStatus.BAD_REQUEST)
-        public_error = "serviço temporariamente indisponível" if status is HTTPStatus.SERVICE_UNAVAILABLE else ("acesso negado" if status is HTTPStatus.FORBIDDEN else "requisição inválida")
-        return _json_response(start_response, status, {"error": public_error, "request_id": request_id}, request_id, environ)
+    except PermissionError as exc: return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc: return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "request_id": request_id}, request_id, environ)
+    except Exception as exc: return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
 
 
 def run() -> None:
-    host = os.environ.get("CONTROLADOR_HOST", "0.0.0.0")
-    selected_port = int(os.environ.get("PORT", "7860"))
-    with make_server(host, selected_port) as server:
+    host = os.environ.get("CONTROLADOR_HOST", "127.0.0.1")
+    port = int(os.environ.get("CONTROLADOR_PORT", "8000"))
+    with make_server(host, port, application) as server:
+        print(f"Controlador Trading em http://{host}:{port}")
         server.serve_forever()
 
 
