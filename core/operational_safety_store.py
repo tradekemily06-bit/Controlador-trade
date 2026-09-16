@@ -151,12 +151,12 @@ class OperationalSafetyStore:
         with self._lock():
             self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
 
-    def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
+    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
-        if not isinstance(kill_switch, KillSwitch):
-            raise TypeError("kill_switch deve ser KillSwitch.")
-        state = kill_switch.state
+        if not isinstance(kill_switch, (KillSwitch, KillSwitchState)):
+            raise TypeError("kill_switch deve ser KillSwitch ou KillSwitchState.")
+        state = kill_switch.state if isinstance(kill_switch, KillSwitch) else kill_switch
         with self._lock():
             payload = self._read_payload()
             execution_audit = payload.get("execution_audit", [])
