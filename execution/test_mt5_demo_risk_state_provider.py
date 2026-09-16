@@ -113,7 +113,7 @@ def test_provider_reads_complete_authoritative_demo_state_and_shuts_down():
     assert state.net_position == 0.15
     assert state.exposure == pytest.approx(0.20 * 1.10 * 100000 + 0.05 * 1.11 * 100000)
     assert state.market_open is True
-    assert state.last_processed_candle == NOW
+    assert state.last_processed_candle is None
     assert mt5.initialized == 1
     assert mt5.shutdowns == 1
 

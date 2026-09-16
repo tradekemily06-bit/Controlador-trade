@@ -8,13 +8,14 @@ from execution.ports import ExecutionMode, ExecutionRequest
 from core.models import Signal
 
 
-def request():
+def request(request_id="cross-process-kill"):
     return ExecutionRequest(
         symbol="BTCUSD",
         signal=Signal.COMPRA,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 

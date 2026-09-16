@@ -73,7 +73,7 @@ def test_internal_admission_issue_requires_exact_private_capability():
         authorization=authorization, safety_ready=True, broker_available=True,
     )
     with pytest.raises(PermissionError):
-        boundary._issue(**kwargs)
+        boundary._issue(**kwargs, issuer_capability=None)
     with pytest.raises(PermissionError):
         boundary._issue(**kwargs, issuer_capability=object())
 

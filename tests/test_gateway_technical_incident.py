@@ -14,13 +14,14 @@ class CountingExecutor:
         return ExecutionResult(True, "ok", external_id="demo-1")
 
 
-def _request():
+def _request(request_id="request-incident-1"):
     return ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 

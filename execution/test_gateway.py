@@ -210,7 +210,7 @@ def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
 
     result = gateway.execute(
         "req-stale-decision",
-        request(),
+        request(request_id="req-stale-decision"),
         timestamp=now - timedelta(minutes=5),
     )
 
