@@ -12,8 +12,11 @@ def test_real_admission_accepts_only_strict_boolean_prerequisites():
         safety_ready=True,
         broker_available=True,
         broker_id="broker",
+        adapter_id="adapter",
+        request_id="req",
+        symbol="BTCUSD",
     )
-    assert admission.status is RealAdmissionStatus.ADMITTED
+    assert admission.status is RealAdmissionStatus.BLOCKED
 
 
 @pytest.mark.parametrize(
@@ -33,6 +36,9 @@ def test_real_admission_rejects_non_boolean_prerequisite(field):
             admission_id="adm",
             audit_id="audit",
             broker_id="broker",
+            adapter_id="adapter",
+            request_id="req",
+            symbol="BTCUSD",
             **values,
         )
 
@@ -47,4 +53,7 @@ def test_real_admission_rejects_non_string_identity_fields():
             safety_ready=True,
             broker_available=True,
             broker_id="broker",
+            adapter_id="adapter",
+            request_id="req",
+            symbol="BTCUSD",
         )

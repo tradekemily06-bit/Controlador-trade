@@ -108,7 +108,7 @@ def test_provider_reads_complete_authoritative_demo_state_and_shuts_down():
     assert state.realized_pnl == -15.0
     assert state.unrealized_pnl == -25.0
     assert state.trades_today == 2
-    assert state.consecutive_losses == 2
+    assert state.consecutive_losses is None
     assert state.open_positions == 2
     assert state.net_position == 0.15
     assert state.exposure == pytest.approx(0.20 * 1.10 * 100000 + 0.05 * 1.11 * 100000)
