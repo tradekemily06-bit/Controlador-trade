@@ -48,6 +48,13 @@ class SafetyProvider:
         )
 
 
+class CrashBeforeMarkAcceptedLedger(ExecutionLedger):
+    """Test double for a process failure after external acceptance."""
+
+    def mark_accepted(self, request_id: str) -> None:
+        raise OSError("simulated process death before mark_accepted")
+
+
 def _state() -> OperationalState:
     return RiskProvider().current_risk_state()
 
@@ -175,3 +182,52 @@ def test_reconciled_executed_state_is_terminal_and_never_resubmits(tmp_path: Pat
     assert result.status is RealGatewayStatus.BLOCKED
     assert restored_calls.value == 0
     assert ExecutionLedger(path).status("reconciled-executed") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_closed(tmp_path: Path):
+    """Prove the exact crash window: accepted externally, local mark never completes."""
+    path = tmp_path / "ledger.json"
+    calls = multiprocessing.Value("i", 0)
+    registry = BrokerRegistry()
+    registry.register("fake", CountingAdapter(calls))
+    crashed = RealExecutionGateway(
+        BrokerAdapterGateway(registry), CrashBeforeMarkAcceptedLedger(path),
+        RiskProvider(), SafetyProvider(),
+    )
+
+    first = crashed.execute(
+        broker="fake", request_id="crash-window", request=_request("crash-window"),
+        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+
+    # External side effect happened exactly once, but local persistence never
+    # reached ACCEPTED; the ledger remains RESERVED, representing uncertainty.
+    assert first.status is RealGatewayStatus.UNKNOWN
+    assert calls.value == 1
+    assert ExecutionLedger(path).status("crash-window") is ExecutionLedgerStatus.RESERVED
+
+    # Restart is a fresh gateway/process. RESERVED must be treated as uncertain,
+    # never as permission to resend.
+    restored_calls = multiprocessing.Value("i", 0)
+    restored = _gateway(path, restored_calls)
+    after_restart = restored.execute(
+        broker="fake", request_id="crash-window", request=_request("crash-window"),
+        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+    assert after_restart.status is RealGatewayStatus.UNKNOWN
+    assert restored_calls.value == 0
+
+    # Reconciliation confirms the external execution; it does not submit again.
+    restored.reconcile_unknown("crash-window", executed=True)
+    assert ExecutionLedger(path).status("crash-window") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+    # A replay after reconciliation, including the exact same request_id, remains blocked.
+    final_calls = multiprocessing.Value("i", 0)
+    final_gateway = _gateway(path, final_calls)
+    replay = final_gateway.execute(
+        broker="fake", request_id="crash-window", request=_request("crash-window"),
+        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+    assert replay.status is RealGatewayStatus.BLOCKED
+    assert final_calls.value == 0
+    assert calls.value == 1
