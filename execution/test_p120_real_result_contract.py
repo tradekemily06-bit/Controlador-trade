@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p111_pre_real_audit import PreRealAuditBoundary
@@ -113,6 +114,7 @@ def _authorized_context(request_id="req-1", symbol="TEST", adapter=None):
 def _gateway(registry, ledger, provider, safety):
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ledger, provider, SafetyProvider(safety),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 

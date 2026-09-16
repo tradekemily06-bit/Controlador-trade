@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.test_p111_p119_real_release import _authorization as _trusted_authorization, _admission as _trusted_admission
 from core.models import Signal
 from core.operational_state import OperationalState
@@ -119,6 +120,7 @@ def _gateway(path: Path, adapter) -> RealExecutionGateway:
         ExecutionLedger(path),
         RiskProvider(),
         SafetyProvider(_safety()),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 

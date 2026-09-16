@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p111_pre_real_audit import PreRealAuditBoundary
@@ -116,6 +117,7 @@ def gateway(tmp_path: Path, provider: Provider, adapter: Adapter):
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"),
         provider, SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 

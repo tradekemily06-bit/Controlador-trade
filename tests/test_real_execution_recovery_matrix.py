@@ -6,6 +6,7 @@ import multiprocessing
 from pathlib import Path
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.test_p111_p119_real_release import _authorization as _trusted_authorization, _admission as _trusted_admission
 from core.models import Signal
 from core.operational_state import OperationalState
@@ -101,6 +102,7 @@ def _gateway(path: Path, calls) -> RealExecutionGateway:
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(path),
         RiskProvider(), SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 
@@ -193,6 +195,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     crashed = RealExecutionGateway(
         BrokerAdapterGateway(registry), CrashBeforeMarkAcceptedLedger(path),
         RiskProvider(), SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
     first = crashed.execute(

@@ -180,7 +180,7 @@ def test_real_safety_fails_closed():
 
 def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry = _registry(); gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
-    auth = replace(_authorization("blocked"), active=False)
+    auth = RealExecutionAuthorization("auth-blocked", "a116", "fake", "fake-adapter", "blocked", "TEST", False, False)
     admission = _admission("blocked", auth=_authorization("blocked")); safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="blocked", request=_request("blocked"), authorization=auth,
                              admission=admission, safety=safety, snapshot=_snapshot())
