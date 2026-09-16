@@ -1,5 +1,7 @@
 import ast
+import copy
 import dataclasses
+import json
 import pickle
 from pathlib import Path
 
@@ -58,13 +60,23 @@ def _registry():
 
 
 def _active_authorization():
-    registry = _registry()
-    gateway = BrokerAdapterGateway(registry)
-    issuer = RealPrivilegeIssuer(gateway)
+    gateway = BrokerAdapterGateway(_registry())
     request = ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id="req")
-    return issuer.issue_authorization(
+    return RealPrivilegeIssuer(gateway).issue_authorization(
         authorization_id="auth", release_audit=_release_audit(), broker="fake",
         request=request, explicit_real_enablement=True,
+    )
+
+
+def _admitted():
+    authorization = _active_authorization()
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+    return RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_admission(
+        admission_id="adm", authorization=authorization,
+        release_audit=_release_audit(), safety=safety, broker_available=True,
     )
 
 
@@ -100,59 +112,79 @@ def test_legacy_public_admission_cannot_create_admitted_state():
 
 def test_authoritative_issuer_derives_adapter_and_operation_identity():
     authorization = _active_authorization()
-    assert authorization.active
-    assert authorization.issuer_valid
-    assert authorization.request_id == "req"
-    assert authorization.symbol == "TEST"
-    assert authorization.broker_id == "fake"
-    assert authorization.adapter_id == "fake-adapter"
+    assert authorization.active and authorization.issuer_valid
+    assert (authorization.request_id, authorization.symbol) == ("req", "TEST")
+    assert (authorization.broker_id, authorization.adapter_id) == ("fake", "fake-adapter")
 
 
 def test_active_authorization_cannot_be_rebound_with_dataclass_replace():
-    authorization = _active_authorization()
     with pytest.raises(PermissionError):
-        dataclasses.replace(authorization, symbol="XAUUSD")
+        dataclasses.replace(_active_authorization(), symbol="XAUUSD")
 
 
 def test_admitted_privilege_cannot_be_rebound_with_dataclass_replace():
-    authorization = _active_authorization()
-    issuer = RealPrivilegeIssuer(BrokerAdapterGateway(_registry()))
-    admission = issuer.issue_admission(
-        admission_id="adm", authorization=authorization,
-        release_audit=_release_audit(),
-        safety=RealSafetyGate().evaluate(
-            authorization_active=True, kill_switch_clear=True, market_healthy=True,
-            recovery_safe=True, risk_approved=True, broker_available=True,
-        ),
-        broker_available=True,
-    )
+    admission = _admitted()
     assert admission.admitted
     with pytest.raises(PermissionError):
         dataclasses.replace(admission, symbol="XAUUSD")
 
 
-def test_pickle_reconstruction_cannot_restore_active_authorization():
+def test_copy_of_exact_immutable_privilege_does_not_change_identity():
     authorization = _active_authorization()
-    restored = pickle.loads(pickle.dumps(authorization))
+    copied = copy.copy(authorization)
+    assert copied.active and copied.issuer_valid
+    assert copied == authorization
+
+
+def test_deepcopy_reconstruction_cannot_restore_active_authorization():
+    authorization = _active_authorization()
+    restored = copy.deepcopy(authorization)
+    assert not restored.active
+    assert not restored.issuer_valid
+
+
+def test_pickle_reconstruction_cannot_restore_active_authorization():
+    restored = pickle.loads(pickle.dumps(_active_authorization()))
     assert not restored.active
     assert not restored.issuer_valid
 
 
 def test_pickle_reconstruction_cannot_restore_admitted_privilege():
-    authorization = _active_authorization()
-    issuer = RealPrivilegeIssuer(BrokerAdapterGateway(_registry()))
-    admission = issuer.issue_admission(
-        admission_id="adm", authorization=authorization,
-        release_audit=_release_audit(),
-        safety=RealSafetyGate().evaluate(
-            authorization_active=True, kill_switch_clear=True, market_healthy=True,
-            recovery_safe=True, risk_approved=True, broker_available=True,
-        ),
-        broker_available=True,
-    )
-    restored = pickle.loads(pickle.dumps(admission))
+    restored = pickle.loads(pickle.dumps(_admitted()))
     assert not restored.admitted
     assert not restored.issuer_valid
+
+
+def test_json_field_reconstruction_cannot_restore_active_authorization():
+    authorization = _active_authorization()
+    payload = json.loads(json.dumps({
+        "authorization_id": authorization.authorization_id,
+        "audit_id": authorization.audit_id,
+        "broker_id": authorization.broker_id,
+        "adapter_id": authorization.adapter_id,
+        "request_id": authorization.request_id,
+        "symbol": authorization.symbol,
+        "explicitly_enabled": True,
+        "real_execution_allowed": True,
+    }))
+    with pytest.raises(PermissionError):
+        RealExecutionAuthorization(**payload)
+
+
+def test_json_field_reconstruction_cannot_restore_admitted_privilege():
+    admission = _admitted()
+    payload = {
+        "admission_id": admission.admission_id,
+        "audit_id": admission.audit_id,
+        "status": admission.status,
+        "broker_id": admission.broker_id,
+        "adapter_id": admission.adapter_id,
+        "request_id": admission.request_id,
+        "symbol": admission.symbol,
+        "reasons": admission.reasons,
+    }
+    with pytest.raises(Exception):
+        type(admission)(**payload)
 
 
 def test_production_sources_have_single_active_real_privilege_origin():
@@ -189,4 +221,21 @@ def test_only_authorized_issuer_uses_active_authorization_factory():
                     if isinstance(node.func.value, ast.Name) and node.func.value.id == "RealExecutionAuthorization" and node.func.attr == "_issue":
                         if relative != AUTHORIZED_ISSUER:
                             violations.append(f"{relative}:{node.lineno}: unauthorized authorization issuance")
+    assert violations == []
+
+
+def test_legacy_public_admission_is_not_used_by_production_sources():
+    production_roots = [REPO_ROOT / name for name in ("app.py", "core", "execution", "integration", "security")]
+    violations = []
+    for root in production_roots:
+        paths = [root] if root.is_file() else list(root.rglob("*.py"))
+        for path in paths:
+            relative = path.relative_to(REPO_ROOT).as_posix()
+            if "/test" in relative or relative.startswith("tests/"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "admit":
+                    if isinstance(node.func.value, ast.Call) and isinstance(node.func.value.func, ast.Name) and node.func.value.func.id == "RealAdmissionBoundary":
+                        violations.append(f"{relative}:{node.lineno}: legacy REAL admission path")
     assert violations == []
