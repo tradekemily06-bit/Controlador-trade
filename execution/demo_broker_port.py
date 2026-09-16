@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
+from execution.icmarkets_mt5_demo_adapter import (
+    ICMarketsMT5DemoAdapter,
+    ICMarketsMT5DemoConfig,
+    _DEMO_ADAPTER_CAPABILITY,
+)
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionPort, ExecutionResult
 
 
@@ -27,10 +31,7 @@ class DemoBrokerExecutionPort:
             raise PermissionError("dispatch DEMO exige a capacidade do gateway operacional")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "porta DEMO rejeitou requisição fora do modo DEMO")
-        adapter_execute = getattr(self.__adapter, "execute", None)
-        if not callable(adapter_execute):
-            return ExecutionResult(False, "adapter DEMO não expõe execução válida")
-        return adapter_execute(request)
+        return self.__adapter.execute_from_port(request, capability=_DEMO_ADAPTER_CAPABILITY)
 
     def is_available(self) -> bool:
         return bool(self.__adapter.is_available())
@@ -52,7 +53,7 @@ class GatewayBoundDemoExecutionPort:
 
 
 def build_ic_markets_mt5_demo_adapter(*, symbol: str | None = None, mt5_module: Any = None) -> ICMarketsMT5DemoAdapter:
-    """Construct the broker-specific MT5 adapter only at the broker-port boundary."""
+    """Construct a raw adapter only for the broker-port composition boundary."""
     return ICMarketsMT5DemoAdapter(
         ICMarketsMT5DemoConfig(symbol=symbol),
         mt5_module=mt5_module,
