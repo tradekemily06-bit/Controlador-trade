@@ -197,19 +197,54 @@ class MT5DemoRiskStateProvider:
             total += float(value)
         return total
 
+    @staticmethod
+    def _deal_position_id(deal: Any) -> int | None:
+        """Return MT5's logical position identity; missing identity is UNKNOWN."""
+        value = getattr(deal, "position_id", None)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            return None
+        return value
+
     @classmethod
     def _trades_today(cls, deals: Any, mt5: Any) -> int | None:
         return sum(1 for deal in deals if cls._is_entry(deal, mt5))
 
     @classmethod
     def _consecutive_losses(cls, deals: Any, mt5: Any) -> int | None:
-        exits = [deal for deal in deals if cls._is_exit(deal, mt5)]
-        exits.sort(key=lambda deal: (getattr(deal, "time_msc", 0), getattr(deal, "time", 0)))
-        streak = 0
-        for deal in reversed(exits):
-            result = cls._deal_net(deal)
-            if result is None:
+        """Count consecutive losing logical positions, not individual exit deals.
+
+        MT5 can represent one logical position closing through multiple partial
+        exit deals. Counting those deals separately can manufacture a loss streak
+        that never occurred at the operation level. Position IDs are therefore
+        mandatory for this risk field; if MT5 does not provide them, the value is
+        UNKNOWN and the core fail-closed policy decides what happens next.
+        """
+        grouped: dict[int, list[Any]] = {}
+        latest_by_position: dict[int, tuple[int, int]] = {}
+        for deal in deals:
+            if not cls._is_exit(deal, mt5):
+                continue
+            position_id = cls._deal_position_id(deal)
+            if position_id is None:
                 return None
+            grouped.setdefault(position_id, []).append(deal)
+            latest_by_position[position_id] = (
+                getattr(deal, "time_msc", 0),
+                getattr(deal, "time", 0),
+            )
+
+        ordered_positions = sorted(
+            grouped,
+            key=lambda position_id: latest_by_position[position_id],
+        )
+        streak = 0
+        for position_id in reversed(ordered_positions):
+            result = 0.0
+            for deal in grouped[position_id]:
+                net = cls._deal_net(deal)
+                if net is None:
+                    return None
+                result += net
             if result < 0:
                 streak += 1
             else:
