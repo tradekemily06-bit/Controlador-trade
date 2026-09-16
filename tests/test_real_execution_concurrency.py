@@ -147,4 +147,144 @@ def _crash_worker(path: str, marker: str, request_id: str) -> None:
     )
 
 
-# remainder intentionally preserved from current branch
+def test_two_processes_same_request_id_produce_at_most_one_dispatch(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    calls = multiprocessing.Value("i", 0)
+    queue = multiprocessing.Queue()
+    ctx = multiprocessing.get_context("fork")
+    processes = [
+        ctx.Process(target=_dispatch_worker, args=(str(path), "same-request", calls, queue)),
+        ctx.Process(target=_dispatch_worker, args=(str(path), "same-request", calls, queue)),
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(10)
+        assert process.exitcode == 0
+
+    statuses = sorted(queue.get(timeout=2) for _ in processes)
+    assert calls.value == 1
+    assert statuses.count(RealGatewayStatus.ADMITTED) == 1
+    assert statuses.count(RealGatewayStatus.UNKNOWN) == 1 or statuses.count(RealGatewayStatus.BLOCKED) == 1
+    assert ExecutionLedger(path).status("same-request") is ExecutionLedgerStatus.ACCEPTED
+
+
+def test_restart_after_reserved_never_dispatches(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ExecutionLedger(path).reserve("reserved-before-restart")
+    calls = multiprocessing.Value("i", 0)
+    gateway = _gateway(path, CountingAdapter(calls))
+
+    result = gateway.execute(
+        broker="fake", request_id="reserved-before-restart",
+        request=_request("reserved-before-restart"), authorization=_authorization(),
+        admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert calls.value == 0
+    assert ExecutionLedger(path).status("reserved-before-restart") is ExecutionLedgerStatus.RESERVED
+
+
+def test_crash_immediately_after_broker_acceptance_leaves_reserved_and_blocks_replay(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    marker = tmp_path / "broker-accepted.json"
+    ctx = multiprocessing.get_context("fork")
+    process = ctx.Process(target=_crash_worker, args=(str(path), str(marker), "crash-after-accept"))
+    process.start()
+    process.join(10)
+    assert process.exitcode == 0
+    assert json.loads(marker.read_text(encoding="utf-8"))["accepted"] is True
+    assert ExecutionLedger(path).status("crash-after-accept") is ExecutionLedgerStatus.RESERVED
+
+    calls = multiprocessing.Value("i", 0)
+    restored = _gateway(path, CountingAdapter(calls))
+    result = restored.execute(
+        broker="fake", request_id="crash-after-accept",
+        request=_request("crash-after-accept"), authorization=_authorization(),
+        admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert calls.value == 0
+
+
+def test_unknown_after_restart_stays_unknown_until_explicit_reconciliation(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("unknown-restart")
+    ledger.mark_unknown("unknown-restart")
+
+    calls = multiprocessing.Value("i", 0)
+    restored = _gateway(path, CountingAdapter(calls))
+    result = restored.execute(
+        broker="fake", request_id="unknown-restart",
+        request=_request("unknown-restart"), authorization=_authorization(),
+        admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert calls.value == 0
+    assert ExecutionLedger(path).status("unknown-restart") is ExecutionLedgerStatus.UNKNOWN
+
+    restored.reconcile_unknown("unknown-restart", executed=False)
+    assert ExecutionLedger(path).status("unknown-restart") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_reconciliation_concurrent_with_dispatch_cannot_create_a_second_send(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("reconcile-race")
+    ledger.mark_unknown("reconcile-race")
+
+    calls = multiprocessing.Value("i", 0)
+    queue = multiprocessing.Queue()
+    ctx = multiprocessing.get_context("fork")
+    dispatch = ctx.Process(target=_dispatch_worker, args=(str(path), "reconcile-race", calls, queue))
+    reconcile = ctx.Process(target=_reconcile_worker, args=(str(path), "reconcile-race", queue))
+    dispatch.start()
+    reconcile.start()
+    dispatch.join(10)
+    reconcile.join(10)
+    assert dispatch.exitcode == 0
+    assert reconcile.exitcode == 0
+    assert calls.value == 0
+    statuses = {queue.get(timeout=2), queue.get(timeout=2)}
+    assert "RECONCILED" in statuses
+    assert RealGatewayStatus.UNKNOWN in statuses or RealGatewayStatus.BLOCKED in statuses
+    assert ExecutionLedger(path).status("reconcile-race") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_reconciled_persisted_state_cannot_be_reused_for_new_send(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("reconciled")
+    ledger.mark_unknown("reconciled")
+    gateway = _gateway(path, CountingAdapter(multiprocessing.Value("i", 0)))
+    gateway.reconcile_unknown("reconciled", executed=False)
+
+    calls = multiprocessing.Value("i", 0)
+    restored = _gateway(path, CountingAdapter(calls))
+    result = restored.execute(
+        broker="fake", request_id="reconciled",
+        request=_request("reconciled"), authorization=_authorization(),
+        admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert calls.value == 0
+
+
+def test_real_request_cannot_enter_through_demo_port_or_provider_configuration(tmp_path: Path):
+    from execution.demo_broker_port import build_ic_markets_mt5_demo_port
+    from integration.execution_provider import ExecutionProviderConfigurationError, build_demo_execution_port
+
+    port = build_ic_markets_mt5_demo_port(symbol="EURUSD")
+    result = port.execute(_request("demo-to-real"))
+    assert result.accepted is False
+
+    for provider in ("real", "REAL", "real_gateway", "mt5_real", "ic_markets_mt5_real"):
+        try:
+            build_demo_execution_port(provider)
+        except ExecutionProviderConfigurationError:
+            continue
+        raise AssertionError(f"REAL provider escaped DEMO configuration barrier: {provider}")
