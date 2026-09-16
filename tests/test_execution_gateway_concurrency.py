@@ -123,34 +123,35 @@ def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path
     ledger_path = str(tmp_path / "ledger.json")
     lifecycle_path = str(tmp_path / "lifecycle.json")
     safety_path = str(tmp_path / "safety.json")
-    barrier = ctx.Barrier(2)
     entered = ctx.Event()
     release = ctx.Event()
     counter = ctx.Value("i", 0)
     counter_lock = ctx.Lock()
     results = ctx.Queue()
 
-    processes = [
-        ctx.Process(
-            target=_different_request_worker,
-            args=(ledger_path, lifecycle_path, safety_path, barrier, entered, release, counter, counter_lock, results, "request-a"),
-        ),
-        ctx.Process(
-            target=_different_request_worker,
-            args=(ledger_path, lifecycle_path, safety_path, barrier, entered, release, counter, counter_lock, results, "request-b"),
-        ),
-    ]
-    for process in processes:
-        process.start()
+    request_a = ctx.Process(
+        target=_different_request_worker,
+        args=(ledger_path, lifecycle_path, safety_path, None, entered, release, counter, counter_lock, results, "request-a"),
+    )
+    request_a.start()
 
     assert entered.wait(15), "request-a não chegou ao executor; teste não exercitou a janela de TOCTOU"
+
+    request_b = ctx.Process(
+        target=_different_request_worker,
+        args=(ledger_path, lifecycle_path, safety_path, None, entered, release, counter, counter_lock, results, "request-b"),
+    )
+    request_b.start()
+
+    # request-a already owns the shared dispatch lock while request-b attempts
+    # the same critical section with a different request_id.
     release.set()
 
-    for process in processes:
+    for process in (request_a, request_b):
         process.join(20)
         assert process.exitcode == 0
 
-    outcomes = dict(results.get(timeout=5) for _ in processes)
+    outcomes = dict(results.get(timeout=5) for _ in (request_a, request_b))
     assert outcomes["request-a"] == GatewayStatus.ACCEPTED.value
     assert outcomes["request-b"] == GatewayStatus.BLOCKED.value
     assert counter.value == 1
