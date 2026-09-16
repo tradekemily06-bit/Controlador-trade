@@ -6,13 +6,14 @@ from enum import Enum
 _REAL_ADMISSION_ISSUER_TOKEN = object()
 
 
+@dataclass(frozen=True, slots=True)
 class _RealAdmissionProof:
-    __slots__ = ("identity",)
+    identity: tuple[object, ...]
+    _token: object
 
-    def __init__(self, token: object, identity: tuple[object, ...]) -> None:
-        if token is not _REAL_ADMISSION_ISSUER_TOKEN:
+    def __post_init__(self) -> None:
+        if self._token is not _REAL_ADMISSION_ISSUER_TOKEN:
             raise PermissionError("prova de emissão de admissão REAL inválida.")
-        self.identity = tuple(identity)
 
 
 class RealAdmissionStatus(str, Enum):
@@ -48,14 +49,16 @@ class RealAdmission:
 
     @property
     def admitted(self) -> bool:
-        return self.status is RealAdmissionStatus.ADMITTED
+        return self.status is RealAdmissionStatus.ADMITTED and self.issuer_valid
 
     @property
     def issuer_valid(self) -> bool:
         expected = (self.admission_id, self.audit_id, self.status.value,
                     self.broker_id, self.adapter_id, self.request_id,
                     self.symbol, self.reasons)
-        return isinstance(self._issuer_token, _RealAdmissionProof) and self._issuer_token.identity == expected
+        return (isinstance(self._issuer_token, _RealAdmissionProof)
+                and self._issuer_token.identity == expected
+                and self._issuer_token._token is _REAL_ADMISSION_ISSUER_TOKEN)
 
 
 class RealAdmissionBoundary:
@@ -90,7 +93,7 @@ class RealAdmissionBoundary:
         if status is RealAdmissionStatus.ADMITTED:
             identity = (admission_id, audit_id, status.value, broker_id,
                         adapter_id, request_id, symbol, tuple(reasons))
-            proof = _RealAdmissionProof(_REAL_ADMISSION_ISSUER_TOKEN, identity)
+            proof = _RealAdmissionProof(identity, _REAL_ADMISSION_ISSUER_TOKEN)
         return RealAdmission(
             admission_id, audit_id, status, broker_id, adapter_id,
             request_id, symbol, tuple(reasons), proof,
