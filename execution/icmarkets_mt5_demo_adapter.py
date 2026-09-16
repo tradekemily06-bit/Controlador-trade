@@ -125,16 +125,26 @@ class ICMarketsMT5DemoAdapter:
             check = mt5.order_check(payload)
             if check is None or getattr(check, "retcode", 0) != 0:
                 return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
-            result = mt5.order_send(payload)
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                # The request may have reached the broker before the transport
+                # failed. Gateway-level handling therefore converts this into
+                # UNKNOWN and requires reconciliation rather than replay.
+                raise MT5AdapterError("MT5 order_send terminou sem confirmação determinística") from exc
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                # A missing post-send response is also ambiguous: absence of a
+                # response is not proof that the broker did not execute it.
+                raise MT5AdapterError("MT5 order_send sem confirmação determinística")
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
             if success_code is None or retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
-                return ExecutionResult(False, "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.")
+                # MT5 reported success but no durable external identity was
+                # returned. Treat it as ambiguous instead of falsely terminal.
+                raise MT5AdapterError("MT5 aceitou a ordem, mas não forneceu identificador externo")
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
         finally:
             mt5.shutdown()
