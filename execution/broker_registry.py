@@ -16,8 +16,13 @@ class BrokerAdapterInfo:
     available: bool
 
 
+# Deliberately module-private capability. Only the broker gateway imports it;
+# registry callers receive metadata, never the executable adapter object.
+_BROKER_GATEWAY_CAPABILITY = object()
+
+
 class BrokerRegistry:
-    """Explicit registry for broker adapters, isolated from decision logic."""
+    """Explicit broker registry whose executable adapters stay behind the gateway."""
 
     def __init__(self) -> None:
         self._adapters: dict[str, BrokerAdapter] = {}
@@ -32,7 +37,9 @@ class BrokerRegistry:
             raise BrokerRegistryError("adapter deve implementar is_available().")
         self._adapters[normalized] = adapter
 
-    def get(self, name: str) -> BrokerAdapter:
+    def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
+        if capability is not _BROKER_GATEWAY_CAPABILITY:
+            raise BrokerRegistryError("acesso ao adapter exige a barreira do broker gateway")
         normalized = self._normalize_name(name)
         try:
             return self._adapters[normalized]
@@ -40,7 +47,8 @@ class BrokerRegistry:
             raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
 
     def is_available(self, name: str) -> bool:
-        adapter = self.get(name)
+        # Availability is intentionally metadata-only and cannot return the adapter.
+        adapter = self._get_for_gateway(name, capability=_BROKER_GATEWAY_CAPABILITY)
         return bool(adapter.is_available())
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
@@ -52,8 +60,9 @@ class BrokerRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(self._adapters)
 
-    def as_mapping(self) -> Mapping[str, BrokerAdapter]:
-        return dict(self._adapters)
+    def as_mapping(self) -> Mapping[str, BrokerAdapterInfo]:
+        """Return metadata only; executable adapters never leave the registry."""
+        return {name: BrokerAdapterInfo(name=name, available=bool(adapter.is_available())) for name, adapter in self._adapters.items()}
 
     @staticmethod
     def _normalize_name(name: str) -> str:

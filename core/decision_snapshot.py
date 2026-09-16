@@ -7,6 +7,7 @@ from .decision_engine import DecisionResult
 from .market_context import MarketContextResult
 from .models import AnalysisResult
 from .operational_state import OperationalState
+from .risk_state_fingerprint import risk_state_identity
 from .signal_quality import SignalQuality
 
 
@@ -30,6 +31,9 @@ class DecisionSnapshot:
     consecutive_losses: int | None
     symbol: str | None
     timeframe: str | None
+    # Optional for backward compatibility with persisted/legacy snapshots.
+    # New snapshots built from operational state always carry the full identity.
+    risk_state_identity: str | None = None
 
     @classmethod
     def from_results(
@@ -72,6 +76,11 @@ class DecisionSnapshot:
             ),
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
+            risk_state_identity=(
+                risk_state_identity(operational_state)
+                if operational_state is not None
+                else None
+            ),
         )
 
     def explain(self) -> str:
@@ -104,6 +113,7 @@ class DecisionSnapshot:
             "operational_state_available": self.operational_state_available,
             "trades_today": self.trades_today,
             "consecutive_losses": self.consecutive_losses,
+            "risk_state_identity": self.risk_state_identity,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
         }

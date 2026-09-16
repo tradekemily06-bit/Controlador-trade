@@ -13,6 +13,9 @@ class DecisionRecord:
     """Immutable explanation of one analysis decision.
 
     This is a learning/audit record only. It never submits an order.
+    ``subject_id`` and ``tenant_id`` are ownership metadata supplied by a
+    trusted application boundary; they must never be taken as proof merely
+    because a browser supplied them.
     """
 
     decision_id: str
@@ -25,6 +28,8 @@ class DecisionRecord:
     reason: str
     execution_allowed: bool = False
     outcome: str | None = None
+    subject_id: str | None = None
+    tenant_id: str | None = None
 
     @classmethod
     def from_analysis(cls, result: AnalysisResult) -> "DecisionRecord":
@@ -38,6 +43,31 @@ class DecisionRecord:
             confirmed=bool(result.confirmed),
             reason=result.reason,
         )
+
+    def owned_by(self, *, subject_id: str, tenant_id: str) -> bool:
+        return (
+            isinstance(subject_id, str)
+            and bool(subject_id.strip())
+            and isinstance(tenant_id, str)
+            and bool(tenant_id.strip())
+            and self.subject_id == subject_id.strip()
+            and self.tenant_id == tenant_id.strip()
+        )
+
+    def with_owner(self, *, subject_id: str, tenant_id: str) -> "DecisionRecord":
+        if not isinstance(subject_id, str) or not subject_id.strip():
+            raise ValueError("subject_id is required")
+        if not isinstance(tenant_id, str) or not tenant_id.strip():
+            raise ValueError("tenant_id is required")
+        if self.subject_id is not None or self.tenant_id is not None:
+            if not self.owned_by(subject_id=subject_id, tenant_id=tenant_id):
+                raise ValueError("decision ownership cannot be reassigned")
+            return self
+        return DecisionRecord(**{
+            **self.to_dict(),
+            "subject_id": subject_id.strip(),
+            "tenant_id": tenant_id.strip(),
+        })
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

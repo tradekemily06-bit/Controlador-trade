@@ -15,7 +15,7 @@ def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
     """Perform a read-only preflight; never sends or modifies an order."""
     try:
         if not mt5.initialize():
-            return MT5DemoHealth(False, False, f"MT5 indisponível: {mt5.last_error()}")
+            return MT5DemoHealth(False, False, "MT5 indisponível")
         account = mt5.account_info()
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         is_demo = (
@@ -27,7 +27,7 @@ def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
             return MT5DemoHealth(False, False, "conta MT5 não confirmada como DEMO")
         return MT5DemoHealth(True, True, "MT5 DEMO disponível")
     except Exception as exc:
-        return MT5DemoHealth(False, False, f"falha no preflight MT5: {exc}")
+        return MT5DemoHealth(False, False, f"falha no preflight MT5: {type(exc).__name__}")
     finally:
         try:
             mt5.shutdown()
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     try:
         import MetaTrader5 as mt5
     except Exception as exc:
-        print(f"MetaTrader5 indisponível: {exc}")
+        print(f"MetaTrader5 indisponível: {type(exc).__name__}")
     else:
         result = check_mt5_demo_health(mt5)
         print(result.message)

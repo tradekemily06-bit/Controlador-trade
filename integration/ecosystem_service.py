@@ -8,12 +8,17 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.ecosystem_maintenance import MaintenanceStatus
+from core.ecosystem_notifications import NotificationSeverity
+from core.ecosystem_preferences import EcosystemPreferencesStore
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
+from core.learning_material_review import LearningMaterialReview
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
+from core.professional_learning_question_engine import ProfessionalLearningQuestion, QuestionType
 from core.risk_manager import RiskManager
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
@@ -54,77 +59,77 @@ class EcosystemService:
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
+    def _owner_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext | None:
+        if subject_id is None and tenant_id is None:
+            return None
+        return self.require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+
+    def _scoped_memory(self, owner: ProductionRequestContext | None) -> list[DecisionRecord]:
+        if owner is None:
+            return list(self.memory)
+        return [record for record in self.memory if record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id)]
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
-    def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
+    def analyze(self, payload: dict[str, Any], *, persist: bool = True, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
-        self.memory.append(record)
-        self.store.save(record)
+        if owner is not None:
+            record = record.with_owner(subject_id=owner.subject_id, tenant_id=owner.tenant_id)
+        if persist:
+            self._persist_records([record])
         return record
 
-    def assess_senior_context(
-        self,
-        *,
-        context_id: str,
-        candles: Iterable[Candle],
-        available_nodes: Iterable[str],
-        observed_nodes: Iterable[str],
-        gaps: dict[str, str] | None = None,
-        relationships_reviewed: Iterable[str] = (),
-        risk_observations: Iterable[RiskObservation] = (),
-        validated_knowledge_ids: Iterable[str] = (),
-        available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain),
-    ) -> Any:
-        """Run the senior contextual layer without creating an operation.
+    def _persist_records(self, records: list[DecisionRecord]) -> None:
+        if not records:
+            return
+        self.store.save_many(records)
+        self.memory.extend(records)
 
-        This is deliberately separate from ``analyze`` until the contextual
-        output has its own decision-gate integration and regression coverage.
-        It never converts a score, candle or contextual assessment directly
-        into execution authority.
-        """
-        request = SeniorContextInput(
-            context_id=context_id,
-            candles=tuple(candles),
-            available_nodes=tuple(available_nodes),
-            observed_nodes=tuple(observed_nodes),
-            gaps=dict(gaps or {}),
-            relationships_reviewed=tuple(relationships_reviewed),
-            risk_observations=tuple(risk_observations),
-            validated_knowledge_ids=tuple(validated_knowledge_ids),
-            available_risk_domains=tuple(available_risk_domains),
-        )
+    def assess_senior_context(self, *, context_id: str, candles: Iterable[Candle], available_nodes: Iterable[str], observed_nodes: Iterable[str], gaps: dict[str, str] | None = None, relationships_reviewed: Iterable[str] = (), risk_observations: Iterable[RiskObservation] = (), validated_knowledge_ids: Iterable[str] = (), available_risk_domains: Iterable[RiskDomain] = tuple(RiskDomain)) -> Any:
+        request = SeniorContextInput(context_id=context_id, candles=tuple(candles), available_nodes=tuple(available_nodes), observed_nodes=tuple(observed_nodes), gaps=dict(gaps or {}), relationships_reviewed=tuple(relationships_reviewed), risk_observations=tuple(risk_observations), validated_knowledge_ids=tuple(validated_knowledge_ids), available_risk_domains=tuple(available_risk_domains))
         return self.senior_context.assess(request)
 
-    def replay(self, cases: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for index, payload in enumerate(cases, start=1):
-            if not isinstance(payload, dict):
-                raise ValueError("cada cenário deve ser um objeto")
-            record = self.analyze(payload)
-            results.append({"step": index, **record.to_dict()})
-        return results
+    def replay(self, cases: Iterable[dict[str, Any]], *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        from core.replay_policy import prevalidate_replay_cases
+        accepted_cases = prevalidate_replay_cases(cases)
+        records: list[DecisionRecord] = []
+        for payload in accepted_cases:
+            records.append(self.analyze(payload, persist=False, subject_id=owner.subject_id if owner else None, tenant_id=owner.tenant_id if owner else None))
+        self._persist_records(records)
+        return [{"step": index, **record.to_dict()} for index, record in enumerate(records, start=1)]
 
-    def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+    def record_outcome(self, decision_id: str, outcome: str, *, subject_id: str | None = None, tenant_id: str | None = None) -> DecisionRecord:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
+                if owner is None:
+                    if record.subject_id is not None or record.tenant_id is not None:
+                        raise PermissionError("trusted scope is required for owned decision")
+                elif not record.owned_by(subject_id=owner.subject_id, tenant_id=owner.tenant_id):
+                    raise PermissionError("decision ownership does not match trusted scope")
                 updated = record.with_outcome(outcome)
-                self.memory[index] = updated
                 self.store.save(updated)
+                self.memory[index] = updated
                 return updated
         raise ValueError("decision_id não encontrado")
 
-    def statistics(self) -> dict[str, Any]:
-        breakdowns = summarize_breakdowns(self.memory)
-        return {**asdict(summarize(self.memory)), "periods": summarize_periods(self.memory), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
+    def statistics(self, *, subject_id: str | None = None, tenant_id: str | None = None) -> dict[str, Any]:
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        scoped = self._scoped_memory(owner)
+        breakdowns = summarize_breakdowns(scoped)
+        return {**asdict(summarize(scoped)), "periods": summarize_periods(scoped), "breakdowns": {**breakdowns, "by_symbol": breakdowns["symbols"], "by_timeframe": breakdowns["timeframes"], "by_signal": breakdowns["signals"], "by_score_band": breakdowns["score_bands"]}}
 
-    def memory_view(self, limit: int = 50) -> list[dict[str, Any]]:
+    def memory_view(self, limit: int = 50, *, subject_id: str | None = None, tenant_id: str | None = None) -> list[dict[str, Any]]:
         if limit < 1:
             raise ValueError("limit deve ser maior que zero")
-        return [item.to_dict() for item in self.memory[-limit:]][::-1]
+        owner = self._owner_context(subject_id=subject_id, tenant_id=tenant_id)
+        return [item.to_dict() for item in self._scoped_memory(owner)[-limit:]][::-1]
 
     def screen_learning_source(self, payload: dict[str, Any]) -> LearningSource:
         source_type = LearningSourceType(str(payload.get("source_type", "LINK")).upper())
@@ -182,12 +187,36 @@ class EcosystemService:
         self.learning_activities[activity.activity_id] = activity
         return activity
 
+    def _validated_professor_spec(self, payload: dict[str, Any]) -> ProfessorActivitySpec:
+        knowledge_id = str(payload.get("knowledge_id", "")).strip()
+        source = self.learning_sources.get(knowledge_id)
+        validated = bool(source is not None and source.status is LearningSourceStatus.VALIDATED and source.knowledge_validated and not source.operation_eligible)
+        if not validated:
+            raise ValueError("only validated knowledge can generate professor activities")
+        observations = [item for item in self.learning_observations if item.resource_id == knowledge_id and item.validated and item.statement.strip()]
+        if not observations:
+            raise ValueError("validated knowledge from the current tenant has no validated observation")
+        observation = observations[-1]
+        concept = observation.concepts[0] if observation.concepts else "raciocínio de mercado"
+        return ProfessorActivitySpec(
+            activity_id=str(payload.get("activity_id", "")),
+            knowledge_id=knowledge_id,
+            statement=observation.statement,
+            concept=concept,
+            difficulty=str(payload.get("difficulty", "INTERMEDIATE")),
+        )
+
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
-        activity = self.learning_professor.build_activity(ProfessorActivitySpec(activity_id=str(payload.get("activity_id", "")), knowledge_id=str(payload.get("knowledge_id", "")), statement=str(payload.get("statement", "")), concept=str(payload.get("concept", "")), difficulty=str(payload.get("difficulty", "INTERMEDIATE"))), knowledge_validated=bool(payload.get("knowledge_validated", False)))
+        spec = self._validated_professor_spec(payload)
+        activity = self.learning_professor.build_activity(spec, knowledge_validated=True)
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
         return activity
+
+    def generate_professional_questions(self, payload: dict[str, Any]) -> tuple[ProfessionalLearningQuestion, ...]:
+        spec = self._validated_professor_spec({**payload, "activity_id": str(payload.get("activity_id", "question-set"))})
+        return self.learning_professor.build_professional_questions(spec, knowledge_validated=True, context=str(payload.get("context", "")))
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in self.learning_activities.values()]
@@ -221,7 +250,7 @@ class EcosystemService:
     def operational_observability(self) -> dict[str, Any]:
         runtime = self.operational_runtime
         if runtime is None:
-            return {"execution": {"allowed": False, "mode": "DEMO", "state": "NOT_CONNECTED", "real": "DISABLED"}, "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []}, "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"}, "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None}, "market_data": {"health": "NOT_CONNECTED", "safe_for_analysis": False, "source": None, "symbol": None, "timeframe": None, "candle_count": None, "gap_count": None, "stale": None, "message": "fonte de candles ainda não conectada ao runtime"}}
+            return {"execution": {"allowed": False, "mode": "DEMO", "state": "NOT_CONNECTED", "real": "DISABLED"}, "reconciliation": {"state": "NOT_CONNECTED", "pending_request_ids": [], "unknown_request_ids": []}, "recovery": {"state": "NOT_CONNECTED", "can_resume": False, "message": "runtime operacional não conectado ao serviço"}, "kill_switch": {"state": "NOT_CONNECTED", "enabled": False, "reason": None}, "market_data": {"health": "NOT_CONNECTED", "safe_for_analysis": False, "source": None, "symbol": None, "timeframe": None, "candle_count": None, "stale": None, "message": "fonte de candles ainda não conectada ao runtime"}}
         health = runtime.health.assess()
         recovery = runtime.recovery.assess()
         kill = runtime.kill_switch.state
@@ -231,14 +260,20 @@ class EcosystemService:
         blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
         return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
 
+    def public_status(self) -> dict[str, Any]:
+        return {"execution_allowed": False, "health": "SAFE", "real": "DESABILITADO", "alerts": []}
+
     def system_status(self) -> dict[str, Any]:
         production_storage = self.production_storage.status()
         production_gate = self.production_gate.status()
         identity = self.identity.status()
-        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage["state"]), "production_operation_gate": str(production_gate["storage_state"]), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        components = {"decision_engine": "ONLINE", "memory": "ONLINE", "replay": "ONLINE", "statistics": "ONLINE", "risk_gate": "ONLINE", "learning": "ONLINE", "psychology": "ONLINE" if getattr(self, "preferences", None) is None or self.preferences.preferences.psychology_enabled else "DISABLED", "news": "AGUARDANDO_FONTE", "mt5_demo": "DEMO_VALIDADO", "real": "DESABILITADO", "saas": "FOUNDATION", "production_storage": str(production_storage.get("status", production_storage.get("state", "UNKNOWN"))), "production_operation_gate": str(production_gate.get("storage_state", production_gate.get("state", "UNKNOWN"))), "trusted_identity_provider": str(identity["trusted_identity_provider"]), "tenant_isolation": str(identity["tenant_isolation"])}
+        maintenance = self.maintenance.status() if hasattr(self, "maintenance") else {"status": "NOT_CONFIGURED"}
         alerts = build_health_alerts(components)
+        if maintenance.get("status") == MaintenanceStatus.ACTIVE.value:
+            alerts = tuple(alerts) + tuple()
         health = "CRITICAL" if any(alert.severity == "CRITICAL" for alert in alerts) else ("WARNING" if alerts else "OK")
-        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
+        return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "psychology": components["psychology"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "maintenance": maintenance, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]

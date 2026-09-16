@@ -34,6 +34,10 @@ class CTraderDemoAdapter:
             raise ValueError("transport obrigatório")
         self._transport = transport
 
+    @staticmethod
+    def _safe_error(exc: BaseException) -> str:
+        return type(exc).__name__
+
     def is_available(self) -> bool:
         return bool(self._transport.is_available())
 
@@ -46,7 +50,11 @@ class CTraderDemoAdapter:
             return ExecutionResult(False, "AGUARDAR não gera ordem")
         if not isinstance(request.request_id, str) or not request.request_id.strip():
             return ExecutionResult(False, "request_id obrigatório para execução DEMO")
-        if not self.is_available():
+        try:
+            available = self.is_available()
+        except Exception as exc:
+            return ExecutionResult(False, f"transporte cTrader DEMO indisponível: {self._safe_error(exc)}")
+        if not isinstance(available, bool) or not available:
             return ExecutionResult(False, "transporte cTrader DEMO indisponível")
 
         try:
@@ -60,7 +68,9 @@ class CTraderDemoAdapter:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
         except (TypeError, ValueError) as exc:
-            return ExecutionResult(False, f"falha de validação cTrader DEMO: {exc}")
+            return ExecutionResult(False, f"falha de validação cTrader DEMO: {self._safe_error(exc)}")
+        except Exception as exc:
+            return ExecutionResult(False, f"falha técnica cTrader DEMO; execução não confirmada: {self._safe_error(exc)}")
 
         return ExecutionResult(
             accepted=validated.accepted,

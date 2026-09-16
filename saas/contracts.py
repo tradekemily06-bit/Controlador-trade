@@ -42,31 +42,23 @@ class TenantContext:
 
 @dataclass(frozen=True)
 class PlanDefinition:
-    """Provider-neutral plan contract; pricing and billing stay outside core."""
+    """Provider-neutral authorization plan; pricing and billing stay outside core.
+
+    Plans grant capabilities through entitlements. They do not impose arbitrary
+    product-capacity counters; infrastructure protections and trading-risk controls
+    are enforced by their own boundaries.
+    """
 
     name: str
     entitlements: FrozenSet[Entitlement] = field(default_factory=frozenset)
-    limits: Mapping[str, int | None] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError("plan name is required")
-        normalized_entitlements = frozenset(self.entitlements)
-        normalized_limits: dict[str, int | None] = {}
-        for resource, limit in self.limits.items():
-            if not isinstance(resource, str) or not resource.strip():
-                raise ValueError("plan resource name is required")
-            if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 0):
-                raise ValueError("plan limits must be non-negative integers or None")
-            normalized_limits[resource] = limit
-        object.__setattr__(self, "entitlements", normalized_entitlements)
-        object.__setattr__(self, "limits", MappingProxyType(normalized_limits))
+        object.__setattr__(self, "entitlements", frozenset(self.entitlements))
 
     def allows(self, entitlement: Entitlement) -> bool:
         return entitlement in self.entitlements
-
-    def limit_for(self, resource: str) -> int | None:
-        return self.limits.get(resource)
 
 
 @dataclass(frozen=True)

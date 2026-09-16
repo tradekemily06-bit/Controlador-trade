@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+.runtime
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+*.sqlite
+*.sqlite3
+*.db
+*.log

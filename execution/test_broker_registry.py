@@ -17,14 +17,14 @@ class FakeAdapter:
         return self.available
 
 
-def test_registry_registers_and_normalizes_name():
+def test_registry_registers_and_normalizes_name_without_exporting_adapter():
     registry = BrokerRegistry()
     adapter = FakeAdapter()
 
     registry.register("  TestBroker ", adapter)
 
     assert registry.names() == ("testbroker",)
-    assert registry.get("TESTBROKER") is adapter
+    assert not hasattr(registry, "get")
     assert registry.is_available("testbroker") is True
 
 
@@ -47,7 +47,15 @@ def test_registry_unknown_adapter_fails_closed():
     registry = BrokerRegistry()
 
     with pytest.raises(BrokerRegistryError):
-        registry.get("unknown")
+        registry._get_for_gateway("unknown", capability=object())
+
+
+def test_registry_rejects_fake_gateway_capability():
+    registry = BrokerRegistry()
+    registry.register("paper", FakeAdapter())
+
+    with pytest.raises(BrokerRegistryError):
+        registry._get_for_gateway("paper", capability=object())
 
 
 def test_registry_reports_unavailable_adapter_without_executing():
@@ -68,3 +76,4 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+    assert registry.as_mapping()["paper"].name == "paper"

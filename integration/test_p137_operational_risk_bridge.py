@@ -20,6 +20,23 @@ def _payload():
     }
 
 
+def _leverage():
+    return {
+        "request_id": "risk-1",
+        "profile_id": "demo-default",
+        "symbol": "EURUSD",
+        "requested_leverage": 2,
+        "capital_allocated": 2000,
+        "quantity": 1,
+        "price": 1.1,
+        "stop_distance": 1,
+        "value_per_price_unit": 10,
+        "maximum_loss": 50,
+        "environment": "DEMO",
+        "margin_required": 100,
+    }
+
+
 def test_bridge_preserves_explicit_operational_state():
     state = OperationalRiskBridge.build_state(_payload())
     assert state.trades_today == 2
@@ -52,3 +69,31 @@ def test_bridge_rejects_malformed_operational_state():
     payload["operational_state"]["consecutive_losses"] = "zero"
     decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
     assert decision.allowed is False
+
+
+def test_bridge_accepts_reconciled_leverage_exposure():
+    payload = _payload()
+    payload["operational_state"]["exposure"] = 4000
+    payload["leverage_request"] = _leverage()
+    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    assert decision.allowed is True
+
+
+def test_bridge_blocks_leverage_when_loss_exceeds_budget():
+    payload = _payload()
+    payload["operational_state"]["exposure"] = 4000
+    leverage = _leverage()
+    leverage["maximum_loss"] = 5
+    payload["leverage_request"] = leverage
+    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    assert decision.allowed is False
+    assert "orçamento" in decision.reason
+
+
+def test_bridge_blocks_exposure_mismatch_instead_of_double_counting():
+    payload = _payload()
+    payload["operational_state"]["exposure"] = 3999
+    payload["leverage_request"] = _leverage()
+    decision = OperationalRiskBridge(RiskManager()).evaluate(payload)
+    assert decision.allowed is False
+    assert "diverge" in decision.reason

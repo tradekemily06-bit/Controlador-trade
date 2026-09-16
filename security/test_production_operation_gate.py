@@ -15,6 +15,7 @@ def test_gate_requires_trusted_subject_and_tenant_before_storage_check():
     policy = ProductionStoragePolicy(
         provider_configured=True,
         tenant_scoped=True,
+        subject_scoped=True,
         durable=True,
     )
     gate = ProductionOperationGate(policy)
@@ -30,6 +31,7 @@ def test_gate_authorizes_only_explicitly_ready_scoped_storage():
     policy = ProductionStoragePolicy(
         provider_configured=True,
         tenant_scoped=True,
+        subject_scoped=True,
         durable=True,
     )
     gate = ProductionOperationGate(policy)
@@ -49,6 +51,20 @@ def test_gate_rejects_unsafe_storage_even_with_identity():
     policy = ProductionStoragePolicy(
         provider_configured=True,
         tenant_scoped=False,
+        subject_scoped=True,
+        durable=True,
+    )
+    gate = ProductionOperationGate(policy)
+
+    with pytest.raises(PermissionError, match="storage is not ready"):
+        gate.authorize(subject_id="user-a", tenant_id="tenant-a")
+
+
+def test_gate_rejects_storage_without_subject_isolation():
+    policy = ProductionStoragePolicy(
+        provider_configured=True,
+        tenant_scoped=True,
+        subject_scoped=False,
         durable=True,
     )
     gate = ProductionOperationGate(policy)
