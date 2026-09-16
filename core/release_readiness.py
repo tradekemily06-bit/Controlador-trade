@@ -23,6 +23,7 @@ class FinalReadinessEvidence:
     reconciliation_tested: bool
     incident_response_tested: bool
     demo_real_separation_tested: bool
+    legacy_compatibility_tested: bool
     ci_green: bool
 
 
@@ -46,6 +47,7 @@ _REQUIRED = (
     "reconciliation_tested",
     "incident_response_tested",
     "demo_real_separation_tested",
+    "legacy_compatibility_tested",
     "ci_green",
 )
 
