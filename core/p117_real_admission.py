@@ -11,11 +11,26 @@ class RealAdmissionStatus(str, Enum):
 
 @dataclass(frozen=True)
 class RealAdmission:
+    """Immutable admission bound to the exact operation and adapter."""
+
     admission_id: str
     audit_id: str
     status: RealAdmissionStatus
     broker_id: str
+    adapter_id: str
+    request_id: str
+    symbol: str
     reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("admission_id", "audit_id", "broker_id", "adapter_id", "request_id", "symbol"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} é obrigatório.")
+        if not isinstance(self.status, RealAdmissionStatus):
+            raise TypeError("status de admissão REAL inválido.")
+        if not isinstance(self.reasons, tuple) or not all(isinstance(reason, str) for reason in self.reasons):
+            raise TypeError("reasons da admissão REAL deve ser uma tupla de strings.")
 
     @property
     def admitted(self) -> bool:
@@ -25,13 +40,15 @@ class RealAdmission:
 class RealAdmissionBoundary:
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
-              broker_available: bool, broker_id: str) -> RealAdmission:
-        if not isinstance(admission_id, str) or not admission_id.strip():
-            raise ValueError("admission_id é obrigatório.")
-        if not isinstance(audit_id, str) or not audit_id.strip():
-            raise ValueError("audit_id é obrigatório.")
-        if not isinstance(broker_id, str) or not broker_id.strip():
-            raise ValueError("broker_id é obrigatório.")
+              broker_available: bool, broker_id: str, adapter_id: str,
+              request_id: str, symbol: str) -> RealAdmission:
+        for name, value in (
+            ("admission_id", admission_id), ("audit_id", audit_id),
+            ("broker_id", broker_id), ("adapter_id", adapter_id),
+            ("request_id", request_id), ("symbol", symbol),
+        ):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} é obrigatório.")
 
         for name, value in (
             ("audit_verified", audit_verified),
@@ -52,4 +69,7 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons))
+        return RealAdmission(
+            admission_id, audit_id, status, broker_id, adapter_id,
+            request_id, symbol, tuple(reasons),
+        )
