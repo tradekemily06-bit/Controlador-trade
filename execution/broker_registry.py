@@ -51,7 +51,8 @@ class BrokerRegistry:
         self._adapters[normalized] = adapter
         self._adapter_ids[normalized] = normalized_adapter_id
 
-    def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
+    def resolve_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
+        """Resolve an executable adapter only for the explicit gateway capability."""
         if capability is not _BROKER_GATEWAY_CAPABILITY:
             raise BrokerRegistryError("acesso ao adapter exige a barreira do broker gateway")
         normalized = self._normalize_name(name)
@@ -70,7 +71,7 @@ class BrokerRegistry:
 
     def is_available(self, name: str) -> bool:
         # Availability is intentionally metadata-only and cannot return the adapter.
-        adapter = self._get_for_gateway(name, capability=_BROKER_GATEWAY_CAPABILITY)
+        adapter = self.resolve_for_gateway(name, capability=_BROKER_GATEWAY_CAPABILITY)
         return bool(adapter.is_available())
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
