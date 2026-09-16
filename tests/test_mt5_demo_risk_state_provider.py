@@ -165,6 +165,33 @@ def test_partial_exits_count_as_one_logical_loss():
     assert state.realized_pnl == -2.0
 
 
+def test_reversal_starts_a_new_loss_segment():
+    fake = FakeMT5(
+        deals=[
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=707, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_INOUT, position_id=707, profit=-5.0, swap=0.0, commission=0.0, fee=0.0, time=2, time_msc=2),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=707, profit=-4.0, swap=0.0, commission=0.0, fee=0.0, time=3, time_msc=3),
+        ]
+    )
+    state = provider(fake).current_risk_state()
+
+    assert state.consecutive_losses == 2
+    assert state.realized_pnl == -9.0
+
+
+def test_reversal_segment_is_reset_by_a_winning_segment():
+    fake = FakeMT5(
+        deals=[
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=808, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_INOUT, position_id=808, profit=-5.0, swap=0.0, commission=0.0, fee=0.0, time=2, time_msc=2),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=808, profit=2.0, swap=0.0, commission=0.0, fee=0.0, time=3, time_msc=3),
+        ]
+    )
+    state = provider(fake).current_risk_state()
+
+    assert state.consecutive_losses == 0
+
+
 def test_missing_position_identity_makes_loss_streak_unknown():
     fake = FakeMT5(
         deals=[
