@@ -6,12 +6,12 @@ Status: **validation in progress**. This document is a gate record, not a releas
 
 - Global operational barrier is fail-closed and checked again inside the REAL dispatch lock.
 - DEMO operational runtime owns the durable ledger, lifecycle, safety state, incident manager and dispatch lock.
-- REAL dispatch uses the broker gateway boundary; raw adapter dispatch is not an intended parallel production path.
+- REAL dispatch through `RealExecutionGateway` requires the execution ledger, authoritative identity, safety revalidation and the broker gateway.
 - Broker adapter identity is explicit and checked against authorization and admission before dispatch and against the adapter result after dispatch.
 - Authorization, admission and request are bound by request_id, broker_id and symbol; authorization/admission adapter_id must equal the registry-resolved adapter identity.
 - REAL ledger transitions are terminally protected: terminal states cannot be mutated or replayed, and uncertain operations remain UNKNOWN until explicit reconciliation.
 - REAL reconciliation requires persisted broker/symbol identity and an external evidence authority; evidence identity/source are persisted and verified.
-- Ledger reconciliation now fails closed when evidence_id/evidence_source are absent, and regression coverage proves UNKNOWN/RESERVED cannot be reconciled without evidence.
+- Ledger reconciliation fails closed when evidence_id/evidence_source are absent, and regression coverage proves UNKNOWN/RESERVED cannot be reconciled without evidence.
 - External order observations require request, source, broker and symbol metadata and fail closed when those bindings are missing or inconsistent.
 - Demo broker direct-dispatch side doors are blocked; the gateway-bound capability is required for DEMO broker execution.
 - Production factory composition is guarded against raw MT5 adapter injection and unauthorized REAL gateway construction.
@@ -23,37 +23,60 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - RealPrivilegeIssuer derives authorization identity from the trusted ExecutionRequest and adapter identity from the authoritative BrokerAdapterGateway; admission identity is derived from the already-issued authorization.
 - REAL authorization and admission provenance proofs are immutable and identity-bound, so dataclasses.replace or field rebinding cannot preserve an active/admitted privilege.
 - Legacy/pickle-style reconstruction fails closed when the private issuance proof is absent or no longer valid.
-- Executable AST scanning checks production surfaces for direct active REAL authorization/admission constructors and the intended issuer boundary.
+- Executable AST scanning checks production execution surfaces for direct active REAL authorization/admission constructors and the intended issuer boundary.
 - Issuer negative coverage checks direct construction, inactive/forged admission attempts, audit failures and safety failures.
-- CI concurrency was changed to cancel superseded branch runs and a 30-minute job timeout was added.
-- The application startup path now has regression coverage for explicit PORT selection in addition to the production WSGI container path.
+- CI concurrency cancels superseded branch runs and the CI job timeout is bounded.
+- The application startup path has regression coverage for explicit PORT selection in addition to the production WSGI container path.
+- Multiprocess coverage proves one-winner request reservation, reconciliation/dispatch races, conflicting transitions, abrupt lock-holder termination and interrupted temp-file recovery.
 
 ## Remaining Stage 2 gates
 
-### 1. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
+### 1. REAL broker authority / adapter API — 🔴 OPEN
 
-The authoritative issuer and private active-object issuance boundary are implemented. The deep reconstruction review identified a second-order provenance issue: a singleton issuer token by itself was not enough to bind the privilege to its identity. The proof is now immutable and carries the complete privileged identity; `active`/`admitted` require that proof to remain valid. This makes identity rebinding fail closed and makes restart-style reconstruction fail closed when the proof cannot be re-established.
+The deep authority audit found a real alternate execution route: `BrokerAdapterGateway.execute(...)` is currently callable directly and can resolve an executable adapter and dispatch a REAL request without entering `RealExecutionGateway`, without reserving the ExecutionLedger request_id and without the REAL global/admission barriers.
+
+This is a genuine authority-model gap, not a missing Ledger unit test. The correct fix must seal the broker gateway behind the authoritative REAL gateway boundary and add one consolidated regression proving both sides of the contract: direct adapter-gateway dispatch is blocked, while the legitimate REAL gateway path still reaches the adapter. The fix must be made at the authority boundary rather than by adding more isolated Ledger tests.
+
+### 2. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
+
+The authoritative issuer and private active-object issuance boundary are implemented. The proof is immutable and carries the complete privileged identity; active/admitted state requires that proof to remain valid. Identity rebinding and pickle-style restart reconstruction therefore fail closed.
 
 Required evidence before Stage 2 closure:
 
 - consolidated tests pass for direct construction, legacy reconstruction, identity rebinding and restart/reconstruction;
 - no remaining legacy constructor, deserialization, compatibility helper or factory can create an active REAL privilege outside the issuer;
-- full CI validates the consolidated tree.
+- full CI validates the consolidated tree after the broker-authority fix.
 
-### 2. DecisionSnapshot identity/freshness — 🟢 IMPLEMENTED, TEST SUITE VALIDATION PENDING
+### 3. DecisionSnapshot identity/freshness — 🟢 IMPLEMENTED, CONSOLIDATED VALIDATION REQUIRED
 
 The REAL gateway rejects a missing/mismatched snapshot symbol and rejects missing, future or expired snapshot timestamps using the mandatory REAL freshness policy. The live orchestrator supplies the actual decision creation timestamp.
 
-The gate remains pending only until the consolidated CI/test suite proves these controls together with the rest of Stage 2.
-
-### 3. CI consolidated validation — 🟢 LATEST RUN GREEN
-
-The latest consolidated validation run for the current Stage 2 head is **35148578751** on commit **4ff9731796ee9b322675f236754db51bfb768a1d**. It completed successfully. This run is evidence for the current tree, but CI success alone does not close the remaining deep-audit gates.
-
 ### 4. Execution ledger reconciliation evidence — 🟢 IMPLEMENTED AND TESTED
 
-The ledger reconciliation contract now requires explicit external evidence identity and source. Missing evidence is rejected, and regression coverage locks the behavior. This closes the previously identified permissive reconciliation path at the ledger boundary; the remaining Stage 2 closure still requires the broader reconstruction, route, concurrency and identity audit evidence.
+The ledger reconciliation contract requires explicit external evidence identity and source. Missing evidence is rejected, and regression coverage locks the behavior. This closes the previously identified permissive reconciliation path at the ledger boundary; broader authority-route closure is still required.
+
+### 5. Configuration / environment side doors — 🟡 PARTIALLY VERIFIED
+
+DEMO provider configuration rejects known REAL provider aliases, and factory composition tests cover the intended production construction boundaries. The remaining audit must cover every production configuration/factory surface, including app/core integration paths, and prove that configuration cannot select an execution route outside the authoritative gateway.
+
+### 6. Identity mutation / cross-context reuse — 🟡 PARTIALLY VERIFIED
+
+REAL authorization/admission objects are identity-bound and immutable, and request_id/external_id replay protections exist in the ledger and REAL gateway. The remaining closure work is to prove the same invariant across every composition and restart path, not merely the ledger API.
+
+### 7. Cross-process authority / recovery matrix — 🟢 STRONG COVERAGE, FINAL CLOSURE PENDING
+
+Multiprocess tests cover reservation races, reconciliation races, conflicting transitions, abrupt lock-holder termination, crash-after-external-acceptance, restart without replay and interrupted temp-file recovery. Final closure still depends on the complete authority graph, including the broker API side door and any remaining configuration/reconstruction routes.
+
+### 8. Durability boundary — 🟡 DOCUMENTED LIMIT
+
+Ledger writes fsync the temporary file before atomic replacement. The current implementation does not explicitly fsync the parent directory after `os.replace`, so absolute filesystem durability across a physical power-loss window immediately after rename is not yet a proven Stage 2 property. This must either be hardened or explicitly excluded from the Stage 2 durability contract before closure.
+
+## Current CI evidence
+
+The current Stage 2 head is **`dd0f81395990ec82a9869472ec64d4254c1f5c73`**. CI run **#1656** completed successfully for that commit. This proves the consolidated tree at that head passed CI; it does **not** close the newly identified broker-gateway authority gap.
+
+The branch remains validation-only and must not be merged until the remaining authority gates above are closed.
 
 ## Stage 2 closure rule
 
-Stage 2 remains **not closed** until all OPEN/validation-pending gates above have implementation evidence, legacy/reconstruction coverage, and the consolidated CI run is green. No REAL enablement is implied by this document.
+Stage 2 remains **not closed** until every OPEN/validation-pending gate has implementation evidence, adversarial coverage, and a green consolidated CI run on the final head. No REAL enablement is implied by this document.
