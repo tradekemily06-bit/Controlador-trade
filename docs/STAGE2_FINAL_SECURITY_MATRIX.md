@@ -76,9 +76,9 @@ Ledger writes fsync the temporary file, atomically replace the target, and then 
 
 ## Current CI evidence
 
-The current Stage 2 head is **`dd98a56ab32f2fa62434d6e64064029cb1f665db`**. CI run **#1662** completed successfully for that commit, including the full test suite, dependency security audit, Python compilation, production container build and production health smoke test.
+The current Stage 2 head is **`53cb85ee9eb8523db556c248072685cee00c7fc0`**. CI run **#1664** completed successfully for that commit, including the full test suite, dependency security audit, Python compilation, production container build and production health smoke test.
 
-The subsequent commits **`529ea4c3247114515cdd3a4eb5a55b7dfe059fbb`** and this matrix update are newer than that successful CI run, so the current final tree is **not yet CI-validated**. A new CI run must complete successfully on the latest head before any Stage 2 closure claim.
+This matrix update is documentation-only and creates a newer head after the successful CI run; therefore the matrix itself is not yet represented by a CI run. A new CI run must complete successfully on the latest head before any Stage 2 closure claim.
 
 The branch remains validation-only and must not be merged until the remaining authority gates above are closed.
 
