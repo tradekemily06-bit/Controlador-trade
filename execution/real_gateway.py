@@ -126,8 +126,13 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        if broker.strip().lower() != authorization.broker_id.strip().lower():
+        normalized_broker = broker.strip().lower()
+        if normalized_broker != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        if not isinstance(admission.broker_id, str) or not admission.broker_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL sem broker válido.")
+        if normalized_broker != admission.broker_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
