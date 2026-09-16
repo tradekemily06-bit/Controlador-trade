@@ -102,3 +102,22 @@ def test_ic_markets_demo_gateway_kill_switch_blocks_before_adapter():
     result = gateway.execute("demo-kill-switch", request)
 
     assert result.status is GatewayStatus.BLOCKED
+
+
+def test_ic_markets_demo_gateway_with_runtime_owns_durable_execution_state(tmp_path):
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("runtime construction must not initialize MT5")
+
+    gateway = build_ic_markets_mt5_demo_gateway(
+        mt5_module=UnusedMT5(),
+        symbol="EURUSD",
+        runtime_root=tmp_path,
+    )
+
+    assert gateway._ledger is not None
+    assert gateway._lifecycle is not None
+    assert gateway._safety_store is not None
+    assert gateway._incident_manager is not None
+    assert gateway._dispatch_lock_path is not None
+    assert gateway._dispatch_lock_path.name == ".execution-ledger.json.dispatch.lock"
