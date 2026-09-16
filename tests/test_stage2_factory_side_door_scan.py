@@ -8,13 +8,16 @@ ROOT = Path(__file__).resolve().parents[1]
 EXECUTION = ROOT / "execution"
 
 
-def _python_files() -> list[Path]:
-    return [path for path in EXECUTION.glob("*.py") if path.is_file()]
+def _production_python_files() -> list[Path]:
+    return [
+        path for path in EXECUTION.glob("*.py")
+        if path.is_file() and not path.name.startswith("test_")
+    ]
 
 
 def test_no_production_factory_constructs_real_gateway_outside_gateway_module():
     offenders: list[str] = []
-    for path in _python_files():
+    for path in _production_python_files():
         if path.name == "real_gateway.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -26,7 +29,7 @@ def test_no_production_factory_constructs_real_gateway_outside_gateway_module():
 
 def test_registry_adapter_lookup_side_door_is_confined_to_adapter_gateway():
     offenders: list[str] = []
-    for path in _python_files():
+    for path in _production_python_files():
         if path.name == "adapter_gateway.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -38,7 +41,7 @@ def test_registry_adapter_lookup_side_door_is_confined_to_adapter_gateway():
 
 def test_raw_adapter_execute_is_confined_to_adapter_gateway():
     offenders: list[str] = []
-    for path in _python_files():
+    for path in _production_python_files():
         if path.name == "adapter_gateway.py":
             continue
         if "adapter.execute(" in path.read_text(encoding="utf-8"):
@@ -48,7 +51,7 @@ def test_raw_adapter_execute_is_confined_to_adapter_gateway():
 
 def test_mt5_demo_adapter_construction_is_confined_to_demo_broker_port():
     offenders: list[str] = []
-    for path in _python_files():
+    for path in _production_python_files():
         if path.name == "demo_broker_port.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
