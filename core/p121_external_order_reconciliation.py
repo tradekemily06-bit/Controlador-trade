@@ -17,6 +17,10 @@ class ExternalOrderObservation:
     external_id: str
     status: ExternalOrderStatus
     message: str
+    # These fields are mandatory for REAL reconciliation authority even though
+    # they have defaults for source compatibility with older observations.
+    request_id: str | None = None
+    evidence_source: str | None = None
 
 
 class ExternalOrderQueryPort(Protocol):
@@ -44,6 +48,10 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("external_id da observação difere do solicitado.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
+        if not isinstance(observation.request_id, str) or not observation.request_id.strip():
+            raise ValueError("request_id da observação externa é obrigatório para reconciliação REAL.")
+        if not isinstance(observation.evidence_source, str) or not observation.evidence_source.strip():
+            raise ValueError("evidence_source da observação externa é obrigatório para reconciliação REAL.")
 
         return ReconciliationResult(
             external_id=external_id.strip(),
