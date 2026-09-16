@@ -15,13 +15,21 @@ from execution.real_gateway import RealExecutionGateway
 
 
 class QueryPort:
-    def __init__(self, status: ExternalOrderStatus):
+    def __init__(self, status: ExternalOrderStatus, *, request_id: str = "req-1", source: str = "broker"):
         self.status = status
+        self.request_id = request_id
+        self.source = source
         self.calls = 0
 
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         self.calls += 1
-        return ExternalOrderObservation(external_id, self.status, "authoritative broker observation")
+        return ExternalOrderObservation(
+            external_id,
+            self.status,
+            "authoritative broker observation",
+            request_id=self.request_id,
+            evidence_source=self.source,
+        )
 
 
 class StaticRiskProvider:
@@ -46,14 +54,35 @@ def gateway(path: Path, verifier):
 
 def test_broker_evidence_authority_queries_read_only_external_state():
     query = QueryPort(ExternalOrderStatus.EXECUTED)
-    authority = BrokerReconciliationEvidenceAuthority(query)
+    authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
     assert authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
     assert query.calls == 1
 
 
 def test_broker_evidence_authority_rejects_mismatched_external_outcome():
     query = QueryPort(ExternalOrderStatus.NOT_EXECUTED)
-    authority = BrokerReconciliationEvidenceAuthority(query)
+    authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
+    assert not authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
+
+
+def test_broker_evidence_authority_rejects_mismatched_request_identity():
+    query = QueryPort(ExternalOrderStatus.EXECUTED, request_id="different-request")
+    authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
+    assert not authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
+
+
+def test_broker_evidence_authority_rejects_mismatched_source():
+    query = QueryPort(ExternalOrderStatus.EXECUTED, source="other-broker")
+    authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
+    assert not authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
+
+
+def test_broker_evidence_authority_rejects_missing_binding_metadata():
+    class LegacyQuery:
+        def query_order(self, external_id: str):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "legacy")
+
+    authority = BrokerReconciliationEvidenceAuthority(LegacyQuery(), evidence_source="broker")
     assert not authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
 
 
