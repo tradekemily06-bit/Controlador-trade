@@ -7,27 +7,19 @@ from typing import Any
 from core.kill_switch import KillSwitch
 from core.operational_runtime import build_operational_runtime
 from execution.broker_registry import BrokerRegistry
-from execution.demo_broker_port import build_ic_markets_mt5_demo_port
+from execution.demo_broker_port import build_ic_markets_mt5_demo_adapter, build_ic_markets_mt5_demo_port
 from execution.gateway import ExecutionGateway
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5DemoRiskStateProvider
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
 
 
 def _build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
-    """Private registry composition retained for adapter-bound tests only.
-
-    The operational factory below deliberately does not obtain its executor
-    from this registry; it uses DemoBrokerExecutionPort instead.
-    """
+    """Private registry composition retained for adapter-bound tests only."""
     registry = BrokerRegistry()
     registry.register(
         IC_MARKETS_MT5_DEMO,
-        ICMarketsMT5DemoAdapter(
-            ICMarketsMT5DemoConfig(symbol=symbol),
-            mt5_module=mt5_module,
-        ),
+        build_ic_markets_mt5_demo_adapter(symbol=symbol, mt5_module=mt5_module),
     )
     return registry
 
@@ -40,12 +32,7 @@ def build_ic_markets_mt5_demo_gateway(
     kill_switch: KillSwitch | None = None,
     runtime_root: str | Path | None = None,
 ) -> ExecutionGateway:
-    """Compose IC Markets MT5 DEMO only through the full operational runtime.
-
-    The broker adapter is encapsulated by ``DemoBrokerExecutionPort`` and is
-    bound to the operational gateway by the runtime. No raw broker adapter is
-    handed to ``ExecutionGateway``.
-    """
+    """Compose IC Markets MT5 DEMO only through the full operational runtime."""
     if not isinstance(timeframe, int) or isinstance(timeframe, bool) or timeframe <= 0:
         raise ValueError("timeframe deve ser um inteiro positivo")
 
