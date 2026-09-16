@@ -9,7 +9,7 @@ from core.operational_runtime import build_operational_runtime
 from core.operational_state import OperationalState
 from core.runtime_risk_state_provider import RuntimeRiskStateProvider
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
-from integration.execution_provider import build_demo_execution_port
+from integration.execution_provider import ExecutionProviderConfigurationError, build_demo_execution_port
 
 
 def _risk_state() -> OperationalState:
@@ -44,3 +44,10 @@ def test_selected_mt5_demo_provider_can_be_injected_with_risk_state(tmp_path: Pa
     )
     assert isinstance(runtime.gateway._executor, ICMarketsMT5DemoAdapter)
     assert runtime.gateway._risk_state_provider is provider
+
+
+def test_configuration_cannot_select_real_provider(tmp_path: Path):
+    with pytest.raises(ExecutionProviderConfigurationError):
+        build_demo_execution_port("real")
+    with pytest.raises(ExecutionProviderConfigurationError):
+        build_demo_execution_port("REAL")
