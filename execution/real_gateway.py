@@ -56,14 +56,20 @@ class RealExecutionGateway:
         return type(exc).__name__
 
     @staticmethod
+    def _safe_execution_message(execution: ExecutionResult | None, fallback: str) -> str:
+        if execution is None:
+            return fallback
+        message = execution.message
+        if not isinstance(message, str) or not message.strip():
+            return fallback
+        return message.strip()[:256]
+
+    @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
-        # REAL execution must carry the identity that is bound to the gateway call.
-        # DEMO may retain legacy optional request IDs, but REAL cannot have an
-        # anonymous intent because idempotency/reconciliation depend on it.
         if not isinstance(request.request_id, str) or not request.request_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
@@ -168,14 +174,18 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL sem execução confirmável; reconciliação explícita necessária.")
 
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {self._safe_error(exc)}", result.execution)
-            return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
+            return RealGatewayResult(
+                RealGatewayStatus.REJECTED,
+                self._safe_execution_message(result.execution, "ordem REAL rejeitada."),
+                result.execution,
+            )
 
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
@@ -188,7 +198,11 @@ class RealExecutionGateway:
             self._ledger.mark_accepted(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {self._safe_error(exc)}", result.execution)
-        return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+        return RealGatewayResult(
+            RealGatewayStatus.ADMITTED,
+            self._safe_execution_message(result.execution, "ordem REAL aceita."),
+            result.execution,
+        )
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
@@ -233,6 +247,12 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        lock = exclusive_file_lock(self._dispatch_lock_path)
+        try:
+            with lock:
+                status = self._ledger.status(request_id)
+                if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                    raise ValueError("request_id não está em estado incerto reconciliável.")
+                self._ledger.reconcile(request_id, executed=executed)
+        except OSError as exc:
+            raise RuntimeError("não foi possível obter a barreira de reconciliação REAL") from exc
