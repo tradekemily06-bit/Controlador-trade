@@ -54,8 +54,15 @@ class RuntimeHealthMonitor:
             ledger_entries = len(self.ledger.records())
             records = self.lifecycle.records()
             recovery = self.recovery.assess()
-        except ValueError as exc:
-            return RuntimeHealth(HealthState.BLOCKED, 0, 0, 0, RecoveryState.INVALID, f"estado inválido: {exc}")
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            return RuntimeHealth(
+                HealthState.BLOCKED,
+                0,
+                0,
+                0,
+                RecoveryState.INVALID,
+                f"estado operacional indisponível: {type(exc).__name__}",
+            )
 
         pending = sum(r.state is ExecutionLifecycleState.PENDING for r in records)
         unknown = sum(r.state is ExecutionLifecycleState.UNKNOWN for r in records)
