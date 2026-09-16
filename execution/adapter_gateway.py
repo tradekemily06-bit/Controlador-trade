@@ -19,10 +19,7 @@ class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
-    # True means the adapter was invoked but its terminal outcome was not
-    # safely established. REAL must preserve this as UNKNOWN.
     uncertain: bool = False
-    # Exact immutable adapter identity resolved by the registry for this call.
     adapter_id: str | None = None
 
 
@@ -31,7 +28,6 @@ class BrokerAdapterGateway:
 
     @staticmethod
     def _safe_error(exc: Exception) -> str:
-        """Expose only the exception type across the broker boundary."""
         return type(exc).__name__
 
     def __init__(self, registry: BrokerRegistry) -> None:
@@ -47,14 +43,11 @@ class BrokerAdapterGateway:
             raise AdapterGatewayError(f"adapter identity unavailable: {self._safe_error(exc)}") from exc
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
-        # This boundary is reserved for the explicit REAL dispatch path.
-        # DEMO must stay behind the DEMO gateway/executor so a low-level broker
-        # adapter cannot accidentally become an execution bypass.
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
 
         try:
-            adapter = self._registry._get_for_gateway(
+            adapter = self._registry.resolve_for_gateway(
                 broker,
                 capability=_BROKER_GATEWAY_CAPABILITY,
             )
@@ -83,25 +76,10 @@ class BrokerAdapterGateway:
             )
 
         if not isinstance(result, ExecutionResult):
-            return AdapterExecutionResult(
-                False,
-                "adapter retornou resultado inválido; execução não confirmável.",
-                uncertain=True,
-                adapter_id=resolved_adapter_id,
-            )
+            return AdapterExecutionResult(False, "adapter retornou resultado inválido; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
         if not isinstance(result.accepted, bool):
-            return AdapterExecutionResult(
-                False,
-                "adapter retornou estado de aceite inválido; execução não confirmável.",
-                uncertain=True,
-                adapter_id=resolved_adapter_id,
-            )
+            return AdapterExecutionResult(False, "adapter retornou estado de aceite inválido; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
         if not isinstance(result.message, str):
-            return AdapterExecutionResult(
-                False,
-                "adapter retornou mensagem inválida; execução não confirmável.",
-                uncertain=True,
-                adapter_id=resolved_adapter_id,
-            )
+            return AdapterExecutionResult(False, "adapter retornou mensagem inválida; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
 
         return AdapterExecutionResult(result.accepted, result.message, result, adapter_id=resolved_adapter_id)
