@@ -37,3 +37,15 @@ def test_real_safety_provider_never_falls_back_on_provider_failure():
 
     with pytest.raises(RuntimeError):
         read_authoritative_real_safety(BrokenProvider())
+
+
+def test_real_safety_gate_rejects_non_boolean_prerequisite():
+    with pytest.raises(TypeError):
+        RealSafetyGate().evaluate(
+            authorization_active=True,
+            kill_switch_clear=1,
+            market_healthy=True,
+            recovery_safe=True,
+            risk_approved=True,
+            broker_available=True,
+        )
