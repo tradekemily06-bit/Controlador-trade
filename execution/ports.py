@@ -20,6 +20,9 @@ class ExecutionRequest:
     duration_seconds: int
     mode: ExecutionMode
     request_id: str | None = None
+    # Immutable decision-time risk identity carried into the final execution boundary.
+    # REAL requires it to match DecisionSnapshot.risk_state_identity.
+    risk_state_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)
