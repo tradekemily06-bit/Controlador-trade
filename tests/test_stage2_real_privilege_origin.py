@@ -9,7 +9,7 @@ from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p115_shadow_validation import ShadowValidationBoundary
-from core.p116_real_release_audit import RealReleaseAuditAuditBoundary if False else RealReleaseAuditBoundary
+from core.p116_real_release_audit import RealReleaseAuditBoundary
 from core.p117_real_admission import RealAdmission, RealAdmissionStatus, RealAdmissionBoundary
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.real_privilege_issuer import RealPrivilegeIssuer
@@ -98,7 +98,8 @@ def test_active_authorization_cannot_be_rebound_with_dataclass_replace():
 
 def test_admitted_privilege_cannot_be_rebound_with_dataclass_replace():
     authorization = _active_authorization()
-    admission = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_admission(
+    issuer = RealPrivilegeIssuer(BrokerAdapterGateway(_registry()))
+    admission = issuer.issue_admission(
         admission_id="adm", authorization=authorization,
         release_audit=_release_audit(),
         safety=RealSafetyGate().evaluate(
