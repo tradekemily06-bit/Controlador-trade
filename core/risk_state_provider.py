@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from core.models import OperationalState
+from core.operational_state import OperationalState
 
 
 @runtime_checkable
