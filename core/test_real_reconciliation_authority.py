@@ -7,7 +7,7 @@ class Query:
         self.status = status
 
     def query_order(self, external_id):
-        return ExternalOrderObservation(external_id, self.status, "broker", request_id="req", evidence_source="broker", broker_id="broker", symbol="BTCUSD")
+        return ExternalOrderObservation(external_id, self.status, "broker")
 
 
 def test_authority_requires_terminal_broker_observation():
