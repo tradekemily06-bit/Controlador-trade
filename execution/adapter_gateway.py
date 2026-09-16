@@ -23,9 +23,6 @@ class AdapterExecutionResult:
     adapter_id: str | None = None
 
 
-_REAL_ADAPTER_GATEWAY_CAPABILITY = object()
-
-
 class BrokerAdapterGateway:
     """Single broker execution boundary; adapters never leave the registry."""
 
@@ -38,23 +35,14 @@ class BrokerAdapterGateway:
             raise ValueError("registry inválido.")
         self._registry = registry
 
-    def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
-        """Public compatibility surface: direct broker dispatch is fail-closed."""
-        return AdapterExecutionResult(
-            False,
-            "dispatch REAL direto no broker gateway bloqueado; use o gateway operacional REAL",
-        )
+    def adapter_id(self, broker: str) -> str:
+        """Resolve adapter identity without exposing the executable adapter."""
+        try:
+            return self._registry.adapter_id(broker)
+        except BrokerRegistryError as exc:
+            raise AdapterGatewayError(f"adapter identity unavailable: {self._safe_error(exc)}") from exc
 
-    def execute_from_real_gateway(
-        self,
-        broker: str,
-        request: ExecutionRequest,
-        *,
-        capability: object,
-    ) -> AdapterExecutionResult:
-        """Dispatch only from the authoritative REAL execution gateway."""
-        if capability is not _REAL_ADAPTER_GATEWAY_CAPABILITY:
-            raise PermissionError("dispatch REAL exige a capacidade privada do gateway operacional")
+    def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
 
