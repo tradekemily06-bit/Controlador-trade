@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from execution.broker_registry import BrokerRegistry, BrokerRegistryError
+from execution.broker_registry import (
+    BrokerRegistry,
+    BrokerRegistryError,
+    _BROKER_GATEWAY_CAPABILITY,
+)
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -18,7 +22,7 @@ class AdapterExecutionResult:
 
 
 class BrokerAdapterGateway:
-    """Thin broker boundary; it never contains trading or signal logic."""
+    """Single broker execution boundary; adapters never leave the registry."""
 
     @staticmethod
     def _safe_error(exc: Exception) -> str:
@@ -26,6 +30,8 @@ class BrokerAdapterGateway:
         return type(exc).__name__
 
     def __init__(self, registry: BrokerRegistry) -> None:
+        if not isinstance(registry, BrokerRegistry):
+            raise ValueError("registry inválido.")
         self._registry = registry
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
@@ -36,7 +42,10 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
 
         try:
-            adapter = self._registry.get(broker)
+            adapter = self._registry._get_for_gateway(
+                broker,
+                capability=_BROKER_GATEWAY_CAPABILITY,
+            )
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, f"broker registry rejected request: {self._safe_error(exc)}")
 
