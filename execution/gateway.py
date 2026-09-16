@@ -91,9 +91,7 @@ class ExecutionGateway:
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
 
-    def set_operational_barrier_provider(
-        self, provider: Callable[[], GlobalOperationalBarrier] | None
-    ) -> None:
+    def set_operational_barrier_provider(self, provider: Callable[[], GlobalOperationalBarrier] | None) -> None:
         """Bind the barrier once; an established provider cannot be replaced or removed."""
         if self._operational_barrier_provider_locked:
             raise RuntimeError("barreira operacional já está vinculada e não pode ser substituída")
@@ -188,14 +186,12 @@ class ExecutionGateway:
         return replace(request, risk_state_fingerprint=snapshot.risk_state_identity)
 
     def _dispatch_with_authoritative_barriers(
-        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None
+        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, event_time: datetime
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
         lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
         with lock:
-            final_safety_error = self._final_safety_barrier(
-                now=datetime.now(timezone.utc), snapshot=snapshot
-            )
+            final_safety_error = self._final_safety_barrier(now=event_time, snapshot=snapshot)
             if final_safety_error is not None:
                 return None, final_safety_error
             try:
@@ -214,15 +210,7 @@ class ExecutionGateway:
         except (OSError, ValueError):
             pass
 
-    def execute(
-        self,
-        request_id: str,
-        request: ExecutionRequest,
-        *,
-        snapshot: DecisionSnapshot | None = None,
-        timestamp: datetime | None = None,
-        entry_conditions: tuple[str, ...] = (),
-    ) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
@@ -266,7 +254,7 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
         try:
-            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
+            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, event_time=event_time)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:
@@ -308,7 +296,7 @@ class ExecutionGateway:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError):
                 self._mark_unknown(request_id, event_time, "execução aceita, mas persistência do ciclo falhou")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou", result)
         self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
@@ -328,28 +316,24 @@ class ExecutionGateway:
         try:
             current = self._lifecycle.get(request_id)
             if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-            elif current.state is not ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                return
+            if current.state is ExecutionLifecycleState.ACCEPTED:
+                return
+            self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
         except (OSError, ValueError):
             pass
 
-    @staticmethod
-    def _validate(request_id: str, request: ExecutionRequest) -> str | None:
+    def _validate(self, request_id: str, request: ExecutionRequest) -> str | None:
         if not isinstance(request_id, str) or not request_id.strip():
-            return "request_id não pode ser vazio."
+            return "request_id é obrigatório."
         if not isinstance(request, ExecutionRequest):
-            return "requisição de execução inválida."
+            return "request inválida."
+        if request.request_id != request_id:
+            return "request_id da requisição difere do identificador do gateway."
         if request.mode is not ExecutionMode.DEMO:
-            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
-        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return "P5: execução REAL não está disponível; use DEMO."
+        if request.signal is Signal.AGUARDAR:
             return "sinal AGUARDAR não pode ser executado."
-        if not isinstance(request.symbol, str) or not request.symbol.strip():
-            return "Símbolo não pode ser vazio."
         if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
-        if request.request_id is not None and request.request_id != request_id:
-            return "request_id externo difere da identidade da requisição."
+            return "amount deve ser maior que zero."
         return None
