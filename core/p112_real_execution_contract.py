@@ -19,13 +19,7 @@ class _RealAuthorizationProof:
 
 @dataclass(frozen=True, slots=True)
 class RealExecutionAuthorization:
-    """Immutable authorization bound to one exact REAL operation.
-
-    Active authorization is issued only by the trusted issuer boundary. The
-    private immutable proof is bound to every privileged identity field, so a
-    copied, mutated or reconstructed object cannot remain active after its
-    identity changes.
-    """
+    """Immutable authorization bound to one exact REAL operation."""
 
     authorization_id: str
     audit_id: str
@@ -47,16 +41,12 @@ class RealExecutionAuthorization:
                 raise ValueError(f"{name} é obrigatório.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
-        # A caller must never be able to manufacture an active privilege merely
-        # by setting the public booleans.  A forged/invalid proof is itself a
-        # security violation, rather than an ordinary inactive state.
-        if self.explicitly_enabled and self.real_execution_allowed and not self.issuer_valid:
+        # Public reconstruction with active flags is never accepted.  A valid
+        # issued proof is required; an altered proof simply becomes inactive so
+        # callers can carry a rejected/rebound object to the gateway, where the
+        # final authorization barrier blocks it without allowing privilege.
+        if self.explicitly_enabled and self.real_execution_allowed and self._issuer_token is None:
             raise PermissionError("autorização REAL ativa só pode ser emitida pela autoridade REAL autorizada.")
-        # A previously issued proof cannot be rebound through dataclasses.replace
-        # or equivalent reconstruction.  The proof is immutable but its identity
-        # is checked against the current object on every construction.
-        if self._issuer_token is not None and not self.issuer_valid:
-            raise PermissionError("prova de autorização REAL não corresponde à identidade autorizada.")
 
     @classmethod
     def _issue(
