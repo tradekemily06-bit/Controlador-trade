@@ -27,6 +27,11 @@ class MT5DemoRiskStateProvider:
     policy. It never invents missing values: unsupported or unavailable fields are
     returned as UNKNOWN, while failures to obtain required account/history data
     raise so the execution gateway can fail closed.
+
+    ``last_processed_candle`` is intentionally left UNKNOWN here. MT5 can expose
+    the latest available market candle, but it cannot prove which candle the
+    Controlador strategy actually processed. Treating the latest available bar
+    as a processed bar would create a false authority claim in the risk identity.
     """
 
     def __init__(
@@ -84,7 +89,7 @@ class MT5DemoRiskStateProvider:
                 net_position=self._net_position(scoped_positions, mt5),
                 exposure=self._exposure(scoped_positions, mt5),
                 market_open=self._market_open(mt5),
-                last_processed_candle=self._last_candle(mt5),
+                last_processed_candle=None,
             )
         except MT5RiskStateProviderError:
             raise
@@ -236,16 +241,10 @@ class MT5DemoRiskStateProvider:
         return True
 
     def _last_candle(self, mt5: Any) -> datetime | None:
-        symbol = self.config.symbol
-        timeframe = self.config.timeframe
-        if not symbol or timeframe is None or not hasattr(mt5, "copy_rates_from_pos"):
-            return None
-        rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, 1)
-        if rates is None or len(rates) == 0:
-            return None
-        value = rates[0]["time"] if hasattr(rates[0], "__getitem__") else getattr(rates[0], "time", None)
-        if isinstance(value, datetime):
-            return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        if isinstance(value, (int, float)) and math.isfinite(float(value)):
-            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        """Never equate an available MT5 bar with a strategy-processed bar.
+
+        The authoritative processed-candle marker must come from the strategy
+        runtime itself. Until that source is connected, UNKNOWN is safer than
+        fabricating processing state from market-data availability.
+        """
         return None
