@@ -69,9 +69,6 @@ def build_operational_runtime(
     demo_risk_state = DemoRiskStateStore(root / "demo-risk-state.json")
     try:
         safety_audit, persisted_switch = safety_store.load()
-        # OperationalSafetyStore returns the persisted KillSwitchState directly.
-        # Keep this boundary compatible with that contract and fail closed on
-        # malformed persisted state rather than assuming a nested ``state``.
         initial_enabled = persisted_switch.enabled
         initial_reason = persisted_switch.reason
         safety_state_valid = True
@@ -110,17 +107,19 @@ def build_operational_runtime(
             risk_store=demo_risk_state,
             risk_fingerprint_provider=demo_risk_state.fingerprint,
         )
-        runtime_risk_provider: RiskStateProvider = demo_risk_state
+        runtime_risk_provider: RiskStateProvider = risk_state_provider or demo_risk_state
     elif isinstance(executor, PaperExecutor):
         # PAPER remains inside the same authoritative DEMO risk guard even when
         # explicitly injected. A caller cannot swap in an arbitrary executor
-        # and thereby bypass the runtime's risk-state contract.
+        # and thereby bypass the runtime's risk-state contract. If a provider is
+        # explicitly supplied, it remains authoritative for the gateway-level
+        # risk identity; the local DEMO guard still fails closed independently.
         effective_executor = DemoRiskDispatchGuard(
             executor,
             risk_store=demo_risk_state,
             risk_fingerprint_provider=demo_risk_state.fingerprint,
         )
-        runtime_risk_provider = demo_risk_state
+        runtime_risk_provider = risk_state_provider or demo_risk_state
     elif isinstance(executor, DemoBrokerExecutionPort):
         if risk_state_provider is None:
             raise RuntimeError("broker DEMO execution requires an authoritative risk-state provider")
