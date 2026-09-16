@@ -56,10 +56,17 @@ class BrokerRegistry:
         if capability is not _BROKER_GATEWAY_CAPABILITY:
             raise BrokerRegistryError("acesso ao adapter exige a barreira do broker gateway")
         normalized = self._normalize_name(name)
+        adapters = self._adapters
         try:
-            return self._adapters[normalized]
+            return adapters[normalized]
         except KeyError as exc:
             raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
+
+    # Compatibility shim for pre-consolidation internal callers/tests. It does
+    # not relax the capability barrier and never exposes adapters without the
+    # exact private gateway capability.
+    def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
+        return self.resolve_for_gateway(name, capability=capability)
 
     def adapter_id(self, name: str) -> str:
         """Return immutable adapter identity metadata without exposing the adapter."""
