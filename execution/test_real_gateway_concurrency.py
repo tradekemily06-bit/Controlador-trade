@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import multiprocessing
 from pathlib import Path
 import time
@@ -48,10 +49,11 @@ def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
         FakeRiskStateProvider(_risk_state()),
         FakeRealSafetyProvider(safety),
     )
+    request = replace(_request(), request_id=request_id)
     result = gateway.execute(
         broker="fake",
         request_id=request_id,
-        request=_request(),
+        request=request,
         authorization=auth,
         admission=_admission(auth),
         safety=safety,
