@@ -34,6 +34,19 @@ class DecisionSnapshot:
     timeframe: str | None
     risk_state_fingerprint: str | None = None
     created_at: datetime | None = None
+    # Legacy alias retained so persisted/older callers do not silently lose
+    # the identity. Both names always refer to the same immutable value.
+    risk_state_identity: str | None = None
+
+    def __post_init__(self) -> None:
+        fingerprint = self.risk_state_fingerprint
+        identity = self.risk_state_identity
+        if fingerprint is not None and identity is not None and fingerprint != identity:
+            raise ValueError("risk_state_fingerprint e risk_state_identity divergem")
+        if fingerprint is None and identity is not None:
+            object.__setattr__(self, "risk_state_fingerprint", identity)
+        elif identity is None and fingerprint is not None:
+            object.__setattr__(self, "risk_state_identity", fingerprint)
 
     @classmethod
     def from_results(
@@ -46,6 +59,7 @@ class DecisionSnapshot:
         operational_state: OperationalState | None,
         created_at: datetime | None = None,
     ) -> "DecisionSnapshot":
+        fingerprint = risk_state_fingerprint(operational_state) if operational_state is not None else None
         return cls(
             signal=analysis.signal.value,
             analysis_score=analysis.score,
@@ -63,12 +77,11 @@ class DecisionSnapshot:
             consecutive_losses=(operational_state.consecutive_losses if operational_state is not None else None),
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
-            risk_state_fingerprint=(risk_state_fingerprint(operational_state) if operational_state is not None else None),
+            risk_state_fingerprint=fingerprint,
             created_at=created_at,
         )
 
     def explain(self) -> str:
-        """Retorna uma explicação humana, determinística e auditável."""
         context = self.market_context or "INDISPONÍVEL"
         direction = self.market_direction or "INDISPONÍVEL"
         return (
@@ -81,7 +94,6 @@ class DecisionSnapshot:
         )
 
     def as_dict(self) -> dict[str, Any]:
-        """Converte o snapshot para dados simples, adequados à auditoria."""
         return {
             "signal": self.signal,
             "analysis_score": self.analysis_score,
@@ -100,5 +112,6 @@ class DecisionSnapshot:
             "symbol": self.symbol,
             "timeframe": self.timeframe,
             "risk_state_fingerprint": self.risk_state_fingerprint,
+            "risk_state_identity": self.risk_state_identity,
             "created_at": self.created_at,
         }
