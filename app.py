@@ -226,7 +226,7 @@ def application(environ, start_response):
         if path == "/api/learning/professor/activity" and method == "POST":
             result = SERVICE.professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/attempts" and method == "POST":
-            result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result.__dict__, "execution_allowed": False}, request_id, environ)
+            result = SERVICE.add_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
         if path.startswith("/web/") and method == "GET":

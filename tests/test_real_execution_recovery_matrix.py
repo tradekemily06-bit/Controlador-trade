@@ -60,6 +60,9 @@ class CrashBeforeMarkAcceptedLedger(ExecutionLedger):
     def mark_accepted(self, request_id: str) -> None:
         raise OSError("simulated process death before mark_accepted")
 
+    def mark_accepted_real(self, request_id: str, *, external_id: str) -> None:
+        raise OSError("simulated process death before mark_accepted_real")
+
 
 def _state() -> OperationalState:
     return RiskProvider().current_risk_state()
@@ -130,7 +133,7 @@ def _reconcile(path: str, request_id: str, queue) -> None:
 
 def test_reserved_dispatch_and_reconciliation_race_never_sends(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    ExecutionLedger(path).reserve("reserved-race")
+    ExecutionLedger(path).reserve_real("reserved-race", broker_id="fake", symbol="TEST")
     calls = multiprocessing.Value("i", 0)
     queue = multiprocessing.Queue()
     ctx = multiprocessing.get_context("fork")
