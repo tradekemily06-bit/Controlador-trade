@@ -6,25 +6,11 @@ from typing import Any
 
 from core.kill_switch import KillSwitch
 from core.operational_runtime import build_operational_runtime
-from execution.broker_registry import BrokerRegistry, _BROKER_GATEWAY_CAPABILITY
+from execution.demo_broker_port import build_ic_markets_mt5_demo_port
 from execution.gateway import ExecutionGateway
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5DemoRiskStateProvider
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
-
-
-def _build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
-    """Internal composition helper; no public adapter factory is exported."""
-    registry = BrokerRegistry()
-    registry.register(
-        IC_MARKETS_MT5_DEMO,
-        ICMarketsMT5DemoAdapter(
-            ICMarketsMT5DemoConfig(symbol=symbol),
-            mt5_module=mt5_module,
-        ),
-    )
-    return registry
 
 
 def build_ic_markets_mt5_demo_gateway(
@@ -37,18 +23,16 @@ def build_ic_markets_mt5_demo_gateway(
 ) -> ExecutionGateway:
     """Compose IC Markets MT5 DEMO only through the full operational runtime.
 
-    The returned gateway owns the durable execution ledger, lifecycle state,
-    maintenance state, safety store and cross-process dispatch lock supplied by
-    ``build_operational_runtime``. The broker adapter remains private to this
-    composition boundary.
+    The broker adapter is encapsulated by ``DemoBrokerExecutionPort`` and is
+    bound to the operational gateway by the runtime. No raw broker adapter is
+    handed to ``ExecutionGateway``.
     """
     if not isinstance(timeframe, int) or isinstance(timeframe, bool) or timeframe <= 0:
         raise ValueError("timeframe deve ser um inteiro positivo")
 
-    registry = _build_demo_registry(mt5_module=mt5_module, symbol=symbol)
-    adapter = registry._get_for_gateway(
-        IC_MARKETS_MT5_DEMO,
-        capability=_BROKER_GATEWAY_CAPABILITY,
+    broker_port = build_ic_markets_mt5_demo_port(
+        symbol=symbol,
+        mt5_module=mt5_module,
     )
     risk_provider = MT5DemoRiskStateProvider(
         MT5DemoRiskStateConfig(symbol=symbol, timeframe=timeframe),
@@ -60,7 +44,7 @@ def build_ic_markets_mt5_demo_gateway(
     )
     runtime = build_operational_runtime(
         root,
-        executor=adapter,
+        executor=broker_port,
         risk_state_provider=risk_provider,
     )
 
