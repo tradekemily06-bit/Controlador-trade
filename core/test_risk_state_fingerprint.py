@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -28,6 +28,15 @@ def _state(**overrides) -> OperationalState:
 
 def test_risk_state_identity_is_deterministic() -> None:
     assert risk_state_identity(_state()) == risk_state_identity(_state())
+
+
+def test_equivalent_instants_with_different_offsets_have_same_identity() -> None:
+    utc = datetime(2026, 9, 15, 20, 0, tzinfo=timezone.utc)
+    offset = timezone(timedelta(hours=-3))
+    equivalent = utc.astimezone(offset)
+    assert risk_state_identity(_state(last_processed_candle=utc)) == risk_state_identity(
+        _state(last_processed_candle=equivalent)
+    )
 
 
 @pytest.mark.parametrize(
