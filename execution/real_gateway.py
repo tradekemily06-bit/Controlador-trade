@@ -61,7 +61,10 @@ class RealExecutionGateway:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
-        if request.request_id is not None and (not isinstance(request.request_id, str) or not request.request_id.strip()):
+        # REAL execution must carry the identity that is bound to the gateway call.
+        # DEMO may retain legacy optional request IDs, but REAL cannot have an
+        # anonymous intent because idempotency/reconciliation depend on it.
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -209,7 +212,7 @@ class RealExecutionGateway:
             return safety_result
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if request.request_id is not None and request.request_id != request_id:
+        if request.request_id != request_id:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id externo difere da identidade da requisição; dispatch REAL bloqueado.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
