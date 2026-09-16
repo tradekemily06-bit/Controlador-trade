@@ -60,10 +60,22 @@ def build_operational_runtime(
     invent an operational state source or fall back to a decision snapshot;
     when supplied it is passed unchanged to the execution gateway for
     immediate pre-dispatch risk revalidation.
+
+    Non-PAPER executors are never composed without an explicit risk-state
+    provider. PAPER remains the isolated local simulator and therefore keeps
+    the backwards-compatible provider-free construction path. This prevents a
+    future broker adapter from accidentally becoming executable with only a
+    decision-time snapshot and no authoritative pre-dispatch risk source.
     """
     if _public_saas_multi_instance():
         raise RuntimeError(
             "multi-instance public SaaS requires a shared authoritative operational state provider"
+        )
+
+    selected_executor = executor or PaperExecutor()
+    if not isinstance(selected_executor, PaperExecutor) and risk_state_provider is None:
+        raise RuntimeError(
+            "non-PAPER DEMO execution requires an authoritative risk-state provider"
         )
 
     root = Path(root)
@@ -110,7 +122,7 @@ def build_operational_runtime(
         recovery=recovery,
     )
     gateway = ExecutionGateway(
-        executor or PaperExecutor(),
+        selected_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
