@@ -111,14 +111,6 @@ class ExecutionLedger:
                     raise ValueError("ledger de execução inválido: external_id duplicado.")
                 seen_external_ids.add(normalized_external_id)
             context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": normalized_external_id}
-
-        # A reconciled REAL operation must retain its immutable operation context.
-        # Otherwise restart would leave a terminal audit record without the
-        # broker/symbol identity that was actually reconciled.
-        for request_id, status in states.items():
-            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RECONCILED_EXECUTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and request_id not in context:
-                raise ValueError("ledger de execução inválido: contexto REAL ausente para estado que exige identidade.")
-
         return states, evidence, context
 
     def _write(self) -> None:
