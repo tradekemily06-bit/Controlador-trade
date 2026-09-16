@@ -10,8 +10,11 @@ from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary
-from core.p117_real_admission import RealAdmission, RealAdmissionStatus, RealAdmissionBoundary
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p117_real_admission import RealAdmissionStatus, RealAdmissionBoundary
+from core.p112_real_execution_contract import (
+    RealExecutionAuthorization,
+    _REAL_AUTHORIZATION_ISSUER_CAPABILITY,
+)
 from core.real_privilege_issuer import RealPrivilegeIssuer
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
@@ -68,6 +71,21 @@ def _active_authorization():
 def test_active_real_authorization_cannot_be_constructed_directly():
     with pytest.raises(PermissionError):
         RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", "req", "TEST", True, True)
+
+
+def test_real_authorization_factory_requires_private_capability():
+    kwargs = dict(
+        authorization_id="auth", audit_id="audit", broker_id="fake",
+        adapter_id="fake-adapter", request_id="req", symbol="TEST",
+    )
+    with pytest.raises(PermissionError):
+        RealExecutionAuthorization._issue(**kwargs, issuer_capability=None)
+    with pytest.raises(PermissionError):
+        RealExecutionAuthorization._issue(**kwargs, issuer_capability=object())
+    issued = RealExecutionAuthorization._issue(
+        **kwargs, issuer_capability=_REAL_AUTHORIZATION_ISSUER_CAPABILITY,
+    )
+    assert issued.active and issued.issuer_valid
 
 
 def test_legacy_public_admission_cannot_create_admitted_state():
@@ -157,13 +175,18 @@ def test_production_sources_have_single_active_real_privilege_origin():
 
 
 def test_only_authorized_issuer_uses_active_authorization_factory():
-    issuer_path = REPO_ROOT / AUTHORIZED_ISSUER
-    tree = ast.parse(issuer_path.read_text(encoding="utf-8"), filename=AUTHORIZED_ISSUER)
-    calls = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "RealExecutionAuthorization"
-        and node.func.attr == "_issue"
-    ]
-    assert len(calls) == 1
+    production_roots = [REPO_ROOT / name for name in ("app.py", "core", "execution", "integration", "security")]
+    violations = []
+    for root in production_roots:
+        paths = [root] if root.is_file() else list(root.rglob("*.py"))
+        for path in paths:
+            relative = path.relative_to(REPO_ROOT).as_posix()
+            if "/test" in relative or relative.startswith("tests/"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=relative)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    if isinstance(node.func.value, ast.Name) and node.func.value.id == "RealExecutionAuthorization" and node.func.attr == "_issue":
+                        if relative != AUTHORIZED_ISSUER:
+                            violations.append(f"{relative}:{node.lineno}: unauthorized authorization issuance")
+    assert violations == []
