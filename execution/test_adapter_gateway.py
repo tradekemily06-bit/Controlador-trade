@@ -1,4 +1,4 @@
-from execution.adapter_gateway import BrokerAdapterGateway
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_ADAPTER_GATEWAY_CAPABILITY
 from execution.broker_registry import BrokerRegistry
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from core.models import Signal
@@ -31,9 +31,29 @@ def gateway_with(adapter):
     return BrokerAdapterGateway(registry)
 
 
+def real_gateway_execute(gateway, broker, req):
+    return gateway.execute_from_real_gateway(broker, req, capability=_REAL_ADAPTER_GATEWAY_CAPABILITY)
+
+
+def test_adapter_gateway_public_execute_cannot_dispatch_real():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.uncertain is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_rejects_invalid_real_capability_without_touching_adapter():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute_from_real_gateway("fake", request(), capability=object())
+    assert result.accepted is False
+    assert result.uncertain is False
+    assert adapter.calls == 0
+
+
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is False
     assert adapter.calls == 0
@@ -41,7 +61,7 @@ def test_adapter_gateway_checks_availability_before_execution():
 
 def test_adapter_gateway_rejects_non_boolean_availability():
     adapter = FakeAdapter(available=1)
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is False
     assert adapter.calls == 0
@@ -49,7 +69,7 @@ def test_adapter_gateway_rejects_non_boolean_availability():
 
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is True
     assert result.uncertain is False
     assert result.execution is not None
@@ -59,7 +79,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
 
 def test_adapter_gateway_preserves_adapter_exception_as_uncertain():
     adapter = FakeAdapter(error=True)
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is True
     assert result.execution is None
@@ -68,7 +88,7 @@ def test_adapter_gateway_preserves_adapter_exception_as_uncertain():
 
 def test_adapter_gateway_marks_invalid_adapter_result_uncertain():
     adapter = FakeAdapter(result="invalid")
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is True
     assert result.execution is None
@@ -76,7 +96,7 @@ def test_adapter_gateway_marks_invalid_adapter_result_uncertain():
 
 def test_adapter_gateway_marks_non_boolean_acceptance_uncertain():
     adapter = FakeAdapter(result=ExecutionResult(1, "ok", "FAKE-1"))
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is True
     assert result.execution is None
@@ -85,7 +105,7 @@ def test_adapter_gateway_marks_non_boolean_acceptance_uncertain():
 
 def test_adapter_gateway_marks_non_string_message_uncertain():
     adapter = FakeAdapter(result=ExecutionResult(True, 123, "FAKE-1"))
-    result = gateway_with(adapter).execute("fake", request())
+    result = real_gateway_execute(gateway_with(adapter), "fake", request())
     assert result.accepted is False
     assert result.uncertain is True
     assert result.execution is None
@@ -95,7 +115,7 @@ def test_adapter_gateway_marks_non_string_message_uncertain():
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
-    result = gateway.execute("missing", request())
+    result = real_gateway_execute(gateway, "missing", request())
     assert result.accepted is False
     assert result.uncertain is False
     assert result.execution is None
@@ -103,7 +123,7 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
 def test_adapter_gateway_rejects_demo_without_touching_adapter():
     adapter = FakeAdapter()
-    result = gateway_with(adapter).execute("fake", request(ExecutionMode.DEMO))
+    result = real_gateway_execute(gateway_with(adapter), "fake", request(ExecutionMode.DEMO))
     assert result.accepted is False
     assert result.uncertain is False
     assert result.execution is None
