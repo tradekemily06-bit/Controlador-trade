@@ -174,6 +174,36 @@ def test_adapter_execute_is_only_called_by_execution_boundaries() -> None:
     assert not violations, "direct adapter/executor execution bypass found: " + ", ".join(sorted(violations))
 
 
+def test_imported_execution_objects_cannot_execute_outside_execution_boundary() -> None:
+    """Catch renamed/imported executor objects that evade name-based alias checks."""
+    violations = []
+    execution_symbols = {
+        "ExecutionGateway", "RealExecutionGateway", "BrokerAdapterGateway",
+        "PaperExecutor", "ExecutionPort", "BrokerAdapter", "ICMarketsMT5DemoAdapter",
+    }
+    for path in _runtime_python_files():
+        if path.resolve() in EXECUTION_BOUNDARIES:
+            continue
+        tree = _tree(path)
+        imported = set()
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and isinstance(node.module, str) and node.module.startswith("execution."):
+                for alias in node.names:
+                    if alias.name in execution_symbols:
+                        imported.add(alias.asname or alias.name)
+        if not imported:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "execute":
+                continue
+            receiver = node.func.value
+            direct = isinstance(receiver, ast.Name) and receiver.id in imported
+            constructed = isinstance(receiver, ast.Call) and isinstance(receiver.func, ast.Name) and receiver.func.id in imported
+            if direct or constructed:
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    assert not violations, "renamed/imported execution object executed outside the execution boundary: " + ", ".join(sorted(violations))
+
+
 def test_http_application_never_constructs_or_calls_an_executor() -> None:
     tree = _tree(ROOT / "app.py")
     violations = []
@@ -213,6 +243,19 @@ def test_ledger_mutations_are_only_called_by_execution_boundaries() -> None:
                 elif isinstance(receiver, ast.Attribute) and receiver.attr in ledger_names:
                     violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:{node.func.attr}")
     assert not violations, "execution-ledger mutation bypass found through direct receiver or alias: " + ", ".join(sorted(violations))
+
+
+def test_execution_ledger_file_is_not_written_through_a_side_channel() -> None:
+    """The canonical ledger path may only be owned by the runtime composer/ledger implementation."""
+    allowed = {ROOT / "core" / "operational_runtime.py", LEDGER}
+    allowed = {path.resolve() for path in allowed}
+    violations = []
+    for path in _runtime_python_files():
+        if path.resolve() in allowed:
+            continue
+        if "execution-ledger.json" in path.read_text(encoding="utf-8"):
+            violations.append(str(path.relative_to(ROOT)))
+    assert not violations, "canonical execution ledger path referenced outside its owner: " + ", ".join(sorted(violations))
 
 
 def test_ledger_implementation_is_not_constructed_as_a_side_channel() -> None:
