@@ -80,6 +80,16 @@ def test_raw_adapter_execute_is_confined_to_adapter_gateway():
     assert not offenders, f"raw adapter.execute side door detected: {offenders}"
 
 
+def test_raw_broker_order_send_is_confined_to_mt5_adapter():
+    offenders: list[str] = []
+    for path in _production_python_files():
+        if path.name == "icmarkets_mt5_demo_adapter.py":
+            continue
+        if ".order_send(" in path.read_text(encoding="utf-8"):
+            offenders.append(str(path.relative_to(ROOT)))
+    assert not offenders, f"raw MT5 order_send side door detected: {offenders}"
+
+
 def test_mt5_demo_adapter_construction_is_confined_to_demo_broker_port():
     offenders: list[str] = []
     for path in _production_python_files():
@@ -163,7 +173,7 @@ def test_real_admission_capability_import_is_confined_to_issuer():
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_REAL_ADMISSION_ISSUER_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
-    assert not offenders, f"REAL admission issuer capability leaked outside authority: {offenders}"
+    assert not offenders, f"REAL admission capability leaked outside authority: {offenders}"
 
 
 def test_no_production_module_constructs_active_real_authorization_directly():
