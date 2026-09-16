@@ -10,6 +10,7 @@ from core.global_operational_barrier import GlobalOperationalBarrier
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.real_reconciliation_authority import BrokerReconciliationEvidenceAuthority
 from core.real_safety_provider import RealSafetyProvider, read_authoritative_real_safety
 from core.risk_state_fingerprint import risk_state_identity
 from core.risk_state_provider import RiskStateProvider, read_authoritative_risk_state
@@ -38,7 +39,7 @@ class RealExecutionGateway:
     def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger,
                  risk_state_provider: RiskStateProvider, real_safety_provider: RealSafetyProvider,
                  operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
-                 reconciliation_evidence_verifier: Callable[..., bool] | None = None) -> None:
+                 reconciliation_evidence_verifier: BrokerReconciliationEvidenceAuthority | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -49,8 +50,8 @@ class RealExecutionGateway:
             raise ValueError("real_safety_provider autoritativo é obrigatório para execução REAL.")
         if operational_barrier_provider is not None and not callable(operational_barrier_provider):
             raise ValueError("operational_barrier_provider inválido.")
-        if reconciliation_evidence_verifier is not None and not callable(reconciliation_evidence_verifier):
-            raise ValueError("reconciliation_evidence_verifier inválido.")
+        if reconciliation_evidence_verifier is not None and not isinstance(reconciliation_evidence_verifier, BrokerReconciliationEvidenceAuthority):
+            raise ValueError("reconciliation_evidence_verifier deve ser uma autoridade de evidência REAL autorizada.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._risk_state_provider = risk_state_provider
@@ -59,15 +60,25 @@ class RealExecutionGateway:
         self._reconciliation_evidence_verifier = reconciliation_evidence_verifier
         self._processed_request_ids: set[str] = set(ledger.records())
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
+        self._dispatch_started = False
+        self._reconciliation_started = False
 
     def set_operational_barrier_provider(self, provider: Callable[[], GlobalOperationalBarrier] | None) -> None:
+        if self._dispatch_started or self._reconciliation_started:
+            raise RuntimeError("barreira operacional REAL já foi vinculada ao ciclo de execução e não pode ser substituída")
         if provider is not None and not callable(provider):
             raise ValueError("operational_barrier_provider inválido.")
+        if self._operational_barrier_provider is not None and provider is not self._operational_barrier_provider:
+            raise RuntimeError("barreira operacional REAL já configurada; substituição não permitida")
         self._operational_barrier_provider = provider
 
-    def set_reconciliation_evidence_verifier(self, verifier: Callable[..., bool] | None) -> None:
-        if verifier is not None and not callable(verifier):
-            raise ValueError("reconciliation_evidence_verifier inválido.")
+    def set_reconciliation_evidence_verifier(self, verifier: BrokerReconciliationEvidenceAuthority | None) -> None:
+        if self._dispatch_started or self._reconciliation_started:
+            raise RuntimeError("autoridade de evidência REAL já foi usada e não pode ser substituída")
+        if verifier is not None and not isinstance(verifier, BrokerReconciliationEvidenceAuthority):
+            raise ValueError("reconciliation_evidence_verifier deve ser uma autoridade de evidência REAL autorizada.")
+        if self._reconciliation_evidence_verifier is not None and verifier is not self._reconciliation_evidence_verifier:
+            raise RuntimeError("autoridade de evidência REAL já configurada; substituição não permitida")
         self._reconciliation_evidence_verifier = verifier
 
     def _global_barrier_error(self) -> str | None:
@@ -148,7 +159,6 @@ class RealExecutionGateway:
 
     def _dispatch_locked(self, broker: str, request_id: str, request: ExecutionRequest,
                          safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
-        """One shared lock covers replay, authoritative revalidation and broker side effect."""
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -164,11 +174,7 @@ class RealExecutionGateway:
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
-        for revalidator in (
-            self._global_barrier_revalidation,
-            lambda: self._revalidate_risk(snapshot),
-            lambda: self._revalidate_safety(safety),
-        ):
+        for revalidator in (self._global_barrier_revalidation, lambda: self._revalidate_risk(snapshot), lambda: self._revalidate_safety(safety)):
             result = revalidator()
             if result is not None:
                 try:
@@ -217,6 +223,7 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
+        self._dispatch_started = True
         if not isinstance(authorization, RealExecutionAuthorization) or not isinstance(admission, RealAdmission) or not isinstance(safety, RealSafetyReport):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto REAL inválido.")
         if not isinstance(snapshot, DecisionSnapshot):
@@ -257,11 +264,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a barreira de dispatch REAL: {self._safe_error(exc)}")
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Legacy reconciliation is intentionally disabled without authoritative external evidence."""
         raise RuntimeError("reconciliação REAL sem evidência externa autoritativa está bloqueada; use reconcile_unknown_with_evidence")
 
     def reconcile_unknown_with_evidence(self, request_id: str, *, executed: bool,
                                         evidence_id: str, evidence_source: str) -> None:
+        self._reconciliation_started = True
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
@@ -274,7 +281,7 @@ class RealExecutionGateway:
                 if self._ledger.status(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                     raise ValueError("request_id não está em estado incerto reconciliável.")
                 try:
-                    verified = bool(verifier(request_id=request_id, evidence_id=evidence_id.strip(), evidence_source=evidence_source.strip(), executed=executed))
+                    verified = bool(verifier.verify(request_id=request_id, evidence_id=evidence_id.strip(), evidence_source=evidence_source.strip(), executed=executed))
                 except Exception as exc:
                     raise RuntimeError(f"autoridade de evidência REAL indisponível: {self._safe_error(exc)}") from exc
                 if not verified:
