@@ -166,10 +166,9 @@ class MT5DemoRiskStateProvider:
             if not isinstance(contract, (int, float)) or not math.isfinite(float(contract)) or contract <= 0:
                 return None
             total += abs(float(volume) * float(price) * float(contract))
-        # Normalize deterministic monetary/notional arithmetic without masking
-        # materially different values. This removes binary floating-point tails
-        # such as 11000.000000000002 while retaining sub-cent precision.
-        return round(total, 12)
+        # Notional exposure is a numeric risk quantity. Normalize binary
+        # floating-point tails without inventing or materially rounding the value.
+        return round(total, 10)
 
     @staticmethod
     def _is_entry(deal: Any, mt5: Any) -> bool:
@@ -214,14 +213,13 @@ class MT5DemoRiskStateProvider:
 
     @classmethod
     def _consecutive_losses(cls, deals: Any, mt5: Any) -> int | None:
-        """Count consecutive losing position segments, not individual exit deals.
+        """Count consecutive losing position segments without inventing identity.
 
         Partial OUT/OUT_BY deals belonging to one position segment are aggregated.
         DEAL_ENTRY_INOUT is a reversal: its P/L closes the current segment and a
-        new segment begins immediately afterward. This matters because MT5 can
-        expose a position's reversal history under position-related identifiers;
-        grouping every exit for a position into one bucket could merge distinct
-        logical trade segments and understate the loss streak.
+        new segment begins immediately afterward. If any exit lacks MT5's logical
+        position identity, the loss streak is UNKNOWN rather than inferred from
+        ordering alone.
         """
         ordered_deals = sorted(
             enumerate(deals),
