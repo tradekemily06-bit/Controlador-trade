@@ -118,7 +118,7 @@ def _request(request_id: str) -> ExecutionRequest:
 
 def _gateway(path: Path, adapter, authority=None) -> RealExecutionGateway:
     registry = BrokerRegistry()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     return RealExecutionGateway(
         BrokerAdapterGateway(registry),
         ExecutionLedger(path),

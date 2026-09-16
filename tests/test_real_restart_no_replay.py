@@ -38,7 +38,7 @@ class AmbiguousAdapter:
 
 def _gateway(ledger_path: Path, adapter: AmbiguousAdapter, authority=None) -> RealExecutionGateway:
     registry = BrokerRegistry()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     auth = _authorization()
     return RealExecutionGateway(
         BrokerAdapterGateway(registry),
@@ -64,7 +64,7 @@ def test_restart_after_unknown_never_replays_the_order(tmp_path: Path) -> None:
         request_id=request_id,
         request=request,
         authorization=auth,
-        admission=_admission(auth),
+        admission=_admission(request_id, auth=auth),
         safety=safety,
         snapshot=_snapshot(),
     )
@@ -81,7 +81,7 @@ def test_restart_after_unknown_never_replays_the_order(tmp_path: Path) -> None:
         request_id=request_id,
         request=request,
         authorization=auth,
-        admission=_admission(auth),
+        admission=_admission(request_id, auth=auth),
         safety=safety,
         snapshot=_snapshot(),
     )
@@ -104,7 +104,7 @@ def test_restart_after_unknown_never_replays_the_order(tmp_path: Path) -> None:
         request_id=request_id,
         request=request,
         authorization=auth,
-        admission=_admission(auth),
+        admission=_admission(request_id, auth=auth),
         safety=safety,
         snapshot=_snapshot(),
     )

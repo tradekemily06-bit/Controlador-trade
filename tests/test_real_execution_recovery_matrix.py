@@ -100,7 +100,7 @@ def _request(request_id: str) -> ExecutionRequest:
 
 def _gateway(path: Path, calls, authority=None) -> RealExecutionGateway:
     registry = BrokerRegistry()
-    registry.register("fake", CountingAdapter(calls))
+    registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(path),
         RiskProvider(), SafetyProvider(),
@@ -202,7 +202,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     path = tmp_path / "ledger.json"
     calls = multiprocessing.Value("i", 0)
     registry = BrokerRegistry()
-    registry.register("fake", CountingAdapter(calls))
+    registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     crashed = RealExecutionGateway(
         BrokerAdapterGateway(registry), CrashBeforeMarkAcceptedLedger(path),
         RiskProvider(), SafetyProvider(),

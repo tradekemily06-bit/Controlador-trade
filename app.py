@@ -219,14 +219,14 @@ def application(environ, start_response):
             source = _learning_source_for_request(str(_read_json(environ).get("source_id", ""))); result = SERVICE.admit_learning_source(source); return _json_response(start_response, HTTPStatus.OK, {"source": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "POST":
-            result = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": result.__dict__, "execution_allowed": False}, request_id, environ)
+            result = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": result.__dict__, "learning_authorizes_trading": False, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/activities" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"activities": SERVICE.learning_activities_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/activities" and method == "POST":
             result = SERVICE.add_learning_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/professor/activity" and method == "POST":
             result = SERVICE.professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/attempts" and method == "POST":
-            result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result, "execution_allowed": False}, request_id, environ)
+            result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
         if path.startswith("/web/") and method == "GET":
