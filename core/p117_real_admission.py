@@ -6,6 +6,15 @@ from enum import Enum
 _REAL_ADMISSION_ISSUER_TOKEN = object()
 
 
+class _RealAdmissionProof:
+    __slots__ = ("identity",)
+
+    def __init__(self, token: object, identity: tuple[object, ...]) -> None:
+        if token is not _REAL_ADMISSION_ISSUER_TOKEN:
+            raise PermissionError("prova de emissão de admissão REAL inválida.")
+        self.identity = tuple(identity)
+
+
 class RealAdmissionStatus(str, Enum):
     ADMITTED = "ADMITTED"
     BLOCKED = "BLOCKED"
@@ -34,12 +43,19 @@ class RealAdmission:
             raise TypeError("status de admissão REAL inválido.")
         if not isinstance(self.reasons, tuple) or not all(isinstance(reason, str) for reason in self.reasons):
             raise TypeError("reasons da admissão REAL deve ser uma tupla de strings.")
-        if self.admitted and self._issuer_token is not _REAL_ADMISSION_ISSUER_TOKEN:
+        if self.admitted and not self.issuer_valid:
             raise PermissionError("admissão REAL ativa só pode ser emitida pela autoridade REAL autorizada.")
 
     @property
     def admitted(self) -> bool:
         return self.status is RealAdmissionStatus.ADMITTED
+
+    @property
+    def issuer_valid(self) -> bool:
+        expected = (self.admission_id, self.audit_id, self.status.value,
+                    self.broker_id, self.adapter_id, self.request_id,
+                    self.symbol, self.reasons)
+        return isinstance(self._issuer_token, _RealAdmissionProof) and self._issuer_token.identity == expected
 
 
 class RealAdmissionBoundary:
@@ -48,8 +64,8 @@ class RealAdmissionBoundary:
                safety_ready: bool, broker_available: bool) -> RealAdmission:
         from core.p112_real_execution_contract import RealExecutionAuthorization
 
-        if not isinstance(authorization, RealExecutionAuthorization) or not authorization.active:
-            raise PermissionError("autorização REAL ativa é obrigatória para emitir admissão.")
+        if not isinstance(authorization, RealExecutionAuthorization) or not authorization.active or not authorization.issuer_valid:
+            raise PermissionError("autorização REAL ativa e emitida pela autoridade são obrigatórias para emitir admissão.")
         broker_id = authorization.broker_id
         adapter_id = authorization.adapter_id
         request_id = authorization.request_id
@@ -70,20 +86,21 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
+        proof = None
+        if status is RealAdmissionStatus.ADMITTED:
+            identity = (admission_id, audit_id, status.value, broker_id,
+                        adapter_id, request_id, symbol, tuple(reasons))
+            proof = _RealAdmissionProof(_REAL_ADMISSION_ISSUER_TOKEN, identity)
         return RealAdmission(
             admission_id, audit_id, status, broker_id, adapter_id,
-            request_id, symbol, tuple(reasons), _REAL_ADMISSION_ISSUER_TOKEN,
+            request_id, symbol, tuple(reasons), proof,
         )
 
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
               broker_available: bool, broker_id: str, adapter_id: str,
               request_id: str, symbol: str) -> RealAdmission:
-        """Legacy/public entry point: it may only create BLOCKED state.
-
-        Active REAL admission must come from RealPrivilegeIssuer._issue(),
-        which derives identity from an already-issued authorization.
-        """
+        """Legacy/public entry point: it may only create BLOCKED state."""
         for name, value in (
             ("admission_id", admission_id), ("audit_id", audit_id),
             ("broker_id", broker_id), ("adapter_id", adapter_id),
