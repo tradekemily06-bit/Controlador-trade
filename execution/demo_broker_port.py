@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
-from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionPort, ExecutionResult
 
 
 class DemoBrokerExecutionPort:
-    """Broker-agnostic DEMO port that keeps the concrete adapter private.
+    """Broker-bound DEMO port whose public execute method cannot dispatch directly.
 
-    This object is intentionally placed inside the execution boundary. Higher
-    layers receive only the ExecutionPort contract and cannot obtain the
-    concrete broker adapter from the provider factory.
+    The concrete adapter is private. Actual broker-side dispatch is exposed only
+    through ``execute_from_gateway``, which the authoritative ExecutionGateway
+    recognizes as an internal execution capability.
     """
 
     def __init__(self, adapter: ICMarketsMT5DemoAdapter) -> None:
@@ -18,6 +18,11 @@ class DemoBrokerExecutionPort:
         self.__adapter = adapter
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.DEMO:
+            return ExecutionResult(False, "porta DEMO rejeitou requisição fora do modo DEMO")
+        return ExecutionResult(False, "dispatch direto do broker DEMO bloqueado; use o gateway operacional")
+
+    def execute_from_gateway(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "porta DEMO rejeitou requisição fora do modo DEMO")
         return self.__adapter.execute(request)
