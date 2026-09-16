@@ -197,7 +197,7 @@ class ExecutionGateway:
             try:
                 effective_request = self._request_for_dispatch(request, snapshot)
             except ValueError as exc:
-                return None, str(exc)
+                return None, f"requisição de dispatch inválida: {type(exc).__name__}"
             return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
