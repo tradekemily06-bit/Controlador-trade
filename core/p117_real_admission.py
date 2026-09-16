@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 _REAL_ADMISSION_ISSUER_TOKEN = object()
+_REAL_ADMISSION_ISSUER_CAPABILITY = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,9 +65,12 @@ class RealAdmission:
 class RealAdmissionBoundary:
     def _issue(self, *, admission_id: str, audit_id: str,
                audit_verified: bool, authorization: object,
-               safety_ready: bool, broker_available: bool) -> RealAdmission:
+               safety_ready: bool, broker_available: bool,
+               issuer_capability: object) -> RealAdmission:
         from core.p112_real_execution_contract import RealExecutionAuthorization
 
+        if issuer_capability is not _REAL_ADMISSION_ISSUER_CAPABILITY:
+            raise PermissionError("emissão de admissão REAL exige a capacidade privada do emissor autorizado.")
         if not isinstance(authorization, RealExecutionAuthorization) or not authorization.active or not authorization.issuer_valid:
             raise PermissionError("autorização REAL ativa e emitida pela autoridade são obrigatórias para emitir admissão.")
         broker_id = authorization.broker_id
