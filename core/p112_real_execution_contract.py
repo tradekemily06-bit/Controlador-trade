@@ -6,13 +6,14 @@ from dataclasses import dataclass
 _REAL_AUTHORIZATION_ISSUER_TOKEN = object()
 
 
+@dataclass(frozen=True, slots=True)
 class _RealAuthorizationProof:
-    __slots__ = ("identity",)
+    identity: tuple[str, ...]
+    _token: object
 
-    def __init__(self, token: object, identity: tuple[str, ...]) -> None:
-        if token is not _REAL_AUTHORIZATION_ISSUER_TOKEN:
+    def __post_init__(self) -> None:
+        if self._token is not _REAL_AUTHORIZATION_ISSUER_TOKEN:
             raise PermissionError("prova de emissão REAL inválida.")
-        self.identity = tuple(identity)
 
 
 @dataclass(frozen=True)
@@ -20,8 +21,9 @@ class RealExecutionAuthorization:
     """Immutable authorization bound to one exact REAL operation.
 
     Active authorization is issued only by the trusted issuer boundary. The
-    private proof is also bound to every privileged identity field so a copied
-    or reconstructed object cannot change identity and remain active.
+    private immutable proof is bound to every privileged identity field, so a
+    copied, mutated or reconstructed object cannot remain active after its
+    identity changes.
     """
 
     authorization_id: str
@@ -53,7 +55,7 @@ class RealExecutionAuthorization:
         adapter_id: str, request_id: str, symbol: str,
     ) -> "RealExecutionAuthorization":
         identity = (authorization_id, audit_id, broker_id, adapter_id, request_id, symbol)
-        proof = _RealAuthorizationProof(_REAL_AUTHORIZATION_ISSUER_TOKEN, identity)
+        proof = _RealAuthorizationProof(identity, _REAL_AUTHORIZATION_ISSUER_TOKEN)
         return cls(
             authorization_id, audit_id, broker_id, adapter_id, request_id, symbol,
             True, True, proof,
@@ -63,8 +65,10 @@ class RealExecutionAuthorization:
     def issuer_valid(self) -> bool:
         expected = (self.authorization_id, self.audit_id, self.broker_id,
                     self.adapter_id, self.request_id, self.symbol)
-        return isinstance(self._issuer_token, _RealAuthorizationProof) and self._issuer_token.identity == expected
+        return (isinstance(self._issuer_token, _RealAuthorizationProof)
+                and self._issuer_token.identity == expected
+                and self._issuer_token._token is _REAL_AUTHORIZATION_ISSUER_TOKEN)
 
     @property
     def active(self) -> bool:
-        return self.explicitly_enabled and self.real_execution_allowed
+        return self.explicitly_enabled and self.real_execution_allowed and self.issuer_valid
