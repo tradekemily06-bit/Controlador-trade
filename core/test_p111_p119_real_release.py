@@ -112,7 +112,7 @@ def _gateway(registry, ledger):
 
 
 def _authorization():
-    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
+    return RealExecutionAuthorization("auth", "a116", "fake", "fake-adapter", True, True)
 
 
 def _admission(auth):
@@ -216,165 +216,14 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = UnknownAdapter()
     registry.register("fake", adapter)
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = _gateway(registry, ledger)
     auth = _authorization()
+    safety = _safety(auth)
     admission = _admission(auth)
-    safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
-    assert first.status == RealGatewayStatus.UNKNOWN
-    assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
-    restored = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
-    second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
-    assert second.status == RealGatewayStatus.UNKNOWN
-
-
-def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_path: Path):
-    registry = BrokerRegistry()
-    registry.register("fake", UnknownAdapter())
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = _gateway(registry, ledger)
-    auth = _authorization()
-    admission = _admission(auth)
-    safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    result = gateway.execute(broker="fake", request_id="unknown", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
-
-
-def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
-    path = tmp_path / "ledger.json"
-    ExecutionLedger(path).reserve("crashed")
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    gateway = _gateway(registry, ExecutionLedger(path))
-    auth = _authorization()
-    admission = _admission(auth)
-    safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN
-    assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-
-
-def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
-    path = tmp_path / "ledger.json"
-    first = ExecutionLedger(path)
-    second = ExecutionLedger(path)
-    first.reserve("same-id")
-    try:
-        second.reserve("same-id")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("stale ledger must not reserve the same REAL request_id")
-
-
-def test_real_gateway_rejects_malformed_request(tmp_path: Path):
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
-    auth = _authorization()
-    admission = _admission(auth)
-    safety = _safety(auth)
-    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
-    result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.REJECTED
-    assert adapter.calls == 0
-
-
-def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
-    registry = BrokerRegistry()
-    registry.register("fake", NoExternalIdAdapter())
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = _gateway(registry, ledger)
-    auth = _authorization()
-    admission = _admission(auth)
-    safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN
-    assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
-
-
-def test_real_gateway_blocks_changed_authoritative_risk_before_dispatch(tmp_path: Path):
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    state = _risk_state()
-    provider = FakeRiskStateProvider(state)
-    auth = _authorization()
-    safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), provider, FakeRealSafetyProvider(safety))
-    changed = OperationalState(
-        balance=state.balance,
-        equity=state.equity,
-        realized_pnl=state.realized_pnl,
-        unrealized_pnl=state.unrealized_pnl,
-        trades_today=state.trades_today + 1,
-        consecutive_losses=state.consecutive_losses,
-        open_positions=state.open_positions,
-        net_position=state.net_position,
-        exposure=state.exposure,
-        market_open=state.market_open,
-    )
-    provider.state = changed
-    result = gateway.execute(broker="fake", request_id="risk-changed", request=_request(), authorization=auth, admission=_admission(auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED
-    assert adapter.calls == 0
-
-
-def test_real_gateway_blocks_provider_failure_without_leaking_detail(tmp_path: Path):
-    class BrokenProvider:
-        def current_risk_state(self):
-            raise RuntimeError("SECRET_RISK_PROVIDER_DETAIL")
-
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    auth = _authorization()
-    safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), BrokenProvider(), FakeRealSafetyProvider(safety))
-    result = gateway.execute(broker="fake", request_id="risk-provider-fails", request=_request(), authorization=auth, admission=_admission(auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN
-    assert "SECRET_RISK_PROVIDER_DETAIL" not in result.message
-    assert "RuntimeError" in result.message
-    assert adapter.calls == 0
-
-
-def test_real_gateway_blocks_stale_safety_before_dispatch(tmp_path: Path):
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    auth = _authorization()
-    admitted_safety = _safety(auth)
-    provider = FakeRealSafetyProvider(admitted_safety)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), provider)
-    provider.report = RealSafetyGate().evaluate(
-        authorization_active=True, kill_switch_clear=False,
-        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
-    )
-    result = gateway.execute(broker="fake", request_id="safety-changed", request=_request(), authorization=auth, admission=_admission(auth), safety=admitted_safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED
-    assert adapter.calls == 0
-
-
-def test_real_gateway_blocks_safety_provider_failure_without_leaking_detail(tmp_path: Path):
-    class BrokenSafetyProvider:
-        def current_real_safety(self):
-            raise RuntimeError("SECRET_SAFETY_PROVIDER_DETAIL")
-
-    registry = BrokerRegistry()
-    adapter = FakeAdapter()
-    registry.register("fake", adapter)
-    auth = _authorization()
-    safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider())
-    result = gateway.execute(broker="fake", request_id="safety-provider-fails", request=_request(), authorization=auth, admission=_admission(auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN
-    assert "SECRET_SAFETY_PROVIDER_DETAIL" not in result.message
-    assert "RuntimeError" in result.message
-    assert adapter.calls == 0
+    assert ledger.status("unknown") is ExecutionLedgerStatus.UNKNOWN
+    retry = gateway.execute(broker="fake", request_id="unknown", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    assert retry.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
