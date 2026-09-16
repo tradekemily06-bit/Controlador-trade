@@ -119,6 +119,8 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
+        if admission.audit_id.strip() != authorization.audit_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "auditoria da admissão REAL difere da autorização; novo ciclo obrigatório.")
         safety_result = self._revalidate_safety(safety)
         if safety_result is not None:
             return safety_result
