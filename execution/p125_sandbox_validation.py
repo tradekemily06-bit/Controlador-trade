@@ -65,18 +65,18 @@ class SandboxBroker:
 class SandboxValidationBoundary:
     """Exercises P123/P120/P121 invariants without network or REAL execution."""
 
-    def __init__(self, broker: SandboxBroker | None = None) -> None:
-        self.broker = broker or SandboxBroker()
+    def __init__(self, sandbox: SandboxBroker | None = None) -> None:
+        self.sandbox = sandbox or SandboxBroker()
 
     def run(self, request: BrokerOrderRequest, scenario: SandboxScenario) -> SandboxValidationResult:
-        first = self.broker.execute(request, scenario)
+        first = self.sandbox.execute(request, scenario)
         duplicate_blocked = False
         if scenario is SandboxScenario.ACCEPT:
-            duplicate = self.broker.execute(request, SandboxScenario.ACCEPT)
+            duplicate = self.sandbox.execute(request, SandboxScenario.ACCEPT)
             duplicate_blocked = not duplicate.accepted
 
         if first.accepted and first.external_id:
-            status = self.broker.query(first.external_id)
+            status = self.sandbox.query(first.external_id)
             return SandboxValidationResult(
                 scenario, True, first.external_id, status, duplicate_blocked, first.message
             )
