@@ -19,6 +19,7 @@ def _complete() -> FinalReadinessEvidence:
         reconciliation_tested=True,
         incident_response_tested=True,
         demo_real_separation_tested=True,
+        legacy_compatibility_tested=True,
         ci_green=True,
     )
 
@@ -37,4 +38,13 @@ def test_complete_matrix_only_becomes_ready_for_review():
 
     assert assessment.state is ReadinessState.READY_FOR_REVIEW
     assert assessment.missing == ()
+    assert assessment.real_enabled is False
+
+
+def test_final_matrix_requires_legacy_compatibility_evidence():
+    evidence = replace(_complete(), legacy_compatibility_tested=False)
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert assessment.missing == ("legacy_compatibility_tested",)
     assert assessment.real_enabled is False
