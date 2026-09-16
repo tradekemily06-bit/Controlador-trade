@@ -111,6 +111,14 @@ class ExecutionLedger:
                     raise ValueError("ledger de execução inválido: external_id duplicado.")
                 seen_external_ids.add(normalized_external_id)
             context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": normalized_external_id}
+
+        # A reconciled REAL operation must retain its immutable operation context.
+        # Otherwise restart would leave a terminal audit record without the
+        # broker/symbol identity that was actually reconciled.
+        for request_id, status in states.items():
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RECONCILED_EXECUTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and request_id not in context:
+                raise ValueError("ledger de execução inválido: contexto REAL ausente para estado que exige identidade.")
+
         return states, evidence, context
 
     def _write(self) -> None:
@@ -197,8 +205,8 @@ class ExecutionLedger:
         def mutation() -> None:
             current = self._states.get(request_id)
             context = self._execution_context.get(request_id)
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN) or context is None:
-                raise ValueError("contexto REAL não foi reservado.")
+            if current is not ExecutionLedgerStatus.RESERVED or context is None:
+                raise ValueError("contexto REAL não está reservado para aceite terminal.")
             for other_request_id, other_context in self._execution_context.items():
                 if other_request_id != request_id and other_context.get("external_id") == normalized_external_id:
                     raise ValueError("external_id REAL já está vinculado a outra operação.")
@@ -251,7 +259,12 @@ class ExecutionLedger:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            allowed = {
+                ExecutionLedgerStatus.ACCEPTED: (ExecutionLedgerStatus.RESERVED,),
+                ExecutionLedgerStatus.REJECTED: (ExecutionLedgerStatus.RESERVED,),
+                ExecutionLedgerStatus.UNKNOWN: (ExecutionLedgerStatus.RESERVED,),
+            }
+            if current not in allowed.get(status, ()):
                 raise ValueError(f"transição inválida de {current.value} para {status.value}.")
             self._states[request_id] = status
         self._mutate_locked(mutation)
