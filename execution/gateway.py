@@ -4,11 +4,14 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Callable
 
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_maintenance import MaintenanceManager
 from core.ecosystem_incidents import EcosystemIncidentManager
 from core.file_lock import exclusive_file_lock
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
@@ -44,7 +47,20 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None, maintenance: MaintenanceManager | None = None, safety_store: OperationalSafetyStore | None = None, incident_manager: EcosystemIncidentManager | None = None, risk_state_provider: RiskStateProvider | None = None) -> None:
+    def __init__(
+        self,
+        executor: ExecutionPort,
+        kill_switch: KillSwitch,
+        recorder: P4OperationalRecorder | None = None,
+        ledger: ExecutionLedger | None = None,
+        lifecycle: ExecutionLifecycleStore | None = None,
+        maintenance: MaintenanceManager | None = None,
+        safety_store: OperationalSafetyStore | None = None,
+        incident_manager: EcosystemIncidentManager | None = None,
+        risk_state_provider: RiskStateProvider | None = None,
+        operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+        decision_freshness_policy: DecisionFreshnessPolicy | None = None,
+    ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -55,6 +71,10 @@ class ExecutionGateway:
             raise ValueError("incident_manager inválido.")
         if risk_state_provider is not None and not isinstance(risk_state_provider, RiskStateProvider):
             raise ValueError("risk_state_provider inválido.")
+        if operational_barrier_provider is not None and not callable(operational_barrier_provider):
+            raise ValueError("operational_barrier_provider inválido.")
+        if decision_freshness_policy is not None and not isinstance(decision_freshness_policy, DecisionFreshnessPolicy):
+            raise ValueError("decision_freshness_policy inválida.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -64,8 +84,22 @@ class ExecutionGateway:
         self._safety_store = safety_store
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
+        self._operational_barrier_provider = operational_barrier_provider
+        self._decision_freshness_policy = decision_freshness_policy
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
+
+    def set_operational_barrier_provider(
+        self, provider: Callable[[], GlobalOperationalBarrier] | None
+    ) -> None:
+        if provider is not None and not callable(provider):
+            raise ValueError("operational_barrier_provider inválido.")
+        self._operational_barrier_provider = provider
+
+    def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy | None) -> None:
+        if policy is not None and not isinstance(policy, DecisionFreshnessPolicy):
+            raise ValueError("decision_freshness_policy inválida.")
+        self._decision_freshness_policy = policy
 
     @staticmethod
     def _safe_error(exc: BaseException) -> str:
@@ -81,6 +115,27 @@ class ExecutionGateway:
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
 
+    def _global_barrier(self) -> str | None:
+        if self._operational_barrier_provider is None:
+            return None
+        try:
+            barrier = self._operational_barrier_provider()
+            if not isinstance(barrier, GlobalOperationalBarrier):
+                return "barreira operacional indisponível; tipo inválido"
+            decision = barrier.evaluate()
+        except Exception as exc:
+            return f"barreira operacional indisponível: {self._safe_error(exc)}"
+        if not decision.operationally_allowed:
+            return f"ecossistema bloqueado: {decision.reason}"
+        return None
+
+    def _decision_freshness_barrier(self, snapshot: DecisionSnapshot | None, *, now: datetime) -> str | None:
+        if self._decision_freshness_policy is None:
+            return None
+        if snapshot is None or snapshot.created_at is None:
+            return "timestamp da decisão ausente; nova análise obrigatória antes do dispatch."
+        return self._decision_freshness_policy.validate(snapshot.created_at, now=now)
+
     def _risk_state_barrier(self, snapshot: DecisionSnapshot | None) -> str | None:
         if self._risk_state_provider is None:
             return None
@@ -95,7 +150,10 @@ class ExecutionGateway:
             return "estado de risco mudou desde a decisão; dispatch bloqueado para revalidação."
         return None
 
-    def _final_safety_barrier(self, *, now: datetime) -> str | None:
+    def _final_safety_barrier(self, *, now: datetime, snapshot: DecisionSnapshot | None) -> str | None:
+        global_error = self._global_barrier()
+        if global_error is not None:
+            return global_error
         refresh_error = self._refresh_kill_switch()
         if refresh_error is not None:
             return refresh_error
@@ -105,26 +163,22 @@ class ExecutionGateway:
             return "execução bloqueada durante manutenção ativa do ecossistema."
         if self._incident_manager is not None and self._incident_manager.execution_blocked():
             return "execução bloqueada por incidente técnico ativo."
-        return None
+        freshness_error = self._decision_freshness_barrier(snapshot, now=now)
+        if freshness_error is not None:
+            return freshness_error
+        return self._risk_state_barrier(snapshot)
 
-    def _dispatch_with_authoritative_barriers(self, request: ExecutionRequest, snapshot: DecisionSnapshot | None) -> tuple[ExecutionResult | None, str | None]:
-        """Serialize the final safety/risk read with the actual broker dispatch.
-
-        The durable ledger serializes request reservations. This separate lock
-        closes the application-level TOCTOU window for workers sharing that
-        ledger: one worker at a time performs the authoritative risk read and
-        the following executor call. External broker changes remain visible only
-        through the authoritative provider and therefore still fail closed when
-        the provider reports a different state.
-        """
+    def _dispatch_with_authoritative_barriers(
+        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None
+    ) -> tuple[ExecutionResult | None, str | None]:
+        """Serialize final authoritative checks with the actual executor call."""
         lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
         with lock:
-            final_safety_error = self._final_safety_barrier(now=datetime.now(timezone.utc))
+            final_safety_error = self._final_safety_barrier(
+                now=datetime.now(timezone.utc), snapshot=snapshot
+            )
             if final_safety_error is not None:
                 return None, final_safety_error
-            risk_state_error = self._risk_state_barrier(snapshot)
-            if risk_state_error is not None:
-                return None, risk_state_error
             return self._executor.execute(request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
@@ -137,7 +191,15 @@ class ExecutionGateway:
         except (OSError, ValueError):
             pass
 
-    def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
+    def execute(
+        self,
+        request_id: str,
+        request: ExecutionRequest,
+        *,
+        snapshot: DecisionSnapshot | None = None,
+        timestamp: datetime | None = None,
+        entry_conditions: tuple[str, ...] = (),
+    ) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
@@ -205,9 +267,9 @@ class ExecutionGateway:
             if self._ledger is not None:
                 try:
                     self._ledger.mark_rejected(request_id)
-                except (OSError, ValueError) as exc:
+                except (OSError, ValueError):
                     self._mark_unknown(request_id, event_time, "execução rejeitada, mas ledger não foi persistido")
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {self._safe_error(exc)}", result)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução rejeitada, mas persistência falhou; estado UNKNOWN: persistência", result)
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             self._processed_request_ids.add(request_id)
@@ -215,15 +277,15 @@ class ExecutionGateway:
         if self._ledger is not None:
             try:
                 self._ledger.mark_accepted(request_id)
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError):
                 self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas ledger não foi persistido; estado UNKNOWN: {self._safe_error(exc)}", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas ledger não foi persistido; estado UNKNOWN: persistência", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
-            except (OSError, ValueError) as exc:
+            except (OSError, ValueError):
                 self._mark_unknown(request_id, event_time, "execução aceita, mas persistência do ciclo falhou")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {self._safe_error(exc)}", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: persistência", result)
         self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
