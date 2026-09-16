@@ -192,7 +192,11 @@ class RealExecutionGateway:
         evidence_id: str,
         evidence_source: str,
     ) -> None:
-        """Resolve uncertainty only when explicit external evidence is supplied."""
+        """Resolve uncertainty only when explicit external evidence is supplied.
+
+        The evidence is persisted atomically with the terminal reconciliation
+        state so a restart cannot erase the audit basis for the decision.
+        """
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
@@ -203,4 +207,9 @@ class RealExecutionGateway:
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
-            self._ledger.reconcile(request_id, executed=executed)
+            self._ledger.reconcile(
+                request_id,
+                executed=executed,
+                evidence_id=evidence_id,
+                evidence_source=evidence_source,
+            )
