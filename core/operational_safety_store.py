@@ -36,6 +36,8 @@ class OperationalSafetyStore:
                 trades_today=data.get("trades_today"), consecutive_losses=data.get("consecutive_losses"),
                 symbol=data.get("symbol"), timeframe=data.get("timeframe"),
                 risk_state_identity=data.get("risk_state_identity"),
+                risk_state_fingerprint=data.get("risk_state_fingerprint"),
+                created_at=(datetime.fromisoformat(str(data["created_at"])) if data.get("created_at") else None),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("snapshot persistido inválido.") from exc
@@ -151,12 +153,12 @@ class OperationalSafetyStore:
         with self._lock():
             self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
 
-    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+    def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
-        if not isinstance(kill_switch, (KillSwitch, KillSwitchState)):
-            raise TypeError("kill_switch deve ser KillSwitch ou KillSwitchState.")
-        state = kill_switch.state if isinstance(kill_switch, KillSwitch) else kill_switch
+        if not isinstance(kill_switch, KillSwitch):
+            raise TypeError("kill_switch deve ser KillSwitch.")
+        state = kill_switch.state
         with self._lock():
             payload = self._read_payload()
             execution_audit = payload.get("execution_audit", [])
@@ -213,8 +215,11 @@ class OperationalSafetyStore:
         with self._lock():
             payload = self._read_payload()
             audit = DecisionAudit()
-            for item in payload.get("audit", []):
-                audit.add(self._audit_record(item))
+            persisted_audit = payload.get("audit", [])
+            if not isinstance(persisted_audit, list):
+                raise ValueError("auditoria persistida inválida.")
+            for item in persisted_audit:
+                audit.append(self._audit_record(item))
             persisted = payload.get("kill_switch", {})
             if not isinstance(persisted, dict):
                 raise ValueError("estado do kill switch inválido.")
