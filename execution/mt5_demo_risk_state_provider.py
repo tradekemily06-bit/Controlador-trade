@@ -147,7 +147,7 @@ class MT5DemoRiskStateProvider:
                 total -= float(volume)
             else:
                 return None
-        return total
+        return round(total, 10)
 
     @staticmethod
     def _exposure(positions: tuple[Any, ...], mt5: Any) -> float | None:
