@@ -217,15 +217,17 @@ def application(environ, start_response):
             source = _learning_source_for_request(str(_read_json(environ).get("source_id", ""))); result = SERVICE.validate_learning_source(source); return _json_response(start_response, HTTPStatus.OK, {"source": result.__dict__, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/sources/admit" and method == "POST":
             source = _learning_source_for_request(str(_read_json(environ).get("source_id", ""))); result = SERVICE.admit_learning_source(source); return _json_response(start_response, HTTPStatus.OK, {"source": result.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/observations" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "POST":
             result = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": result, "execution_allowed": False}, request_id, environ)
+        if path == "/api/learning/activities" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"activities": SERVICE.learning_activities_view(), "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/activities" and method == "POST":
             result = SERVICE.create_learning_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/professor/activity" and method == "POST":
             result = SERVICE.professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": result, "execution_allowed": False}, request_id, environ)
         if path == "/api/learning/attempts" and method == "POST":
             result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result, "execution_allowed": False}, request_id, environ)
-        if path == "/" and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
+        if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
         if path.startswith("/web/") and method == "GET":
             candidate = (ROOT / path.lstrip("/")).resolve()
@@ -246,7 +248,7 @@ def application(environ, start_response):
 
 def run() -> None:
     host = os.environ.get("CONTROLADOR_HOST", "127.0.0.1")
-    port = int(os.environ.get("CONTROLADOR_PORT", "8000"))
+    selected_port = int(os.environ.get("PORT", "7860"))
     with make_server(host, port, application) as server:
         print(f"Controlador Trading em http://{host}:{port}")
         server.serve_forever()
