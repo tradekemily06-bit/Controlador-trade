@@ -15,31 +15,32 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - Demo broker direct-dispatch side doors are blocked; the gateway-bound capability is required for DEMO broker execution.
 - Production factory composition is guarded against raw MT5 adapter injection and unauthorized REAL gateway construction.
 - Decision freshness exists as a fail-closed policy and is bound by the consolidated DEMO operational runtime.
-- REAL gateway now binds DecisionSnapshot.symbol to the request symbol and enforces snapshot timestamp/freshness before REAL dispatch.
-- The live orchestrator now persists the decision creation timestamp into the DecisionSnapshot instead of producing a timestamp-less operational snapshot.
+- REAL gateway binds DecisionSnapshot.symbol to the request symbol and enforces snapshot timestamp/freshness before REAL dispatch.
+- The live orchestrator persists the decision creation timestamp into the DecisionSnapshot instead of producing a timestamp-less operational snapshot.
 - Active REAL authorization can only be constructed through the private issuer boundary; direct construction of an active authorization fails closed.
 - Active REAL admission can only be constructed through the private issuer boundary; the legacy public admission path can only produce BLOCKED state and cannot manufacture an admitted privilege.
-- RealPrivilegeIssuer derives adapter identity from the authoritative BrokerAdapterGateway and admission identity from the already-issued authorization.
-- An executable AST scan now checks production surfaces for direct active REAL authorization/admission constructors and asserts the issuer is the sole active authorization factory.
-- Issuer negative coverage checks direct active authorization/admission construction, inactive/forged admission attempts, audit failures and safety failures.
+- RealPrivilegeIssuer derives authorization identity from the trusted ExecutionRequest and adapter identity from the authoritative BrokerAdapterGateway; admission identity is derived from the already-issued authorization.
+- REAL authorization and admission provenance proofs are immutable and identity-bound, so dataclasses.replace or field rebinding cannot preserve an active/admitted privilege.
+- Legacy/pickle-style reconstruction fails closed when the private issuance proof is absent or no longer valid.
+- Executable AST scanning checks production surfaces for direct active REAL authorization/admission constructors and the intended issuer boundary.
+- Issuer negative coverage checks direct construction, inactive/forged admission attempts, audit failures and safety failures.
 - CI concurrency was changed to cancel superseded branch runs and a 30-minute job timeout was added.
 
 ## Remaining Stage 2 gates
 
 ### 1. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
 
-The authoritative issuer and private active-object issuance boundary are now present, and executable source scanning verifies the intended production constructor boundary. The remaining proof is complete legacy/reconstruction coverage and the full consolidated suite.
+The authoritative issuer and private active-object issuance boundary are implemented. The deep reconstruction review identified a second-order provenance issue: a singleton issuer token by itself was not enough to bind the privilege to its identity. The proof is now immutable and carries the complete privileged identity; `active`/`admitted` require that proof to remain valid. This makes identity rebinding fail closed and makes restart-style reconstruction fail closed when the proof cannot be re-established.
 
 Required evidence before Stage 2 closure:
 
-- no legacy constructor, deserialization, compatibility helper or factory can create an active REAL privilege outside the issuer;
-- restart/reconstruction preserves the issuer invariant;
-- negative tests prove direct construction, legacy reconstruction and mismatched issuer context cannot reach REAL dispatch;
+- consolidated tests pass for direct construction, legacy reconstruction, identity rebinding and restart/reconstruction;
+- no remaining legacy constructor, deserialization, compatibility helper or factory can create an active REAL privilege outside the issuer;
 - full CI validates the consolidated tree.
 
 ### 2. DecisionSnapshot identity/freshness — 🟢 IMPLEMENTED, TEST SUITE VALIDATION PENDING
 
-The REAL gateway now rejects a missing/mismatched snapshot symbol and rejects missing, future or expired snapshot timestamps using the mandatory REAL freshness policy. The live orchestrator supplies the actual decision creation timestamp.
+The REAL gateway rejects a missing/mismatched snapshot symbol and rejects missing, future or expired snapshot timestamps using the mandatory REAL freshness policy. The live orchestrator supplies the actual decision creation timestamp.
 
 The gate remains pending only until the consolidated CI/test suite proves these controls together with the rest of Stage 2.
 
