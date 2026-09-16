@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from __future__ import annotations
 
 import json
@@ -84,6 +85,7 @@ def _snapshot() -> DecisionSnapshot:
         market_direction=None, market_score=None, operational_state_available=True,
         trades_today=state.trades_today, consecutive_losses=state.consecutive_losses,
         symbol="TEST", timeframe="5m", risk_state_identity=risk_state_identity(state),
+        created_at=datetime.now(timezone.utc),
     )
 
 

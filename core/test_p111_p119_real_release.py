@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -74,7 +75,8 @@ def _snapshot(state=None, symbol="TEST"):
                             market_context=None, market_direction=None, market_score=None,
                             operational_state_available=True, trades_today=state.trades_today,
                             consecutive_losses=state.consecutive_losses, symbol=symbol, timeframe="5m",
-                            risk_state_identity=risk_state_identity(state))
+                            risk_state_identity=risk_state_identity(state),
+                            created_at=datetime.now(timezone.utc))
 
 
 def _release_audit():
