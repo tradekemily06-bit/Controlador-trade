@@ -15,16 +15,17 @@ from execution.real_gateway import RealExecutionGateway
 
 
 class QueryPort:
-    def __init__(self, status: ExternalOrderStatus, *, request_id: str = "req-1", source: str = "broker"):
+    def __init__(self, status: ExternalOrderStatus, *, request_id: str = "req-1", source: str = "broker", external_id: str = "ext-1"):
         self.status = status
         self.request_id = request_id
         self.source = source
+        self.external_id = external_id
         self.calls = 0
 
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         self.calls += 1
         return ExternalOrderObservation(
-            external_id,
+            self.external_id,
             self.status,
             "authoritative broker observation",
             request_id=self.request_id,
@@ -42,13 +43,13 @@ class StaticSafetyProvider:
         return RealSafetyReport(RealSafetyState.READY, ())
 
 
-def gateway(path: Path, verifier):
+def gateway(path: Path, authority=None):
     return RealExecutionGateway(
         BrokerAdapterGateway(BrokerRegistry()),
         ExecutionLedger(path),
         StaticRiskProvider(),
         StaticSafetyProvider(),
-        reconciliation_evidence_verifier=verifier,
+        reconciliation_evidence_verifier=authority,
     )
 
 
@@ -86,12 +87,21 @@ def test_broker_evidence_authority_rejects_missing_binding_metadata():
     assert not authority.verify(request_id="req-1", evidence_id="ext-1", evidence_source="broker", executed=True)
 
 
+def test_gateway_rejects_untrusted_callable_verifier(tmp_path: Path):
+    with pytest.raises(ValueError, match="autoridade de evidência REAL autorizada"):
+        gateway(tmp_path / "ledger.json", lambda **kwargs: True)
+
+
 def test_gateway_refuses_unverified_evidence_and_preserves_unknown(tmp_path: Path):
     path = tmp_path / "ledger.json"
     ledger = ExecutionLedger(path)
     ledger.reserve("req-unknown")
     ledger.mark_unknown("req-unknown")
-    gateway_instance = gateway(path, lambda **kwargs: False)
+    authority = BrokerReconciliationEvidenceAuthority(
+        QueryPort(ExternalOrderStatus.NOT_EXECUTED, request_id="req-unknown", external_id="ext-1"),
+        evidence_source="broker",
+    )
+    gateway_instance = gateway(path, authority)
 
     with pytest.raises(ValueError, match="não foi confirmada"):
         gateway_instance.reconcile_unknown_with_evidence(
@@ -108,8 +118,11 @@ def test_gateway_verified_evidence_survives_restart_and_replay_remains_blocked(t
     ledger.reserve("req-verified")
     ledger.mark_unknown("req-verified")
 
-    verifier = lambda **kwargs: kwargs["evidence_id"] == "ext-verified" and kwargs["executed"] is True
-    gateway(path, verifier).reconcile_unknown_with_evidence(
+    authority = BrokerReconciliationEvidenceAuthority(
+        QueryPort(ExternalOrderStatus.EXECUTED, request_id="req-verified", external_id="ext-verified"),
+        evidence_source="broker",
+    )
+    gateway(path, authority).reconcile_unknown_with_evidence(
         "req-verified", executed=True, evidence_id="ext-verified", evidence_source="broker"
     )
 
@@ -120,7 +133,7 @@ def test_gateway_verified_evidence_survives_restart_and_replay_remains_blocked(t
         "evidence_source": "broker",
     }
     with pytest.raises(ValueError):
-        gateway(path, verifier).reconcile_unknown_with_evidence(
+        gateway(path, authority).reconcile_unknown_with_evidence(
             "req-verified", executed=True, evidence_id="ext-verified", evidence_source="broker"
         )
 
@@ -130,7 +143,7 @@ def test_gateway_rejects_unverified_legacy_reconciliation(tmp_path: Path):
     ledger = ExecutionLedger(path)
     ledger.reserve("req-legacy")
     ledger.mark_unknown("req-legacy")
-    gateway_instance = gateway(path, lambda **kwargs: True)
+    gateway_instance = gateway(path)
 
     with pytest.raises(RuntimeError, match="evidência externa autoritativa"):
         gateway_instance.reconcile_unknown("req-legacy", executed=True)
