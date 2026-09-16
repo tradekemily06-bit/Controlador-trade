@@ -120,6 +120,16 @@ class EcosystemPreferencesStore:
             real_execution_enabled=bool(payload.get("real_execution_enabled", False)),
         )
 
+    @staticmethod
+    def _encode(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {key: EcosystemPreferencesStore._encode(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [EcosystemPreferencesStore._encode(item) for item in value]
+        return value
+
     def _current(self) -> EcosystemPreferences:
         scope = self._require_scope_for_durable_state()
         if scope is None:
@@ -161,32 +171,27 @@ class EcosystemPreferencesStore:
         else:
             self._scoped[scope] = value
             if self._state_store is not None:
-                self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=asdict(value))
+                self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=self._encode(asdict(value)))
         return value
 
     def update(self, **changes) -> EcosystemPreferences:
         return self._save(replace(self._fresh_current(), **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, candle=replace(current.candle, **changes)))
+        return self._save(replace(self._fresh_current(), candle=replace(self._fresh_current().candle, **changes)))
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, notifications=replace(current.notifications, **changes)))
+        return self._save(replace(self._fresh_current(), notifications=replace(self._fresh_current().notifications, **changes)))
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
+        if not isinstance(value, EcosystemPreferences):
+            raise TypeError("preferences inválidas.")
         if not value.default_symbol.strip() or not value.default_timeframe.strip():
-            raise ValueError("default symbol and timeframe are required")
-        if not isinstance(value.psychology_enabled, bool) or not isinstance(value.psychology_data_collection_enabled, bool):
-            raise ValueError("psychology preferences must be boolean")
-        if value.autonomous_operation_enabled:
-            raise ValueError("autonomous operation requires its dedicated authorization flow")
-        if value.real_execution_enabled:
-            raise ValueError("REAL execution cannot be enabled by preferences")
-        if not value.notifications.critical_enabled:
-            raise ValueError("critical notifications cannot be disabled")
-        for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
-            if not isinstance(field, str) or not field.startswith("#") or len(field) not in (4, 7):
-                raise ValueError("candle colors must be hex values")
+            raise ValueError("symbol e timeframe padrão são obrigatórios.")
+        if not isinstance(value.chart_theme, ChartTheme):
+            raise ValueError("chart_theme inválido.")
+        if not isinstance(value.candle, CandleAppearance):
+            raise ValueError("candle inválido.")
+        if not isinstance(value.notifications, NotificationPreferences):
+            raise ValueError("notifications inválidas.")
