@@ -63,6 +63,8 @@ class RealExecutionGateway:
         return True
 
     def _revalidate_risk(self, snapshot: DecisionSnapshot) -> RealGatewayResult | None:
+        if not isinstance(snapshot, DecisionSnapshot):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "snapshot de decisão inválido; REAL bloqueado.")
         identity = snapshot.risk_state_identity
         if not isinstance(identity, str) or not identity.strip():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco da decisão está ausente; REAL bloqueado.")
