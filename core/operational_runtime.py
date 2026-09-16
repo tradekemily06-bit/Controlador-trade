@@ -46,6 +46,11 @@ class OperationalRuntime:
     demo_risk_state: DemoRiskStateStore | None = None
     risk_state_provider: RiskStateProvider | None = None
 
+    @property
+    def demo_risk_state_store(self) -> DemoRiskStateStore | None:
+        """Compatibility name for the single authoritative DEMO risk store."""
+        return self.demo_risk_state
+
 
 def _public_saas_multi_instance() -> bool:
     public = os.environ.get("CONTROLADOR_SAAS_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
