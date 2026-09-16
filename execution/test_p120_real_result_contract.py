@@ -228,3 +228,35 @@ def test_admission_broker_mismatch_is_blocked_before_dispatch(tmp_path: Path):
     assert result.status == RealGatewayStatus.BLOCKED
     assert "admissão REAL" in result.message
     assert ledger.status("admission-broker-mismatch") is None
+
+
+def test_admission_audit_mismatch_is_blocked_before_dispatch(tmp_path: Path):
+    class MustNotExecuteAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            raise AssertionError("mismatched REAL audit context must never reach the broker adapter")
+
+    registry = BrokerRegistry()
+    registry.register("fake", MustNotExecuteAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider()
+    authorization, _, safety = _authorized_context()
+    mismatched_admission = RealAdmissionBoundary().admit(
+        admission_id="adm-mismatch", audit_id="different-audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    gateway = _gateway(registry, ledger, provider, safety)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="admission-audit-mismatch", request=request,
+        authorization=authorization, admission=mismatched_admission, safety=safety,
+        snapshot=_snapshot(provider),
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "auditoria" in result.message
+    assert ledger.status("admission-audit-mismatch") is None
