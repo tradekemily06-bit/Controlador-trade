@@ -64,9 +64,20 @@ class BrokerReconciliationEvidenceAuthority:
             return False
         if not result.reconciled:
             return False
-        if observation.request_id != request_id:
+        # Broker observations are untrusted external input. Every identity field
+        # must be present and type-valid before normalization; never call .strip()
+        # on optional metadata directly.
+        observation_values = (
+            observation.request_id,
+            observation.evidence_source,
+            observation.broker_id,
+            observation.symbol,
+        )
+        if any(not isinstance(value, str) or not value.strip() for value in observation_values):
             return False
-        if observation.evidence_source != self._evidence_source:
+        if observation.request_id.strip() != request_id:
+            return False
+        if observation.evidence_source.strip() != self._evidence_source:
             return False
         if observation.broker_id.strip().lower() != broker_id:
             return False
