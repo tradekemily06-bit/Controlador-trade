@@ -10,9 +10,9 @@ from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary
+from core.real_privilege_issuer import RealPrivilegeIssuer
 from core.real_safety_provider import RealSafetyProvider
 from core.risk_state_fingerprint import risk_state_identity
-from core.real_privilege_issuer import RealPrivilegeIssuer
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger
@@ -88,12 +88,12 @@ def _release_audit():
     )
 
 
-def _authorization():
+def _authorization(request_id):
     registry = BrokerRegistry()
     registry.register("fake", Adapter(), adapter_id="fake-adapter")
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="risk")
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id)
     return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_authorization(
-        authorization_id="auth", release_audit=_release_audit(), broker="fake",
+        authorization_id=f"auth-{request_id}", release_audit=_release_audit(), broker="fake",
         request=request, explicit_real_enablement=True,
     )
 
@@ -102,7 +102,7 @@ def _admission(auth):
     registry = BrokerRegistry()
     registry.register("fake", Adapter(), adapter_id="fake-adapter")
     return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_admission(
-        admission_id="adm", authorization=auth, release_audit=_release_audit(),
+        admission_id=f"adm-{auth.request_id}", authorization=auth, release_audit=_release_audit(),
         safety=RealSafetyGate().evaluate(
             authorization_active=True, kill_switch_clear=True, market_healthy=True,
             recovery_safe=True, risk_approved=True, broker_available=True,
@@ -141,11 +141,11 @@ def test_real_blocks_every_changed_risk_field(tmp_path: Path, field, value):
     changed_values = {name: getattr(original, name) for name in original.__dataclass_fields__}
     changed_values[field] = value
     provider.state = OperationalState(**changed_values)
-    auth = _authorization()
-    req = request(f"risk-{field}")
-    auth = RealPrivilegeIssuer(BrokerAdapterGateway(BrokerRegistry())) if False else auth
+    request_id = f"risk-{field}"
+    auth = _authorization(request_id)
+    req = request(request_id)
     result = gateway_instance.execute(
-        broker="fake", request_id=req.request_id, request=req,
+        broker="fake", request_id=request_id, request=req,
         authorization=auth, admission=_admission(auth),
         safety=RealSafetyGate().evaluate(
             authorization_active=True, kill_switch_clear=True, market_healthy=True,
@@ -159,7 +159,7 @@ def test_real_blocks_every_changed_risk_field(tmp_path: Path, field, value):
 def test_real_allows_unchanged_authoritative_risk_state(tmp_path: Path):
     original = state(); provider = Provider(original); adapter = Adapter()
     gateway_instance = gateway(tmp_path, provider, adapter)
-    auth = _authorization(); req = request("risk-unchanged")
+    auth = _authorization("risk-unchanged"); req = request("risk-unchanged")
     result = gateway_instance.execute(
         broker="fake", request_id=req.request_id, request=req,
         authorization=auth, admission=_admission(auth),
@@ -177,7 +177,7 @@ def test_real_blocks_missing_decision_risk_identity(tmp_path: Path):
     gateway_instance = gateway(tmp_path, provider, adapter)
     base = snapshot(original)
     snapshot_without_identity = DecisionSnapshot(**{**base.as_dict(), "risk_state_identity": None})
-    auth = _authorization(); req = request("risk-no-identity")
+    auth = _authorization("risk-no-identity"); req = request("risk-no-identity")
     result = gateway_instance.execute(
         broker="fake", request_id=req.request_id, request=req,
         authorization=auth, admission=_admission(auth),
@@ -196,7 +196,7 @@ def test_real_provider_failure_is_fail_closed_and_sanitized(tmp_path: Path):
             raise RuntimeError("SECRET_PROVIDER_DETAILS")
     original = state(); adapter = Adapter()
     gateway_instance = gateway(tmp_path, BrokenProvider(), adapter)
-    auth = _authorization(); req = request("risk-provider-error")
+    auth = _authorization("risk-provider-error"); req = request("risk-provider-error")
     result = gateway_instance.execute(
         broker="fake", request_id=req.request_id, request=req,
         authorization=auth, admission=_admission(auth),
