@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import multiprocessing
 from pathlib import Path
 import time
@@ -40,22 +39,23 @@ class SlowLoggingAdapter:
 
 def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
     registry = BrokerRegistry()
-    registry.register("fake", SlowLoggingAdapter(log_path))
-    auth = _authorization()
-    safety = _safety(auth)
+    registry.register("fake", SlowLoggingAdapter(log_path), adapter_id="fake-adapter")
+    auth = _authorization(request_id=request_id)
+    safety = _safety()
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(registry),
         ExecutionLedger(ledger_path),
         FakeRiskStateProvider(_risk_state()),
         FakeRealSafetyProvider(safety),
+        operational_barrier_provider=lambda: __import__("core.global_operational_barrier", fromlist=["GlobalOperationalBarrier"]).GlobalOperationalBarrier(),
     )
-    request = replace(_request(), request_id=request_id)
+    request = _request(request_id=request_id)
     result = gateway.execute(
         broker="fake",
         request_id=request_id,
         request=request,
         authorization=auth,
-        admission=_admission(auth),
+        admission=_admission(request_id=request_id),
         safety=safety,
         snapshot=_snapshot(),
     )
