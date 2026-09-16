@@ -117,3 +117,16 @@ def test_runtime_binds_demo_broker_port_to_gateway_only(tmp_path: Path) -> None:
     runtime = build_operational_runtime(tmp_path, executor=port, risk_state_provider=provider)
     assert isinstance(runtime.gateway._executor, GatewayBoundDemoExecutionPort)
     assert runtime.gateway._executor._port is port
+
+
+def test_runtime_rejects_arbitrary_executor_side_door(tmp_path: Path) -> None:
+    class UntrustedExecutor:
+        def execute(self, request: ExecutionRequest) -> ExecutionResult:
+            return ExecutionResult(True, "unexpected")
+
+    with pytest.raises(RuntimeError, match="executor operacional não autorizado"):
+        build_operational_runtime(
+            tmp_path,
+            executor=UntrustedExecutor(),  # type: ignore[arg-type]
+            risk_state_provider=Provider(OperationalState()),
+        )
