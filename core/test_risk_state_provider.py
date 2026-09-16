@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.models import OperationalState
+from core.operational_state import OperationalState
 from core.risk_state_provider import RiskStateProvider, read_authoritative_risk_state
 
 
