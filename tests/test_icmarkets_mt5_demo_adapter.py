@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, _DEMO_ADAPTER_CAPABILITY
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -66,9 +68,31 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, amount=0.01):
     )
 
 
-def test_demo_buy_is_sent_after_order_check():
+def dispatch(adapter, req):
+    return adapter.execute_from_port(req, capability=_DEMO_ADAPTER_CAPABILITY)
+
+
+def test_public_adapter_execute_is_non_dispatching():
     fake = FakeMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+
+    assert result.accepted is False
+    assert "dispatch direto" in result.message
+    assert fake.sent == []
+
+
+def test_fake_adapter_capability_is_rejected():
+    fake = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
+
+    with pytest.raises(PermissionError):
+        adapter.execute_from_port(request(), capability=object())
+    assert fake.sent == []
+
+
+def test_demo_buy_is_sent_after_order_check():
+    fake = FakeMT5()
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request())
 
     assert result.accepted is True
     assert result.external_id == "123456"
@@ -79,9 +103,7 @@ def test_demo_buy_is_sent_after_order_check():
 
 def test_real_request_is_blocked_before_mt5_call():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(
-        request(mode=ExecutionMode.REAL)
-    )
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request(mode=ExecutionMode.REAL))
 
     assert result.accepted is False
     assert fake.sent == []
@@ -89,7 +111,7 @@ def test_real_request_is_blocked_before_mt5_call():
 
 def test_non_demo_account_is_blocked():
     fake = FakeMT5(demo=False)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request())
 
     assert result.accepted is False
     assert fake.sent == []
@@ -97,7 +119,7 @@ def test_non_demo_account_is_blocked():
 
 def test_aguardar_is_blocked():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(Signal.AGUARDAR))
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request(Signal.AGUARDAR))
 
     assert result.accepted is False
     assert fake.sent == []
@@ -105,7 +127,7 @@ def test_aguardar_is_blocked():
 
 def test_order_check_blocks_send():
     fake = FakeMT5(order_ok=False)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request())
 
     assert result.accepted is False
     assert fake.sent == []
@@ -113,7 +135,7 @@ def test_order_check_blocks_send():
 
 def test_volume_below_symbol_minimum_is_blocked():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.001))
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request(amount=0.001))
 
     assert result.accepted is False
     assert fake.sent == []
@@ -121,7 +143,7 @@ def test_volume_below_symbol_minimum_is_blocked():
 
 def test_volume_not_aligned_to_symbol_step_is_blocked():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.015))
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request(amount=0.015))
 
     assert result.accepted is False
     assert fake.sent == []
@@ -130,7 +152,7 @@ def test_volume_not_aligned_to_symbol_step_is_blocked():
 def test_invalid_price_is_blocked():
     fake = FakeMT5()
     fake.symbol_info_tick = lambda symbol: SimpleNamespace(ask=0.0, bid=1.1000)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request())
 
     assert result.accepted is False
     assert fake.sent == []
@@ -138,7 +160,7 @@ def test_invalid_price_is_blocked():
 
 def test_missing_external_id_is_not_confirmed():
     fake = FakeMT5(external_id=False)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    result = dispatch(ICMarketsMT5DemoAdapter(mt5_module=fake), request())
 
     assert result.accepted is False
     assert result.external_id is None
