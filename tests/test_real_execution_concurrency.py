@@ -188,8 +188,8 @@ def test_restart_after_reserved_never_dispatches(tmp_path: Path):
 
     result = gateway.execute(
         broker="fake", request_id="reserved-before-restart",
-        request=_request("reserved-before-restart"), authorization=_authorization("crash-after-accept"),
-        admission=_admission("crash-after-accept"), safety=_safety(), snapshot=_snapshot(),
+        request=_request("reserved-before-restart"), authorization=_authorization("reserved-before-restart"),
+        admission=_admission("reserved-before-restart"), safety=_safety(), snapshot=_snapshot(),
     )
 
     assert result.status is RealGatewayStatus.UNKNOWN
@@ -212,8 +212,8 @@ def test_crash_immediately_after_broker_acceptance_leaves_reserved_and_blocks_re
     restored = _gateway(path, CountingAdapter(calls))
     result = restored.execute(
         broker="fake", request_id="crash-after-accept",
-        request=_request("crash-after-accept"), authorization=_authorization("reserved-before-restart"),
-        admission=_admission("reserved-before-restart"), safety=_safety(), snapshot=_snapshot(),
+        request=_request("crash-after-accept"), authorization=_authorization("crash-after-accept"),
+        admission=_admission("crash-after-accept"), safety=_safety(), snapshot=_snapshot(),
     )
 
     assert result.status is RealGatewayStatus.UNKNOWN
