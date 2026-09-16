@@ -178,20 +178,25 @@ class EcosystemPreferencesStore:
         return self._save(replace(self._fresh_current(), **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._fresh_current(), candle=replace(self._fresh_current().candle, **changes)))
+        current = self._fresh_current()
+        return self._save(replace(current, candle=replace(current.candle, **changes)))
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._fresh_current(), notifications=replace(self._fresh_current().notifications, **changes)))
+        current = self._fresh_current()
+        return self._save(replace(current, notifications=replace(current.notifications, **changes)))
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
-        if not isinstance(value, EcosystemPreferences):
-            raise TypeError("preferences inválidas.")
         if not value.default_symbol.strip() or not value.default_timeframe.strip():
-            raise ValueError("symbol e timeframe padrão são obrigatórios.")
-        if not isinstance(value.chart_theme, ChartTheme):
-            raise ValueError("chart_theme inválido.")
-        if not isinstance(value.candle, CandleAppearance):
-            raise ValueError("candle inválido.")
-        if not isinstance(value.notifications, NotificationPreferences):
-            raise ValueError("notifications inválidas.")
+            raise ValueError("default symbol and timeframe are required")
+        if not isinstance(value.psychology_enabled, bool) or not isinstance(value.psychology_data_collection_enabled, bool):
+            raise ValueError("psychology preferences must be boolean")
+        if value.autonomous_operation_enabled:
+            raise ValueError("autonomous operation requires its dedicated authorization flow")
+        if value.real_execution_enabled:
+            raise ValueError("REAL execution cannot be enabled by preferences")
+        if not value.notifications.critical_enabled:
+            raise ValueError("critical notifications cannot be disabled")
+        for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
+            if not isinstance(field, str) or not field.startswith("#") or len(field) not in (4, 7):
+                raise ValueError("candle colors must be hex values")
