@@ -25,7 +25,6 @@ class RealSafetyGate:
     def evaluate(self, *, authorization_active: bool, kill_switch_clear: bool,
                  market_healthy: bool, recovery_safe: bool, risk_approved: bool,
                  broker_available: bool) -> RealSafetyReport:
-        reasons: list[str] = []
         checks = (
             (authorization_active, "autorização REAL não está ativa"),
             (kill_switch_clear, "kill switch ativo"),
@@ -34,7 +33,8 @@ class RealSafetyGate:
             (risk_approved, "risco não aprovado"),
             (broker_available, "adaptador da corretora indisponível"),
         )
-        for ok, reason in checks:
-            if not ok:
-                reasons.append(reason)
+        for ok, _ in checks:
+            if not isinstance(ok, bool):
+                raise TypeError("cada pré-condição de segurança REAL deve ser booleana")
+        reasons: list[str] = [reason for ok, reason in checks if not ok]
         return RealSafetyReport(RealSafetyState.READY if not reasons else RealSafetyState.BLOCKED, tuple(reasons))
