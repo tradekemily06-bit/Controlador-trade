@@ -8,13 +8,14 @@ from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
-def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
+def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, request_id="req-1"):
     return ExecutionRequest(
         symbol="BTCUSD",
         signal=signal,
         amount=10.0,
         duration_seconds=60,
         mode=mode,
+        request_id=request_id,
     )
 
 

@@ -10,13 +10,14 @@ from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
-def request() -> ExecutionRequest:
+def request(request_id: str = "req-001") -> ExecutionRequest:
     return ExecutionRequest(
         symbol="TEST",
         signal=Signal.COMPRA,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 

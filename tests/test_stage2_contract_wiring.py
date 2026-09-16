@@ -47,11 +47,11 @@ def snapshot_for(state: OperationalState, *, created_at: datetime | None = None)
     )
 
 
-def request() -> ExecutionRequest:
+def request(request_id: str = "req-bind") -> ExecutionRequest:
     from core.models import Signal
     return ExecutionRequest(
         symbol="TEST", signal=Signal.COMPRA, amount=10.0, duration_seconds=60,
-        mode=ExecutionMode.DEMO,
+        mode=ExecutionMode.DEMO, request_id=request_id,
     )
 
 

@@ -11,13 +11,14 @@ from core.models import Signal
 from integration.market_data_execution_guard import MarketDataExecutionGuard
 
 
-def _request(symbol: str = "EURUSD") -> ExecutionRequest:
+def _request(symbol: str = "EURUSD", request_id: str = "healthy-data") -> ExecutionRequest:
     return ExecutionRequest(
         symbol=symbol,
         signal=Signal.COMPRA,
         amount=0.01,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 
