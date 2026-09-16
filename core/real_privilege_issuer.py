@@ -18,51 +18,55 @@ class RealPrivilegeIssuer:
         self._admission_boundary = RealAdmissionBoundary()
 
     def issue_authorization(
-        self, *, authorization_id: str, audit_id: str,
-        request_id: str, symbol: str, broker_id: str,
-        audit_verified: bool, explicitly_enabled: bool,
-        real_execution_allowed: bool,
+        self, *, authorization_id: str, release_audit: RealReleaseAudit,
+        broker: str, request: ExecutionRequest,
+        explicit_real_enablement: bool,
     ) -> RealExecutionAuthorization:
-        if not all(isinstance(value, str) and value.strip() for value in (
-            authorization_id, audit_id, request_id, symbol, broker_id,
-        )):
-            raise ValueError("identidade REAL incompleta.")
-        if not all(isinstance(value, bool) for value in (
-            audit_verified, explicitly_enabled, real_execution_allowed,
-        )):
-            raise TypeError("estado de emissão REAL inválido.")
-        if not audit_verified:
-            raise PermissionError("auditoria REAL não verificada; emissão bloqueada")
-        if not explicitly_enabled or not real_execution_allowed:
-            raise PermissionError("habilitação REAL explícita não concedida")
-        adapter_id = self._adapter_gateway.adapter_id(broker_id)
+        if not isinstance(release_audit, RealReleaseAudit) or not release_audit.verified:
+            raise PermissionError("autorização REAL exige auditoria de release verificada.")
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
+            raise PermissionError("autorização REAL exige requisição REAL.")
+        if not isinstance(explicit_real_enablement, bool) or not explicit_real_enablement:
+            raise PermissionError("emissão REAL exige habilitação explícita.")
+        if not isinstance(broker, str) or not broker.strip():
+            raise ValueError("broker é obrigatório.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id da requisição REAL é obrigatório.")
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            raise ValueError("symbol da requisição REAL é obrigatório.")
+        adapter_id = self._adapter_gateway.adapter_id(broker)
         return RealExecutionAuthorization._issue(
             authorization_id=authorization_id,
-            audit_id=audit_id,
-            broker_id=broker_id,
+            audit_id=release_audit.audit_id,
+            broker_id=broker,
             adapter_id=adapter_id,
-            request_id=request_id,
-            symbol=symbol,
+            request_id=request.request_id,
+            symbol=request.symbol,
         )
 
     def issue_admission(
         self, *, admission_id: str, authorization: RealExecutionAuthorization,
-        audit_verified: bool, safety: RealSafetyReport,
+        release_audit: RealReleaseAudit, safety: RealSafetyReport,
+        broker_available: bool,
     ) -> RealAdmission:
         if not isinstance(authorization, RealExecutionAuthorization) or not authorization.active:
             raise PermissionError("admissão REAL exige autorização ativa emitida pela autoridade REAL.")
-        if not isinstance(safety, RealSafetyReport) or not safety.ready:
-            raise PermissionError("segurança REAL não está pronta")
-        if not isinstance(audit_verified, bool) or not audit_verified:
-            raise PermissionError("auditoria REAL não verificada")
+        if not isinstance(release_audit, RealReleaseAudit) or not release_audit.verified:
+            raise PermissionError("admissão REAL exige auditoria de release verificada.")
+        if authorization.audit_id != release_audit.audit_id:
+            raise PermissionError("auditoria da autorização REAL não corresponde ao release auditado.")
+        if not isinstance(safety, RealSafetyReport):
+            raise ValueError("segurança REAL inválida.")
+        if not isinstance(broker_available, bool):
+            raise TypeError("broker_available deve ser booleano.")
         resolved_adapter_id = self._adapter_gateway.adapter_id(authorization.broker_id)
         if resolved_adapter_id.strip() != authorization.adapter_id.strip():
             raise PermissionError("adapter autorizado não corresponde ao adapter resolvido.")
         return self._admission_boundary._issue(
             admission_id=admission_id,
-            audit_id=authorization.audit_id,
+            audit_id=release_audit.audit_id,
             audit_verified=True,
             authorization=authorization,
             safety_ready=safety.ready,
-            broker_available=True,
+            broker_available=broker_available,
         )
