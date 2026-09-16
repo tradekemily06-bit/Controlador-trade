@@ -113,6 +113,14 @@ class ExecutionLedger:
             context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": normalized_external_id}
         return states, evidence, context
 
+    def _fsync_parent_directory(self) -> None:
+        """Persist the directory entry created by the atomic rename."""
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
@@ -125,6 +133,7 @@ class ExecutionLedger:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        self._fsync_parent_directory()
 
     def _mutate_locked(self, mutation) -> None:
         with self._process_lock():
