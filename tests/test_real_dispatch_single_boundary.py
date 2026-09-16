@@ -51,8 +51,8 @@ def test_order_send_exists_only_inside_the_broker_adapter() -> None:
     assert not violations, "direct broker order_send bypass found outside the official adapter: " + ", ".join(sorted(violations))
 
 
-def test_order_check_and_other_mt5_trade_calls_stay_at_broker_edge() -> None:
-    trade_calls = {"order_check", "order_send", "positions_get", "positions_total", "order_calc_margin"}
+def test_mt5_trade_mutations_stay_at_broker_edge() -> None:
+    trade_calls = {"order_check", "order_send", "order_modify", "order_delete", "order_close_by"}
     violations: list[str] = []
     for path in _runtime_python_files():
         if path.resolve() == ALLOWED_ORDER_SEND.resolve():
@@ -60,7 +60,7 @@ def test_order_check_and_other_mt5_trade_calls_stay_at_broker_edge() -> None:
         for attribute in trade_calls:
             for node in _calls_with_attribute(path, attribute):
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:{attribute}")
-    assert not violations, "broker trade operation found outside the broker edge: " + ", ".join(sorted(violations))
+    assert not violations, "MT5 trade operation found outside the broker edge: " + ", ".join(sorted(violations))
 
 
 def test_real_gateway_construction_is_not_replicated_outside_execution_boundary() -> None:
@@ -91,7 +91,6 @@ def test_registry_has_no_public_adapter_get_or_mapping_escape_hatch() -> None:
         if path.resolve() == REGISTRY.resolve():
             continue
         tree = _tree(path)
-        registry_names: set[str] = set()
         aliases: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
@@ -101,7 +100,6 @@ def test_registry_has_no_public_adapter_get_or_mapping_escape_hatch() -> None:
                 if is_registry:
                     for target in node.targets:
                         if isinstance(target, ast.Name):
-                            registry_names.add(target.id)
                             aliases.add(target.id)
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name) and node.value.id in aliases:
                 for target in node.targets:
