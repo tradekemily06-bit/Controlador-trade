@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from core.decision_snapshot import DecisionSnapshot
@@ -65,8 +67,13 @@ def test_risk_barrier_allows_unchanged_authoritative_state() -> None:
     ("exposure", 200.0),
     ("balance", 900.0),
     ("equity", 880.0),
+    ("realized_pnl", -25.0),
+    ("unrealized_pnl", -7.0),
+    ("net_position", -1.0),
+    ("market_open", False),
+    ("last_processed_candle", datetime(2026, 9, 15, 12, 5, tzinfo=timezone.utc)),
 ])
-def test_risk_barrier_blocks_changed_risk_state(field: str, changed) -> None:
+def test_risk_barrier_blocks_every_risk_state_field_change(field: str, changed) -> None:
     original = OperationalState(
         balance=1000.0, equity=990.0, realized_pnl=-10.0,
         unrealized_pnl=2.0, trades_today=2, consecutive_losses=1,
