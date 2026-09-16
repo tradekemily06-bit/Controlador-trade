@@ -1,4 +1,6 @@
 import ast
+import dataclasses
+import pickle
 from pathlib import Path
 
 import pytest
@@ -7,8 +9,8 @@ from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p115_shadow_validation import ShadowValidationBoundary
-from core.p116_real_release_audit import RealReleaseAuditBoundary
-from core.p117_real_admission import RealAdmissionStatus, RealAdmissionBoundary
+from core.p116_real_release_audit import RealReleaseAuditAuditBoundary if False else RealReleaseAuditBoundary
+from core.p117_real_admission import RealAdmission, RealAdmissionStatus, RealAdmissionBoundary
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.real_privilege_issuer import RealPrivilegeIssuer
 from execution.adapter_gateway import BrokerAdapterGateway
@@ -52,6 +54,17 @@ def _registry():
     return registry
 
 
+def _active_authorization():
+    registry = _registry()
+    gateway = BrokerAdapterGateway(registry)
+    issuer = RealPrivilegeIssuer(gateway)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id="req")
+    return issuer.issue_authorization(
+        authorization_id="auth", release_audit=_release_audit(), broker="fake",
+        request=request, explicit_real_enablement=True,
+    )
+
+
 def test_active_real_authorization_cannot_be_constructed_directly():
     with pytest.raises(PermissionError):
         RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", "req", "TEST", True, True)
@@ -64,22 +77,63 @@ def test_legacy_public_admission_cannot_create_admitted_state():
         broker_id="fake", adapter_id="fake-adapter", request_id="req", symbol="TEST",
     )
     assert admission.status is RealAdmissionStatus.BLOCKED
+    assert not admission.admitted
 
 
 def test_authoritative_issuer_derives_adapter_and_operation_identity():
-    registry = _registry()
-    gateway = BrokerAdapterGateway(registry)
-    issuer = RealPrivilegeIssuer(gateway)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id="req")
-    authorization = issuer.issue_authorization(
-        authorization_id="auth", release_audit=_release_audit(), broker="fake",
-        request=request, explicit_real_enablement=True,
-    )
+    authorization = _active_authorization()
     assert authorization.active
-    assert authorization.request_id == request.request_id
-    assert authorization.symbol == request.symbol
+    assert authorization.issuer_valid
+    assert authorization.request_id == "req"
+    assert authorization.symbol == "TEST"
     assert authorization.broker_id == "fake"
     assert authorization.adapter_id == "fake-adapter"
+
+
+def test_active_authorization_cannot_be_rebound_with_dataclass_replace():
+    authorization = _active_authorization()
+    with pytest.raises(PermissionError):
+        dataclasses.replace(authorization, symbol="XAUUSD")
+
+
+def test_admitted_privilege_cannot_be_rebound_with_dataclass_replace():
+    authorization = _active_authorization()
+    admission = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_admission(
+        admission_id="adm", authorization=authorization,
+        release_audit=_release_audit(),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ),
+        broker_available=True,
+    )
+    assert admission.admitted
+    with pytest.raises(PermissionError):
+        dataclasses.replace(admission, symbol="XAUUSD")
+
+
+def test_pickle_reconstruction_cannot_restore_active_authorization():
+    authorization = _active_authorization()
+    restored = pickle.loads(pickle.dumps(authorization))
+    assert not restored.active
+    assert not restored.issuer_valid
+
+
+def test_pickle_reconstruction_cannot_restore_admitted_privilege():
+    authorization = _active_authorization()
+    issuer = RealPrivilegeIssuer(BrokerAdapterGateway(_registry()))
+    admission = issuer.issue_admission(
+        admission_id="adm", authorization=authorization,
+        release_audit=_release_audit(),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ),
+        broker_available=True,
+    )
+    restored = pickle.loads(pickle.dumps(admission))
+    assert not restored.admitted
+    assert not restored.issuer_valid
 
 
 def test_production_sources_have_single_active_real_privilege_origin():
