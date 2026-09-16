@@ -2,12 +2,16 @@
 
 O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O serviço pode ser hospedado como uma aplicação WSGI Python.
 
-## Segurança
+## Segurança e limite desta publicação
 
 - O painel permanece em modo de simulação/DEMO.
 - A API de análise retorna `execution_allowed: false`.
 - REAL permanece desabilitado.
 - Nenhuma credencial de corretora deve ser colocada no repositório.
+- Esta publicação é para teste/uso controlado do ecossistema, **não é uma implantação SaaS multiusuário de produção**.
+- A camada atual ainda não configura um provedor de autenticação/sessão, autorização por usuário nem isolamento de estado por tenant na borda HTTP.
+- Antes de disponibilizar a API publicamente para múltiplos usuários, a implantação precisa adicionar autenticação, autorização, sessão segura, isolamento tenant-scoped e armazenamento compartilhado apropriado.
+- Em especial, endpoints que alteram memória, resultados, preferências ou conteúdo de aprendizagem não devem ser tratados como API pública multiusuário enquanto essa camada de identidade não estiver configurada.
 
 ## Hospedagem recomendada para o primeiro teste
 
@@ -27,4 +31,6 @@ O health check fica em `/api/health`.
 
 ## Alternativa Docker
 
-O `Dockerfile` mantém uma opção de hospedagem Docker futura e usa a variável `PORT` (7860 por padrão). Isso não é necessário para o primeiro teste.
+O `Dockerfile` mantém uma opção de hospedagem Docker futura e usa a variável `PORT` (7860 por padrão). O contexto de build agora exclui `.runtime`, bancos SQLite, arquivos `.env`, logs e artefatos de desenvolvimento por meio de `.dockerignore`.
+
+Isso não configura autenticação SaaS nem habilita REAL; continua sendo apenas uma proteção de cadeia de build contra inclusão acidental de dados locais no container.

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionRequest, ExecutionResult
+from execution.broker_registry import (
+    BrokerRegistry,
+    BrokerRegistryError,
+    _BROKER_GATEWAY_CAPABILITY,
+)
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class AdapterGatewayError(RuntimeError):
@@ -18,31 +22,53 @@ class AdapterExecutionResult:
 
 
 class BrokerAdapterGateway:
-    """Thin broker boundary; it never contains trading or signal logic."""
+    """Single broker execution boundary; adapters never leave the registry."""
+
+    @staticmethod
+    def _safe_error(exc: Exception) -> str:
+        """Expose only the exception type across the broker boundary."""
+        return type(exc).__name__
 
     def __init__(self, registry: BrokerRegistry) -> None:
+        if not isinstance(registry, BrokerRegistry):
+            raise ValueError("registry inválido.")
         self._registry = registry
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+        # This boundary is reserved for the explicit REAL dispatch path.
+        # DEMO must stay behind the DEMO gateway/executor so a low-level broker
+        # adapter cannot accidentally become an execution bypass.
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
+            return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
+
         try:
-            adapter = self._registry.get(broker)
+            adapter = self._registry._get_for_gateway(
+                broker,
+                capability=_BROKER_GATEWAY_CAPABILITY,
+            )
         except BrokerRegistryError as exc:
-            return AdapterExecutionResult(False, str(exc))
+            return AdapterExecutionResult(False, f"broker registry rejected request: {self._safe_error(exc)}")
 
         try:
-            available = bool(adapter.is_available())
+            available = adapter.is_available()
         except Exception as exc:
-            return AdapterExecutionResult(False, f"disponibilidade do adapter falhou: {exc}")
+            return AdapterExecutionResult(False, f"adapter availability check failed: {self._safe_error(exc)}")
 
+        if not isinstance(available, bool):
+            return AdapterExecutionResult(False, "adapter availability returned an invalid non-boolean state.")
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            return AdapterExecutionResult(False, f"adapter execution failed; execution not confirmed: {self._safe_error(exc)}")
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+        if not isinstance(result.accepted, bool):
+            return AdapterExecutionResult(False, "adapter retornou estado de aceite inválido.")
+        if not isinstance(result.message, str):
+            return AdapterExecutionResult(False, "adapter retornou mensagem inválida.")
 
         return AdapterExecutionResult(result.accepted, result.message, result)

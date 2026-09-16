@@ -21,8 +21,8 @@ class FakeAdapter:
         return self.result
 
 
-def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def request(mode=ExecutionMode.REAL):
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, mode)
 
 
 def gateway_with(adapter):
@@ -33,6 +33,15 @@ def gateway_with(adapter):
 
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_rejects_non_boolean_availability():
+    adapter = FakeAdapter(available=1)
 
     result = gateway_with(adapter).execute("fake", request())
 
@@ -70,6 +79,26 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
     assert result.execution is None
 
 
+def test_adapter_gateway_rejects_non_boolean_acceptance():
+    adapter = FakeAdapter(result=ExecutionResult(1, "ok", "FAKE-1"))
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 1
+
+
+def test_adapter_gateway_rejects_non_string_message():
+    adapter = FakeAdapter(result=ExecutionResult(True, 123, "FAKE-1"))
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 1
+
+
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
@@ -78,3 +107,13 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_rejects_demo_without_touching_adapter():
+    adapter = FakeAdapter()
+
+    result = gateway_with(adapter).execute("fake", request(ExecutionMode.DEMO))
+
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 0

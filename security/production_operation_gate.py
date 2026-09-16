@@ -10,9 +10,9 @@ from storage.production_boundary import ProductionStoragePolicy
 class ProductionOperationGate:
     """Provider-neutral gate for protected production operations.
 
-    The gate only authorizes a request when trusted identity/tenant context and
-    explicitly ready durable production storage are both present. It does not
-    authorize REAL trading or perform any external operation.
+    The gate only authorizes a request when trusted identity/tenant/subject
+    context and explicitly ready durable production storage are both present.
+    It does not authorize REAL trading or perform any external operation.
     """
 
     storage: ProductionStoragePolicy
@@ -27,6 +27,7 @@ class ProductionOperationGate:
         if not self.storage.authorize_write(
             authenticated=context.is_valid(),
             tenant_id=context.tenant_id,
+            subject_id=context.subject_id,
         ):
             raise PermissionError("production storage is not ready")
         return context

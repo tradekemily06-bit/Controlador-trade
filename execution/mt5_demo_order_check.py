@@ -1,17 +1,18 @@
-"""Read-only MT5 DEMO order validation.
+"""Read-only MT5 DEMO runtime validation.
 
-This module intentionally calls order_check() but never calls order_send().
-It is for the first live-terminal validation of the IC Markets DEMO boundary.
+Trade operations such as order_check/order_send belong exclusively to the
+IC Markets adapter. This helper only inspects terminal/account/symbol state and
+therefore cannot become a second broker execution boundary.
 """
 from __future__ import annotations
 
 from typing import Any
 
 
-def run_order_check(mt5: Any, symbol: str = "EURUSD", volume: float = 0.01) -> Any:
-    """Validate a minimum-volume market BUY without submitting it."""
+def run_order_check(mt5: Any, symbol: str = "EURUSD", volume: float = 0.01) -> dict[str, Any]:
+    """Validate DEMO account, quote and volume constraints without a trade call."""
     if not mt5.initialize():
-        raise RuntimeError(f"MT5 indisponível: {mt5.last_error()}")
+        raise RuntimeError("MT5 indisponível")
 
     try:
         account = mt5.account_info()
@@ -20,40 +21,36 @@ def run_order_check(mt5: Any, symbol: str = "EURUSD", volume: float = 0.01) -> A
 
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         if demo_mode is None or getattr(account, "trade_mode", None) != demo_mode:
-            raise RuntimeError("conta não confirmada como DEMO; order_check bloqueado")
+            raise RuntimeError("conta não confirmada como DEMO; validação bloqueada")
 
         if not mt5.symbol_select(symbol, True):
-            raise RuntimeError(f"símbolo indisponível: {symbol}")
+            raise RuntimeError("símbolo indisponível")
 
         tick = mt5.symbol_info_tick(symbol)
         if tick is None or not getattr(tick, "ask", 0):
-            raise RuntimeError(f"cotação indisponível: {symbol}")
+            raise RuntimeError("cotação indisponível")
 
         info = mt5.symbol_info(symbol)
         if info is None:
-            raise RuntimeError(f"informações do símbolo indisponíveis: {symbol}")
+            raise RuntimeError("informações do símbolo indisponíveis")
 
         minimum = float(getattr(info, "volume_min", 0.0))
+        maximum = float(getattr(info, "volume_max", 0.0))
         step = float(getattr(info, "volume_step", 0.0))
-        if volume < minimum or step <= 0:
-            raise RuntimeError(
-                f"volume inválido: volume={volume}, mínimo={minimum}, step={step}"
-            )
+        if volume < minimum or (maximum > 0 and volume > maximum) or step <= 0:
+            raise RuntimeError("volume fora dos limites DEMO")
 
-        payload = {
-            "action": mt5.TRADE_ACTION_DEAL,
+        return {
+            "available": True,
+            "demo_account": True,
             "symbol": symbol,
             "volume": float(volume),
-            "type": mt5.ORDER_TYPE_BUY,
-            "price": tick.ask,
-            "deviation": 20,
-            "magic": 2609001,
-            "comment": "ControladorTrading-DEMO-CHECK",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "volume_min": minimum,
+            "volume_max": maximum,
+            "volume_step": step,
+            "order_check_executed": False,
+            "order_send_executed": False,
         }
-
-        return mt5.order_check(payload)
     finally:
         mt5.shutdown()
 
@@ -63,4 +60,4 @@ if __name__ == "__main__":
 
     result = run_order_check(mt5)
     print(result)
-    print("READ_ONLY=True; order_send NÃO foi chamado.")
+    print("READ_ONLY=True; nenhuma operação de trade foi chamada.")

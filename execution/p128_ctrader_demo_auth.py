@@ -76,7 +76,7 @@ class CTraderDemoSession(BrokerSessionPort):
         except Exception as exc:
             return BrokerSessionObservation(
                 BrokerSessionStatus.UNAVAILABLE,
-                f"falha ao consultar sessão cTrader DEMO: {exc}",
+                f"falha ao consultar sessão cTrader DEMO: {type(exc).__name__}",
             )
 
         if not isinstance(snapshot, CTraderTokenSnapshot):

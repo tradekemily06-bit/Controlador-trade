@@ -20,7 +20,7 @@ def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
     """Read-only MT5 runtime validation; never calls order_check/order_send."""
     try:
         if not mt5.initialize():
-            return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"MT5 indisponível: {mt5.last_error()}")
+            return MT5RuntimePreflight(False, False, symbol, None, None, None, None, "MT5 indisponível")
 
         account = mt5.account_info()
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
@@ -47,7 +47,7 @@ def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
             "MT5 DEMO + símbolo + cotação + limites de volume validados",
         )
     except Exception as exc:
-        return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight: {exc}")
+        return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight: {type(exc).__name__}")
     finally:
         try:
             mt5.shutdown()
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     try:
         import MetaTrader5 as mt5
     except Exception as exc:
-        print(f"MetaTrader5 indisponível: {exc}")
+        print(f"MetaTrader5 indisponível: {type(exc).__name__}")
     else:
         result = run_preflight(mt5)
         print(result.message)

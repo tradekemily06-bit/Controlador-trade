@@ -2,11 +2,11 @@ from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.default_registry import (
     IC_MARKETS_MT5_DEMO,
-    build_demo_registry,
+    _build_demo_registry,
     build_ic_markets_mt5_demo_gateway,
 )
 from execution.gateway import GatewayStatus
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateProvider
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -15,17 +15,25 @@ def test_default_demo_registry_registers_ic_markets_without_connecting():
         def initialize(self):
             raise AssertionError("registry construction must not initialize MT5")
 
-    registry = build_demo_registry(mt5_module=UnusedMT5())
+    registry = _build_demo_registry(mt5_module=UnusedMT5())
 
     assert registry.names() == (IC_MARKETS_MT5_DEMO,)
-    assert isinstance(registry.get(IC_MARKETS_MT5_DEMO), ICMarketsMT5DemoAdapter)
+    assert registry.info()[0].name == IC_MARKETS_MT5_DEMO
+    assert registry.info()[0].available is False
 
 
-def test_default_demo_registry_can_override_symbol():
-    registry = build_demo_registry(symbol="EURUSD")
-    adapter = registry.get(IC_MARKETS_MT5_DEMO)
+def test_default_demo_registry_can_override_symbol_without_exposing_adapter_lookup():
+    registry = _build_demo_registry(symbol="EURUSD")
+    metadata = registry.as_mapping()[IC_MARKETS_MT5_DEMO]
 
-    assert adapter.config.symbol == "EURUSD"
+    assert metadata.name == IC_MARKETS_MT5_DEMO
+    assert metadata.available is False
+    try:
+        registry._get_for_gateway(IC_MARKETS_MT5_DEMO, capability=object())
+    except ValueError as exc:
+        assert "barreira" in str(exc)
+    else:
+        raise AssertionError("adapter lookup must require the gateway capability")
 
 
 def test_ic_markets_demo_gateway_is_composed_without_connecting():
@@ -36,6 +44,28 @@ def test_ic_markets_demo_gateway_is_composed_without_connecting():
     gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5(), symbol="EURUSD")
 
     assert gateway is not None
+    assert isinstance(gateway._risk_state_provider, MT5DemoRiskStateProvider)
+
+
+def test_ic_markets_demo_gateway_risk_provider_uses_same_broker_edge_module():
+    class UnusedMT5:
+        pass
+
+    mt5 = UnusedMT5()
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=mt5, symbol="EURUSD", timeframe=5)
+
+    assert gateway._risk_state_provider._mt5 is mt5
+    assert gateway._risk_state_provider.config.symbol == "EURUSD"
+    assert gateway._risk_state_provider.config.timeframe == 5
+
+
+def test_ic_markets_demo_gateway_rejects_invalid_timeframe():
+    try:
+        build_ic_markets_mt5_demo_gateway(timeframe=0)
+    except ValueError as exc:
+        assert "timeframe" in str(exc)
+    else:
+        raise AssertionError("invalid timeframe must be rejected")
 
 
 def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():

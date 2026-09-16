@@ -5,10 +5,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.file_lock import exclusive_file_lock
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -26,12 +23,17 @@ class ExecutionLedger:
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
-        self.path = Path(path)
+        self.path = Path(path).resolve()
         self._states: dict[str, ExecutionLedgerStatus] = {}
-        self._load()
+        with self._process_lock():
+            self._load()
+
+    def _process_lock(self):
+        return exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock"))
 
     def _load(self) -> None:
         if not self.path.exists():
+            self._states = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -65,27 +67,28 @@ class ExecutionLedger:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
-        lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
-                mutation()
-                self._write()
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with self._process_lock():
+            self._load()
+            mutation()
+            self._write()
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
-        self._load()
-        return self._states.get(request_id)
+        with self._process_lock():
+            self._load()
+            return self._states.get(request_id)
+
+    def snapshot(self) -> dict[str, ExecutionLedgerStatus]:
+        """Return one atomic, lock-protected view for restart/recovery decisions."""
+        with self._process_lock():
+            self._load()
+            return dict(self._states)
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -137,8 +140,9 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
-        self._load()
-        return tuple(sorted(self._states))
+        with self._process_lock():
+            self._load()
+            return tuple(sorted(self._states))
 
     @staticmethod
     def _validate_id(request_id: str) -> None:

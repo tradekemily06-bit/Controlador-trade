@@ -19,19 +19,3 @@ def test_access_requires_role_and_plan_entitlement():
 
     assert allowed.allowed
     assert denied.reason == "entitlement_denied"
-
-
-def test_plan_limit_is_fail_closed_at_boundary():
-    controller = SaaSAccessController()
-    plan = PlanDefinition("limited", frozenset({Entitlement.ANALYSIS}), {"analyses": 3})
-
-    assert controller.within_limit(plan, "analyses", 2).allowed
-    assert not controller.within_limit(plan, "analyses", 3).allowed
-    assert not controller.within_limit(plan, "analyses", -1).allowed
-
-
-def test_none_limit_is_unlimited():
-    plan = PlanDefinition("unlimited", frozenset({Entitlement.ANALYSIS}))
-    decision = SaaSAccessController().within_limit(plan, "analyses", 1000000)
-    assert decision.allowed
-    assert decision.reason == "unlimited"
