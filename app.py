@@ -11,6 +11,7 @@ from wsgiref.simple_server import make_server
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
+from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5DemoRiskStateProvider
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
@@ -23,7 +24,30 @@ RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtim
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
-OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
+
+
+def _build_authoritative_risk_provider():
+    """Select the broker-edge risk authority without changing core composition."""
+    if EXECUTION_PROVIDER != "ic_markets_mt5_demo":
+        return None
+    raw_timeframe = os.environ.get("CONTROLADOR_EXECUTION_TIMEFRAME", "5").strip()
+    try:
+        timeframe = int(raw_timeframe)
+    except ValueError as exc:
+        raise RuntimeError("CONTROLADOR_EXECUTION_TIMEFRAME must be an integer for MT5 DEMO") from exc
+    if timeframe <= 0:
+        raise RuntimeError("CONTROLADOR_EXECUTION_TIMEFRAME must be greater than zero for MT5 DEMO")
+    return MT5DemoRiskStateProvider(
+        MT5DemoRiskStateConfig(symbol=EXECUTION_SYMBOL, timeframe=timeframe)
+    )
+
+
+RISK_STATE_PROVIDER = _build_authoritative_risk_provider()
+OPERATIONAL_RUNTIME = build_operational_runtime(
+    RUNTIME_DIR,
+    executor=EXECUTOR,
+    risk_state_provider=RISK_STATE_PROVIDER,
+)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
 PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
@@ -118,70 +142,3 @@ def application(environ, start_response):
         identity = require_trusted_identity(environ) if saas_public_mode() else None
         owner_kwargs = {"subject_id": identity.subject_id, "tenant_id": identity.tenant_id} if identity is not None else {}
         if path == "/api/health" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"ok": True} if saas_public_mode() else {"ok": True, **SERVICE.system_status()}, request_id, environ)
-        if path == "/api/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.public_status() if saas_public_mode() else SERVICE.system_status(), request_id, environ)
-        if path == "/api/onboarding" and method == "GET":
-            guide = ONBOARDING.build_first_use_guide(); return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
-        if path == "/api/preferences" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
-        if path == "/api/preferences" and method == "POST": return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_preferences(_read_json(environ))}, request_id, environ)
-        if path == "/api/preferences/candles" and method == "POST": return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_candle_preferences(_read_json(environ))}, request_id, environ)
-        if path == "/api/preferences/notifications" and method == "POST": return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.update_notification_preferences(_read_json(environ))}, request_id, environ)
-        if path == "/api/notifications" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.notification_summary(), request_id, environ)
-        if path == "/api/notifications/all" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
-        if path == "/api/updates" and method == "POST":
-            authorized, reason = _authorize_internal_update(environ)
-            if not authorized:
-                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "internal update endpoint is not configured" else HTTPStatus.FORBIDDEN; return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
-            data = _read_json(environ); item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", ""))); return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
-        if path == "/api/saas/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
-        if path == "/api/psychology/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_status(), request_id, environ)
-        if path == "/api/psychology/check-in" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_check_in(_read_json(environ)), request_id, environ)
-        if path == "/api/psychology/advanced" and method == "POST": return _json_response(start_response, HTTPStatus.OK, SERVICE.advanced_psychology_assessment(_read_json(environ)), request_id, environ)
-        if path == "/api/analyze" and method == "POST":
-            record = SERVICE.analyze(_read_json(environ), **owner_kwargs); return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
-        if path == "/api/replay" and method == "POST":
-            cases = _read_json(environ).get("cases")
-            if not isinstance(cases, list): raise ValueError("cases deve ser uma lista")
-            return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases, **owner_kwargs), "execution_allowed": False}, request_id, environ)
-        if path == "/api/memory" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50), **owner_kwargs)}, request_id, environ)
-        if path == "/api/statistics" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(**owner_kwargs), request_id, environ)
-        if path == "/api/outcome" and method == "POST":
-            data = _read_json(environ); record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")), **owner_kwargs); return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
-        if path == "/api/risk" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
-        if path == "/api/news" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
-        if path == "/api/connections" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
-        if path == "/api/learning" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.learning_summary(), request_id, environ)
-        if path == "/api/learning/resources" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"resources": SERVICE.learning_resources_view(), "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/resources" and method == "POST":
-            resource = SERVICE.add_learning_resource(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"resource": {**resource.__dict__, "content_type": resource.content_type.value, "status": resource.status.value}, "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/sources" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"sources": SERVICE.learning_sources_view(), "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/sources/screen" and method == "POST":
-            source = SERVICE.screen_learning_source(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"source": {**source.__dict__, "source_type": source.source_type.value, "status": source.status.value}, "operation_eligible": False}, request_id, environ)
-        if path == "/api/learning/sources/validate" and method == "POST":
-            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
-            updated = SERVICE.validate_learning_source(source, content_verified=bool(data.get("content_verified", False)), security_checked=bool(data.get("security_checked", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
-        if path == "/api/learning/sources/admit" and method == "POST":
-            data = _read_json(environ); source = _learning_source_for_request(str(data.get("source_id", "")))
-            updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=bool(data.get("knowledge_validated", False))); return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
-        if path == "/api/learning/observations" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/observations" and method == "POST":
-            observation = SERVICE.add_learning_observation(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"observation": observation.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
-        if path == "/api/learning/activities" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"activities": SERVICE.learning_activities_view(), "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/activities" and method == "POST":
-            activity = SERVICE.add_learning_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False}, request_id, environ)
-        if path == "/api/learning/professor/activity" and method == "POST":
-            activity = SERVICE.generate_professor_activity(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"activity": activity.__dict__, "execution_allowed": False, "learning_authorizes_trading": False}, request_id, environ)
-        if path == "/api/learning/attempts" and method == "POST":
-            attempt = SERVICE.add_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
-        if path in {"/", "/index.html"} and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
-        if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json", request_id, environ)
-        if path.startswith("/api/") and method in {"GET", "POST"}: return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-        return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-    except Exception as exc:
-        status = HTTPStatus.SERVICE_UNAVAILABLE if exc.__class__.__name__ == "PublicSaaSNotReady" else (HTTPStatus.FORBIDDEN if isinstance(exc, PermissionError) else HTTPStatus.BAD_REQUEST)
-        return _json_response(start_response, status, {"error": str(exc), "request_id": request_id}, request_id, environ)
-
-def run() -> None:
-    host = os.environ.get("CONTROLADOR_HOST", "0.0.0.0"); selected_port = int(os.environ.get("PORT", "7860"))
-    with make_server(host, selected_port) as server: server.serve_forever()
-
-if __name__ == "__main__": run()
