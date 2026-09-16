@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionPort, ExecutionResult
 
@@ -49,8 +51,15 @@ class GatewayBoundDemoExecutionPort:
         return self._port.is_available()
 
 
-def build_ic_markets_mt5_demo_port(*, symbol: str | None = None) -> ExecutionPort:
+def build_ic_markets_mt5_demo_port(
+    *,
+    symbol: str | None = None,
+    mt5_module: Any = None,
+) -> ExecutionPort:
     """Create the IC Markets MT5 DEMO port without exposing its adapter."""
     return DemoBrokerExecutionPort(
-        ICMarketsMT5DemoAdapter(ICMarketsMT5DemoConfig(symbol=symbol))
+        ICMarketsMT5DemoAdapter(
+            ICMarketsMT5DemoConfig(symbol=symbol),
+            mt5_module=mt5_module,
+        )
     )
