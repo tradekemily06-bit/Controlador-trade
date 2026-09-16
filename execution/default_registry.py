@@ -37,15 +37,10 @@ def build_ic_markets_mt5_demo_gateway(
 ) -> ExecutionGateway:
     """Compose IC Markets MT5 DEMO only through the full operational runtime.
 
-    This factory deliberately does not construct a bare ``ExecutionGateway``.
-    The returned gateway therefore always owns the durable execution ledger,
-    lifecycle state, maintenance state, safety store and cross-process dispatch
-    lock supplied by ``build_operational_runtime``. The broker adapter remains
-    private to this composition boundary.
-
-    ``runtime_root`` may be supplied by the host. When omitted, the same
-    ``CONTROLADOR_RUNTIME_DIR``/``.runtime`` convention used by the application
-    runtime is used. Construction remains side-effect free with respect to MT5.
+    The returned gateway owns the durable execution ledger, lifecycle state,
+    maintenance state, safety store and cross-process dispatch lock supplied by
+    ``build_operational_runtime``. The broker adapter remains private to this
+    composition boundary.
     """
     if not isinstance(timeframe, int) or isinstance(timeframe, bool) or timeframe <= 0:
         raise ValueError("timeframe deve ser um inteiro positivo")
@@ -69,11 +64,10 @@ def build_ic_markets_mt5_demo_gateway(
         risk_state_provider=risk_provider,
     )
 
-    # Preserve the caller's explicit safety intent while keeping the durable
-    # runtime-owned KillSwitch as the only switch consulted by the gateway.
-    if kill_switch is not None:
-        state = kill_switch.state
-        if state.enabled:
-            runtime.kill_switch.activate(state.reason or "kill switch externo ativado")
+    # An external kill switch may only strengthen the runtime-owned authority.
+    # Persist that strengthening so the next final safety refresh cannot erase it.
+    if kill_switch is not None and kill_switch.state.enabled:
+        runtime.kill_switch.activate(kill_switch.state.reason or "kill switch externo ativado")
+        runtime.safety_store.save(runtime.safety_audit, runtime.kill_switch)
 
     return runtime.gateway
