@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import multiprocessing as mp
+import os
 import time
 from pathlib import Path
 
@@ -60,6 +62,26 @@ def _lock_holder(lock_path: str, ready) -> None:
     with exclusive_file_lock(lock_path):
         ready.put("locked")
         time.sleep(30)
+
+
+def _die_after_temp_fsync(path: str, ready) -> None:
+    """Simulate a crash after temp-file fsync but before os.replace()."""
+    ledger = ExecutionLedger(path)
+    with ledger._process_lock():  # noqa: SLF001 - adversarial interrupted-write test
+        ledger._load()  # noqa: SLF001
+        ledger._states["crash-only"] = ExecutionLedgerStatus.RESERVED  # noqa: SLF001
+        ledger.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = ledger.path.with_name(f".{ledger.path.name}.tmp")
+        payload = {
+            "states": {key: value.value for key, value in sorted(ledger._states.items())},  # noqa: SLF001
+            "reconciliation_evidence": {},
+            "execution_context": {},
+        }
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        ready.put("fsynced")
+        os._exit(92)
 
 
 def _join_all(processes: list[mp.Process]) -> None:
@@ -169,3 +191,27 @@ def test_new_process_can_assume_lock_after_abrupt_holder_termination(tmp_path: P
     ledger = ExecutionLedger(path)
     ledger.reserve("after-crash")
     assert ledger.status("after-crash") is ExecutionLedgerStatus.RESERVED
+
+
+def test_interrupted_write_preserves_last_committed_ledger(tmp_path: Path):
+    if not hasattr(__import__("fcntl"), "flock"):
+        pytest.skip("OS-level flock is required by the production lock")
+
+    ctx = mp.get_context("fork")
+    path = tmp_path / "ledger.json"
+    baseline = ExecutionLedger(path)
+    baseline.reserve("baseline")
+
+    ready = ctx.Queue()
+    crashed = ctx.Process(target=_die_after_temp_fsync, args=(str(path), ready))
+    crashed.start()
+    assert ready.get(timeout=10) == "fsynced"
+    crashed.join(10)
+    assert crashed.exitcode == 92
+
+    restored = ExecutionLedger(path)
+    assert restored.status("baseline") is ExecutionLedgerStatus.RESERVED
+    assert restored.status("crash-only") is None
+    restored.reserve("after-interrupted-write")
+    assert restored.status("after-interrupted-write") is ExecutionLedgerStatus.RESERVED
+    assert restored.path.with_name(f".{restored.path.name}.tmp").exists()
