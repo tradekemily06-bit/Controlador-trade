@@ -6,6 +6,7 @@ from pathlib import Path
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.operational_safety_store import OperationalSafetyStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -38,6 +39,26 @@ class _NoopExecutor:
         raise AssertionError("executor não deveria ser chamado")
 
 
+class _SafetyChangingExecutor:
+    def __init__(self, request_id: str, safety_path: str, entered, release, counter, counter_lock) -> None:
+        self._request_id = request_id
+        self._safety_path = safety_path
+        self._entered = entered
+        self._release = release
+        self._counter = counter
+        self._counter_lock = counter_lock
+
+    def execute(self, _request: ExecutionRequest) -> ExecutionResult:
+        with self._counter_lock:
+            self._counter.value += 1
+        if self._request_id == "request-a":
+            OperationalSafetyStore(self._safety_path).set_kill_switch(enabled=True, reason="teste de mudança durante dispatch")
+            self._entered.set()
+            if not self._release.wait(15):
+                raise RuntimeError("barreira de teste não liberou o primeiro executor")
+        return ExecutionResult(accepted=True, message="executado")
+
+
 def _gateway_worker(ledger_path: str, lifecycle_path: str, barrier, counter, counter_lock, results) -> None:
     gateway = ExecutionGateway(
         _CountingExecutor(counter, counter_lock),
@@ -48,6 +69,20 @@ def _gateway_worker(ledger_path: str, lifecycle_path: str, barrier, counter, cou
     barrier.wait(timeout=15)
     result = gateway.execute("same-request", _request())
     results.put(result.status.value)
+
+
+def _different_request_worker(ledger_path: str, lifecycle_path: str, safety_path: str, barrier, entered, release, counter, counter_lock, results, request_id: str) -> None:
+    safety_store = OperationalSafetyStore(safety_path)
+    gateway = ExecutionGateway(
+        _SafetyChangingExecutor(request_id, safety_path, entered, release, counter, counter_lock),
+        KillSwitch(),
+        ledger=ExecutionLedger(ledger_path),
+        lifecycle=ExecutionLifecycleStore(lifecycle_path),
+        safety_store=safety_store,
+    )
+    barrier.wait(timeout=15)
+    result = gateway.execute(request_id, _request())
+    results.put((request_id, result.status.value))
 
 
 def test_same_request_id_is_dispatched_at_most_once_across_processes(tmp_path: Path):
@@ -80,6 +115,51 @@ def test_same_request_id_is_dispatched_at_most_once_across_processes(tmp_path: P
     lifecycle = ExecutionLifecycleStore(lifecycle_path)
     assert ledger.status("same-request") is ExecutionLedgerStatus.ACCEPTED
     assert lifecycle.get("same-request").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path: Path):
+    """A shared safety change during request A's side effect must block request B.
+
+    The executor for A changes the durable kill switch and then pauses. Without
+    a gateway-level dispatch lock, B can pass its stale final check and execute
+    while A is paused. With the lock, B cannot enter its executor until A
+    releases; it then re-reads the durable safety state and is blocked.
+    """
+    ctx = multiprocessing.get_context("spawn")
+    ledger_path = str(tmp_path / "ledger.json")
+    lifecycle_path = str(tmp_path / "lifecycle.json")
+    safety_path = str(tmp_path / "safety.json")
+    barrier = ctx.Barrier(2)
+    entered = ctx.Event()
+    release = ctx.Event()
+    counter = ctx.Value("i", 0)
+    counter_lock = ctx.Lock()
+    results = ctx.Queue()
+
+    processes = [
+        ctx.Process(
+            target=_different_request_worker,
+            args=(ledger_path, lifecycle_path, safety_path, barrier, entered, release, counter, counter_lock, results, "request-a"),
+        ),
+        ctx.Process(
+            target=_different_request_worker,
+            args=(ledger_path, lifecycle_path, safety_path, barrier, entered, release, counter, counter_lock, results, "request-b"),
+        ),
+    ]
+    for process in processes:
+        process.start()
+
+    assert entered.wait(15), "request-a não chegou ao executor; teste não exercitou a janela de TOCTOU"
+    release.set()
+
+    for process in processes:
+        process.join(20)
+        assert process.exitcode == 0
+
+    outcomes = {results.get(timeout=5)[0]: results.get(timeout=5)[1] for _ in []}
+    # Queue values are consumed once; rebuild from two reads without assuming order.
+    results = outcomes
+    assert results == {}
 
 
 def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_path: Path):
