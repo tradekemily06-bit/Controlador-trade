@@ -33,12 +33,10 @@ class PersistentOperationalRecorder:
             active_kill_switch = kill_switch
             if persisted_kill_switch.enabled and not kill_switch.state.enabled:
                 kill_switch.activate(persisted_kill_switch.reason or "estado persistido")
-            elif not persisted_kill_switch.enabled and kill_switch.state.enabled:
-                # Never allow a caller-provided local block to override the
-                # authoritative persisted state during restoration.
-                kill_switch.deactivate()
             elif persisted_kill_switch.enabled:
                 kill_switch.synchronize(persisted_kill_switch)
+            # A stricter local kill switch remains active even when the
+            # persisted source is currently clear.
         else:
             active_kill_switch = KillSwitch()
             active_kill_switch.synchronize(persisted_kill_switch)
