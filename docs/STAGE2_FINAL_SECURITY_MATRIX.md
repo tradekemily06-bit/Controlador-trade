@@ -15,33 +15,37 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - Demo broker direct-dispatch side doors are blocked; the gateway-bound capability is required for DEMO broker execution.
 - Production factory composition is guarded against raw MT5 adapter injection and unauthorized REAL gateway construction.
 - Decision freshness exists as a fail-closed policy and is bound by the consolidated DEMO operational runtime.
+- REAL gateway now binds DecisionSnapshot.symbol to the request symbol and enforces snapshot timestamp/freshness before REAL dispatch.
+- The live orchestrator now persists the decision creation timestamp into the DecisionSnapshot instead of producing a timestamp-less operational snapshot.
+- Active REAL authorization can only be constructed through the private issuer boundary; direct construction of an active authorization fails closed.
+- Active REAL admission can only be constructed through the private issuer boundary; the legacy public admission path can only produce BLOCKED state and cannot manufacture an admitted privilege.
+- RealPrivilegeIssuer derives adapter identity from the authoritative BrokerAdapterGateway and admission identity from the already-issued authorization.
+- Issuer negative coverage now checks direct active authorization/admission construction, inactive/forged admission attempts, audit failures and safety failures.
 - CI concurrency was changed to cancel superseded branch runs and a 30-minute job timeout was added.
 
 ## Remaining Stage 2 gates
 
-### 1. REAL privilege origin / issuance — OPEN
+### 1. REAL privilege origin / reconstruction — 🟡 IMPLEMENTED, EVIDENCE STILL OPEN
 
-`RealExecutionAuthorization` and `RealAdmission` are immutable and strongly identity-bound, but their public constructors still allow callers to construct privileged-looking values directly. The final design must establish one authoritative issuance boundary and prevent a caller from manufacturing an active REAL authorization/admission outside that boundary.
+The authoritative issuer and private active-object issuance boundary are now present. The remaining proof is not implementation but complete coverage of every legacy/reconstruction path and the full consolidated suite.
 
 Required evidence before Stage 2 closure:
 
-- one authoritative issuer/factory for REAL authorization;
-- one authoritative issuer/factory for REAL admission;
-- privileged identity derived from the trusted request/authorization/registry context rather than accepted as caller-controlled identity;
-- no legacy constructor, deserialization, compatibility helper or factory can create an active REAL privilege outside that issuer;
+- no legacy constructor, deserialization, compatibility helper or factory can create an active REAL privilege outside the issuer;
 - restart/reconstruction preserves the issuer invariant;
-- negative tests prove direct construction, legacy reconstruction and mismatched issuer context cannot reach REAL dispatch.
+- negative tests prove direct construction, legacy reconstruction and mismatched issuer context cannot reach REAL dispatch;
+- full CI validates the consolidated tree.
 
-### 2. DecisionSnapshot identity — OPEN
+### 2. DecisionSnapshot identity/freshness — 🟢 IMPLEMENTED, TEST SUITE VALIDATION PENDING
 
-The REAL gateway currently binds request/authorization/admission symbol identity, but the final REAL boundary must also bind `DecisionSnapshot.symbol` to the request symbol. A snapshot for one instrument must never authorize a request for another instrument, even when the request and authorization agree with each other.
+The REAL gateway now rejects a missing/mismatched snapshot symbol and rejects missing, future or expired snapshot timestamps using the mandatory REAL freshness policy. The live orchestrator supplies the actual decision creation timestamp.
 
-The REAL boundary must also enforce the snapshot timestamp/freshness contract, not merely the DEMO operational gateway.
+The gate remains pending only until the consolidated CI/test suite proves these controls together with the rest of Stage 2.
 
-### 3. CI #1536 — OPEN / INFRASTRUCTURE QUEUE
+### 3. CI consolidated validation — 🔴 OPEN / INFRASTRUCTURE QUEUE
 
-Run 1536 is still queued. This is not evidence of a test failure and it is not evidence of a green build. The workflow has already been changed to prevent stale runs from accumulating, but the current queued run must actually start and complete before the final matrix can be marked green.
+The newest validation run for the current branch is the authoritative run to watch. A queued run is not a failure and is not evidence of a green build. Stage 2 cannot close until the current consolidated tree actually starts and completes successfully.
 
 ## Stage 2 closure rule
 
-Stage 2 remains **not closed** until all OPEN gates above have implementation evidence and the consolidated CI run is green. No REAL enablement is implied by this document.
+Stage 2 remains **not closed** until all OPEN/validation-pending gates above have implementation evidence, legacy/reconstruction coverage, and the consolidated CI run is green. No REAL enablement is implied by this document.
