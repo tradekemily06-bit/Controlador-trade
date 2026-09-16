@@ -82,13 +82,16 @@ def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
 
 
 def require_tenant_scoped_data_plane() -> None:
-    """Allow public SaaS only when durable tenant+subject-scoped storage is configured.
+    """Require durable production storage scoped to the trusted request identity.
 
-    The check intentionally reconstructs the provider policy from deployment
-    configuration rather than trusting a browser-supplied value or falling back
-    to process memory. SQLite remains single-instance; multi-instance deployment
-    therefore fails closed until a shared durable provider is implemented.
+    The tenant and subject are taken from the server-established identity for
+    this request. They are never synthesized from deployment configuration or
+    accepted from browser-controlled HTTP headers.
     """
+    identity = current_trusted_identity()
+    if identity is None or identity.subject_id == "health-check" or identity.tenant_id == "health-check":
+        raise PublicSaaSNotReady("trusted user identity is required for tenant-scoped data plane")
+
     cfg = ProductionProviderConfig.from_environment()
     try:
         provider, policy = build_production_provider(cfg)
@@ -98,9 +101,9 @@ def require_tenant_scoped_data_plane() -> None:
         raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
     if not policy.authorize_write(
         authenticated=True,
-        tenant_id="configured",
-        subject_id="configured",
+        tenant_id=identity.tenant_id,
+        subject_id=identity.subject_id,
     ):
-        raise PublicSaaSNotReady("tenant-scoped data plane is not authorized")
+        raise PublicSaaSNotReady("tenant-and-subject-scoped data plane is not authorized")
     if not policy.durable or not policy.tenant_scoped or not policy.subject_scoped:
-        raise PublicSaaSNotReady("tenant+subject-scoped data plane must be durable and scoped")
+        raise PublicSaaSNotReady("tenant-and-subject-scoped data plane must be durable and scoped")
