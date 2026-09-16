@@ -10,7 +10,9 @@ from core.kill_switch import KillSwitch
 from core.operational_runtime import build_operational_runtime
 from core.operational_state import OperationalState
 from core.risk_state_fingerprint import risk_state_identity
+from execution.demo_broker_port import DemoBrokerExecutionPort, GatewayBoundDemoExecutionPort
 from execution.gateway import ExecutionGateway, GatewayStatus
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -100,3 +102,30 @@ def test_freshness_policy_blocks_expired_snapshot_before_executor() -> None:
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.requests == []
+
+
+def test_public_demo_broker_port_cannot_dispatch_directly() -> None:
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("direct dispatch must not reach MT5")
+
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=UnusedMT5())
+    port = DemoBrokerExecutionPort(adapter)
+    result = port.execute(request())
+
+    assert result.accepted is False
+    assert "dispatch direto" in result.message
+
+
+def test_runtime_binds_demo_broker_port_to_gateway_only(tmp_path: Path) -> None:
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("construction must not initialize MT5")
+
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=UnusedMT5())
+    port = DemoBrokerExecutionPort(adapter)
+    provider = Provider(OperationalState(trades_today=0, consecutive_losses=0))
+    runtime = build_operational_runtime(tmp_path, executor=port, risk_state_provider=provider)
+
+    assert isinstance(runtime.gateway._executor, GatewayBoundDemoExecutionPort)
+    assert runtime.gateway._executor._port is port
