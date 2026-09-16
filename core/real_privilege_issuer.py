@@ -3,17 +3,11 @@ from __future__ import annotations
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission, RealAdmissionBoundary
 from core.p114_real_safety_gate import RealSafetyReport
-from core.broker_registry import BrokerRegistry
+from execution.broker_registry import BrokerRegistry
 
 
 class RealPrivilegeIssuer:
-    """Single issuance boundary for active REAL authorization and admission.
-
-    The public value objects remain immutable contracts for compatibility, but
-    active REAL capability is issued only after the issuer derives identity
-    from the trusted request and registry and verifies the release/safety
-    context supplied by the caller.
-    """
+    """Single issuance boundary for active REAL authorization and admission."""
 
     def __init__(self, registry: BrokerRegistry) -> None:
         if not isinstance(registry, BrokerRegistry):
@@ -21,12 +15,10 @@ class RealPrivilegeIssuer:
         self._registry = registry
         self._admission_boundary = RealAdmissionBoundary()
 
-    def issue_authorization(
-        self, *, authorization_id: str, audit_id: str,
-        request_id: str, symbol: str, broker_id: str,
-        audit_verified: bool, explicitly_enabled: bool,
-        real_execution_allowed: bool,
-    ) -> RealExecutionAuthorization:
+    def issue_authorization(self, *, authorization_id: str, audit_id: str,
+                            request_id: str, symbol: str, broker_id: str,
+                            audit_verified: bool, explicitly_enabled: bool,
+                            real_execution_allowed: bool) -> RealExecutionAuthorization:
         if not all(isinstance(value, str) and value.strip() for value in (
             authorization_id, audit_id, request_id, symbol, broker_id,
         )):
@@ -37,18 +29,18 @@ class RealPrivilegeIssuer:
             raise TypeError("estado de emissão REAL inválido.")
         if not audit_verified:
             raise PermissionError("auditoria REAL não verificada; emissão bloqueada")
-        adapter_id = self._registry.adapter_id(broker_id)
         if not explicitly_enabled or not real_execution_allowed:
             raise PermissionError("habilitação REAL explícita não concedida")
+        adapter_id = self._registry.adapter_id(broker_id)
         return RealExecutionAuthorization(
             authorization_id, audit_id, broker_id, adapter_id,
             request_id, symbol, True, True,
         )
 
-    def issue_admission(
-        self, *, admission_id: str, authorization: RealExecutionAuthorization,
-        audit_verified: bool, safety: RealSafetyReport,
-    ) -> RealAdmission:
+    def issue_admission(self, *, admission_id: str,
+                        authorization: RealExecutionAuthorization,
+                        audit_verified: bool,
+                        safety: RealSafetyReport) -> RealAdmission:
         if not isinstance(authorization, RealExecutionAuthorization) or not authorization.active:
             raise PermissionError("autorização REAL ativa é obrigatória")
         if not isinstance(safety, RealSafetyReport) or not safety.ready:
