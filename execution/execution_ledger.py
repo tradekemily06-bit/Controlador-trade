@@ -84,6 +84,12 @@ class ExecutionLedger:
             self._load()
             return self._states.get(request_id)
 
+    def snapshot(self) -> dict[str, ExecutionLedgerStatus]:
+        """Return one atomic, lock-protected view for restart/recovery decisions."""
+        with self._process_lock():
+            self._load()
+            return dict(self._states)
+
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
 
