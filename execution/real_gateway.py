@@ -85,6 +85,12 @@ class RealExecutionGateway:
             return f"barreira operacional global bloqueou REAL: {decision.reason}"
         return None
 
+    def _global_barrier_revalidation(self) -> RealGatewayResult | None:
+        error = self._global_barrier_error()
+        if error is None:
+            return None
+        return RealGatewayResult(RealGatewayStatus.BLOCKED, error)
+
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
@@ -158,7 +164,11 @@ class RealExecutionGateway:
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
-        for revalidator in (lambda: self._global_barrier_error() and RealGatewayResult(RealGatewayStatus.BLOCKED, self._global_barrier_error()), lambda: self._revalidate_risk(snapshot), lambda: self._revalidate_safety(safety)):
+        for revalidator in (
+            self._global_barrier_revalidation,
+            lambda: self._revalidate_risk(snapshot),
+            lambda: self._revalidate_safety(safety),
+        ):
             result = revalidator()
             if result is not None:
                 try:
