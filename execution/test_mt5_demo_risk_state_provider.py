@@ -87,10 +87,10 @@ def test_provider_reads_complete_authoritative_demo_state_and_shuts_down():
         "GBPUSD": SimpleNamespace(trade_contract_size=100000.0),
     }
     mt5.deals = [
-        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=1000),
-        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-10.0, time_msc=2000),
-        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=3000),
-        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-5.0, time_msc=4000),
+        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=int(NOW.timestamp() * 1000) + 1000),
+        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-10.0, time_msc=int(NOW.timestamp() * 1000) + 2000),
+        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=int(NOW.timestamp() * 1000) + 3000),
+        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-5.0, time_msc=int(NOW.timestamp() * 1000) + 4000),
     ]
     mt5.ticks["EURUSD"] = SimpleNamespace(bid=1.10, ask=1.11)
     mt5.rates[("EURUSD", 5)] = [{"time": int(NOW.timestamp())}]

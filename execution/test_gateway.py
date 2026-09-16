@@ -22,7 +22,7 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, request_id="req-1"):
 def test_gateway_executes_valid_demo_request():
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
 
-    result = gateway.execute("req-1", request())
+    result = gateway.execute("req-1", request(request_id="req-1"))
 
     assert result.status is GatewayStatus.ACCEPTED
     assert result.execution is not None
@@ -35,7 +35,7 @@ def test_gateway_blocks_active_kill_switch_before_executor():
     kill_switch.activate("emergência")
     gateway = ExecutionGateway(executor, kill_switch)
 
-    result = gateway.execute("req-1", request())
+    result = gateway.execute("req-1", request(request_id="req-1"))
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
@@ -61,8 +61,8 @@ def test_gateway_rejects_duplicate_request_id():
     executor = PaperExecutor()
     gateway = ExecutionGateway(executor, KillSwitch())
 
-    first = gateway.execute("req-1", request())
-    second = gateway.execute("req-1", request())
+    first = gateway.execute("req-1", request(request_id="req-1"))
+    second = gateway.execute("req-1", request(request_id="req-1"))
 
     assert first.status is GatewayStatus.ACCEPTED
     assert second.status is GatewayStatus.DUPLICATE
@@ -73,7 +73,7 @@ def test_gateway_does_not_mark_invalid_request_as_processed():
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
 
     invalid = gateway.execute("req-1", request(mode=ExecutionMode.REAL))
-    valid = gateway.execute("req-1", request())
+    valid = gateway.execute("req-1", request(request_id="req-1"))
 
     assert invalid.status is GatewayStatus.INVALID_REQUEST
     assert valid.status is GatewayStatus.ACCEPTED
@@ -82,7 +82,7 @@ def test_gateway_does_not_mark_invalid_request_as_processed():
 def test_gateway_rejects_empty_request_id():
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
 
-    result = gateway.execute("   ", request())
+    result = gateway.execute("   ", request(request_id="   "))
 
     assert result.status is GatewayStatus.INVALID_REQUEST
 
@@ -94,8 +94,8 @@ def test_gateway_fails_closed_when_executor_raises():
 
     gateway = ExecutionGateway(BrokenExecutor(), KillSwitch())
 
-    result = gateway.execute("req-1", request())
-    retry = gateway.execute("req-1", request())
+    result = gateway.execute("req-1", request(request_id="req-1"))
+    retry = gateway.execute("req-1", request(request_id="req-1"))
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert retry.status is GatewayStatus.EXECUTOR_ERROR
@@ -108,7 +108,7 @@ def test_gateway_rejects_invalid_executor_result():
 
     gateway = ExecutionGateway(InvalidExecutor(), KillSwitch())
 
-    result = gateway.execute("req-1", request())
+    result = gateway.execute("req-1", request(request_id="req-1"))
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
 
@@ -129,7 +129,7 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     gateway = ExecutionGateway(RejectingExecutor(), KillSwitch())
 
-    result = gateway.execute("req-1", request())
+    result = gateway.execute("req-1", request(request_id="req-1"))
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
@@ -149,8 +149,8 @@ def test_gateway_blocks_active_maintenance_before_executor():
     executor = PaperExecutor()
     gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
 
-    scheduled = gateway.execute("req-scheduled", request(), timestamp=now + timedelta(minutes=2))
-    active = gateway.execute("req-active", request(), timestamp=now + timedelta(minutes=10))
+    scheduled = gateway.execute("req-scheduled", request(request_id="req-scheduled"), timestamp=now + timedelta(minutes=2))
+    active = gateway.execute("req-active", request(request_id="req-active"), timestamp=now + timedelta(minutes=10))
 
     assert scheduled.status is GatewayStatus.ACCEPTED
     assert active.status is GatewayStatus.BLOCKED
@@ -170,7 +170,7 @@ def test_gateway_allows_execution_after_maintenance_completes():
     )
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), maintenance=maintenance)
 
-    result = gateway.execute("req-after", request(), timestamp=now + timedelta(minutes=20))
+    result = gateway.execute("req-after", request(request_id="req-after"), timestamp=now + timedelta(minutes=20))
 
     assert result.status is GatewayStatus.ACCEPTED
 
@@ -188,7 +188,7 @@ def test_gateway_rechecks_maintenance_after_persistence_before_executor():
     executor = PaperExecutor()
     gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
 
-    result = gateway.execute("req-final-maintenance", request())
+    result = gateway.execute("req-final-maintenance", request(request_id="req-final-maintenance"))
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
