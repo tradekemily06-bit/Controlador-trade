@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
@@ -23,7 +24,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lambda: GlobalOperationalBarrier())
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,

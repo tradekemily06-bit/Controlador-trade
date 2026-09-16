@@ -21,8 +21,8 @@ class FakeAdapter:
         return self.result
 
 
-def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def request(mode=ExecutionMode.REAL):
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, mode)
 
 
 def gateway_with(adapter):
@@ -78,3 +78,12 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_blocks_demo_before_adapter_lookup_or_execution():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", request(ExecutionMode.DEMO))
+
+    assert result.accepted is False
+    assert "somente REAL" in result.message
+    assert adapter.calls == 0

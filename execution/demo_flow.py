@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from audit.events import AuditEvent, AuditEventType, AuditLogger
 from core.decision_engine import DecisionEngine, FinalDecision, DecisionResult
+from core.decision_snapshot import DecisionSnapshot
 from core.execution_intent import ExecutionIntent
 from core.market_context import MarketContextResult
 from core.models import AnalysisResult
@@ -54,8 +55,25 @@ class DemoFlow:
             self.audit_logger.record(AuditEvent(event_type=AuditEventType.RISK, message="Execução não autorizada.", data={"decision": decision.decision, "reason": decision.reason, "quality_level": quality.level.value}))
             return DemoFlowResult(decision=decision, execution=None, quality=quality)
 
-        intent = ExecutionIntent(request_id=self.request_id_factory(), symbol=symbol, signal=decision.signal, amount=amount, duration_seconds=duration_seconds, mode=ExecutionMode.DEMO, created_at=self.clock())
-        execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context)
+        snapshot = DecisionSnapshot.from_results(
+            analysis=analysis,
+            quality=quality,
+            decision=decision,
+            market_context=market_context,
+            operational_state=operational_state,
+        )
+        intent = ExecutionIntent(
+            request_id=self.request_id_factory(),
+            symbol=symbol,
+            signal=decision.signal,
+            amount=amount,
+            duration_seconds=duration_seconds,
+            mode=ExecutionMode.DEMO,
+            created_at=self.clock(),
+            market_data_fingerprint=market_data.fingerprint,
+            risk_state_fingerprint=snapshot.risk_state_fingerprint,
+        )
+        execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context, snapshot=snapshot)
         execution = execution_result.gateway.execution if execution_result.gateway is not None else None
         readiness_message = "; ".join(execution_result.readiness.reasons)
         message = execution.message if execution is not None else readiness_message

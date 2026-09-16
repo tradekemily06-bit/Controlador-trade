@@ -5,15 +5,15 @@ from typing import Any, Protocol
 
 
 class ProductionStore(Protocol):
-    """Provider-neutral contract for durable, tenant-scoped production state."""
+    """Provider-neutral contract for durable, tenant-and-subject-scoped production state."""
 
-    def save(self, record: dict[str, Any], *, tenant_id: str) -> None:
+    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str) -> None:
         ...
 
-    def load(self, record_id: str, *, tenant_id: str) -> dict[str, Any] | None:
+    def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         ...
 
-    def list(self, *, tenant_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         ...
 
 
@@ -38,6 +38,7 @@ class ProductionStoragePolicy:
         else:
             state = "READY"
         return {
+            "status": state,
             "required": self.required,
             "provider": "CONFIGURED" if self.provider_configured else "NOT_CONFIGURED",
             "tenant_scope": "ENFORCED" if self.tenant_scoped else "NOT_ENFORCED",
@@ -57,11 +58,11 @@ class ProductionStoragePolicy:
 class UnconfiguredProductionStore:
     """Explicit fail-closed placeholder until deployment supplies a real provider."""
 
-    def save(self, record: dict[str, Any], *, tenant_id: str) -> None:
+    def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str | None = None) -> None:
         raise RuntimeError("production storage provider is not configured")
 
-    def load(self, record_id: str, *, tenant_id: str) -> dict[str, Any] | None:
+    def load(self, record_id: str, *, tenant_id: str, subject_id: str | None = None) -> dict[str, Any] | None:
         raise RuntimeError("production storage provider is not configured")
 
-    def list(self, *, tenant_id: str, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, *, tenant_id: str, subject_id: str | None = None, limit: int | None = None) -> list[dict[str, Any]]:
         raise RuntimeError("production storage provider is not configured")

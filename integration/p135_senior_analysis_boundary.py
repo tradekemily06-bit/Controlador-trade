@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Mapping
 
+from core.p55_trusted_knowledge import TrustedKnowledge
 from core.senior_context_orchestrator import SeniorContextInput
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
@@ -26,6 +27,9 @@ class SeniorAnalysisBoundary:
         observed_nodes = SeniorAnalysisBoundary._strings(payload.get("observed_nodes"))
         relationships_reviewed = SeniorAnalysisBoundary._strings(payload.get("relationships_reviewed"))
         validated_knowledge_ids = SeniorAnalysisBoundary._strings(payload.get("validated_knowledge_ids"))
+        trusted_knowledge = tuple(SeniorAnalysisBoundary._trusted_knowledge(item) for item in (payload.get("trusted_knowledge") or ()))
+        if validated_knowledge_ids and not trusted_knowledge:
+            raise ValueError("trusted_knowledge is required when validated_knowledge_ids are supplied")
         gaps = payload.get("gaps") or {}
         if not isinstance(gaps, Mapping):
             raise ValueError("gaps must be an object")
@@ -39,6 +43,7 @@ class SeniorAnalysisBoundary:
             risk_observations=risk_observations,
             validated_knowledge_ids=validated_knowledge_ids,
             available_risk_domains=tuple(RiskDomain),
+            trusted_knowledge=trusted_knowledge,
         )
 
     @staticmethod
@@ -76,6 +81,18 @@ class SeniorAnalysisBoundary:
         if not isinstance(evidence, (list, tuple)):
             raise ValueError("risk observation evidence must be a list")
         return RiskObservation(domain=domain, statement=statement, known=known, evidence=tuple(str(item) for item in evidence))
+
+    @staticmethod
+    def _trusted_knowledge(value: Any) -> TrustedKnowledge:
+        if not isinstance(value, Mapping):
+            raise ValueError("each trusted knowledge item must be an object")
+        required = ("knowledge_id", "hypothesis_id", "test_id", "statement", "source_observation")
+        if any(key not in value for key in required):
+            raise ValueError("trusted knowledge is incomplete")
+        fields = {key: str(value[key]).strip() for key in required}
+        if any(not item for item in fields.values()):
+            raise ValueError("trusted knowledge fields must be non-empty")
+        return TrustedKnowledge(**fields)
 
     @staticmethod
     def _strings(value: Any, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:

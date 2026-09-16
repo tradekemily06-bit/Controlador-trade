@@ -16,6 +16,10 @@ class SaaSAccessController:
 
     Authentication, sessions, billing, persistence, and identity-provider integration
     stay outside this layer. A missing tenant context always fails closed.
+
+    Product capacity is not restricted by plan counters. Plans describe authorization
+    entitlements only; infrastructure protections and trading-risk controls remain
+    separate concerns.
     """
 
     def __init__(self, policy: SaaSAuthorizationPolicy | None = None) -> None:
@@ -32,15 +36,3 @@ class SaaSAccessController:
         if not self.policy.authorize(context, entitlement, plan):
             return SaaSAccessDecision(False, "entitlement_denied")
         return SaaSAccessDecision(True, "authorized")
-
-    def within_limit(self, plan: PlanDefinition, resource: str, current_usage: int) -> SaaSAccessDecision:
-        if current_usage < 0:
-            return SaaSAccessDecision(False, "invalid_usage")
-        limit = plan.limit_for(resource)
-        if limit is None:
-            return SaaSAccessDecision(True, "unlimited")
-        if limit < 0:
-            return SaaSAccessDecision(False, "invalid_plan_limit")
-        if current_usage >= limit:
-            return SaaSAccessDecision(False, "plan_limit_reached")
-        return SaaSAccessDecision(True, "within_limit")

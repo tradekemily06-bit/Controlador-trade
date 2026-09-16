@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from data.models import Candle
+from core.market_data_fingerprint import fingerprint_candles
 
 
 class MarketDataHealth(str, Enum):
@@ -23,6 +24,7 @@ class MarketDataIntegrityReport:
     gap_count: int
     stale: bool
     message: str
+    fingerprint: str | None = None
 
 
 class MarketDataIntegrity:
@@ -131,4 +133,5 @@ class MarketDataIntegrity:
             0,
             False,
             "dados de mercado íntegros",
+            fingerprint=fingerprint_candles(items),
         )

@@ -101,6 +101,16 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(all(item["signal"] == "AGUARDAR" for item in payload["results"]))
         self.assertFalse(payload["execution_allowed"])
 
+    def test_replay_accepts_more_than_the_removed_artificial_ceiling(self):
+        status, _, payload = self.request(
+            "/api/replay",
+            method="POST",
+            payload={"cases": [{} for _ in range(51)]},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(len(payload["results"]), 51)
+        self.assertFalse(payload["execution_allowed"])
+
     def test_outcome_updates_existing_decision(self):
         status, _, decision = self.request(
             "/api/analyze",

@@ -29,8 +29,8 @@ class SeniorMarketAssessment:
 
     The assessment explicitly separates what the market shows, what remains
     uncertain, what deserves observation, and what should not be assumed.
-    It never grants execution authority and never turns question count into
-    a score or vote.
+    It never grants execution authority and never turns question count into a
+    score or vote.
     """
 
     posture: ReasoningPosture
@@ -50,11 +50,11 @@ class SeniorMarketReasoner:
 
     This layer uses a persistent professional baseline that exists before the
     first user interaction. Being newly assigned to a user is relationship
-    state only; it does not reset accumulated experience. The reasoner asks
-    the questions a senior analyst would ask before acting, compares
-    historical context with the present, checks contradictions, and states
-    what should be observed or avoided. It remains downstream of factual
-    observations and upstream of every operational gate.
+    state only; it does not reset accumulated experience. The reasoner asks the
+    questions a senior analyst would ask before acting, compares historical
+    context with the present, checks contradictions, and states what should be
+    observed or avoided. It remains downstream of factual observations and
+    upstream of every operational gate.
     """
 
     def __init__(self, experience_profile: SeniorExperienceProfile | None = None) -> None:
@@ -110,6 +110,12 @@ class SeniorMarketReasoner:
             posture = ReasoningPosture.REASSESS
             avoid.append("Não assumir que uma excursão além do range seja, por si só, um rompimento confirmado.")
             questions.append(ProfessionalQuestion("estrutura", "O comportamento posterior confirma o deslocamento ou exige reavaliação?"))
+        elif reading.status is ReadingStatus.SUPPORTED and reading.supporting and not reading.contradicting:
+            # ACT here means only that the contextual reasoning considers the
+            # opportunity coherent enough to pass to independent risk and
+            # execution gates. It is deliberately not execution authority.
+            posture = ReasoningPosture.ACT
+            considerations.append("A leitura atual apresenta coerência direcional sem contraprova direcional registrada; ainda depende dos gates finais.")
         else:
             posture = ReasoningPosture.WAIT
             considerations.append("A leitura atual deve permanecer condicional até que o contexto e as evidências sejam coerentes.")

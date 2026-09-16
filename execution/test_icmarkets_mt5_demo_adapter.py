@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.models import Signal
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -56,6 +57,16 @@ class FakeMT5:
         return (1, "fake error")
 
 
+def ready_barrier():
+    return GlobalOperationalBarrier()
+
+
+def blocked_barrier():
+    return GlobalOperationalBarrier(
+        (SafetyComponent("test-stop", healthy=False, detail="teste bloqueado"),)
+    )
+
+
 def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA):
     return ExecutionRequest(
         symbol="EURUSD",
@@ -69,7 +80,7 @@ def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA):
 
 def test_demo_order_checks_before_send_and_confirms():
     mt5 = FakeMT5()
-    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5, operational_barrier_provider=ready_barrier)
 
     result = adapter.execute(request())
 
@@ -79,9 +90,32 @@ def test_demo_order_checks_before_send_and_confirms():
     assert names.index("order_check") < names.index("order_send")
 
 
-def test_aguardar_never_reaches_mt5():
+def test_demo_adapter_rejects_without_global_barrier():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert mt5.calls == []
+
+
+def test_demo_adapter_rejects_blocked_global_barrier():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        mt5_module=mt5,
+        operational_barrier_provider=blocked_barrier,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert mt5.calls == []
+
+
+def test_aguardar_never_reaches_mt5():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5, operational_barrier_provider=ready_barrier)
 
     result = adapter.execute(request(signal=Signal.AGUARDAR))
 
@@ -91,7 +125,7 @@ def test_aguardar_never_reaches_mt5():
 
 def test_real_mode_is_blocked_before_mt5_access():
     mt5 = FakeMT5()
-    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5, operational_barrier_provider=ready_barrier)
 
     result = adapter.execute(request(mode=ExecutionMode.REAL))
 
@@ -102,7 +136,7 @@ def test_real_mode_is_blocked_before_mt5_access():
 
 def test_order_check_failure_blocks_send():
     mt5 = FakeMT5(check_code=10019)
-    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5, operational_barrier_provider=ready_barrier)
 
     result = adapter.execute(request())
 

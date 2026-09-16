@@ -1,21 +1,24 @@
 """End-to-end senior market-context orchestration.
 
 This module is the composition point for observation, temporal context,
-integrated market reading, senior reasoning and senior risk reasoning. It does
-not decide or execute orders. No individual candle, indicator, strategy, news
-item, score or subsystem can authorize an operation here.
+integrated market reading, senior reasoning, validated knowledge and senior
+risk reasoning. It does not decide or execute orders. No individual candle,
+indicator, strategy, news item, score or subsystem can authorize an operation
+here.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping
+from typing import Mapping
 from uuid import uuid4
 
 from data.models import Candle
 
 from .integrated_market_reading import IntegratedMarketReader
+from .p55_trusted_knowledge import TrustedKnowledge
 from .senior_context_cycle import SeniorContextCycle, SeniorContextCycleBoundary
+from .senior_market_intelligence import SeniorMarketIntelligenceBoundary
 from .senior_market_reasoning import SeniorMarketReasoner
 from .senior_risk_reasoning import RiskDomain, RiskObservation, SeniorRiskReasoner
 from .temporal_market_context import TemporalMarketContextEngine
@@ -35,6 +38,7 @@ class SeniorContextInput:
     risk_observations: tuple[RiskObservation, ...]
     validated_knowledge_ids: tuple[str, ...] = ()
     available_risk_domains: tuple[RiskDomain, ...] = tuple(RiskDomain)
+    trusted_knowledge: tuple[TrustedKnowledge, ...] = ()
 
 
 class SeniorContextOrchestrator:
@@ -44,7 +48,8 @@ class SeniorContextOrchestrator:
     was available and what was observed. It never invents missing market data,
     risk facts or knowledge. The whole-graph boundary makes omissions explicit;
     temporal context relates history/present/scenarios; integrated reading joins
-    independent evidence; senior reasoning challenges assumptions; and senior
+    independent evidence; senior reasoning challenges assumptions; the
+    intelligence boundary validates professional knowledge provenance; and senior
     risk reasoning evaluates material risk in the same way for manual and
     autonomous modes.
     """
@@ -54,6 +59,7 @@ class SeniorContextOrchestrator:
         self.temporal = TemporalMarketContextEngine()
         self.reader = IntegratedMarketReader()
         self.reasoner = SeniorMarketReasoner()
+        self.intelligence = SeniorMarketIntelligenceBoundary()
         self.risk_reasoner = SeniorRiskReasoner()
         self.cycle_boundary = SeniorContextCycleBoundary()
 
@@ -69,6 +75,10 @@ class SeniorContextOrchestrator:
         temporal = self.temporal.analyze(list(request.candles))
         reading = self.reader.read(list(request.candles))
         senior = self.reasoner.assess(list(request.candles), reading, temporal)
+        intelligence = self.intelligence.assess(
+            graph=graph,
+            trusted_knowledge=request.trusted_knowledge,
+        )
         risk = self.risk_reasoner.assess(
             request.risk_observations,
             available_domains=request.available_risk_domains,
@@ -81,6 +91,7 @@ class SeniorContextOrchestrator:
             senior_assessment=senior,
             risk_assessment=risk,
             validated_knowledge_ids=request.validated_knowledge_ids,
+            intelligence_assessment=intelligence,
         )
 
     @staticmethod
@@ -102,6 +113,13 @@ class SeniorContextOrchestrator:
         for value in request.validated_knowledge_ids:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("validated_knowledge_ids must contain non-empty strings")
+        for item in request.trusted_knowledge:
+            if not isinstance(item, TrustedKnowledge):
+                raise ValueError("trusted_knowledge must contain TrustedKnowledge values")
+        trusted_ids = {item.knowledge_id for item in request.trusted_knowledge}
+        unknown_ids = {value.strip() for value in request.validated_knowledge_ids} - trusted_ids
+        if unknown_ids:
+            raise ValueError("validated_knowledge_ids must reference supplied trusted knowledge")
         for domain in request.available_risk_domains:
             if not isinstance(domain, RiskDomain):
                 raise ValueError("available_risk_domains must contain RiskDomain values")

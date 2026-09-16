@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 
+from core.global_operational_barrier import GlobalOperationalBarrier, SafetyComponent
 from core.senior_risk_reasoning import RiskDomain
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+from integration.p137_operational_risk_bridge import OperationalRiskBridge
 
 
 def _candles():
@@ -45,6 +47,21 @@ def _payload():
     }
 
 
+def _ready_barrier():
+    return GlobalOperationalBarrier(
+        components=(SafetyComponent(name="test-runtime", healthy=True, detail="ready"),)
+    )
+
+
+def _service_with_ready_risk():
+    service = ConfiguredEcosystemService()
+    service.operational_risk_bridge = OperationalRiskBridge(
+        service.risk,
+        operational_barrier_provider=_ready_barrier,
+    )
+    return service
+
+
 def test_application_analysis_fails_closed_for_score_only_payload():
     service = ConfiguredEcosystemService()
     record = service.analyze({"score": 99, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
@@ -53,14 +70,14 @@ def test_application_analysis_fails_closed_for_score_only_payload():
 
 
 def test_application_analysis_uses_complete_senior_context_and_operational_risk():
-    service = ConfiguredEcosystemService()
+    service = _service_with_ready_risk()
     record = service.analyze(_payload())
     assert record.signal == "COMPRA"
     assert record.score == 95
 
 
 def test_application_analysis_blocks_when_operational_risk_state_is_missing():
-    service = ConfiguredEcosystemService()
+    service = _service_with_ready_risk()
     payload = _payload()
     payload.pop("operational_state")
     record = service.analyze(payload)
@@ -69,16 +86,19 @@ def test_application_analysis_blocks_when_operational_risk_state_is_missing():
 
 
 def test_application_analysis_blocks_when_operational_risk_limit_denies():
-    service = ConfiguredEcosystemService()
+    service = _service_with_ready_risk()
     service.risk = service.risk.__class__(max_operations=2)
-    service.operational_risk_bridge = service.operational_risk_bridge.__class__(service.risk)
+    service.operational_risk_bridge = OperationalRiskBridge(
+        service.risk,
+        operational_barrier_provider=_ready_barrier,
+    )
     record = service.analyze(_payload())
     assert record.signal == "AGUARDAR"
     assert "Limite de operações" in record.reason
 
 
 def test_application_analysis_does_not_store_unsupported_direction():
-    service = ConfiguredEcosystemService()
+    service = _service_with_ready_risk()
     payload = _payload()
     payload["score"] = 5
     payload["confirmed"] = True

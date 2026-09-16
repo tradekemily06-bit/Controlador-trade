@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any
+from typing import Any, Callable
 
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -30,9 +31,15 @@ class ICMarketsMT5DemoAdapter:
     no fixed expiry here; positions remain open until explicitly closed.
     """
 
-    def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
+    def __init__(
+        self,
+        config: ICMarketsMT5DemoConfig | None = None,
+        mt5_module: Any = None,
+        operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
+    ) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
         self._mt5 = mt5_module
+        self._operational_barrier_provider = operational_barrier_provider
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -89,7 +96,24 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    def _barrier_error(self) -> str | None:
+        if self._operational_barrier_provider is None:
+            return "barreira operacional global não configurada; IC Markets MT5 DEMO bloqueado"
+        try:
+            barrier = self._operational_barrier_provider()
+            if not isinstance(barrier, GlobalOperationalBarrier):
+                return "barreira operacional global inválida; IC Markets MT5 DEMO bloqueado"
+            decision = barrier.evaluate()
+            if not decision.operationally_allowed:
+                return f"barreira operacional bloqueou IC Markets MT5 DEMO: {decision.reason}"
+            return None
+        except Exception as exc:
+            return f"estado da barreira operacional indisponível: {type(exc).__name__}"
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        barrier_error = self._barrier_error()
+        if barrier_error is not None:
+            return ExecutionResult(False, barrier_error)
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:

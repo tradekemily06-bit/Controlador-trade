@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+"""Read-only DEMO position-close preflight.
+
+This module intentionally never calls ``order_send``. Closing a position is an
+operational action and must pass through the ecosystem execution boundary so
+the global fail-closed barrier, kill switch, incident state, reconciliation,
+and audit controls are evaluated immediately before broker dispatch.
+"""
+
 import MetaTrader5 as mt5
 
 MAGIC = 2609001
@@ -21,11 +29,13 @@ def main() -> None:
         if len(candidates) != 1:
             print(f"BLOQUEADO: esperado exatamente 1 posição do Controlador; encontrado={len(candidates)}")
             return
+
         position = candidates[0]
         tick = mt5.symbol_info_tick(position.symbol)
         if tick is None:
             print("BLOQUEADO: cotação indisponível.")
             return
+
         is_buy = position.type == mt5.POSITION_TYPE_BUY
         request = {
             "action": mt5.TRADE_ACTION_DEAL,
@@ -40,19 +50,19 @@ def main() -> None:
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
-        check = mt5.order_check(request)
-        print(f"CLOSE_ORDER_CHECK={check}")
-        if check is None or getattr(check, "retcode", 0) != 0:
-            print("FECHAMENTO BLOQUEADO: order_check não aprovado.")
-            return
-        result = mt5.order_send(request)
-        print(f"CLOSE_ORDER_RESULT={result}")
-        if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
-            print("FECHAMENTO NÃO CONFIRMADO pelo MT5.")
-            return
-        remaining = mt5.positions_get(symbol=SYMBOL) or ()
-        remaining_ours = [p for p in remaining if getattr(p, "magic", None) == MAGIC]
-        print(f"CLOSE_CONFIRMED=True; REMAINING_CONTROLADOR_POSITIONS={len(remaining_ours)}; DEMO_ONLY=True; REAL=False")
+
+        # Read-only preflight only. Do not call order_check/order_send here:
+        # either operation could become a second, unguarded execution boundary.
+        print("CLOSE_PREFLIGHT_READY=True")
+        print("CLOSE_PREFLIGHT_DEMO_ONLY=True")
+        print("CLOSE_PREFLIGHT_DISPATCH_ALLOWED=False")
+        print("CLOSE_PREFLIGHT_REASON=fechamento deve passar pelo ExecutionGateway/global barrier")
+        print(f"CLOSE_PREFLIGHT_POSITION={int(position.ticket)}")
+        print(f"CLOSE_PREFLIGHT_SYMBOL={position.symbol}")
+        print(f"CLOSE_PREFLIGHT_VOLUME={float(position.volume)}")
+        print(f"CLOSE_PREFLIGHT_SIDE={'SELL' if is_buy else 'BUY'}")
+        print(f"CLOSE_PREFLIGHT_PRICE={tick.bid if is_buy else tick.ask}")
+        print(f"CLOSE_PREFLIGHT_REQUEST={request}")
     finally:
         mt5.shutdown()
 

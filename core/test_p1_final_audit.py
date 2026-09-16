@@ -7,6 +7,7 @@ from core.operational_state import OperationalState
 from core.risk_manager import RiskManager
 from core.signal_quality import SignalLevel, SignalQualityEvaluator
 from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
+from core.senior_operation_assessment import SeniorOperationAssessment, SeniorOperationDisposition
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
@@ -48,6 +49,18 @@ def make_senior_context():
         reassessment_triggers=(),
         execution_authorized=False,
     )
+    operation = SeniorOperationAssessment(
+        disposition=SeniorOperationDisposition.SUITABLE,
+        quality_level="HIGH",
+        reasons=("contexto profissional explicitamente validado no teste",),
+        strengths=("evidência suficiente", "sem contradição material"),
+        weaknesses=(),
+        invalidators=(),
+        evidence_for=("sinal confirmado", "contexto favorável"),
+        evidence_against=(),
+        independent_confluences=("estrutura", "confirmação"),
+        execution_authorized=False,
+    )
     return SeniorContextCycle(
         cycle_id="p1-final-audit-senior-context",
         whole_graph=None,
@@ -59,6 +72,7 @@ def make_senior_context():
         unresolved_questions=(),
         quality=SeniorContextQuality.COMPLETE,
         execution_authorized=False,
+        operation_assessment=operation,
     )
 
 

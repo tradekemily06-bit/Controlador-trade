@@ -84,7 +84,14 @@ class P4OperationalRecorder:
         return self.memory.settle(record, result)
 
     def can_execute(self) -> bool:
-        """Return the final P4 safety gate state."""
+        """Report only the independent P4 kill-switch state, never authorization.
+
+        This method is intentionally narrower than the production execution
+        boundary. A true value means only that this recorder's kill switch is
+        clear; it does not establish global barrier readiness, decision validity,
+        market/risk identity, senior suitability, freshness, or permission to
+        dispatch an order. Production execution must still pass the gateway.
+        """
         return self.kill_switch.allows_execution()
 
     def guard_execution(self) -> None:

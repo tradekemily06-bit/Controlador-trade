@@ -38,6 +38,27 @@ def test_ic_markets_demo_gateway_is_composed_without_connecting():
     assert gateway is not None
 
 
+def test_ic_markets_demo_gateway_without_runtime_barrier_is_fail_closed():
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("global barrier must block before MT5 access")
+
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5())
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id="demo-missing-runtime",
+    )
+
+    result = gateway.execute("demo-missing-runtime", request)
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert "runtime operacional" in result.message.lower()
+
+
 def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
     class UnusedMT5:
         def initialize(self):
@@ -81,3 +102,22 @@ def test_ic_markets_demo_gateway_kill_switch_blocks_before_adapter():
     result = gateway.execute("demo-kill-switch", request)
 
     assert result.status is GatewayStatus.BLOCKED
+
+
+def test_ic_markets_demo_gateway_with_runtime_owns_durable_execution_state(tmp_path):
+    class UnusedMT5:
+        def initialize(self):
+            raise AssertionError("runtime construction must not initialize MT5")
+
+    gateway = build_ic_markets_mt5_demo_gateway(
+        mt5_module=UnusedMT5(),
+        symbol="EURUSD",
+        runtime_root=tmp_path,
+    )
+
+    assert gateway._ledger is not None
+    assert gateway._lifecycle is not None
+    assert gateway._safety_store is not None
+    assert gateway._incident_manager is not None
+    assert gateway._dispatch_lock_path is not None
+    assert gateway._dispatch_lock_path.name == ".execution-ledger.json.dispatch.lock"
