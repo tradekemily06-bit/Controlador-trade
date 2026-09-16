@@ -105,3 +105,32 @@ def test_invalid_real_snapshot_fails_closed_without_dispatch(tmp_path: Path):
     assert result.status == RealGatewayStatus.BLOCKED
     assert "snapshot" in result.message
     assert ledger.status("missing-snapshot") is None
+
+
+def test_forged_real_context_is_blocked_before_dispatch(tmp_path: Path):
+    class MustNotExecuteAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            raise AssertionError("forged REAL context must never reach the broker adapter")
+
+    registry = BrokerRegistry()
+    registry.register("fake", MustNotExecuteAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider)
+    authorization, admission, safety = _authorized_context()
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="forged-context", request=request,
+        authorization=type("ForgedAuthorization", (), {"active": True, "broker_id": "fake"})(),
+        admission=type("ForgedAdmission", (), {"admitted": True})(),
+        safety=type("ForgedSafety", (), {"ready": True})(),
+        snapshot=_snapshot(provider),
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "contexto" in result.message
+    assert ledger.status("forged-context") is None
