@@ -40,6 +40,15 @@ def test_adapter_gateway_checks_availability_before_execution():
     assert adapter.calls == 0
 
 
+def test_adapter_gateway_rejects_non_boolean_availability():
+    adapter = FakeAdapter(available=1)
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
 
@@ -68,6 +77,26 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_rejects_non_boolean_acceptance():
+    adapter = FakeAdapter(result=ExecutionResult(1, "ok", "FAKE-1"))
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 1
+
+
+def test_adapter_gateway_rejects_non_string_message():
+    adapter = FakeAdapter(result=ExecutionResult(True, 123, "FAKE-1"))
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 1
 
 
 def test_adapter_gateway_unknown_broker_does_not_execute():
