@@ -7,6 +7,7 @@ from execution.default_registry import (
 )
 from execution.gateway import GatewayStatus
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateProvider
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -36,6 +37,28 @@ def test_ic_markets_demo_gateway_is_composed_without_connecting():
     gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5(), symbol="EURUSD")
 
     assert gateway is not None
+    assert isinstance(gateway._risk_state_provider, MT5DemoRiskStateProvider)
+
+
+def test_ic_markets_demo_gateway_risk_provider_uses_same_broker_edge_module():
+    class UnusedMT5:
+        pass
+
+    mt5 = UnusedMT5()
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=mt5, symbol="EURUSD", timeframe=5)
+
+    assert gateway._risk_state_provider._mt5 is mt5
+    assert gateway._risk_state_provider.config.symbol == "EURUSD"
+    assert gateway._risk_state_provider.config.timeframe == 5
+
+
+def test_ic_markets_demo_gateway_rejects_invalid_timeframe():
+    try:
+        build_ic_markets_mt5_demo_gateway(timeframe=0)
+    except ValueError as exc:
+        assert "timeframe" in str(exc)
+    else:
+        raise AssertionError("invalid timeframe must be rejected")
 
 
 def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
