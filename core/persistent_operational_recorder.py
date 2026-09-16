@@ -30,11 +30,18 @@ class PersistentOperationalRecorder:
         safety_store = OperationalSafetyStore(safety_path or f"{path}.safety.json")
         audit, persisted_kill_switch = safety_store.load()
         if kill_switch is not None:
-            if persisted_kill_switch.state.enabled and not kill_switch.state.enabled:
-                kill_switch.activate(persisted_kill_switch.state.reason or "estado persistido")
             active_kill_switch = kill_switch
+            if persisted_kill_switch.enabled and not kill_switch.state.enabled:
+                kill_switch.activate(persisted_kill_switch.reason or "estado persistido")
+            elif not persisted_kill_switch.enabled and kill_switch.state.enabled:
+                # Never allow a caller-provided local block to override the
+                # authoritative persisted state during restoration.
+                kill_switch.deactivate()
+            elif persisted_kill_switch.enabled:
+                kill_switch.synchronize(persisted_kill_switch)
         else:
-            active_kill_switch = persisted_kill_switch
+            active_kill_switch = KillSwitch()
+            active_kill_switch.synchronize(persisted_kill_switch)
         recorder = P4OperationalRecorder(audit=audit, memory=store.load(), kill_switch=active_kill_switch)
         return cls(store=store, safety_store=safety_store, recorder=recorder)
 
