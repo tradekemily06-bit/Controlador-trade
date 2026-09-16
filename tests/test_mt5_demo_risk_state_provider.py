@@ -90,7 +90,7 @@ def test_reads_authoritative_demo_account_and_positions():
     assert state.consecutive_losses == 1
     assert state.realized_pnl == -11.0
     assert state.market_open is True
-    assert state.last_processed_candle is not None
+    assert state.last_processed_candle is None
     assert fake.shutdowns == 1
 
 
@@ -118,3 +118,30 @@ def test_invalid_account_value_fails_closed():
 
     with pytest.raises(MT5RiskStateProviderError):
         provider(BrokenAccount()).current_risk_state()
+
+
+def test_symbol_scope_excludes_other_symbol_from_position_risk():
+    fake = FakeMT5(
+        positions=[
+            SimpleNamespace(symbol="EURUSD", volume=0.1, type=FakeMT5.POSITION_TYPE_BUY, price_current=1.1),
+            SimpleNamespace(symbol="GBPUSD", volume=0.5, type=FakeMT5.POSITION_TYPE_SELL, price_current=1.3),
+        ]
+    )
+    state = provider(fake, symbol="EURUSD").current_risk_state()
+
+    assert state.open_positions == 1
+    assert state.net_position == 0.1
+    assert state.exposure == 11000.0
+
+
+def test_inout_deal_counts_as_entry_and_exit():
+    fake = FakeMT5(
+        deals=[
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_INOUT, profit=-5.0, swap=0.0, commission=-1.0, fee=0.0, time=2, time_msc=2),
+        ]
+    )
+    state = provider(fake).current_risk_state()
+
+    assert state.trades_today == 1
+    assert state.consecutive_losses == 1
+    assert state.realized_pnl == -6.0
