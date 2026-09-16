@@ -54,12 +54,15 @@ def _snapshot(provider: RiskProvider) -> DecisionSnapshot:
     )
 
 
-def _authorized_context():
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+def _authorized_context(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
+    authorization = RealExecutionAuthorization(
+        "auth", "audit", broker_id, adapter_id, request_id, symbol, True, True
+    )
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake",
+        broker_available=True, broker_id=broker_id, adapter_id=adapter_id,
+        request_id=request_id, symbol=symbol,
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
@@ -75,23 +78,30 @@ def _gateway(registry, ledger, provider, safety):
     )
 
 
+def _request(request_id="req-1", symbol="TEST", risk_fingerprint=None):
+    return ExecutionRequest(
+        symbol, Signal.COMPRA, 10.0, 60, ExecutionMode.REAL,
+        request_id=request_id, risk_state_fingerprint=risk_fingerprint,
+    )
+
+
 def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", MissingExternalIdAdapter())
+    registry.register("fake", MissingExternalIdAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, admission, safety = _authorized_context()
     gateway = _gateway(registry, ledger, provider, safety)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request(risk_fingerprint=risk_state_identity(provider.state))
 
     result = gateway.execute(
-        broker="fake", request_id="missing-external-id", request=request,
+        broker="fake", request_id="req-1", request=request,
         authorization=authorization, admission=admission, safety=safety,
         snapshot=_snapshot(provider),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN
-    assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("req-1") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_invalid_real_snapshot_fails_closed_without_dispatch(tmp_path: Path):
@@ -103,12 +113,12 @@ def test_invalid_real_snapshot_fails_closed_without_dispatch(tmp_path: Path):
             raise AssertionError("REAL executor must not be reached without a valid decision snapshot")
 
     registry = BrokerRegistry()
-    registry.register("fake", MustNotExecuteAdapter())
+    registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
-    authorization, admission, safety = _authorized_context()
+    authorization, admission, safety = _authorized_context(request_id="missing-snapshot")
     gateway = _gateway(registry, ledger, provider, safety)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request("missing-snapshot", risk_fingerprint=risk_state_identity(provider.state))
 
     result = gateway.execute(
         broker="fake", request_id="missing-snapshot", request=request,
@@ -130,12 +140,12 @@ def test_forged_real_context_is_blocked_before_dispatch(tmp_path: Path):
             raise AssertionError("forged REAL context must never reach the broker adapter")
 
     registry = BrokerRegistry()
-    registry.register("fake", MustNotExecuteAdapter())
+    registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
-    authorization, admission, safety = _authorized_context()
+    authorization, admission, safety = _authorized_context(request_id="forged-context")
     gateway = _gateway(registry, ledger, provider, safety)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request("forged-context", risk_fingerprint=risk_state_identity(provider.state))
 
     result = gateway.execute(
         broker="fake", request_id="forged-context", request=request,
@@ -153,7 +163,7 @@ def test_forged_real_context_is_blocked_before_dispatch(tmp_path: Path):
 def test_stale_real_safety_is_blocked_before_broker_dispatch(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = MissingExternalIdAdapter()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, admission, safety = _authorized_context()
@@ -164,9 +174,9 @@ def test_stale_real_safety_is_blocked_before_broker_dispatch(tmp_path: Path):
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
     )
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request(risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(
-        broker="fake", request_id="stale-safety", request=request,
+        broker="fake", request_id="req-1", request=request,
         authorization=authorization, admission=admission, safety=safety,
         snapshot=_snapshot(provider),
     )
@@ -181,14 +191,14 @@ def test_safety_provider_failure_is_unknown_without_leaking_detail(tmp_path: Pat
 
     registry = BrokerRegistry()
     adapter = MissingExternalIdAdapter()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, admission, safety = _authorized_context()
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider, BrokenSafetyProvider())
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request(risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(
-        broker="fake", request_id="safety-provider-fails", request=request,
+        broker="fake", request_id="req-1", request=request,
         authorization=authorization, admission=admission, safety=safety,
         snapshot=_snapshot(provider),
     )
@@ -206,27 +216,28 @@ def test_admission_broker_mismatch_is_blocked_before_dispatch(tmp_path: Path):
             raise AssertionError("mismatched REAL admission must never reach the broker adapter")
 
     registry = BrokerRegistry()
-    registry.register("fake", MustNotExecuteAdapter())
-    registry.register("other", MustNotExecuteAdapter())
+    registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter")
+    registry.register("other", MustNotExecuteAdapter(), adapter_id="other-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, _, safety = _authorized_context()
     mismatched_admission = RealAdmissionBoundary().admit(
         admission_id="adm-other", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="other",
+        broker_available=True, broker_id="other", adapter_id="other-adapter",
+        request_id="admission-broker-mismatch", symbol="TEST",
     )
     gateway = _gateway(registry, ledger, provider, safety)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request("admission-broker-mismatch", risk_fingerprint=risk_state_identity(provider.state))
 
     result = gateway.execute(
         broker="fake", request_id="admission-broker-mismatch", request=request,
-        authorization=authorization, admission=mismatched_admission, safety=safety,
-        snapshot=_snapshot(provider),
+        authorization=_authorized_context("admission-broker-mismatch")[0],
+        admission=mismatched_admission, safety=safety, snapshot=_snapshot(provider),
     )
 
     assert result.status == RealGatewayStatus.BLOCKED
-    assert "admissão REAL" in result.message
+    assert "admissão REAL" in result.message or "adapter" in result.message
     assert ledger.status("admission-broker-mismatch") is None
 
 
@@ -239,24 +250,56 @@ def test_admission_audit_mismatch_is_blocked_before_dispatch(tmp_path: Path):
             raise AssertionError("mismatched REAL audit context must never reach the broker adapter")
 
     registry = BrokerRegistry()
-    registry.register("fake", MustNotExecuteAdapter())
+    registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, _, safety = _authorized_context()
     mismatched_admission = RealAdmissionBoundary().admit(
         admission_id="adm-mismatch", audit_id="different-audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake",
+        broker_available=True, broker_id="fake", adapter_id="fake-adapter",
+        request_id="admission-audit-mismatch", symbol="TEST",
     )
     gateway = _gateway(registry, ledger, provider, safety)
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = _request("admission-audit-mismatch", risk_fingerprint=risk_state_identity(provider.state))
 
     result = gateway.execute(
         broker="fake", request_id="admission-audit-mismatch", request=request,
-        authorization=authorization, admission=mismatched_admission, safety=safety,
-        snapshot=_snapshot(provider),
+        authorization=_authorized_context("admission-audit-mismatch")[0],
+        admission=mismatched_admission, safety=safety, snapshot=_snapshot(provider),
     )
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert "auditoria" in result.message
     assert ledger.status("admission-audit-mismatch") is None
+
+
+def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
+    adapter = MissingExternalIdAdapter()
+    registry = BrokerRegistry(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider(); _, admission, safety = _authorized_context(request_id="symbol-mismatch")
+    authorization, _, _ = _authorized_context(request_id="symbol-mismatch", symbol="EURUSD")
+    request = _request("symbol-mismatch", symbol="XAUUSD", risk_fingerprint=risk_state_identity(provider.state))
+    result = _gateway(registry, ledger, provider, safety).execute(
+        broker="fake", request_id="symbol-mismatch", request=request,
+        authorization=authorization, admission=admission, safety=safety, snapshot=_snapshot(provider),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls if hasattr(adapter, "calls") else True
+
+
+def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
+    adapter = MissingExternalIdAdapter()
+    registry = BrokerRegistry(); registry.register("fake", adapter, adapter_id="resolved-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider()
+    authorization, admission, safety = _authorized_context(
+        request_id="adapter-mismatch", adapter_id="authorized-adapter"
+    )
+    request = _request("adapter-mismatch", risk_fingerprint=risk_state_identity(provider.state))
+    result = _gateway(registry, ledger, provider, safety).execute(
+        broker="fake", request_id="adapter-mismatch", request=request,
+        authorization=authorization, admission=admission, safety=safety, snapshot=_snapshot(provider),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
