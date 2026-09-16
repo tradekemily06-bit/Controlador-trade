@@ -29,9 +29,11 @@ class DecisionSnapshot:
     operational_state_available: bool
     trades_today: int | None
     consecutive_losses: int | None
-    risk_state_identity: str | None
     symbol: str | None
     timeframe: str | None
+    # Optional for backward compatibility with persisted/legacy snapshots.
+    # New snapshots built from operational state always carry the full identity.
+    risk_state_identity: str | None = None
 
     @classmethod
     def from_results(
@@ -72,13 +74,13 @@ class DecisionSnapshot:
                 if operational_state is not None
                 else None
             ),
+            symbol=analysis.symbol,
+            timeframe=analysis.timeframe,
             risk_state_identity=(
                 risk_state_identity(operational_state)
                 if operational_state is not None
                 else None
             ),
-            symbol=analysis.symbol,
-            timeframe=analysis.timeframe,
         )
 
     def explain(self) -> str:
