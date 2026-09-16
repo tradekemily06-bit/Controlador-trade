@@ -13,6 +13,7 @@ from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
+from core.risk_state_provider import RiskStateProvider
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
@@ -43,14 +44,22 @@ def _public_saas_multi_instance() -> bool:
     return public and multi_instance
 
 
-def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
+def build_operational_runtime(
+    root: str | Path,
+    executor: ExecutionPort | None = None,
+    *,
+    risk_state_provider: RiskStateProvider | None = None,
+) -> OperationalRuntime:
     """Compose one shared runtime with durable, fail-closed safety state.
 
-    The operational safety, ledger, lifecycle and checkpoint stores below are
-    local-file state. They are valid for DEMO/single-instance operation, but
-    cannot be authoritative in a multi-instance public SaaS deployment. Fail
-    closed before creating those stores rather than allowing two instances to
-    diverge silently.
+    Local-file operational stores remain valid only for DEMO/single-instance
+    operation. Multi-instance public SaaS fails closed until a shared
+    authoritative operational state provider is supplied.
+
+    ``risk_state_provider`` is deliberately explicit. This runtime does not
+    invent an operational state source or fall back to a decision snapshot;
+    when supplied it is passed unchanged to the execution gateway for
+    immediate pre-dispatch risk revalidation.
     """
     if _public_saas_multi_instance():
         raise RuntimeError(
@@ -71,8 +80,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
         safety_state_valid = False
 
-    # Restore before attaching persistence. A corrupt/invalid file must never
-    # be read again while establishing the fail-closed state.
     kill_switch = KillSwitch()
     if initial_enabled:
         kill_switch.activate(initial_reason or "estado de segurança persistido")
@@ -83,8 +90,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     kill_switch.set_on_change(persist_safety)
 
     if not safety_state_valid:
-        # Replace the invalid persisted state through the store's recovery API;
-        # runtime composition must not reach into store internals.
         safety_store.replace_with_fail_closed_state(initial_reason or "estado de segurança indisponível")
     elif not initial_enabled:
         safety_store.save(safety_audit, kill_switch)
@@ -111,6 +116,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         lifecycle=lifecycle,
         maintenance=maintenance,
         safety_store=safety_store,
+        risk_state_provider=risk_state_provider,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
