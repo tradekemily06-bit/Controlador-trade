@@ -211,40 +211,48 @@ class MT5DemoRiskStateProvider:
 
     @classmethod
     def _consecutive_losses(cls, deals: Any, mt5: Any) -> int | None:
-        """Count consecutive losing logical positions, not individual exit deals.
+        """Count consecutive losing position segments, not individual exit deals.
 
-        MT5 can represent one logical position closing through multiple partial
-        exit deals. Counting those deals separately can manufacture a loss streak
-        that never occurred at the operation level. Position IDs are therefore
-        mandatory for this risk field; if MT5 does not provide them, the value is
-        UNKNOWN and the core fail-closed policy decides what happens next.
+        Partial OUT/OUT_BY deals belonging to one position segment are aggregated.
+        DEAL_ENTRY_INOUT is a reversal: its P/L closes the current segment and a
+        new segment begins immediately afterward. This matters because MT5 can
+        expose a position's reversal history under position-related identifiers;
+        grouping every exit for a position into one bucket could merge distinct
+        logical trade segments and understate the loss streak.
         """
-        grouped: dict[int, list[Any]] = {}
-        latest_by_position: dict[int, tuple[int, int]] = {}
-        for deal in deals:
+        ordered_deals = sorted(
+            enumerate(deals),
+            key=lambda item: (
+                getattr(item[1], "time_msc", 0),
+                getattr(item[1], "time", 0),
+                item[0],
+            ),
+        )
+        segment_net: dict[tuple[int, int], float] = {}
+        segment_order: list[tuple[int, int]] = []
+        active_segment: dict[int, int] = {}
+
+        for _, deal in ordered_deals:
             if not cls._is_exit(deal, mt5):
                 continue
             position_id = cls._deal_position_id(deal)
             if position_id is None:
                 return None
-            grouped.setdefault(position_id, []).append(deal)
-            latest_by_position[position_id] = (
-                getattr(deal, "time_msc", 0),
-                getattr(deal, "time", 0),
-            )
+            segment = active_segment.get(position_id, 0)
+            key = (position_id, segment)
+            if key not in segment_net:
+                segment_net[key] = 0.0
+                segment_order.append(key)
+            net = cls._deal_net(deal)
+            if net is None:
+                return None
+            segment_net[key] += net
+            if getattr(deal, "entry", None) == getattr(mt5, "DEAL_ENTRY_INOUT", 2):
+                active_segment[position_id] = segment + 1
 
-        ordered_positions = sorted(
-            grouped,
-            key=lambda position_id: latest_by_position[position_id],
-        )
         streak = 0
-        for position_id in reversed(ordered_positions):
-            result = 0.0
-            for deal in grouped[position_id]:
-                net = cls._deal_net(deal)
-                if net is None:
-                    return None
-                result += net
+        for key in reversed(segment_order):
+            result = segment_net[key]
             if result < 0:
                 streak += 1
             else:
