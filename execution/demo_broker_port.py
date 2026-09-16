@@ -6,9 +6,6 @@ from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMark
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionPort, ExecutionResult
 
 
-# Capability is intentionally module-private. The runtime-bound wrapper is the
-# only in-tree caller that receives it, preventing a public method call from
-# becoming a broker-dispatch side door.
 _DEMO_GATEWAY_CAPABILITY = object()
 
 
@@ -30,7 +27,10 @@ class DemoBrokerExecutionPort:
             raise PermissionError("dispatch DEMO exige a capacidade do gateway operacional")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "porta DEMO rejeitou requisição fora do modo DEMO")
-        return self.__adapter.execute(request)
+        adapter_execute = getattr(self.__adapter, "execute", None)
+        if not callable(adapter_execute):
+            return ExecutionResult(False, "adapter DEMO não expõe execução válida")
+        return adapter_execute(request)
 
     def is_available(self) -> bool:
         return bool(self.__adapter.is_available())
@@ -51,15 +51,16 @@ class GatewayBoundDemoExecutionPort:
         return self._port.is_available()
 
 
-def build_ic_markets_mt5_demo_port(
-    *,
-    symbol: str | None = None,
-    mt5_module: Any = None,
-) -> ExecutionPort:
+def build_ic_markets_mt5_demo_adapter(*, symbol: str | None = None, mt5_module: Any = None) -> ICMarketsMT5DemoAdapter:
+    """Construct the broker-specific MT5 adapter only at the broker-port boundary."""
+    return ICMarketsMT5DemoAdapter(
+        ICMarketsMT5DemoConfig(symbol=symbol),
+        mt5_module=mt5_module,
+    )
+
+
+def build_ic_markets_mt5_demo_port(*, symbol: str | None = None, mt5_module: Any = None) -> ExecutionPort:
     """Create the IC Markets MT5 DEMO port without exposing its adapter."""
     return DemoBrokerExecutionPort(
-        ICMarketsMT5DemoAdapter(
-            ICMarketsMT5DemoConfig(symbol=symbol),
-            mt5_module=mt5_module,
-        )
+        build_ic_markets_mt5_demo_adapter(symbol=symbol, mt5_module=mt5_module)
     )
