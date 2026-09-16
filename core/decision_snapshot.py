@@ -7,6 +7,7 @@ from .decision_engine import DecisionResult
 from .market_context import MarketContextResult
 from .models import AnalysisResult
 from .operational_state import OperationalState
+from .risk_state_fingerprint import risk_state_identity
 from .signal_quality import SignalQuality
 
 
@@ -28,6 +29,7 @@ class DecisionSnapshot:
     operational_state_available: bool
     trades_today: int | None
     consecutive_losses: int | None
+    risk_state_identity: str | None
     symbol: str | None
     timeframe: str | None
 
@@ -70,6 +72,11 @@ class DecisionSnapshot:
                 if operational_state is not None
                 else None
             ),
+            risk_state_identity=(
+                risk_state_identity(operational_state)
+                if operational_state is not None
+                else None
+            ),
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
         )
@@ -104,6 +111,7 @@ class DecisionSnapshot:
             "operational_state_available": self.operational_state_available,
             "trades_today": self.trades_today,
             "consecutive_losses": self.consecutive_losses,
+            "risk_state_identity": self.risk_state_identity,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
         }
