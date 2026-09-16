@@ -47,6 +47,7 @@ class EcosystemNotificationCenter:
     NAMESPACE = "ecosystem.notifications.v1"
     GLOBAL_TENANT = "__system__"
     GLOBAL_SUBJECT = "__global__"
+    GLOBAL_SCOPE = (GLOBAL_TENANT, GLOBAL_SUBJECT)
     DEFAULT_CACHE_SIZE = 256
 
     def __init__(self, *, state_store=None, require_durable: bool = False, cache_size: int = DEFAULT_CACHE_SIZE) -> None:
@@ -72,10 +73,10 @@ class EcosystemNotificationCenter:
         subject_id = str(identity.subject_id).strip()
         return (tenant_id, subject_id) if tenant_id and subject_id else None
 
-    def _required_scope(self) -> tuple[str, str] | None:
+    def _required_scope(self) -> tuple[str, str]:
         scope = self._trusted_scope()
-        if scope is None and (self._require_durable or self._state_store is not None):
-            raise PermissionError("trusted scope is required for notification state")
+        if scope is None:
+            raise PermissionError("trusted scope is required for private notification state")
         return scope
 
     @staticmethod
@@ -83,7 +84,18 @@ class EcosystemNotificationCenter:
         if not isinstance(payload, list):
             raise RuntimeError("notification state is corrupt")
         try:
-            return [EcosystemNotification(notification_id=str(item["notification_id"]), kind=NotificationKind(str(item["kind"])), severity=NotificationSeverity(str(item["severity"])), title=str(item["title"]), message=str(item["message"]), requires_attention=bool(item.get("requires_attention", False)), blocking=bool(item.get("blocking", False))) for item in payload]
+            return [
+                EcosystemNotification(
+                    notification_id=str(item["notification_id"]),
+                    kind=NotificationKind(str(item["kind"])),
+                    severity=NotificationSeverity(str(item["severity"])),
+                    title=str(item["title"]),
+                    message=str(item["message"]),
+                    requires_attention=bool(item.get("requires_attention", False)),
+                    blocking=bool(item.get("blocking", False)),
+                )
+                for item in payload
+            ]
         except (KeyError, TypeError, ValueError, AttributeError) as exc:
             raise RuntimeError("notification state is corrupt") from exc
 
@@ -100,13 +112,16 @@ class EcosystemNotificationCenter:
             if self._require_durable:
                 raise RuntimeError("durable notification state provider is required")
             return
-        self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
+        self._state_store.put(
+            tenant_id=scope[0],
+            subject_id=scope[1],
+            namespace=self.NAMESPACE,
+            payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events],
+        )
 
     def _global(self) -> list[EcosystemNotification]:
-        if self._state_store is not None or self._require_durable:
-            raise PermissionError("global notification scope is reserved for system control plane")
         if not self._global_loaded:
-            self._global_notifications = []
+            self._global_notifications = self._load(self.GLOBAL_SCOPE)
             self._global_loaded = True
         return self._global_notifications
 
@@ -123,9 +138,7 @@ class EcosystemNotificationCenter:
         return events
 
     def _replace_cache(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> None:
-        if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT):
-            if self._state_store is not None or self._require_durable:
-                raise PermissionError("global notification scope is reserved for system control plane")
+        if scope == self.GLOBAL_SCOPE:
             self._global_notifications = events
             self._global_loaded = True
             return
@@ -135,23 +148,25 @@ class EcosystemNotificationCenter:
             self._scoped_notifications.popitem(last=False)
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
-        scope = self._required_scope()
+        global_events = tuple(self._global())
+        scope = self._trusted_scope()
         if scope is None:
-            return tuple(self._global())
-        return tuple(self._scoped(scope))
+            return global_events
+        # Global ecosystem updates are visible to every trusted tenant, while
+        # private events remain strictly scoped to the current tenant+subject.
+        return global_events + tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):
             raise ValueError("notification is required")
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
-        scope = self._required_scope()
-        if scope is None:
-            events = list(self._global())
-            events.append(notification)
-            self._global_notifications = events
-            self._global_loaded = True
-            return notification
+
+        if notification.kind is NotificationKind.SYSTEM_UPDATE:
+            scope = self.GLOBAL_SCOPE
+        else:
+            scope = self._required_scope()
+
         events = self._load(scope)
         events.append(notification)
         self._save(scope, events)
