@@ -23,7 +23,7 @@ class ExecutionLedger:
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
-        self.path = Path(path)
+        self.path = Path(path).resolve()
         self._states: dict[str, ExecutionLedgerStatus] = {}
         with self._process_lock():
             self._load()
