@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class AdapterGatewayError(RuntimeError):
@@ -29,6 +29,12 @@ class BrokerAdapterGateway:
         self._registry = registry
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+        # This boundary is reserved for the explicit REAL dispatch path.
+        # DEMO must stay behind the DEMO gateway/executor so a low-level broker
+        # adapter cannot accidentally become an execution bypass.
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
+            return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
+
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
