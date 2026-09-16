@@ -64,7 +64,7 @@ def _lock_holder(lock_path: str, ready) -> None:
         time.sleep(30)
 
 
-def _die_after_temp_fsync(path: str, ready) -> None:
+def _die_after_temp_fsync(path: str, marker_path: str) -> None:
     """Simulate a crash after temp-file fsync but before os.replace()."""
     ledger = ExecutionLedger(path)
     with ledger._process_lock():  # noqa: SLF001 - adversarial interrupted-write test
@@ -80,7 +80,10 @@ def _die_after_temp_fsync(path: str, ready) -> None:
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
-        ready.put("fsynced")
+        marker_path_obj = Path(marker_path)
+        marker_path_obj.write_text("fsynced", encoding="utf-8")
+        with marker_path_obj.open("rb") as handle:
+            os.fsync(handle.fileno())
         os._exit(92)
 
 
@@ -199,13 +202,16 @@ def test_interrupted_write_preserves_last_committed_ledger(tmp_path: Path):
 
     ctx = mp.get_context("fork")
     path = tmp_path / "ledger.json"
+    marker = tmp_path / "fsync.marker"
     baseline = ExecutionLedger(path)
     baseline.reserve("baseline")
 
-    ready = ctx.Queue()
-    crashed = ctx.Process(target=_die_after_temp_fsync, args=(str(path), ready))
+    crashed = ctx.Process(target=_die_after_temp_fsync, args=(str(path), str(marker)))
     crashed.start()
-    assert ready.get(timeout=10) == "fsynced"
+    deadline = time.monotonic() + 10
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert marker.exists(), "crash worker did not reach the post-fsync point"
     crashed.join(10)
     assert crashed.exitcode == 92
 
