@@ -23,7 +23,7 @@ def request(signal=Signal.COMPRA, symbol="EURUSD"):
     )
 
 
-def snapshot(signal="COMPRA", symbol="EURUSD", decision="EXECUTAR", actionable=True):
+def snapshot(signal="COMPRA", symbol="EURUSD", decision="EXECUTAR", actionable=True, created_at=NOW):
     return DecisionSnapshot(
         signal=signal,
         analysis_score=90.0,
@@ -41,6 +41,7 @@ def snapshot(signal="COMPRA", symbol="EURUSD", decision="EXECUTAR", actionable=T
         consecutive_losses=0,
         symbol=symbol,
         timeframe="5m",
+        created_at=created_at,
     )
 
 
@@ -59,6 +60,19 @@ def test_operational_gateway_requires_snapshot():
     result = operational_gateway(executor).execute("snapshot-required", request(), timestamp=NOW)
     assert result.status is GatewayStatus.BLOCKED
     assert "snapshot" in result.message
+    assert executor.executions() == ()
+
+
+def test_operational_gateway_requires_authoritative_snapshot_timestamp():
+    executor = PaperExecutor()
+    result = operational_gateway(executor).execute(
+        "snapshot-created-at-required",
+        request(),
+        snapshot=snapshot(created_at=None),
+        timestamp=NOW,
+    )
+    assert result.status is GatewayStatus.BLOCKED
+    assert "created_at" in result.message
     assert executor.executions() == ()
 
 
