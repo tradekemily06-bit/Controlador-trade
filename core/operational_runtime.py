@@ -3,8 +3,12 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from core.decision_audit import DecisionAudit
+from core.decision_freshness import DecisionFreshnessPolicy
+from core.demo_risk_state_store import DemoRiskStateStore
+from core.ecosystem_incidents import EcosystemIncidentManager
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
@@ -13,7 +17,8 @@ from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
-from core.risk_state_provider import RiskStateProvider
+from core.technical_incident_store import TechnicalIncidentStore
+from execution.demo_risk_dispatch_guard import DemoRiskDispatchGuard
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
@@ -24,9 +29,10 @@ from execution.paper import PaperExecutor
 @dataclass(frozen=True)
 class OperationalRuntime:
     """Single authoritative DEMO runtime state shared by execution and observability."""
-
     kill_switch: KillSwitch
     maintenance: MaintenanceManager
+    incident_manager: EcosystemIncidentManager
+    incident_store: TechnicalIncidentStore
     execution_ledger: ExecutionLedger
     execution_lifecycle: ExecutionLifecycleStore
     checkpoint_store: RuntimeCheckpointStore
@@ -36,6 +42,8 @@ class OperationalRuntime:
     market_data: MarketDataRuntimeState
     safety_store: OperationalSafetyStore
     safety_audit: DecisionAudit
+    demo_risk_state: DemoRiskStateStore | None = None
+    risk_state_provider: Callable[[], object] | None = None
 
 
 def _public_saas_multi_instance() -> bool:
@@ -48,39 +56,23 @@ def build_operational_runtime(
     root: str | Path,
     executor: ExecutionPort | None = None,
     *,
-    risk_state_provider: RiskStateProvider | None = None,
+    risk_state_provider: Callable[[], object] | None = None,
+    risk_state_fingerprint_provider: Callable[[], str | None] | None = None,
 ) -> OperationalRuntime:
-    """Compose one shared runtime with durable, fail-closed safety state.
+    """Compose one authoritative, fail-closed operational runtime.
 
-    Local-file operational stores remain valid only for DEMO/single-instance
-    operation. Multi-instance public SaaS fails closed until a shared
-    authoritative operational state provider is supplied.
-
-    ``risk_state_provider`` is deliberately explicit. This runtime does not
-    invent an operational state source or fall back to a decision snapshot;
-    when supplied it is passed unchanged to the execution gateway for
-    immediate pre-dispatch risk revalidation.
-
-    Non-PAPER executors are never composed without an explicit risk-state
-    provider. PAPER remains the isolated local simulator and therefore keeps
-    the backwards-compatible provider-free construction path. This prevents a
-    future broker adapter from accidentally becoming executable with only a
-    decision-time snapshot and no authoritative pre-dispatch risk source.
+    Local durable stores are intentionally refused for public multi-instance SaaS
+    until a shared authoritative operational state implementation exists. DEMO
+    may use the durable local risk store; injected broker executors must still
+    receive an explicit authoritative risk provider.
     """
     if _public_saas_multi_instance():
-        raise RuntimeError(
-            "multi-instance public SaaS requires a shared authoritative operational state provider"
-        )
-
-    selected_executor = executor or PaperExecutor()
-    if not isinstance(selected_executor, PaperExecutor) and risk_state_provider is None:
-        raise RuntimeError(
-            "non-PAPER DEMO execution requires an authoritative risk-state provider"
-        )
+        raise RuntimeError("multi-instance public SaaS requires a shared authoritative operational state provider")
 
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    demo_risk_state = DemoRiskStateStore(root / "demo-risk-state.json")
     try:
         safety_audit, persisted_switch = safety_store.load()
         initial_enabled = persisted_switch.state.enabled
@@ -100,40 +92,50 @@ def build_operational_runtime(
         safety_store.save(safety_audit, kill_switch)
 
     kill_switch.set_on_change(persist_safety)
-
     if not safety_state_valid:
         safety_store.replace_with_fail_closed_state(initial_reason or "estado de segurança indisponível")
     elif not initial_enabled:
         safety_store.save(safety_audit, kill_switch)
 
     maintenance = MaintenanceManager(root / "maintenance.json")
+    incident_store = TechnicalIncidentStore(root / "technical-incident.json")
+    incident_manager = EcosystemIncidentManager(store=incident_store)
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
-    recovery = RecoveryCoordinator(
-        checkpoint_store=checkpoint,
-        lifecycle_store=lifecycle,
-        execution_ledger=ledger,
-    )
-    health = RuntimeHealthMonitor(
-        ledger=ledger,
-        lifecycle=lifecycle,
-        checkpoint_store=checkpoint,
-        recovery=recovery,
-    )
+    recovery = RecoveryCoordinator(checkpoint_store=checkpoint, lifecycle_store=lifecycle, execution_ledger=ledger)
+    health = RuntimeHealthMonitor(ledger=ledger, lifecycle=lifecycle, checkpoint_store=checkpoint, recovery=recovery)
+    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+
+    if executor is None:
+        effective_executor: ExecutionPort = DemoRiskDispatchGuard(
+            PaperExecutor(),
+            risk_store=demo_risk_state,
+            risk_fingerprint_provider=demo_risk_state.fingerprint,
+        )
+    else:
+        if risk_state_provider is None:
+            raise RuntimeError("non-PAPER DEMO execution requires an authoritative risk-state provider")
+        effective_executor = executor
+
+    runtime_risk_provider = risk_state_provider or demo_risk_state.current
+    runtime_risk_fingerprint = risk_state_fingerprint_provider or demo_risk_state.fingerprint
+
     gateway = ExecutionGateway(
-        selected_executor,
+        effective_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
         maintenance=maintenance,
         safety_store=safety_store,
-        risk_state_provider=risk_state_provider,
+        incident_manager=incident_manager,
+        risk_state_fingerprint_provider=runtime_risk_fingerprint,
     )
-    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
-    return OperationalRuntime(
+    runtime = OperationalRuntime(
         kill_switch=kill_switch,
         maintenance=maintenance,
+        incident_manager=incident_manager,
+        incident_store=incident_store,
         execution_ledger=ledger,
         execution_lifecycle=lifecycle,
         checkpoint_store=checkpoint,
@@ -143,4 +145,16 @@ def build_operational_runtime(
         market_data=market_data,
         safety_store=safety_store,
         safety_audit=safety_audit,
+        demo_risk_state=demo_risk_state,
+        risk_state_provider=runtime_risk_provider,
     )
+
+    from core.operational_barrier_factory import build_global_operational_barrier
+    gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
+    gateway.set_market_data_fingerprint_provider(
+        lambda: runtime.market_data.report.fingerprint if runtime.market_data.report is not None else None
+    )
+    gateway.set_decision_freshness_policy(
+        DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0)
+    )
+    return runtime
