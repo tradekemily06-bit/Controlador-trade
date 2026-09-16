@@ -256,3 +256,31 @@ class RealExecutionGateway:
                 self._ledger.reconcile(request_id, executed=executed)
         except OSError as exc:
             raise RuntimeError("não foi possível obter a barreira de reconciliação REAL") from exc
+
+    def reconcile_unknown_with_evidence(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> None:
+        """Reconcile only with explicit external evidence; never resubmits."""
+        if not isinstance(evidence_id, str) or not evidence_id.strip():
+            raise ValueError("evidência externa exige evidence_id")
+        if not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("evidência externa exige evidence_source")
+        lock = exclusive_file_lock(self._dispatch_lock_path)
+        try:
+            with lock:
+                status = self._ledger.status(request_id)
+                if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                    raise ValueError("request_id não está em estado incerto reconciliável.")
+                self._ledger.reconcile(
+                    request_id,
+                    executed=executed,
+                    evidence_id=evidence_id,
+                    evidence_source=evidence_source,
+                )
+        except OSError as exc:
+            raise RuntimeError("não foi possível obter a barreira de reconciliação REAL") from exc
