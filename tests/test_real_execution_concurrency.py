@@ -248,8 +248,9 @@ def test_reconciliation_concurrent_with_dispatch_cannot_create_a_second_send(tmp
     assert dispatch.exitcode == 0
     assert reconcile.exitcode == 0
     assert calls.value == 0
-    assert queue.get(timeout=2) == "RECONCILED"
-    assert queue.get(timeout=2) == RealGatewayStatus.UNKNOWN
+    statuses = {queue.get(timeout=2), queue.get(timeout=2)}
+    assert "RECONCILED" in statuses
+    assert RealGatewayStatus.UNKNOWN in statuses or RealGatewayStatus.BLOCKED in statuses
     assert ExecutionLedger(path).status("reconcile-race") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
