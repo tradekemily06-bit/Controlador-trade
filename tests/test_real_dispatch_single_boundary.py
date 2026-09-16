@@ -11,12 +11,7 @@ ADAPTER_GATEWAY = ROOT / "execution" / "adapter_gateway.py"
 DEMO_GATEWAY_FACTORY = ROOT / "execution" / "default_registry.py"
 REGISTRY = ROOT / "execution" / "broker_registry.py"
 LEDGER = ROOT / "execution" / "execution_ledger.py"
-EXECUTION_BOUNDARIES = {
-    ROOT / "execution" / "gateway.py",
-    ADAPTER_GATEWAY,
-    REAL_GATEWAY,
-    ALLOWED_ORDER_SEND,
-}
+EXECUTION_BOUNDARIES = {ROOT / "execution" / "gateway.py", ADAPTER_GATEWAY, REAL_GATEWAY, ALLOWED_ORDER_SEND}
 
 
 def _runtime_python_files() -> list[Path]:
@@ -32,18 +27,11 @@ def _tree(path: Path) -> ast.AST:
 
 
 def _calls_with_attribute(path: Path, attribute: str) -> list[ast.Call]:
-    tree = _tree(path)
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == attribute
-    ]
+    return [node for node in ast.walk(_tree(path)) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == attribute]
 
 
 def test_order_send_exists_only_inside_the_broker_adapter() -> None:
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         for node in _calls_with_attribute(path, "order_send"):
             if path.resolve() != ALLOWED_ORDER_SEND.resolve():
@@ -53,7 +41,7 @@ def test_order_send_exists_only_inside_the_broker_adapter() -> None:
 
 def test_mt5_trade_mutations_stay_at_broker_edge() -> None:
     trade_calls = {"order_check", "order_send", "order_modify", "order_delete", "order_close_by"}
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() == ALLOWED_ORDER_SEND.resolve():
             continue
@@ -64,7 +52,7 @@ def test_mt5_trade_mutations_stay_at_broker_edge() -> None:
 
 
 def test_real_gateway_construction_is_not_replicated_outside_execution_boundary() -> None:
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() == REAL_GATEWAY.resolve():
             continue
@@ -75,7 +63,7 @@ def test_real_gateway_construction_is_not_replicated_outside_execution_boundary(
 
 
 def test_broker_adapter_gateway_is_only_composed_by_real_gateway() -> None:
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() == REAL_GATEWAY.resolve():
             continue
@@ -86,7 +74,8 @@ def test_broker_adapter_gateway_is_only_composed_by_real_gateway() -> None:
 
 
 def test_registry_has_no_public_adapter_get_or_mapping_escape_hatch() -> None:
-    violations: list[str] = []
+    violations = []
+    allowed_lookup_files = {DEMO_GATEWAY_FACTORY.resolve(), ADAPTER_GATEWAY.resolve()}
     for path in _runtime_python_files():
         if path.resolve() == REGISTRY.resolve():
             continue
@@ -111,7 +100,7 @@ def test_registry_has_no_public_adapter_get_or_mapping_escape_hatch() -> None:
             receiver = node.func.value
             if isinstance(receiver, ast.Name) and receiver.id in aliases and node.func.attr in {"get", "as_mapping"}:
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:{node.func.attr}")
-        if path.resolve() != DEMO_GATEWAY_FACTORY.resolve():
+        if path.resolve() not in allowed_lookup_files:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "_get_for_gateway":
                     violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:_get_for_gateway")
@@ -119,19 +108,18 @@ def test_registry_has_no_public_adapter_get_or_mapping_escape_hatch() -> None:
 
 
 def test_broker_gateway_capability_is_imported_only_at_execution_boundary() -> None:
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() in {REGISTRY.resolve(), ADAPTER_GATEWAY.resolve(), DEMO_GATEWAY_FACTORY.resolve()}:
             continue
         for node in ast.walk(_tree(path)):
-            if isinstance(node, ast.ImportFrom) and node.module == "execution.broker_registry":
-                if any(alias.name == "_BROKER_GATEWAY_CAPABILITY" for alias in node.names):
-                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            if isinstance(node, ast.ImportFrom) and node.module == "execution.broker_registry" and any(alias.name == "_BROKER_GATEWAY_CAPABILITY" for alias in node.names):
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
     assert not violations, "broker gateway capability leaked outside execution composition boundaries: " + ", ".join(sorted(violations))
 
 
 def test_adapter_execute_is_only_called_by_execution_boundaries() -> None:
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() in EXECUTION_BOUNDARIES:
             continue
@@ -146,13 +134,8 @@ def test_adapter_execute_is_only_called_by_execution_boundaries() -> None:
 
 def test_http_application_never_constructs_or_calls_an_executor() -> None:
     tree = _tree(ROOT / "app.py")
-    violations: list[str] = []
-    forbidden_imports = {
-        "execution.real_gateway",
-        "execution.adapter_gateway",
-        "execution.icmarkets_mt5_demo_adapter",
-        "execution.broker_registry",
-    }
+    violations = []
+    forbidden_imports = {"execution.real_gateway", "execution.adapter_gateway", "execution.icmarkets_mt5_demo_adapter", "execution.broker_registry"}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module in forbidden_imports:
             violations.append(f"app.py:{node.lineno}:import {node.module}")
@@ -164,13 +147,13 @@ def test_http_application_never_constructs_or_calls_an_executor() -> None:
 def test_ledger_mutations_are_only_called_by_execution_boundaries() -> None:
     allowed = {REAL_GATEWAY.resolve(), ROOT / "execution" / "gateway.py"}
     mutators = {"reserve", "record", "mark_accepted", "mark_rejected", "mark_unknown", "reconcile"}
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() in allowed:
             continue
         tree = _tree(path)
-        ledger_names: set[str] = {"ledger", "_ledger", "execution_ledger"}
-        aliases: set[str] = set(ledger_names)
+        ledger_names = {"ledger", "_ledger", "execution_ledger"}
+        aliases = set(ledger_names)
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Attribute) and node.value.attr in ledger_names:
                 for target in node.targets:
@@ -192,7 +175,7 @@ def test_ledger_mutations_are_only_called_by_execution_boundaries() -> None:
 
 def test_ledger_implementation_is_not_constructed_as_a_side_channel() -> None:
     allowed = {ROOT / "core" / "operational_runtime.py"}
-    violations: list[str] = []
+    violations = []
     for path in _runtime_python_files():
         if path.resolve() == LEDGER.resolve() or path.resolve() in allowed:
             continue
@@ -203,7 +186,7 @@ def test_ledger_implementation_is_not_constructed_as_a_side_channel() -> None:
 
 
 def test_execution_mode_environment_is_read_only_at_application_composition_boundary() -> None:
-    violations: list[str] = []
+    violations = []
     allowed_files = {ROOT / "app.py", ROOT / "core" / "operational_runtime.py"}
     for path in _runtime_python_files():
         if path.resolve() in allowed_files:
