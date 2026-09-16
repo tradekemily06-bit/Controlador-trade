@@ -9,9 +9,16 @@ ALLOWED_ORDER_SEND = ROOT / "execution" / "icmarkets_mt5_demo_adapter.py"
 REAL_GATEWAY = ROOT / "execution" / "real_gateway.py"
 ADAPTER_GATEWAY = ROOT / "execution" / "adapter_gateway.py"
 DEMO_GATEWAY_FACTORY = ROOT / "execution" / "default_registry.py"
+DEMO_BROKER_PORT = ROOT / "execution" / "demo_broker_port.py"
 REGISTRY = ROOT / "execution" / "broker_registry.py"
 LEDGER = ROOT / "execution" / "execution_ledger.py"
-EXECUTION_BOUNDARIES = {ROOT / "execution" / "gateway.py", ADAPTER_GATEWAY, REAL_GATEWAY, ALLOWED_ORDER_SEND}
+EXECUTION_BOUNDARIES = {
+    ROOT / "execution" / "gateway.py",
+    ADAPTER_GATEWAY,
+    REAL_GATEWAY,
+    ALLOWED_ORDER_SEND,
+    DEMO_BROKER_PORT,
+}
 
 
 def _runtime_python_files() -> list[Path]:
@@ -118,16 +125,51 @@ def test_broker_gateway_capability_is_imported_only_at_execution_boundary() -> N
     assert not violations, "broker gateway capability leaked outside execution composition boundaries: " + ", ".join(sorted(violations))
 
 
+def test_concrete_broker_adapter_is_not_imported_outside_execution_boundary() -> None:
+    violations = []
+    allowed = {ALLOWED_ORDER_SEND.resolve(), DEMO_GATEWAY_FACTORY.resolve(), DEMO_BROKER_PORT.resolve()}
+    for path in _runtime_python_files():
+        if path.resolve() in allowed:
+            continue
+        for node in ast.walk(_tree(path)):
+            if isinstance(node, ast.ImportFrom) and node.module == "execution.icmarkets_mt5_demo_adapter":
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "execution.icmarkets_mt5_demo_adapter":
+                        violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+    assert not violations, "concrete broker adapter import leaked outside execution boundary: " + ", ".join(sorted(violations))
+
+
 def test_adapter_execute_is_only_called_by_execution_boundaries() -> None:
     violations = []
+    forbidden_names = {"adapter", "_adapter", "broker", "executor", "_executor"}
     for path in _runtime_python_files():
         if path.resolve() in EXECUTION_BOUNDARIES:
             continue
-        for node in _calls_with_attribute(path, "execute"):
+        tree = _tree(path)
+        aliases: set[str] = set(forbidden_names)
+        changed = True
+        while changed:
+            changed = False
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Assign):
+                    continue
+                value = node.value
+                source_name = value.id if isinstance(value, ast.Name) else None
+                source_attr = value.attr if isinstance(value, ast.Attribute) else None
+                if source_name in aliases or source_attr in forbidden_names:
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id not in aliases:
+                            aliases.add(target.id)
+                            changed = True
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute) or node.func.attr != "execute":
+                continue
             receiver = node.func.value
-            if isinstance(receiver, ast.Name) and receiver.id in {"adapter", "_adapter", "broker", "executor", "_executor"}:
+            if isinstance(receiver, ast.Name) and receiver.id in aliases:
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
-            elif isinstance(receiver, ast.Attribute) and receiver.attr in {"adapter", "_adapter", "broker", "executor", "_executor"}:
+            elif isinstance(receiver, ast.Attribute) and receiver.attr in forbidden_names:
                 violations.append(f"{path.relative_to(ROOT)}:{node.lineno}")
     assert not violations, "direct adapter/executor execution bypass found: " + ", ".join(sorted(violations))
 
