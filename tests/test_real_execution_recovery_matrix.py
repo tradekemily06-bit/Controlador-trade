@@ -62,6 +62,14 @@ def _state() -> OperationalState:
     return RiskProvider().current_risk_state()
 
 
+def _safety() -> RealSafetyReport:
+    return RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True,
+        risk_approved=True, broker_available=True,
+    )
+
+
 def _snapshot() -> DecisionSnapshot:
     state = _state()
     return DecisionSnapshot(
