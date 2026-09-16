@@ -73,8 +73,8 @@ def test_reads_authoritative_demo_account_and_positions():
             SimpleNamespace(symbol="EURUSD", volume=0.1, type=FakeMT5.POSITION_TYPE_BUY, price_current=1.1)
         ],
         deals=[
-            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
-            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, profit=-10.0, swap=0.0, commission=-1.0, fee=0.0, time=2, time_msc=2),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=101, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=101, profit=-10.0, swap=0.0, commission=-1.0, fee=0.0, time=2, time_msc=2),
         ],
     )
     state = provider(fake).current_risk_state()
@@ -137,7 +137,7 @@ def test_symbol_scope_excludes_other_symbol_from_position_risk():
 def test_inout_deal_counts_as_entry_and_exit():
     fake = FakeMT5(
         deals=[
-            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_INOUT, profit=-5.0, swap=0.0, commission=-1.0, fee=0.0, time=2, time_msc=2),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_INOUT, position_id=303, profit=-5.0, swap=0.0, commission=-1.0, fee=0.0, time=2, time_msc=2),
         ]
     )
     state = provider(fake).current_risk_state()
@@ -145,3 +145,32 @@ def test_inout_deal_counts_as_entry_and_exit():
     assert state.trades_today == 1
     assert state.consecutive_losses == 1
     assert state.realized_pnl == -6.0
+
+
+def test_partial_exits_count_as_one_logical_loss():
+    fake = FakeMT5(
+        deals=[
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=404, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=404, profit=-2.0, swap=0.0, commission=0.0, fee=0.0, time=2, time_msc=2),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=404, profit=-3.0, swap=0.0, commission=0.0, fee=0.0, time=3, time_msc=3),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=505, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=4, time_msc=4),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=505, profit=4.0, swap=0.0, commission=0.0, fee=0.0, time=5, time_msc=5),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_IN, position_id=606, profit=0.0, swap=0.0, commission=0.0, fee=0.0, time=6, time_msc=6),
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, position_id=606, profit=-1.0, swap=0.0, commission=0.0, fee=0.0, time=7, time_msc=7),
+        ]
+    )
+    state = provider(fake).current_risk_state()
+
+    assert state.consecutive_losses == 1
+    assert state.realized_pnl == -2.0
+
+
+def test_missing_position_identity_makes_loss_streak_unknown():
+    fake = FakeMT5(
+        deals=[
+            SimpleNamespace(entry=FakeMT5.DEAL_ENTRY_OUT, profit=-5.0, swap=0.0, commission=0.0, fee=0.0, time=1, time_msc=1),
+        ]
+    )
+    state = provider(fake).current_risk_state()
+
+    assert state.consecutive_losses is None
