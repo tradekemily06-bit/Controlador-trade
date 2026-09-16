@@ -77,6 +77,7 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.") from exc
 
         evidence: dict[str, dict[str, str]] = {}
+        seen_evidence_ids: set[str] = set()
         for request_id, raw_evidence in evidence_payload.items():
             if request_id not in states or not isinstance(raw_evidence, dict):
                 raise ValueError("ledger de execução inválido.")
@@ -86,9 +87,14 @@ class ExecutionLedger:
             evidence_source = raw_evidence.get("evidence_source")
             if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
                 raise ValueError("ledger de execução inválido.")
-            evidence[request_id] = {"evidence_id": evidence_id, "evidence_source": evidence_source}
+            normalized_evidence_id = evidence_id.strip()
+            if normalized_evidence_id in seen_evidence_ids:
+                raise ValueError("ledger de execução inválido: evidence_id duplicado.")
+            seen_evidence_ids.add(normalized_evidence_id)
+            evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": evidence_source.strip()}
 
         context: dict[str, dict[str, str | None]] = {}
+        seen_external_ids: set[str] = set()
         for request_id, raw_context in context_payload.items():
             if request_id not in states or not isinstance(raw_context, dict):
                 raise ValueError("ledger de execução inválido.")
@@ -99,7 +105,12 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.")
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
-            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": external_id.strip() if isinstance(external_id, str) else None}
+            normalized_external_id = external_id.strip() if isinstance(external_id, str) else None
+            if normalized_external_id is not None:
+                if normalized_external_id in seen_external_ids:
+                    raise ValueError("ledger de execução inválido: external_id duplicado.")
+                seen_external_ids.add(normalized_external_id)
+            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": normalized_external_id}
         return states, evidence, context
 
     def _write(self) -> None:
@@ -182,14 +193,18 @@ class ExecutionLedger:
         self._validate_id(request_id)
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id REAL é obrigatório.")
+        normalized_external_id = external_id.strip()
         def mutation() -> None:
             current = self._states.get(request_id)
             context = self._execution_context.get(request_id)
             if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN) or context is None:
                 raise ValueError("contexto REAL não foi reservado.")
-            if context.get("external_id") not in (None, external_id.strip()):
+            for other_request_id, other_context in self._execution_context.items():
+                if other_request_id != request_id and other_context.get("external_id") == normalized_external_id:
+                    raise ValueError("external_id REAL já está vinculado a outra operação.")
+            if context.get("external_id") not in (None, normalized_external_id):
                 raise ValueError("external_id REAL não pode ser substituído.")
-            context["external_id"] = external_id.strip()
+            context["external_id"] = normalized_external_id
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
         self._mutate_locked(mutation)
 
@@ -206,12 +221,18 @@ class ExecutionLedger:
         if evidence_id is not None:
             if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
                 raise ValueError("evidência externa inválida")
+        normalized_evidence_id = evidence_id.strip() if isinstance(evidence_id, str) else None
+        normalized_evidence_source = evidence_source.strip() if isinstance(evidence_source, str) else None
         def mutation() -> None:
             if self._states.get(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+            if normalized_evidence_id is not None:
+                for other_request_id, other_evidence in self._reconciliation_evidence.items():
+                    if other_request_id != request_id and other_evidence.get("evidence_id") == normalized_evidence_id:
+                        raise ValueError("evidence_id já está vinculado a outra operação.")
             self._states[request_id] = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            if evidence_id is not None and evidence_source is not None:
-                self._reconciliation_evidence[request_id] = {"evidence_id": evidence_id, "evidence_source": evidence_source}
+            if normalized_evidence_id is not None and normalized_evidence_source is not None:
+                self._reconciliation_evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": normalized_evidence_source}
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
