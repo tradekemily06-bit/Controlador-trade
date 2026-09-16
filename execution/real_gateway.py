@@ -158,7 +158,7 @@ class RealExecutionGateway:
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {self._safe_error(exc)}")
-        for revalidator in (lambda: self._revalidate_risk(snapshot), lambda: self._revalidate_safety(safety)):
+        for revalidator in (lambda: self._global_barrier_error() and RealGatewayResult(RealGatewayStatus.BLOCKED, self._global_barrier_error()), lambda: self._revalidate_risk(snapshot), lambda: self._revalidate_safety(safety)):
             result = revalidator()
             if result is not None:
                 try:
