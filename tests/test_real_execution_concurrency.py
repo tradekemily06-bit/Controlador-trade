@@ -182,7 +182,7 @@ def test_two_processes_same_request_id_produce_at_most_one_dispatch(tmp_path: Pa
 
 def test_restart_after_reserved_never_dispatches(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    ExecutionLedger(path).reserve("reserved-before-restart")
+    ExecutionLedger(path).reserve_real("reserved-before-restart", broker_id="fake", symbol="TEST")
     calls = multiprocessing.Value("i", 0)
     gateway = _gateway(path, CountingAdapter(calls))
 
