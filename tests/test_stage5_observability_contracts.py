@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.observability_redaction import REDACTED, redact, redact_event
-from core.p21_observability import HealthState
+from core.p21_observability import HealthState, RuntimeHealthMonitor, RecoveryState
 
 
 def test_redaction_recurses_without_mutating_input():
@@ -33,3 +33,18 @@ def test_health_states_are_observational_not_authorization_states():
         "ATTENTION",
         "BLOCKED",
     }
+
+
+def test_health_monitor_fails_closed_when_persisted_state_is_unavailable():
+    class BrokenLedger:
+        def records(self):
+            raise OSError("ledger indisponível")
+
+    monitor = RuntimeHealthMonitor.__new__(RuntimeHealthMonitor)
+    monitor.ledger = BrokenLedger()
+    health = monitor.assess()
+
+    assert health.state is HealthState.BLOCKED
+    assert health.recovery_state is RecoveryState.INVALID
+    assert health.ledger_entries == 0
+    assert "OSError" in health.message
