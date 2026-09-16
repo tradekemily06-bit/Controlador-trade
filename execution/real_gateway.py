@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
+from datetime import datetime, timezone
 from typing import Callable
 
 from core.decision_snapshot import DecisionSnapshot
+from core.decision_freshness import DecisionFreshnessPolicy
 from core.file_lock import exclusive_file_lock
 from core.global_operational_barrier import GlobalOperationalBarrier
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -39,7 +41,8 @@ class RealExecutionGateway:
     def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger,
                  risk_state_provider: RiskStateProvider, real_safety_provider: RealSafetyProvider,
                  operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
-                 reconciliation_evidence_verifier: BrokerReconciliationEvidenceAuthority | None = None) -> None:
+                 reconciliation_evidence_verifier: BrokerReconciliationEvidenceAuthority | None = None,
+                 decision_freshness_policy: DecisionFreshnessPolicy | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -52,12 +55,15 @@ class RealExecutionGateway:
             raise ValueError("operational_barrier_provider inválido.")
         if reconciliation_evidence_verifier is not None and not isinstance(reconciliation_evidence_verifier, BrokerReconciliationEvidenceAuthority):
             raise ValueError("reconciliation_evidence_verifier deve ser uma autoridade de evidência REAL autorizada.")
+        if decision_freshness_policy is not None and not isinstance(decision_freshness_policy, DecisionFreshnessPolicy):
+            raise ValueError("decision_freshness_policy inválida.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._risk_state_provider = risk_state_provider
         self._real_safety_provider = real_safety_provider
         self._operational_barrier_provider = operational_barrier_provider
         self._reconciliation_evidence_verifier = reconciliation_evidence_verifier
+        self._decision_freshness_policy = decision_freshness_policy or DecisionFreshnessPolicy()
         self._processed_request_ids: set[str] = set(ledger.records())
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
         self._dispatch_started = False
@@ -137,11 +143,9 @@ class RealExecutionGateway:
                                   request: ExecutionRequest,
                                   authorization: RealExecutionAuthorization,
                                   admission: RealAdmission) -> RealGatewayResult | None:
-        """Require one immutable identity across authorization, admission and request."""
         normalized_broker = broker.strip().lower()
         normalized_symbol = self._normalize_symbol(request.symbol)
         normalized_request_id = request_id.strip()
-
         if authorization.request_id.strip() != normalized_request_id:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id da autorização REAL difere da requisição; dispatch bloqueado.")
         if admission.request_id.strip() != normalized_request_id:
@@ -164,6 +168,18 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter_id autorizado não corresponde ao adapter resolvido pelo gateway; dispatch bloqueado.")
         if resolved_adapter_id.strip() != admission.adapter_id.strip():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter_id admitido não corresponde ao adapter resolvido pelo gateway; dispatch bloqueado.")
+        return None
+
+    def _validate_snapshot_identity(self, *, request: ExecutionRequest, snapshot: DecisionSnapshot) -> RealGatewayResult | None:
+        if not isinstance(snapshot.symbol, str) or not snapshot.symbol.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "símbolo do snapshot de decisão está ausente; REAL bloqueado.")
+        if self._normalize_symbol(snapshot.symbol) != self._normalize_symbol(request.symbol):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "símbolo do snapshot difere da requisição REAL; dispatch bloqueado.")
+        if snapshot.created_at is None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "timestamp do snapshot está ausente; REAL bloqueado.")
+        freshness_error = self._decision_freshness_policy.validate(snapshot.created_at, now=datetime.now(timezone.utc))
+        if freshness_error is not None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, freshness_error)
         return None
 
     def _revalidate_risk(self, snapshot: DecisionSnapshot) -> RealGatewayResult | None:
@@ -198,12 +214,12 @@ class RealExecutionGateway:
                          safety: RealSafetyReport, snapshot: DecisionSnapshot,
                          authorization: RealExecutionAuthorization,
                          admission: RealAdmission) -> RealGatewayResult:
-        binding = self._validate_context_binding(
-            broker=broker, request_id=request_id, request=request,
-            authorization=authorization, admission=admission,
-        )
+        binding = self._validate_context_binding(broker=broker, request_id=request_id, request=request, authorization=authorization, admission=admission)
         if binding is not None:
             return binding
+        snapshot_binding = self._validate_snapshot_identity(request=request, snapshot=snapshot)
+        if snapshot_binding is not None:
+            return snapshot_binding
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -222,54 +238,38 @@ class RealExecutionGateway:
         for revalidator in (self._global_barrier_revalidation, lambda: self._revalidate_risk(snapshot), lambda: self._revalidate_safety(safety)):
             result = revalidator()
             if result is not None:
-                try:
-                    self._ledger.mark_unknown(request_id)
-                except (OSError, ValueError):
-                    pass
+                try: self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError): pass
                 return result
         try:
             result = self._gateway.execute(broker, request)
         except Exception as exc:
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
+            try: self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError): pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {self._safe_error(exc)}")
         expected_adapter_id = authorization.adapter_id.strip()
         if result.adapter_id != expected_adapter_id:
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
+            try: self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError): pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "identidade do adapter mudou ou não pôde ser confirmada após o dispatch; reconciliação explícita necessária.", result.execution)
         if getattr(result, "uncertain", False):
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto e persistência do estado falhou: {self._safe_error(exc)}", result.execution)
+            try: self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc: return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto e persistência do estado falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "adapter REAL foi acionado, mas o resultado terminal não pôde ser confirmado; reconciliação explícita necessária.", result.execution)
         if result.execution is None:
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
+            try: self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError): pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL sem execução confirmável; reconciliação explícita necessária.")
         if not result.execution.accepted:
-            try:
-                self._ledger.mark_rejected(request_id)
-            except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {self._safe_error(exc)}", result.execution)
+            try: self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError) as exc: return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, self._safe_execution_message(result.execution, "ordem REAL rejeitada."), result.execution)
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {self._safe_error(exc)}", result.execution)
+            try: self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc: return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {self._safe_error(exc)}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
-        try:
-            self._ledger.mark_accepted_real(request_id, external_id=result.execution.external_id)
-        except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência da identidade falhou: {self._safe_error(exc)}", result.execution)
+        try: self._ledger.mark_accepted_real(request_id, external_id=result.execution.external_id)
+        except (OSError, ValueError) as exc: return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência da identidade falhou: {self._safe_error(exc)}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, self._safe_execution_message(result.execution, "ordem REAL aceita."), result.execution)
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
@@ -281,85 +281,51 @@ class RealExecutionGateway:
         if not isinstance(snapshot, DecisionSnapshot):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "snapshot de decisão inválido; REAL bloqueado.")
         barrier_error = self._global_barrier_error()
-        if barrier_error is not None:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
-        if not isinstance(request_id, str) or not request_id.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not authorization.active:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
-        if not admission.admitted:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
-        if admission.audit_id.strip() != authorization.audit_id.strip():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "auditoria da admissão REAL difere da autorização; novo ciclo obrigatório.")
-        if not safety.ready:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        if not self._valid_request(request):
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if request.request_id != request_id:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id externo difere da identidade da requisição; dispatch REAL bloqueado.")
-        if not isinstance(broker, str) or not broker.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        binding = self._validate_context_binding(
-            broker=broker, request_id=request_id, request=request,
-            authorization=authorization, admission=admission,
-        )
-        if binding is not None:
-            return binding
+        if barrier_error is not None: return RealGatewayResult(RealGatewayStatus.BLOCKED, barrier_error)
+        if not isinstance(request_id, str) or not request_id.strip(): return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not authorization.active: return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
+        if not admission.admitted: return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
+        if admission.audit_id.strip() != authorization.audit_id.strip(): return RealGatewayResult(RealGatewayStatus.BLOCKED, "auditoria da admissão REAL difere da autorização; novo ciclo obrigatório.")
+        if not safety.ready: return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
+        if not self._valid_request(request): return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id != request_id: return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id externo difere da identidade da requisição; dispatch REAL bloqueado.")
+        if not isinstance(broker, str) or not broker.strip(): return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
+        binding = self._validate_context_binding(broker=broker, request_id=request_id, request=request, authorization=authorization, admission=admission)
+        if binding is not None: return binding
+        snapshot_binding = self._validate_snapshot_identity(request=request, snapshot=snapshot)
+        if snapshot_binding is not None: return snapshot_binding
         snapshot_risk = snapshot.risk_state_identity
-        if not isinstance(snapshot_risk, str) or not snapshot_risk.strip():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco do snapshot está ausente; REAL bloqueado.")
-        if not isinstance(request.risk_state_fingerprint, str) or request.risk_state_fingerprint != snapshot_risk:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco da requisição difere do snapshot; REAL bloqueado.")
+        if not isinstance(snapshot_risk, str) or not snapshot_risk.strip(): return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco do snapshot está ausente; REAL bloqueado.")
+        if not isinstance(request.risk_state_fingerprint, str) or request.risk_state_fingerprint != snapshot_risk: return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco da requisição difere do snapshot; REAL bloqueado.")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
-                return self._dispatch_locked(
-                    broker, request_id, request, safety, snapshot,
-                    authorization, admission,
-                )
+                return self._dispatch_locked(broker, request_id, request, safety, snapshot, authorization, admission)
         except OSError as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a barreira de dispatch REAL: {self._safe_error(exc)}")
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         raise RuntimeError("reconciliação REAL sem evidência externa autoritativa está bloqueada; use reconcile_unknown_with_evidence")
 
-    def reconcile_unknown_with_evidence(self, request_id: str, *, executed: bool,
-                                        evidence_id: str, evidence_source: str) -> None:
+    def reconcile_unknown_with_evidence(self, request_id: str, *, executed: bool, evidence_id: str, evidence_source: str) -> None:
         self._reconciliation_started = True
-        if not isinstance(evidence_id, str) or not evidence_id.strip():
-            raise ValueError("evidência externa exige evidence_id")
-        if not isinstance(evidence_source, str) or not evidence_source.strip():
-            raise ValueError("evidence_source da evidência externa é obrigatório")
+        if not isinstance(evidence_id, str) or not evidence_id.strip(): raise ValueError("evidência externa exige evidence_id")
+        if not isinstance(evidence_source, str) or not evidence_source.strip(): raise ValueError("evidence_source da evidência externa é obrigatório")
         verifier = self._reconciliation_evidence_verifier
-        if verifier is None:
-            raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
+        if verifier is None: raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
                 status = self._ledger.status(request_id)
-                if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-                    raise ValueError("request_id não está em estado incerto reconciliável.")
+                if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED): raise ValueError("request_id não está em estado incerto reconciliável.")
                 context = self._ledger.execution_context(request_id)
-                if context is None:
-                    raise ValueError("identidade persistida da operação REAL está ausente; reconciliação bloqueada")
-                context_broker = context.get("broker_id")
-                context_symbol = context.get("symbol")
-                if not isinstance(context_broker, str) or not context_broker.strip() or not isinstance(context_symbol, str) or not context_symbol.strip():
-                    raise ValueError("identidade persistida da operação REAL está inválida; reconciliação bloqueada")
+                if context is None: raise ValueError("identidade persistida da operação REAL está ausente; reconciliação bloqueada")
+                context_broker = context.get("broker_id"); context_symbol = context.get("symbol")
+                if not isinstance(context_broker, str) or not context_broker.strip() or not isinstance(context_symbol, str) or not context_symbol.strip(): raise ValueError("identidade persistida da operação REAL está inválida; reconciliação bloqueada")
                 persisted_external_id = context.get("external_id")
-                if isinstance(persisted_external_id, str) and persisted_external_id.strip() and persisted_external_id.strip() != evidence_id.strip():
-                    raise ValueError("evidence_id difere do external_id emitido pelo broker para esta operação")
+                if isinstance(persisted_external_id, str) and persisted_external_id.strip() and persisted_external_id.strip() != evidence_id.strip(): raise ValueError("evidence_id difere do external_id emitido pelo broker para esta operação")
                 try:
-                    verified = bool(verifier.verify(
-                        request_id=request_id,
-                        evidence_id=evidence_id.strip(),
-                        evidence_source=evidence_source.strip(),
-                        broker_id=context_broker.strip(),
-                        symbol=context_symbol.strip(),
-                        executed=executed,
-                    ))
-                except Exception as exc:
-                    raise RuntimeError(f"autoridade de evidência REAL indisponível: {self._safe_error(exc)}") from exc
-                if not verified:
-                    raise ValueError("evidência externa não foi confirmada pela autoridade; estado permanece incerto")
+                    verified = bool(verifier.verify(request_id=request_id, evidence_id=evidence_id.strip(), evidence_source=evidence_source.strip(), broker_id=context_broker.strip(), symbol=context_symbol.strip(), executed=executed))
+                except Exception as exc: raise RuntimeError(f"autoridade de evidência REAL indisponível: {self._safe_error(exc)}") from exc
+                if not verified: raise ValueError("evidência externa não confirmou o resultado REAL")
                 self._ledger.reconcile(request_id, executed=executed, evidence_id=evidence_id.strip(), evidence_source=evidence_source.strip())
         except OSError as exc:
-            raise RuntimeError("não foi possível obter a barreira de reconciliação REAL") from exc
+            raise RuntimeError(f"barreira de reconciliação REAL indisponível: {self._safe_error(exc)}") from exc
