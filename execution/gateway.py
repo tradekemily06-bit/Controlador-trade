@@ -87,18 +87,14 @@ class ExecutionGateway:
         self._operational_barrier_provider = operational_barrier_provider
         self._operational_barrier_provider_locked = operational_barrier_provider is not None
         self._decision_freshness_policy = decision_freshness_policy
+        self._decision_freshness_policy_locked = decision_freshness_policy is not None
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
         self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
 
     def set_operational_barrier_provider(
         self, provider: Callable[[], GlobalOperationalBarrier] | None
     ) -> None:
-        """Bind the barrier once; an established provider cannot be replaced or removed.
-
-        The consolidated runtime uses this method exactly once during composition.
-        This prevents callers that receive ``runtime.gateway`` from replacing the
-        authoritative global barrier with a weaker or unrelated provider.
-        """
+        """Bind the barrier once; an established provider cannot be replaced or removed."""
         if self._operational_barrier_provider_locked:
             raise RuntimeError("barreira operacional já está vinculada e não pode ser substituída")
         if provider is not None and not callable(provider):
@@ -108,9 +104,14 @@ class ExecutionGateway:
             self._operational_barrier_provider_locked = True
 
     def set_decision_freshness_policy(self, policy: DecisionFreshnessPolicy | None) -> None:
+        """Bind freshness policy once; consolidated runtime policy cannot be disabled later."""
+        if self._decision_freshness_policy_locked:
+            raise RuntimeError("política de frescor da decisão já está vinculada e não pode ser substituída")
         if policy is not None and not isinstance(policy, DecisionFreshnessPolicy):
             raise ValueError("decision_freshness_policy inválida.")
         self._decision_freshness_policy = policy
+        if policy is not None:
+            self._decision_freshness_policy_locked = True
 
     @staticmethod
     def _safe_error(exc: BaseException) -> str:
