@@ -173,9 +173,30 @@ class OperationalSafetyStore:
             }
             self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
 
+    def load_execution_audit(self) -> tuple[dict[str, object], ...]:
+        """Load the validated execution-audit projection without mutating state."""
+        with self._lock():
+            payload = self._read_payload()
+            persisted = payload.get("execution_audit", [])
+            if not isinstance(persisted, list):
+                raise ValueError("auditoria de execução persistida inválida.")
+            normalized = [self._execution_audit_item(item) for item in persisted]
+            return tuple(normalized)
+
+    def save_execution_audit(self, events: tuple[dict[str, object], ...] | list[dict[str, object]]) -> None:
+        """Atomically merge validated execution-audit events into the safety store."""
+        if not isinstance(events, (tuple, list)):
+            raise TypeError("events deve ser lista ou tupla.")
+        with self._lock():
+            payload = self._read_payload()
+            persisted = payload.get("execution_audit", [])
+            merged = self._merge_execution_audit(persisted, list(events))
+            payload["execution_audit"] = merged
+            self._write_payload(payload)
+
     def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
-            raise TypeError("enabled deve ser bool.")
+            raise TypeError("enabled deve ser bool")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
             raise ValueError("reason é obrigatório ao ativar o kill switch.")
         with self._lock():
