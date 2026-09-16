@@ -4,6 +4,7 @@ import multiprocessing
 from pathlib import Path
 import time
 
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.test_p111_p119_real_release import (
     _admission,
     _authorization,
@@ -47,7 +48,7 @@ def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
         ExecutionLedger(ledger_path),
         FakeRiskStateProvider(_risk_state()),
         FakeRealSafetyProvider(safety),
-        operational_barrier_provider=lambda: __import__("core.global_operational_barrier", fromlist=["GlobalOperationalBarrier"]).GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
     request = _request(request_id=request_id)
     result = gateway.execute(
