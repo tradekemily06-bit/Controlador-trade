@@ -61,7 +61,6 @@ def _json_response(start_response, status: HTTPStatus, payload: dict, request_id
 
 
 def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
-    headers = [("Content-Type", content_type)]
     headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None: _audit(environ, request_id, status.value)
