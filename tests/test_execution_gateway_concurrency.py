@@ -13,8 +13,8 @@ from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
-def _request() -> ExecutionRequest:
-    return ExecutionRequest(symbol="BTCUSD", signal=Signal.COMPRA, amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO)
+def _request(request_id: str = "same-request") -> ExecutionRequest:
+    return ExecutionRequest(symbol="BTCUSD", signal=Signal.COMPRA, amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO, request_id=request_id)
 
 
 class _CountingExecutor:
@@ -103,6 +103,6 @@ def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_pat
     lifecycle.put(ExecutionLifecycleRecord("conflict-request", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "existing cycle"))
     ledger = ExecutionLedger(ledger_path)
     gateway = ExecutionGateway(_NoopExecutor(), KillSwitch(), ledger=ledger, lifecycle=lifecycle)
-    result = gateway.execute("conflict-request", _request())
+    result = gateway.execute("conflict-request", _request("conflict-request"))
     assert result.status is GatewayStatus.DUPLICATE
     assert ledger.status("conflict-request") is ExecutionLedgerStatus.UNKNOWN
