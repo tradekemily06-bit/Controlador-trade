@@ -1,109 +1,103 @@
 from __future__ import annotations
 
-import os
-from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import replace
+from pathlib import Path
 
-from storage.production_provider import ProductionProviderConfig, build_production_provider
-
-
-SAAS_PUBLIC_ENV = "CONTROLADOR_SAAS_PUBLIC"
-TRUSTED_SUBJECT_KEY = "controlador.trusted_subject_id"
-TRUSTED_TENANT_KEY = "controlador.trusted_tenant_id"
-TRUSTED_ROLE_KEY = "controlador.trusted_role"
-
-
-class PublicSaaSNotReady(RuntimeError):
-    """Raised when public SaaS is requested without a real tenant-scoped data plane."""
-
-
-@dataclass(frozen=True)
-class TrustedHttpIdentity:
-    """Identity injected by trusted deployment middleware, never by browser headers."""
-
-    subject_id: str
-    tenant_id: str
-    role: str
-
-    def is_valid(self) -> bool:
-        return bool(self.subject_id.strip() and self.tenant_id.strip() and self.role.strip())
+from core.global_operational_barrier import GlobalOperationalBarrier
+from core.test_p111_p119_real_release import (
+    _admission,
+    _authorization,
+    _request,
+    _risk_state,
+    _safety,
+    _snapshot,
+    FakeRealSafetyProvider,
+    FakeRiskStateProvider,
+)
+from execution.adapter_gateway import BrokerAdapterGateway
+from execution.broker_registry import BrokerRegistry
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.ports import ExecutionResult
+from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
-_current_identity: ContextVar[TrustedHttpIdentity | None] = ContextVar("controlador_trusted_identity", default=None)
+class AmbiguousAdapter:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def is_available(self) -> bool:
+        return True
+
+    def execute(self, request) -> ExecutionResult:
+        self.calls += 1
+        raise RuntimeError("broker response lost after submission")
 
 
-def saas_public_mode() -> bool:
-    return os.environ.get(SAAS_PUBLIC_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+def _gateway(ledger_path: Path, adapter: AmbiguousAdapter) -> RealExecutionGateway:
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    auth = _authorization()
+    return RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        FakeRiskStateProvider(_risk_state()),
+        FakeRealSafetyProvider(_safety(auth)),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+    )
 
 
-def resolve_trusted_identity(environ) -> TrustedHttpIdentity | None:
-    """Resolve only server-injected WSGI keys; HTTP X-* headers are intentionally ignored."""
-    subject_id = environ.get(TRUSTED_SUBJECT_KEY)
-    tenant_id = environ.get(TRUSTED_TENANT_KEY)
-    role = environ.get(TRUSTED_ROLE_KEY)
-    if not all(isinstance(value, str) and value.strip() for value in (subject_id, tenant_id, role)):
-        return None
-    identity = TrustedHttpIdentity(subject_id.strip(), tenant_id.strip(), role.strip().lower())
-    return identity if identity.is_valid() else None
+def test_restart_after_unknown_never_replays_the_order(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "restart-ledger.json"
+    request_id = "restart-unknown"
+    auth = _authorization()
+    safety = _safety(auth)
+    request = replace(_request(), request_id=request_id)
 
+    first_adapter = AmbiguousAdapter()
+    first_gateway = _gateway(ledger_path, first_adapter)
+    first = first_gateway.execute(
+        broker="fake",
+        request_id=request_id,
+        request=request,
+        authorization=auth,
+        admission=_admission(auth),
+        safety=safety,
+        snapshot=_snapshot(),
+    )
 
-def require_trusted_identity(environ) -> TrustedHttpIdentity:
-    """Fail closed for public SaaS requests without a deployment-trusted identity.
+    assert first.status is RealGatewayStatus.UNKNOWN
+    assert first_adapter.calls == 1
+    assert ExecutionLedger(ledger_path).status(request_id) is ExecutionLedgerStatus.UNKNOWN
 
-    The infrastructure health endpoint is intentionally public and carries no
-    user or tenant state. It gets a synthetic non-user identity only so the
-    common request path can continue without treating health as authenticated.
-    """
-    if str(environ.get("PATH_INFO", "")) == "/api/health":
-        identity = TrustedHttpIdentity("health-check", "health-check", "health")
-        _current_identity.set(identity)
-        return identity
-    identity = resolve_trusted_identity(environ)
-    if identity is None:
-        raise PermissionError("trusted identity is required")
-    _current_identity.set(identity)
-    return identity
+    # Simulated process restart: new gateway, new adapter object, same durable ledger.
+    second_adapter = AmbiguousAdapter()
+    second_gateway = _gateway(ledger_path, second_adapter)
+    second = second_gateway.execute(
+        broker="fake",
+        request_id=request_id,
+        request=request,
+        authorization=auth,
+        admission=_admission(auth),
+        safety=safety,
+        snapshot=_snapshot(),
+    )
 
+    assert second.status is RealGatewayStatus.UNKNOWN
+    assert second_adapter.calls == 0
+    assert ExecutionLedger(ledger_path).status(request_id) is ExecutionLedgerStatus.UNKNOWN
 
-def current_trusted_identity() -> TrustedHttpIdentity | None:
-    """Return the identity established by the trusted HTTP boundary for this request."""
-    return _current_identity.get()
+    second_gateway.reconcile_unknown(request_id, executed=False)
+    assert ExecutionLedger(ledger_path).status(request_id) is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
-
-def clear_trusted_identity() -> None:
-    """Clear request identity after request completion in long-lived worker contexts."""
-    _current_identity.set(None)
-
-
-def require_role(identity: TrustedHttpIdentity, *allowed_roles: str) -> None:
-    allowed = {role.strip().lower() for role in allowed_roles}
-    if identity.role not in allowed:
-        raise PermissionError("insufficient role")
-
-
-def require_tenant_scoped_data_plane() -> None:
-    """Require durable production storage scoped to the trusted request identity.
-
-    The tenant and subject are taken from the server-established identity for
-    this request. They are never synthesized from deployment configuration or
-    accepted from browser-controlled HTTP headers.
-    """
-    identity = current_trusted_identity()
-    if identity is None or identity.subject_id == "health-check" or identity.tenant_id == "health-check":
-        raise PublicSaaSNotReady("trusted user identity is required for tenant-scoped data plane")
-
-    cfg = ProductionProviderConfig.from_environment()
-    try:
-        provider, policy = build_production_provider(cfg)
-    except (RuntimeError, ValueError) as exc:
-        raise PublicSaaSNotReady("tenant-scoped data plane is not safely configured") from exc
-    if provider is None or not cfg.database_path:
-        raise PublicSaaSNotReady("tenant-scoped data plane is not configured")
-    if not policy.authorize_write(
-        authenticated=True,
-        tenant_id=identity.tenant_id,
-        subject_id=identity.subject_id,
-    ):
-        raise PublicSaaSNotReady("tenant-and-subject-scoped data plane is not authorized")
-    if not policy.durable or not policy.tenant_scoped or not policy.subject_scoped:
-        raise PublicSaaSNotReady("tenant-and-subject-scoped data plane must be durable and scoped")
+    # Reconciliation is not a new authorization: the same request ID remains terminal.
+    third = second_gateway.execute(
+        broker="fake",
+        request_id=request_id,
+        request=request,
+        authorization=auth,
+        admission=_admission(auth),
+        safety=safety,
+        snapshot=_snapshot(),
+    )
+    assert third.status is RealGatewayStatus.BLOCKED
+    assert second_adapter.calls == 0
