@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED_ORDER_SEND = ROOT / "execution" / "icmarkets_mt5_demo_adapter.py"
+REAL_GATEWAY = ROOT / "execution" / "real_gateway.py"
 
 
 def _runtime_python_files() -> list[Path]:
@@ -33,9 +34,20 @@ def test_order_send_exists_only_inside_the_broker_adapter() -> None:
 def test_real_gateway_construction_is_not_replicated_outside_execution_boundary() -> None:
     violations: list[str] = []
     for path in _runtime_python_files():
-        if path == ROOT / "execution" / "real_gateway.py":
+        if path == REAL_GATEWAY:
             continue
         text = path.read_text(encoding="utf-8")
         if "RealExecutionGateway(" in text:
             violations.append(str(path.relative_to(ROOT)))
     assert not violations, "REAL gateway construction bypass found outside execution/real_gateway.py: " + ", ".join(sorted(violations))
+
+
+def test_broker_adapter_gateway_is_only_composed_by_real_gateway() -> None:
+    violations: list[str] = []
+    for path in _runtime_python_files():
+        if path == REAL_GATEWAY:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if "BrokerAdapterGateway(" in text:
+            violations.append(str(path.relative_to(ROOT)))
+    assert not violations, "broker adapter gateway composition bypass found outside execution/real_gateway.py: " + ", ".join(sorted(violations))
