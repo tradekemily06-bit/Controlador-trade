@@ -152,8 +152,9 @@ class EcosystemNotificationCenter:
         scope = self._trusted_scope()
         if scope is None:
             return global_events
-        # Global ecosystem updates are visible to every trusted tenant, while
-        # private events remain strictly scoped to the current tenant+subject.
+        # Global ecosystem updates, security events, and execution-blocking
+        # incidents are visible to every trusted tenant. Ordinary operational
+        # events remain strictly scoped to the current tenant+subject.
         return global_events + tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
@@ -162,7 +163,15 @@ class EcosystemNotificationCenter:
         if not notification.notification_id.strip() or not notification.title.strip() or not notification.message.strip():
             raise ValueError("notification id, title and message are required")
 
-        if notification.kind is NotificationKind.SYSTEM_UPDATE:
+        # These events describe ecosystem-wide conditions. Keeping them in the
+        # reserved global scope prevents them from being attached to whichever
+        # tenant happened to trigger the condition and ensures blocking/security
+        # state is visible consistently across trusted tenants.
+        if (
+            notification.kind is NotificationKind.SYSTEM_UPDATE
+            or notification.kind is NotificationKind.SECURITY
+            or notification.blocking
+        ):
             scope = self.GLOBAL_SCOPE
         else:
             scope = self._required_scope()
