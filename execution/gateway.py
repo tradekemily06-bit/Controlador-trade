@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
 from core.ecosystem_maintenance import MaintenanceManager
 from core.ecosystem_incidents import EcosystemIncidentManager
+from core.file_lock import exclusive_file_lock
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
@@ -74,6 +75,11 @@ class ExecutionGateway:
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        self._dispatch_lock_path = (
+            ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
+            if ledger is not None
+            else None
+        )
 
     @staticmethod
     def _safe_error(exc: BaseException) -> str:
@@ -98,13 +104,7 @@ class ExecutionGateway:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
 
     def _risk_state_barrier(self, snapshot: DecisionSnapshot | None) -> str | None:
-        """Revalidate the full authoritative risk state immediately before dispatch.
-
-        The provider is intentionally optional so existing DEMO/PAPER callers
-        without an authoritative runtime source keep their established behavior.
-        Once a provider is configured, a decision without a risk identity is
-        never upgraded from stale state, and provider failures fail closed.
-        """
+        """Revalidate the full authoritative risk state immediately before dispatch."""
         if self._risk_state_provider is None:
             return None
         if snapshot is None or not snapshot.risk_state_identity:
@@ -130,6 +130,34 @@ class ExecutionGateway:
         if self._incident_manager is not None and self._incident_manager.execution_blocked():
             return "execução bloqueada por incidente técnico ativo."
         return None
+
+    def _dispatch_with_authoritative_barriers(
+        self,
+        request: ExecutionRequest,
+        snapshot: DecisionSnapshot | None,
+    ) -> tuple[ExecutionResult | None, str | None]:
+        """Serialize the final safety/risk read with the actual broker dispatch.
+
+        The ledger already serializes request reservations. This separate lock
+        closes the remaining application-level TOCTOU window: when multiple
+        workers share the same durable ledger, only one worker at a time can
+        perform the authoritative risk read and the following executor call.
+        A provider or broker may still change independently outside this process;
+        therefore the provider remains authoritative and fail-closed.
+        """
+        lock = (
+            exclusive_file_lock(self._dispatch_lock_path)
+            if self._dispatch_lock_path is not None
+            else nullcontext()
+        )
+        with lock:
+            final_safety_error = self._final_safety_barrier(now=datetime.now(timezone.utc))
+            if final_safety_error is not None:
+                return None, final_safety_error
+            risk_state_error = self._risk_state_barrier(snapshot)
+            if risk_state_error is not None:
+                return None, risk_state_error
+            return self._executor.execute(request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
         """Never leave a reservation falsely reusable after a lifecycle conflict."""
@@ -202,20 +230,8 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {self._safe_error(exc)}")
 
-        # Use wall-clock time for the final safety check. The decision timestamp
-        # can be historical or delayed; it must never extend a maintenance window.
-        final_safety_error = self._final_safety_barrier(now=datetime.now(timezone.utc))
-        if final_safety_error is not None:
-            self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
-            return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
-
-        risk_state_error = self._risk_state_barrier(snapshot)
-        if risk_state_error is not None:
-            self._mark_unknown(request_id, event_time, "revalidação de risco bloqueou o dispatch")
-            return GatewayResult(GatewayStatus.BLOCKED, risk_state_error)
-
         try:
-            result = self._executor.execute(request)
+            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:
@@ -228,6 +244,9 @@ class ExecutionGateway:
                     pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
 
+        if barrier_error is not None:
+            self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
+            return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             if self._incident_manager is not None:
