@@ -9,10 +9,11 @@
 Antes de qualquer expansão de produção:
 
 1. fechar a origem/emissão da identidade privilegiada REAL;
-2. fechar o binding `DecisionSnapshot.symbol -> ExecutionRequest.symbol` na fronteira REAL;
-3. aplicar a política de frescor da decisão como barreira obrigatória também no caminho REAL;
-4. validar reconstrução após restart, compatibilidade legada e ausência de side doors;
-5. executar a matriz consolidada com CI verde, incluindo o run mais recente do workflow.
+2. garantir que somente o emissor autoritativo possa produzir autorização REAL ativa e admissão REAL admitida;
+3. fechar o binding `DecisionSnapshot.symbol -> ExecutionRequest.symbol` na fronteira REAL;
+4. aplicar a política de frescor da decisão como barreira obrigatória também no caminho REAL;
+5. validar reconstrução após restart, compatibilidade legada e ausência de side doors, inclusive sem recriação de privilégios ativos;
+6. executar a matriz consolidada com CI verde, incluindo o run mais recente do workflow.
 
 ## Trabalho permitido enquanto Stage 2 fecha
 
