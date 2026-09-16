@@ -191,3 +191,27 @@ def test_gateway_rechecks_maintenance_after_persistence_before_executor():
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
+    now = datetime.now(timezone.utc)
+    maintenance = MaintenanceManager()
+    maintenance.schedule(
+        maintenance_id="maint-live",
+        title="Atualização crítica",
+        message="Manutenção em andamento",
+        starts_at=now - timedelta(minutes=1),
+        duration_minutes=30,
+        now=now - timedelta(minutes=2),
+    )
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
+
+    result = gateway.execute(
+        "req-stale-decision",
+        request(),
+        timestamp=now - timedelta(minutes=5),
+    )
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()
