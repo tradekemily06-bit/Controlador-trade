@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p112_real_execution_contract import (
+    RealExecutionAuthorization,
+    _REAL_AUTHORIZATION_ISSUER_CAPABILITY,
+)
 from core.p114_real_safety_gate import RealSafetyReport
 from core.p116_real_release_audit import RealReleaseAudit
 from core.p117_real_admission import (
@@ -46,6 +49,7 @@ class RealPrivilegeIssuer:
             adapter_id=adapter_id,
             request_id=request.request_id,
             symbol=request.symbol,
+            issuer_capability=_REAL_AUTHORIZATION_ISSUER_CAPABILITY,
         )
 
     def issue_admission(
