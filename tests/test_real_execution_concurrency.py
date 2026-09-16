@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from core.decision_snapshot import DecisionSnapshot
+from core.test_p111_p119_real_release import _authorization as _trusted_authorization, _admission as _trusted_admission
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -90,24 +91,12 @@ def _snapshot() -> DecisionSnapshot:
     )
 
 
-def _authorization() -> RealExecutionAuthorization:
-    return RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", True, True)
+def _authorization(request_id="req-1"):
+    return _trusted_authorization(request_id)
 
 
-def _admission() -> object:
-    return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake",
-    )
-
-
-def _safety() -> RealSafetyReport:
-    return RealSafetyGate().evaluate(
-        authorization_active=True, kill_switch_clear=True,
-        market_healthy=True, recovery_safe=True,
-        risk_approved=True, broker_available=True,
-    )
+def _admission(request_id="req-1", auth=None):
+    return _trusted_admission(request_id, auth=auth)
 
 
 def _request(request_id: str) -> ExecutionRequest:
