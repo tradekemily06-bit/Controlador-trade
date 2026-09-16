@@ -1,5 +1,6 @@
-from datetime import datetime, timezone
 from __future__ import annotations
+
+from datetime import datetime, timezone
 
 import multiprocessing
 from pathlib import Path

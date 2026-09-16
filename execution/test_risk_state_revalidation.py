@@ -1,5 +1,6 @@
-from dataclasses import replace
 from __future__ import annotations
+
+from dataclasses import replace
 
 from datetime import datetime, timezone
 
