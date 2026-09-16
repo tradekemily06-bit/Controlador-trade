@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.operational_state import OperationalState
 
@@ -15,7 +15,7 @@ def _canonical_value(value: object) -> object:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             raise ValueError("last_processed_candle must be timezone-aware")
-        return value.astimezone().isoformat()
+        return value.astimezone(timezone.utc).isoformat()
     return value
 
 
