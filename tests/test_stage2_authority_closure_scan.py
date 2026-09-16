@@ -13,10 +13,11 @@ from integration.execution_provider import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_DIRS = (ROOT / "core", ROOT / "execution", ROOT / "integration", ROOT / "security")
+PRODUCTION_ROOT_FILES = (ROOT / "app.py",)
 
 
 def _production_files() -> list[Path]:
-    files: list[Path] = []
+    files: list[Path] = [path for path in PRODUCTION_ROOT_FILES if path.is_file()]
     for directory in PRODUCTION_DIRS:
         if not directory.exists():
             continue
