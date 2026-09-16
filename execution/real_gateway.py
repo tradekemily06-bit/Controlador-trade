@@ -129,6 +129,43 @@ class RealExecutionGateway:
             return fallback
         return message.strip()[:256]
 
+    @staticmethod
+    def _normalize_symbol(symbol: str) -> str:
+        return symbol.strip().upper()
+
+    def _validate_context_binding(self, *, broker: str, request_id: str,
+                                  request: ExecutionRequest,
+                                  authorization: RealExecutionAuthorization,
+                                  admission: RealAdmission) -> RealGatewayResult | None:
+        """Require one immutable identity across authorization, admission and request."""
+        normalized_broker = broker.strip().lower()
+        normalized_symbol = self._normalize_symbol(request.symbol)
+        normalized_request_id = request_id.strip()
+
+        if authorization.request_id.strip() != normalized_request_id:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id da autorização REAL difere da requisição; dispatch bloqueado.")
+        if admission.request_id.strip() != normalized_request_id:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id da admissão REAL difere da requisição; dispatch bloqueado.")
+        if self._normalize_symbol(authorization.symbol) != normalized_symbol:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "símbolo da autorização REAL difere da requisição; dispatch bloqueado.")
+        if self._normalize_symbol(admission.symbol) != normalized_symbol:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "símbolo da admissão REAL difere da requisição; dispatch bloqueado.")
+        if authorization.broker_id.strip().lower() != normalized_broker:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        if admission.broker_id.strip().lower() != normalized_broker:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
+        if authorization.adapter_id.strip() != admission.adapter_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter_id da autorização difere da admissão REAL; dispatch bloqueado.")
+        try:
+            resolved_adapter_id = self._gateway.adapter_id(broker)
+        except Exception as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"identidade do adapter REAL indisponível: {self._safe_error(exc)}")
+        if resolved_adapter_id.strip() != authorization.adapter_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter_id autorizado não corresponde ao adapter resolvido pelo gateway; dispatch bloqueado.")
+        if resolved_adapter_id.strip() != admission.adapter_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter_id admitido não corresponde ao adapter resolvido pelo gateway; dispatch bloqueado.")
+        return None
+
     def _revalidate_risk(self, snapshot: DecisionSnapshot) -> RealGatewayResult | None:
         if not isinstance(snapshot, DecisionSnapshot):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "snapshot de decisão inválido; REAL bloqueado.")
@@ -158,7 +195,15 @@ class RealExecutionGateway:
         return None
 
     def _dispatch_locked(self, broker: str, request_id: str, request: ExecutionRequest,
-                         safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
+                         safety: RealSafetyReport, snapshot: DecisionSnapshot,
+                         authorization: RealExecutionAuthorization,
+                         admission: RealAdmission) -> RealGatewayResult:
+        binding = self._validate_context_binding(
+            broker=broker, request_id=request_id, request=request,
+            authorization=authorization, admission=admission,
+        )
+        if binding is not None:
+            return binding
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -190,6 +235,13 @@ class RealExecutionGateway:
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {self._safe_error(exc)}")
+        expected_adapter_id = authorization.adapter_id.strip()
+        if result.adapter_id != expected_adapter_id:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "identidade do adapter mudou ou não pôde ser confirmada após o dispatch; reconciliação explícita necessária.", result.execution)
         if getattr(result, "uncertain", False):
             try:
                 self._ledger.mark_unknown(request_id)
@@ -247,11 +299,12 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id externo difere da identidade da requisição; dispatch REAL bloqueado.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        normalized_broker = broker.strip().lower()
-        if normalized_broker != authorization.broker_id.strip().lower():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
-        if not isinstance(admission.broker_id, str) or not admission.broker_id.strip() or normalized_broker != admission.broker_id.strip().lower():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
+        binding = self._validate_context_binding(
+            broker=broker, request_id=request_id, request=request,
+            authorization=authorization, admission=admission,
+        )
+        if binding is not None:
+            return binding
         snapshot_risk = snapshot.risk_state_identity
         if not isinstance(snapshot_risk, str) or not snapshot_risk.strip():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco do snapshot está ausente; REAL bloqueado.")
@@ -259,7 +312,10 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco da requisição difere do snapshot; REAL bloqueado.")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
-                return self._dispatch_locked(broker, request_id, request, safety, snapshot)
+                return self._dispatch_locked(
+                    broker, request_id, request, safety, snapshot,
+                    authorization, admission,
+                )
         except OSError as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a barreira de dispatch REAL: {self._safe_error(exc)}")
 
