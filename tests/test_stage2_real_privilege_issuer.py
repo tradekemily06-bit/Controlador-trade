@@ -131,11 +131,12 @@ def test_admission_issuer_rejects_unready_safety():
         authorization_active=True, kill_switch_clear=False, market_healthy=True,
         recovery_safe=True, risk_approved=True, broker_available=True,
     )
-    with pytest.raises(PermissionError):
-        issuer.issue_admission(
-            admission_id="adm-1", authorization=auth,
-            release_audit=audit, safety=unsafe, broker_available=True,
-        )
+    admission = issuer.issue_admission(
+        admission_id="adm-1", authorization=auth,
+        release_audit=audit, safety=unsafe, broker_available=True,
+    )
+    assert admission.status.value == "BLOCKED"
+    assert not admission.admitted
 
 
 def test_direct_admitted_value_cannot_be_manufactured():
