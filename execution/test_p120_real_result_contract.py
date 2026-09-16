@@ -46,12 +46,7 @@ def _snapshot(provider: RiskProvider) -> DecisionSnapshot:
     )
 
 
-def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
-    registry = BrokerRegistry()
-    registry.register("fake", MissingExternalIdAdapter())
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    provider = RiskProvider()
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider)
+def _authorized_context():
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -63,6 +58,16 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
     )
+    return authorization, admission, safety
+
+
+def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", MissingExternalIdAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider)
+    authorization, admission, safety = _authorized_context()
     request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
 
     result = gateway.execute(
@@ -73,3 +78,30 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_invalid_real_snapshot_fails_closed_without_dispatch(tmp_path: Path):
+    class MustNotExecuteAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            raise AssertionError("REAL executor must not be reached without a valid decision snapshot")
+
+    registry = BrokerRegistry()
+    registry.register("fake", MustNotExecuteAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    provider = RiskProvider()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider)
+    authorization, admission, safety = _authorized_context()
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="missing-snapshot", request=request,
+        authorization=authorization, admission=admission, safety=safety,
+        snapshot=None,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "snapshot" in result.message
+    assert ledger.status("missing-snapshot") is None
