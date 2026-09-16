@@ -3,7 +3,11 @@ from __future__ import annotations
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyReport
 from core.p116_real_release_audit import RealReleaseAudit
-from core.p117_real_admission import RealAdmission, RealAdmissionBoundary
+from core.p117_real_admission import (
+    RealAdmission,
+    RealAdmissionBoundary,
+    _REAL_ADMISSION_ISSUER_CAPABILITY,
+)
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.ports import ExecutionMode, ExecutionRequest
 
@@ -69,4 +73,5 @@ class RealPrivilegeIssuer:
             authorization=authorization,
             safety_ready=safety.ready,
             broker_available=broker_available,
+            issuer_capability=_REAL_ADMISSION_ISSUER_CAPABILITY,
         )
