@@ -145,7 +145,9 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p117 = _admission(auth); assert p117.status is RealAdmissionStatus.ADMITTED
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json"); gateway = _gateway(registry, ledger)
-    result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety, snapshot=_snapshot())
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "req")
+    result = gateway.execute(broker="fake", request_id="req", request=request, authorization=auth, admission=p117, safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
@@ -195,11 +197,13 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry(); adapter = UnknownAdapter(); registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json"); gateway = _gateway(registry, ledger)
     auth = _authorization(); admission = _admission(auth); safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "unknown-1")
+    first = gateway.execute(broker="fake", request_id="unknown-1", request=request, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     restored = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
-    second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    second = restored.execute(broker="fake", request_id="unknown-1", request=request, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert second.status == RealGatewayStatus.UNKNOWN
 
 
@@ -207,7 +211,9 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     registry = BrokerRegistry(); registry.register("fake", UnknownAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json"); gateway = _gateway(registry, ledger)
     auth = _authorization(); admission = _admission(auth); safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "unknown-2")
+    result = gateway.execute(broker="fake", request_id="unknown-2", request=request, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN
     gateway.reconcile_unknown("unknown-2", executed=True)
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
@@ -217,7 +223,9 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     path = tmp_path / "ledger.json"; ExecutionLedger(path).reserve("crashed")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter)
     gateway = _gateway(registry, ExecutionLedger(path)); auth = _authorization(); admission = _admission(auth); safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "crashed")
+    result = gateway.execute(broker="fake", request_id="crashed", request=request, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN; assert adapter.calls == 0
     gateway.reconcile_unknown("crashed", executed=False)
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
@@ -241,10 +249,26 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     assert result.status == RealGatewayStatus.REJECTED; assert adapter.calls == 0
 
 
+def test_real_gateway_rejects_mismatched_request_identity(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter)
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")); auth = _authorization(); admission = _admission(auth); safety = _safety(auth)
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "request-owned-id")
+    result = gateway.execute(
+        broker="fake", request_id="gateway-owned-id", request=request,
+        authorization=auth, admission=admission, safety=safety, snapshot=_snapshot(),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert gateway._ledger.status("gateway-owned-id") is None
+
+
 def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     registry = BrokerRegistry(); registry.register("fake", NoExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json"); gateway = _gateway(registry, ledger); auth = _authorization(); admission = _admission(auth); safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
+    request = _request()
+    request = type(request)(request.symbol, request.signal, request.amount, request.duration_seconds, request.mode, "missing-id")
+    result = gateway.execute(broker="fake", request_id="missing-id", request=request, authorization=auth, admission=admission, safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN; assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
 
 
