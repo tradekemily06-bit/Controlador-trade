@@ -40,3 +40,9 @@ def risk_state_identity(state: OperationalState) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+# Historical callers and persisted-snapshot reconstruction still import the
+# original public name. Keep it as an exact compatibility alias rather than
+# duplicating the hashing implementation or creating a second identity.
+risk_state_fingerprint = risk_state_identity
