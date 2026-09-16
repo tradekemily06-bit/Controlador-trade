@@ -45,7 +45,7 @@ class RealAdmission:
             raise TypeError("status de admissão REAL inválido.")
         if not isinstance(self.reasons, tuple) or not all(isinstance(reason, str) for reason in self.reasons):
             raise TypeError("reasons da admissão REAL deve ser uma tupla de strings.")
-        if self.admitted and not self.issuer_valid:
+        if self.status is RealAdmissionStatus.ADMITTED and not self.issuer_valid:
             raise PermissionError("admissão REAL ativa só pode ser emitida pela autoridade REAL autorizada.")
 
     @property
