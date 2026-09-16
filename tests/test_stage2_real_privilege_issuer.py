@@ -2,7 +2,9 @@ import pytest
 
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p117_real_admission import RealAdmission, RealAdmissionStatus
 from core.real_privilege_issuer import RealPrivilegeIssuer
+from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 
 
@@ -14,10 +16,14 @@ class FakeAdapter:
         raise AssertionError("issuer tests must never dispatch")
 
 
-def _issuer():
+def _registry():
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
-    return RealPrivilegeIssuer(registry)
+    return registry
+
+
+def _issuer():
+    return RealPrivilegeIssuer(BrokerAdapterGateway(_registry()))
 
 
 def _safety():
@@ -29,6 +35,13 @@ def _safety():
         risk_approved=True,
         broker_available=True,
     )
+
+
+def test_direct_active_authorization_cannot_be_manufactured():
+    with pytest.raises(PermissionError, match="autoridade REAL"):
+        RealExecutionAuthorization(
+            "auth", "audit", "fake", "fake-adapter", "req", "EURUSD", True, True
+        )
 
 
 def test_issuer_derives_adapter_identity_from_registry():
@@ -105,4 +118,12 @@ def test_admission_issuer_rejects_unready_safety():
         issuer.issue_admission(
             admission_id="adm-1", authorization=auth,
             audit_verified=True, safety=unsafe,
+        )
+
+
+def test_direct_admitted_value_cannot_be_manufactured():
+    with pytest.raises(PermissionError, match="autoridade REAL"):
+        RealAdmission(
+            "adm", "audit", RealAdmissionStatus.ADMITTED,
+            "fake", "fake-adapter", "req", "EURUSD", (),
         )
