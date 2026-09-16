@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -15,17 +14,8 @@ from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMark
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
 
 
-def build_demo_registry(
-    *,
-    mt5_module: Any = None,
-    symbol: str | None = None,
-    operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
-) -> BrokerRegistry:
-    """Build the private broker registry used by the DEMO execution boundary.
-
-    Registration is side-effect free. The registry must not be treated as an
-    operational runtime or as a source of durable execution authority.
-    """
+def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None) -> BrokerRegistry:
+    """Build the private broker registry used by the DEMO execution boundary."""
     registry = BrokerRegistry()
     registry.register(
         IC_MARKETS_MT5_DEMO,
@@ -39,83 +29,25 @@ def build_demo_registry(
 
 
 def _missing_runtime_barrier() -> GlobalOperationalBarrier:
-    """Return a deliberately blocking barrier when no runtime was supplied."""
-    return GlobalOperationalBarrier(
-        (
-            SafetyComponent(
-                name="operational-runtime",
-                healthy=False,
-                detail="runtime operacional não foi fornecido ao gateway de execução",
-            ),
-        )
-    )
+    return GlobalOperationalBarrier((SafetyComponent(name="operational-runtime", healthy=False, detail="runtime operacional não foi fornecido ao gateway de execução"),))
 
 
-def _missing_execution_context_barrier() -> GlobalOperationalBarrier:
-    """Block the broker gateway until the complete execution context is wired."""
-    return GlobalOperationalBarrier(
-        (
-            SafetyComponent(
-                name="execution-context",
-                healthy=False,
-                detail="contexto operacional incompleto; gateway não pode executar",
-            ),
-        )
-    )
+def build_ic_markets_mt5_demo_gateway(*, mt5_module: Any = None, symbol: str | None = None, kill_switch: KillSwitch | None = None, operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None, market_data_fingerprint_provider: Callable[[], str | None] | None = None, risk_state_fingerprint_provider: Callable[[], str | None] | None = None, decision_freshness_policy: DecisionFreshnessPolicy | None = None, runtime_root: str | Path | None = None) -> ExecutionGateway:
+    """Compose IC Markets MT5 DEMO through the durable operational runtime.
 
-
-def build_ic_markets_mt5_demo_gateway(
-    *,
-    mt5_module: Any = None,
-    symbol: str | None = None,
-    kill_switch: KillSwitch | None = None,
-    operational_barrier_provider: Callable[[], GlobalOperationalBarrier] | None = None,
-    market_data_fingerprint_provider: Callable[[], str | None] | None = None,
-    risk_state_fingerprint_provider: Callable[[], str | None] | None = None,
-    decision_freshness_policy: DecisionFreshnessPolicy | None = None,
-    runtime_root: str | Path | None = None,
-) -> ExecutionGateway:
-    """Compose IC Markets MT5 DEMO only through the durable operational runtime.
-
-    A runtime root is required for an operationally usable gateway because the
-    runtime owns the durable ledger, lifecycle state, safety state and the
-    cross-process dispatch lock. Without one, this convenience factory returns
-    a deliberately blocking gateway rather than creating a bypass gateway.
+    Without runtime_root the factory is intentionally fail-closed. Supplying
+    external providers alone can never turn the convenience factory into an
+    operational gateway without durable ledger/lifecycle/safety composition.
     """
     if runtime_root is None:
-        required_context_missing = (
-            operational_barrier_provider is None
-            or market_data_fingerprint_provider is None
-            or risk_state_fingerprint_provider is None
-            or decision_freshness_policy is None
-        )
-        provider = (
-            _missing_runtime_barrier
-            if operational_barrier_provider is None
-            else _missing_execution_context_barrier
-            if required_context_missing
-            else operational_barrier_provider
-        )
-        registry = build_demo_registry(
-            mt5_module=mt5_module,
-            symbol=symbol,
-            operational_barrier_provider=provider,
-        )
+        registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol, operational_barrier_provider=_missing_runtime_barrier)
         adapter = registry.get(IC_MARKETS_MT5_DEMO)
-        return ExecutionGateway(
-            adapter,
-            kill_switch or KillSwitch(),
-            operational_barrier_provider=provider,
-        )
+        return ExecutionGateway(adapter, kill_switch or KillSwitch(), operational_barrier_provider=_missing_runtime_barrier)
 
     root = Path(runtime_root)
     registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
     adapter = registry.get(IC_MARKETS_MT5_DEMO)
-    runtime = build_operational_runtime(
-        root,
-        executor=adapter,
-        risk_state_fingerprint_provider=risk_state_fingerprint_provider,
-    )
+    runtime = build_operational_runtime(root, executor=adapter, risk_state_fingerprint_provider=risk_state_fingerprint_provider)
 
     if kill_switch is not None and kill_switch.state.enabled:
         runtime.kill_switch.activate(kill_switch.state.reason or "kill switch externo ativado")
@@ -127,5 +59,4 @@ def build_ic_markets_mt5_demo_gateway(
         runtime.gateway.set_risk_state_fingerprint_provider(risk_state_fingerprint_provider)
     if decision_freshness_policy is not None:
         runtime.gateway.set_decision_freshness_policy(decision_freshness_policy)
-
     return runtime.gateway
