@@ -63,6 +63,21 @@ def test_evidence_boundary_requires_nonempty_external_reference(tmp_path: Path):
             "unknown", executed=True, evidence_id="", evidence_source="broker"
         )
     assert ledger.status("unknown") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.reconciliation_evidence("unknown") is None
+
+
+def test_evidence_boundary_requires_both_fields_atomically(tmp_path: Path):
+    gateway, ledger = _gateway(tmp_path)
+    gateway.execute(
+        broker="fake", request_id="unknown", request=_request(),
+        authorization=_auth(), admission=_admission(), safety=_safety(),
+    )
+    with pytest.raises(ValueError, match="evidence_source"):
+        gateway.reconcile_unknown_with_evidence(
+            "unknown", executed=True, evidence_id="reconciliation-001", evidence_source=""
+        )
+    assert ledger.status("unknown") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.reconciliation_evidence("unknown") is None
 
 
 def test_evidence_boundary_resolves_without_dispatch_or_replay(tmp_path: Path):
@@ -76,8 +91,31 @@ def test_evidence_boundary_resolves_without_dispatch_or_replay(tmp_path: Path):
         evidence_id="reconciliation-001", evidence_source="broker-reconciliation",
     )
     assert ledger.status("unknown") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    assert ledger.reconciliation_evidence("unknown") == {
+        "evidence_id": "reconciliation-001",
+        "evidence_source": "broker-reconciliation",
+    }
     result = gateway.execute(
         broker="fake", request_id="unknown", request=_request(),
         authorization=_auth(), admission=_admission(), safety=_safety(),
     )
     assert result.status == "UNKNOWN"
+
+
+def test_evidence_survives_ledger_restart(tmp_path: Path):
+    gateway, ledger = _gateway(tmp_path)
+    gateway.execute(
+        broker="fake", request_id="unknown", request=_request(),
+        authorization=_auth(), admission=_admission(), safety=_safety(),
+    )
+    gateway.reconcile_unknown_with_evidence(
+        "unknown", executed=True,
+        evidence_id="external-order-123", evidence_source="broker-reconciliation",
+    )
+
+    restored = ExecutionLedger(tmp_path / "ledger.json")
+    assert restored.status("unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert restored.reconciliation_evidence("unknown") == {
+        "evidence_id": "external-order-123",
+        "evidence_source": "broker-reconciliation",
+    }
