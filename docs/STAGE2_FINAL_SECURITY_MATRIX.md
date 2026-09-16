@@ -11,6 +11,7 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - Authorization, admission and request are bound by request_id, broker_id and symbol; authorization/admission adapter_id must equal the registry-resolved adapter identity.
 - REAL ledger transitions are terminally protected: terminal states cannot be mutated or replayed, and uncertain operations remain UNKNOWN until explicit reconciliation.
 - REAL reconciliation requires persisted broker/symbol identity and an external evidence authority; evidence identity/source are persisted and verified.
+- Ledger reconciliation now fails closed when evidence_id/evidence_source are absent, and regression coverage proves UNKNOWN/RESERVED cannot be reconciled without evidence.
 - External order observations require request, source, broker and symbol metadata and fail closed when those bindings are missing or inconsistent.
 - Demo broker direct-dispatch side doors are blocked; the gateway-bound capability is required for DEMO broker execution.
 - Production factory composition is guarded against raw MT5 adapter injection and unauthorized REAL gateway construction.
@@ -25,6 +26,7 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - Executable AST scanning checks production surfaces for direct active REAL authorization/admission constructors and the intended issuer boundary.
 - Issuer negative coverage checks direct construction, inactive/forged admission attempts, audit failures and safety failures.
 - CI concurrency was changed to cancel superseded branch runs and a 30-minute job timeout was added.
+- The application startup path now has regression coverage for explicit PORT selection in addition to the production WSGI container path.
 
 ## Remaining Stage 2 gates
 
@@ -44,9 +46,13 @@ The REAL gateway rejects a missing/mismatched snapshot symbol and rejects missin
 
 The gate remains pending only until the consolidated CI/test suite proves these controls together with the rest of Stage 2.
 
-### 3. CI consolidated validation — 🔴 OPEN / INFRASTRUCTURE QUEUE
+### 3. CI consolidated validation — 🟢 LATEST RUN GREEN
 
-The newest validation run for the current branch is the authoritative run to watch. A queued/pending run is not a failure and is not evidence of a green build. Stage 2 cannot close until the current consolidated tree actually starts and completes successfully.
+The latest consolidated validation run for the current Stage 2 head is **35148578751** on commit **4ff9731796ee9b322675f236754db51bfb768a1d**. It completed successfully. This run is evidence for the current tree, but CI success alone does not close the remaining deep-audit gates.
+
+### 4. Execution ledger reconciliation evidence — 🟢 IMPLEMENTED AND TESTED
+
+The ledger reconciliation contract now requires explicit external evidence identity and source. Missing evidence is rejected, and regression coverage locks the behavior. This closes the previously identified permissive reconciliation path at the ledger boundary; the remaining Stage 2 closure still requires the broader reconstruction, route, concurrency and identity audit evidence.
 
 ## Stage 2 closure rule
 
