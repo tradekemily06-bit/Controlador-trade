@@ -16,13 +16,9 @@ class AppSecurityTests(unittest.TestCase):
             captured["headers"] = dict(headers)
 
         environ = {
-            "REQUEST_METHOD": method,
-            "PATH_INFO": path,
-            "QUERY_STRING": "",
+            "REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": "",
             "CONTENT_TYPE": "application/json" if payload is not None else "",
-            "CONTENT_LENGTH": str(len(body)),
-            "REMOTE_ADDR": remote,
-            "wsgi.input": io.BytesIO(body),
+            "CONTENT_LENGTH": str(len(body)), "REMOTE_ADDR": remote, "wsgi.input": io.BytesIO(body),
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
@@ -39,7 +35,7 @@ class AppSecurityTests(unittest.TestCase):
         payload = {"value": "x" * (MAX_BODY_BYTES + 1)}
         status, _, body = self.request("/api/analyze", method="POST", payload=payload)
         self.assertEqual(status, "400 Bad Request")
-        self.assertIn(b"Entrada inv\xc3\xa1lida", body)
+        self.assertIn(b"Entrada ou opera\xc3\xa7\xc3\xa3o inv\xc3\xa1lida.", body)
 
     def test_rate_limit_is_per_client(self):
         from app import SECURITY

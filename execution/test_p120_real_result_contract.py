@@ -46,13 +46,13 @@ class SafetyProvider:
     def current_real_safety(self): return self.report
 
 
-def _registry(adapter=None):
+def _registry(adapter=None, adapter_id="fake-adapter"):
     registry = BrokerRegistry()
-    registry.register("fake", adapter or MissingExternalIdAdapter(), adapter_id="fake-adapter")
+    registry.register("fake", adapter or MissingExternalIdAdapter(), adapter_id=adapter_id)
     return registry
 
 
-def _release_audit():
+def _release_audit(audit_id="a116"):
     p111 = PreRealAuditBoundary().audit(
         audit_id="a111", p110_decision="VALIDATED", safety_verified=True,
         risk_verified=True, gateway_present=True, broker_boundary_present=True,
@@ -66,7 +66,7 @@ def _release_audit():
         recovery_safe=True, risk_approved=True, broker_available=True,
     )
     return RealReleaseAuditBoundary().audit(
-        audit_id="a116", pre_real_verified=p111.verified,
+        audit_id=audit_id, pre_real_verified=p111.verified,
         shadow_passed=shadow.passed, safety_ready=safety.ready,
         broker_boundary_ready=True, explicit_real_contract=True,
     )
@@ -92,8 +92,8 @@ def _snapshot(provider: RiskProvider, symbol="TEST"):
     )
 
 
-def _authorized_context(request_id="req-1", symbol="TEST", adapter=None):
-    registry = _registry(adapter)
+def _authorized_context(request_id="req-1", symbol="TEST", adapter=None, adapter_id="fake-adapter"):
+    registry = _registry(adapter, adapter_id=adapter_id)
     request = _request(request_id, symbol)
     provider = RiskProvider()
     authorization = RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_authorization(
@@ -162,10 +162,11 @@ def test_forged_real_context_is_blocked_before_dispatch(tmp_path: Path):
 
 def test_admission_broker_mismatch_is_blocked_before_dispatch(tmp_path: Path):
     registry, provider, authorization, admission, safety = _authorized_context()
-    mismatched = replace(admission, broker_id="other", adapter_id="other-adapter")
+    mismatched_auth = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_authorization(authorization_id="auth-other", release_audit=_release_audit(), broker="fake", request=_request("admission-broker-mismatch"), explicit_real_enablement=True)
+    mismatched = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_admission(admission_id="adm-other", authorization=mismatched_auth, release_audit=_release_audit(), safety=safety, broker_available=True)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     result = _gateway(registry, ledger, provider, safety).execute(
-        broker="fake", request_id="admission-broker-mismatch", request=_request("admission-broker-mismatch", risk_fingerprint=risk_state_identity(provider.state)),
+        broker="other", request_id="admission-broker-mismatch", request=_request("admission-broker-mismatch", risk_fingerprint=risk_state_identity(provider.state)),
         authorization=authorization, admission=mismatched, safety=safety, snapshot=_snapshot(provider),
     )
     assert result.status == RealGatewayStatus.BLOCKED
@@ -173,7 +174,7 @@ def test_admission_broker_mismatch_is_blocked_before_dispatch(tmp_path: Path):
 
 def test_admission_audit_mismatch_is_blocked_before_dispatch(tmp_path: Path):
     registry, provider, authorization, admission, safety = _authorized_context()
-    mismatched = replace(admission, audit_id="different-audit")
+    mismatched = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_admission(admission_id="adm-different-audit", authorization=authorization, release_audit=_release_audit("a-different"), safety=safety, broker_available=True)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     result = _gateway(registry, ledger, provider, safety).execute(
         broker="fake", request_id="admission-audit-mismatch", request=_request("admission-audit-mismatch", risk_fingerprint=risk_state_identity(provider.state)),
@@ -184,7 +185,7 @@ def test_admission_audit_mismatch_is_blocked_before_dispatch(tmp_path: Path):
 
 def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
     registry, provider, authorization, admission, safety = _authorized_context()
-    mismatched = replace(authorization, symbol="EURUSD")
+    mismatched = RealPrivilegeIssuer(BrokerAdapterGateway(_registry())).issue_authorization(authorization_id="auth-symbol-other", release_audit=_release_audit(), broker="fake", request=_request("symbol-mismatch", symbol="EURUSD"), explicit_real_enablement=True)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     result = _gateway(registry, ledger, provider, safety).execute(
         broker="fake", request_id="symbol-mismatch", request=_request("symbol-mismatch", symbol="XAUUSD", risk_fingerprint=risk_state_identity(provider.state)),
@@ -195,11 +196,19 @@ def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
 
 def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
     registry, provider, authorization, admission, safety = _authorized_context()
-    mismatched = replace(authorization, adapter_id="authorized-adapter")
+    authorized_registry = _registry(adapter_id="authorized-adapter")
+    mismatched = RealPrivilegeIssuer(BrokerAdapterGateway(authorized_registry)).issue_authorization(
+        authorization_id="auth-adapter-other", release_audit=_release_audit(), broker="fake",
+        request=_request("adapter-mismatch"), explicit_real_enablement=True,
+    )
+    mismatched_admission = RealPrivilegeIssuer(BrokerAdapterGateway(authorized_registry)).issue_admission(
+        admission_id="adm-adapter-other", authorization=mismatched, release_audit=_release_audit(),
+        safety=safety, broker_available=True,
+    )
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     result = _gateway(registry, ledger, provider, safety).execute(
         broker="fake", request_id="adapter-mismatch", request=_request("adapter-mismatch", risk_fingerprint=risk_state_identity(provider.state)),
-        authorization=mismatched, admission=admission, safety=safety, snapshot=_snapshot(provider),
+        authorization=mismatched, admission=mismatched_admission, safety=safety, snapshot=_snapshot(provider),
     )
     assert result.status == RealGatewayStatus.BLOCKED
 

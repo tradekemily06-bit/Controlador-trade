@@ -128,7 +128,7 @@ def _dispatch_worker(path: str, request_id: str, calls, queue) -> None:
     gateway = _gateway(Path(path), CountingAdapter(calls))
     result = gateway.execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(), admission=_admission(),
+        authorization=_authorization(request_id), admission=_admission(request_id),
         safety=_safety(), snapshot=_snapshot(),
     )
     queue.put(result.status)
@@ -144,7 +144,7 @@ def _crash_worker(path: str, marker: str, request_id: str) -> None:
     gateway = _gateway(Path(path), CrashAfterAcceptanceAdapter(marker))
     gateway.execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(), admission=_admission(),
+        authorization=_authorization(request_id), admission=_admission(request_id),
         safety=_safety(), snapshot=_snapshot(),
     )
 

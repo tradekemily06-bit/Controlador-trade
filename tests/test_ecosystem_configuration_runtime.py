@@ -1,18 +1,22 @@
+from security.http_identity import TrustedHttpIdentity, _current_identity
+
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
 
 def test_notification_preferences_filter_important_events_but_not_critical():
-    service = ConfiguredEcosystemService()
-    service.publish_material_event("RISK", "Risco", "Limite preventivo atingido.")
-    service.publish_material_event("SECURITY", "Segurança", "Bloqueio crítico.", critical=True, blocking=True)
-
-    service.update_notification_preferences({"risk_enabled": False})
-    summary = service.notification_summary()
-
-    assert summary["count"] == 1
-    assert summary["critical_count"] == 1
-    assert summary["items"][0]["severity"] == "CRITICAL"
-    assert summary["items"][0]["kind"] == "SECURITY"
+    token = _current_identity.set(TrustedHttpIdentity("user-test", "tenant-test", "user"))
+    try:
+        service = ConfiguredEcosystemService()
+        service.publish_material_event("RISK", "Risco", "Limite preventivo atingido.")
+        service.publish_material_event("SECURITY", "Segurança", "Bloqueio crítico.", critical=True, blocking=True)
+        service.update_notification_preferences({"risk_enabled": False})
+        summary = service.notification_summary()
+        assert summary["count"] == 1
+        assert summary["critical_count"] == 1
+        assert summary["items"][0]["severity"] == "CRITICAL"
+        assert summary["items"][0]["kind"] == "SECURITY"
+    finally:
+        _current_identity.reset(token)
 
 
 def test_system_updates_follow_their_preference():

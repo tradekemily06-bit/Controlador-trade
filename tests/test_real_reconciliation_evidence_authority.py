@@ -98,7 +98,7 @@ def test_gateway_refuses_unverified_evidence_and_preserves_unknown(tmp_path: Pat
     ledger.reserve_real("req-unknown", broker_id="broker", symbol="EURUSD")
     ledger.mark_unknown("req-unknown")
     authority = BrokerReconciliationEvidenceAuthority(QueryPort(ExternalOrderStatus.NOT_EXECUTED, request_id="req-unknown", external_id="ext-1"), evidence_source="broker")
-    with pytest.raises(ValueError, match="não foi confirmada"):
+    with pytest.raises(ValueError, match="evidência externa não confirmou o resultado REAL"):
         gateway(path, authority).reconcile_unknown_with_evidence("req-unknown", executed=True, evidence_id="ext-1", evidence_source="broker")
     assert ExecutionLedger(path).status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
     assert ExecutionLedger(path).reconciliation_evidence("req-unknown") is None
@@ -122,7 +122,6 @@ def test_gateway_rejects_external_id_different_from_persisted_broker_id(tmp_path
     path = tmp_path / "ledger.json"
     ledger = ExecutionLedger(path)
     ledger.reserve_real("req-id", broker_id="broker", symbol="EURUSD")
-    ledger.mark_accepted_real("req-id", external_id="ext-original")
     ledger.mark_unknown("req-id")
     authority = BrokerReconciliationEvidenceAuthority(QueryPort(ExternalOrderStatus.EXECUTED, request_id="req-id", external_id="ext-other"), evidence_source="broker")
     with pytest.raises(ValueError, match="external_id difere"):

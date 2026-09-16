@@ -99,7 +99,8 @@ def _registry(adapter=None, broker="fake"):
 
 def _authorization(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
     adapter = FakeAdapter()
-    registry = _registry(adapter, broker_id)
+    registry = BrokerRegistry()
+    registry.register(broker_id, adapter, adapter_id=adapter_id)
     request = _request(request_id, symbol)
     return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_authorization(
         authorization_id="auth", release_audit=_release_audit(), broker=broker_id,
@@ -115,7 +116,8 @@ def _safety(auth=None):
 
 def _admission(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter", auth=None, audit_id="a116"):
     auth = auth or _authorization(request_id, symbol, broker_id, adapter_id)
-    registry = _registry(FakeAdapter(), broker_id)
+    registry = BrokerRegistry()
+    registry.register(broker_id, FakeAdapter(), adapter_id=adapter_id)
     safety = _safety(auth)
     return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_admission(
         admission_id="adm", authorization=auth, release_audit=_release_audit(),
@@ -295,8 +297,8 @@ def test_real_gateway_global_incident_barrier_blocks_dispatch(tmp_path: Path):
 
 
 def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
-    registry = _registry(); auth = _authorization("symbol-mismatch"); safety = _safety(auth)
-    mismatched_auth = replace(auth, symbol="EURUSD")
+    registry = _registry(); auth = _authorization("symbol-mismatch", symbol="EURUSD"); safety = _safety(auth)
+    mismatched_auth = auth
     result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="symbol-mismatch",
         request=_request("symbol-mismatch", symbol="XAUUSD"), authorization=mismatched_auth,
         admission=_admission("symbol-mismatch", auth=auth), safety=safety, snapshot=_snapshot(symbol="XAUUSD"))
@@ -305,7 +307,8 @@ def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
 
 def test_real_admission_symbol_mismatch_is_blocked(tmp_path: Path):
     registry = _registry(); auth = _authorization("admission-symbol"); safety = _safety(auth)
-    mismatched_admission = replace(_admission("admission-symbol", auth=auth), symbol="EURUSD")
+    mismatched_auth = _authorization("admission-symbol", symbol="EURUSD")
+    mismatched_admission = _admission("admission-symbol", auth=mismatched_auth)
     result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="admission-symbol",
         request=_request("admission-symbol", symbol="TEST"), authorization=auth,
         admission=mismatched_admission, safety=safety, snapshot=_snapshot())
@@ -314,10 +317,10 @@ def test_real_admission_symbol_mismatch_is_blocked(tmp_path: Path):
 
 def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
     registry = _registry(); auth = _authorization("adapter-mismatch"); safety = _safety(auth)
-    mismatched_auth = replace(auth, adapter_id="authorized-adapter")
+    mismatched_auth = _authorization("adapter-mismatch", adapter_id="authorized-adapter")
     result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="adapter-mismatch",
         request=_request("adapter-mismatch"), authorization=mismatched_auth,
-        admission=_admission("adapter-mismatch", auth=auth), safety=safety, snapshot=_snapshot())
+        admission=_admission("adapter-mismatch", auth=mismatched_auth, adapter_id="authorized-adapter"), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.BLOCKED
 
 

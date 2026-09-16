@@ -17,6 +17,7 @@ def request(path, method="GET", payload=None):
         "PATH_INFO": path,
         "QUERY_STRING": "",
         "CONTENT_LENGTH": str(len(body)),
+        "CONTENT_TYPE": "application/json" if body else "",
         "wsgi.input": io.BytesIO(body),
         "REMOTE_ADDR": "127.0.0.1",
     }

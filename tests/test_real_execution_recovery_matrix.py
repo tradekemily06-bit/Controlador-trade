@@ -109,7 +109,7 @@ def _gateway(path: Path, calls) -> RealExecutionGateway:
 def _dispatch(path: str, request_id: str, calls, queue) -> None:
     result = _gateway(Path(path), calls).execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(), admission=_admission(),
+        authorization=_authorization(request_id), admission=_admission(request_id),
         safety=_safety(), snapshot=_snapshot(),
     )
     queue.put(result.status)
@@ -150,7 +150,7 @@ def test_accepted_request_remains_terminal_across_restart_and_cannot_send_again(
     first = _gateway(path, calls)
     first_result = first.execute(
         broker="fake", request_id="terminal-restart", request=_request("terminal-restart"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
     assert first_result.status is RealGatewayStatus.ADMITTED
     assert calls.value == 1
@@ -159,7 +159,7 @@ def test_accepted_request_remains_terminal_across_restart_and_cannot_send_again(
     restored = _gateway(path, restored_calls)
     second_result = restored.execute(
         broker="fake", request_id="terminal-restart", request=_request("terminal-restart"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
     assert second_result.status is RealGatewayStatus.BLOCKED
     assert restored_calls.value == 0
@@ -179,7 +179,7 @@ def test_reconciled_executed_state_is_terminal_and_never_resubmits(tmp_path: Pat
     restored = _gateway(path, restored_calls)
     result = restored.execute(
         broker="fake", request_id="reconciled-executed", request=_request("reconciled-executed"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
     assert result.status is RealGatewayStatus.BLOCKED
     assert restored_calls.value == 0
@@ -200,7 +200,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
 
     first = crashed.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
 
     # External side effect happened exactly once, but local persistence never
@@ -215,7 +215,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     restored = _gateway(path, restored_calls)
     after_restart = restored.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
     assert after_restart.status is RealGatewayStatus.UNKNOWN
     assert restored_calls.value == 0
@@ -229,7 +229,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     final_gateway = _gateway(path, final_calls)
     replay = final_gateway.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization(request_id), admission=_admission(request_id), safety=_safety(), snapshot=_snapshot(),
     )
     assert replay.status is RealGatewayStatus.BLOCKED
     assert final_calls.value == 0

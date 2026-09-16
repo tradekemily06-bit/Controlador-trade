@@ -68,7 +68,7 @@ def test_public_saas_does_not_expose_global_state_after_identity_is_trusted(monk
     for path in ("/api/status", "/api/memory", "/api/statistics", "/api/preferences"):
         status, payload = call(path, trusted=True)
         assert status == "503 Service Unavailable", (path, status, payload)
-        assert "tenant-scoped data plane is not configured" in payload["error"]
+        assert payload["error"] == "Serviço SaaS indisponível até que o armazenamento seguro esteja configurado."
 
 
 def test_public_saas_health_is_minimal_and_does_not_expose_system_state(monkeypatch):

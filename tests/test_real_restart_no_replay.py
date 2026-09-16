@@ -49,9 +49,9 @@ def _gateway(ledger_path: Path, adapter: AmbiguousAdapter) -> RealExecutionGatew
 def test_restart_after_unknown_never_replays_the_order(tmp_path: Path) -> None:
     ledger_path = tmp_path / "restart-ledger.json"
     request_id = "restart-unknown"
-    auth = _authorization()
+    auth = _authorization(request_id)
     safety = _safety(auth)
-    request = replace(_request(), request_id=request_id)
+    request = _request(request_id)
 
     first_adapter = AmbiguousAdapter()
     first_gateway = _gateway(ledger_path, first_adapter)

@@ -122,7 +122,8 @@ def gateway(tmp_path: Path, provider: Provider, adapter: Adapter):
 
 
 def request(request_id):
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id)
+    current = state()
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id, risk_state_fingerprint=risk_state_identity(current))
 
 
 @pytest.mark.parametrize(
