@@ -61,6 +61,7 @@ def _json_response(start_response, status: HTTPStatus, payload: dict, request_id
 
 
 def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
+    headers = [("Content-Type", content_type)]
     headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None: _audit(environ, request_id, status.value)
@@ -224,7 +225,8 @@ def application(environ, start_response):
         return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
     except Exception as exc:
         status = HTTPStatus.SERVICE_UNAVAILABLE if exc.__class__.__name__ == "PublicSaaSNotReady" else (HTTPStatus.FORBIDDEN if isinstance(exc, PermissionError) else HTTPStatus.BAD_REQUEST)
-        return _json_response(start_response, status, {"error": str(exc), "request_id": request_id}, request_id, environ)
+        public_error = "serviço temporariamente indisponível" if status is HTTPStatus.SERVICE_UNAVAILABLE else ("acesso negado" if status is HTTPStatus.FORBIDDEN else "requisição inválida")
+        return _json_response(start_response, status, {"error": public_error, "request_id": request_id}, request_id, environ)
 
 
 def run() -> None:
