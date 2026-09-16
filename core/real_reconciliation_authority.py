@@ -12,7 +12,7 @@ from core.p121_external_order_reconciliation import (
 class ReconciliationEvidenceAuthority(Protocol):
     """Authoritative read-only verifier for REAL reconciliation evidence."""
 
-    def verify(self, *, evidence_id: str, executed: bool) -> bool:
+    def verify(self, *, request_id: str, evidence_id: str, evidence_source: str, executed: bool) -> bool:
         ...
 
 
@@ -25,8 +25,12 @@ class BrokerReconciliationEvidenceAuthority:
         self._query_port = query_port
         self._boundary = ExternalOrderReconciliationBoundary()
 
-    def verify(self, *, evidence_id: str, executed: bool) -> bool:
+    def verify(self, *, request_id: str, evidence_id: str, evidence_source: str, executed: bool) -> bool:
+        if not isinstance(request_id, str) or not request_id.strip():
+            return False
         if not isinstance(evidence_id, str) or not evidence_id.strip():
+            return False
+        if not isinstance(evidence_source, str) or not evidence_source.strip():
             return False
         try:
             observation = self._query_port.query_order(evidence_id.strip())
