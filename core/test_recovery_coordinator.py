@@ -66,6 +66,26 @@ def test_unknown_requires_reconciliation(tmp_path):
     assert result.unknown_request_ids == ("req-1",)
 
 
+def test_orphan_uncertain_ledger_requires_reconciliation_even_without_lifecycle(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-orphan")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.unknown_request_ids == ("req-orphan",)
+
+
+def test_lifecycle_terminal_state_diverging_from_ledger_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-divergent", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
+    coordinator.execution_ledger.reserve("req-divergent")
+    coordinator.execution_ledger.mark_unknown("req-divergent")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
 def test_pending_requires_verification(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
