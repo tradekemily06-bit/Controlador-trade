@@ -11,6 +11,8 @@ from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
+from core.risk_state_fingerprint import risk_state_identity
+from core.risk_state_provider import RiskStateProvider, read_authoritative_risk_state
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
@@ -50,6 +52,7 @@ class ExecutionGateway:
         maintenance: MaintenanceManager | None = None,
         safety_store: OperationalSafetyStore | None = None,
         incident_manager: EcosystemIncidentManager | None = None,
+        risk_state_provider: RiskStateProvider | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -59,6 +62,8 @@ class ExecutionGateway:
             raise ValueError("safety_store inválido.")
         if incident_manager is not None and not isinstance(incident_manager, EcosystemIncidentManager):
             raise ValueError("incident_manager inválido.")
+        if risk_state_provider is not None and not isinstance(risk_state_provider, RiskStateProvider):
+            raise ValueError("risk_state_provider inválido.")
         self._executor = executor
         self._kill_switch = kill_switch
         self._recorder = recorder
@@ -67,6 +72,7 @@ class ExecutionGateway:
         self._maintenance = maintenance
         self._safety_store = safety_store
         self._incident_manager = incident_manager
+        self._risk_state_provider = risk_state_provider
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     @staticmethod
@@ -90,6 +96,27 @@ class ExecutionGateway:
             return None
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
+
+    def _risk_state_barrier(self, snapshot: DecisionSnapshot | None) -> str | None:
+        """Revalidate the full authoritative risk state immediately before dispatch.
+
+        The provider is intentionally optional so existing DEMO/PAPER callers
+        without an authoritative runtime source keep their established behavior.
+        Once a provider is configured, a decision without a risk identity is
+        never upgraded from stale state, and provider failures fail closed.
+        """
+        if self._risk_state_provider is None:
+            return None
+        if snapshot is None or not snapshot.risk_state_identity:
+            return "identidade de risco da decisão indisponível; dispatch bloqueado."
+        try:
+            current = read_authoritative_risk_state(self._risk_state_provider)
+            current_identity = risk_state_identity(current)
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return f"estado de risco indisponível; dispatch bloqueado: {self._safe_error(exc)}"
+        if current_identity != snapshot.risk_state_identity:
+            return "estado de risco mudou desde a decisão; dispatch bloqueado para revalidação."
+        return None
 
     def _final_safety_barrier(self, *, now: datetime) -> str | None:
         """Re-check global safety immediately before executor dispatch."""
@@ -180,6 +207,11 @@ class ExecutionGateway:
             self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
             return GatewayResult(GatewayStatus.BLOCKED, final_safety_error)
 
+        risk_state_error = self._risk_state_barrier(snapshot)
+        if risk_state_error is not None:
+            self._mark_unknown(request_id, event_time, "revalidação de risco bloqueou o dispatch")
+            return GatewayResult(GatewayStatus.BLOCKED, risk_state_error)
+
         try:
             result = self._executor.execute(request)
         except Exception as exc:
@@ -223,7 +255,7 @@ class ExecutionGateway:
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {self._safe_error(exc)}", result)
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas ledger não foi persistido; estado UNKNOWN: {self._safe_error(exc)}", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
