@@ -16,7 +16,7 @@ from core.real_reconciliation_authority import BrokerReconciliationEvidenceAutho
 from core.real_safety_provider import RealSafetyProvider, read_authoritative_real_safety
 from core.risk_state_fingerprint import risk_state_identity
 from core.risk_state_provider import RiskStateProvider, read_authoritative_risk_state
-from execution.adapter_gateway import BrokerAdapterGateway
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_ADAPTER_GATEWAY_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -242,7 +242,7 @@ class RealExecutionGateway:
                 except (OSError, ValueError): pass
                 return result
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute_from_real_gateway(broker, request, capability=_REAL_ADAPTER_GATEWAY_CAPABILITY)
         except Exception as exc:
             try: self._ledger.mark_unknown(request_id)
             except (OSError, ValueError): pass
