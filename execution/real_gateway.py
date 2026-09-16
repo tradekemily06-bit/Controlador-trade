@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
 from dataclasses import dataclass
 import math
 
@@ -61,6 +60,8 @@ class RealExecutionGateway:
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
+            return False
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -208,6 +209,8 @@ class RealExecutionGateway:
             return safety_result
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id externo difere da identidade da requisição; dispatch REAL bloqueado.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         normalized_broker = broker.strip().lower()
