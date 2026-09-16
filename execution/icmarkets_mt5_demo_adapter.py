@@ -8,6 +8,9 @@ from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
+_DEMO_ADAPTER_CAPABILITY = object()
+
+
 class MT5AdapterError(RuntimeError):
     """Raised when the MT5 runtime cannot be used safely."""
 
@@ -26,8 +29,8 @@ class ICMarketsMT5DemoAdapter:
 
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
     The adapter stays outside decision/risk logic and rejects REAL requests.
-    ``ExecutionRequest.amount`` is interpreted as MT5 volume (lots). MT5 has
-    no fixed expiry here; positions remain open until explicitly closed.
+    Broker dispatch is additionally capability-bound so a raw adapter object
+    cannot bypass the operational execution port/gateway.
     """
 
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
@@ -90,7 +93,18 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
-        if request.mode is not ExecutionMode.DEMO:
+        """Public adapter surface is non-dispatching by design."""
+        return ExecutionResult(False, "dispatch direto do adapter MT5 DEMO bloqueado; use o gateway operacional")
+
+    def execute_from_port(
+        self,
+        request: ExecutionRequest,
+        *,
+        capability: object,
+    ) -> ExecutionResult:
+        if capability is not _DEMO_ADAPTER_CAPABILITY:
+            raise PermissionError("dispatch MT5 DEMO exige a capacidade da porta operacional")
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
