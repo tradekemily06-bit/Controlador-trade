@@ -16,7 +16,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
-from security.http_identity import require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
+from security.http_identity import PublicSaaSNotReady, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -40,10 +40,6 @@ def _build_authoritative_risk_provider():
 
 RISK_STATE_PROVIDER = _build_authoritative_risk_provider()
 if EXECUTION_PROVIDER == "paper":
-    # PAPER is composed by the operational runtime itself so it receives the
-    # same authoritative DEMO risk store and dispatch guard as every other
-    # safe default path. Supplying a bare PaperExecutor here would bypass that
-    # composition contract.
     OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR)
 else:
     EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
@@ -67,14 +63,16 @@ def _json_response(start_response, status: HTTPStatus, payload: dict, request_id
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
+    if environ is not None:
+        _audit(environ, request_id, status.value)
     return [body]
 
 
 def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
     headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
+    if environ is not None:
+        _audit(environ, request_id, status.value)
     return [body]
 
 
@@ -169,7 +167,8 @@ def _learning_source_for_request(source_id: str):
 
 def application(environ, start_response):
     request_id = SECURITY.request_id(); path = environ.get("PATH_INFO", "/"); method = environ.get("REQUEST_METHOD", "GET").upper()
-    if not SECURITY.allow(environ): return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
+    if not SECURITY.allow(environ):
+        return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
     try:
         _authorize_public_saas_request(environ, path, method)
         identity = require_trusted_identity(environ) if saas_public_mode() else None
@@ -187,7 +186,8 @@ def application(environ, start_response):
         if path == "/api/updates" and method == "POST":
             authorized, reason = _authorize_internal_update(environ)
             if not authorized:
-                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "internal update endpoint is not configured" else HTTPStatus.FORBIDDEN; return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "internal update endpoint is not configured" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ); item = SERVICE.publish_ecosystem_update(str(data.get("title", "")), str(data.get("message", ""))); return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
         if path == "/api/psychology/status" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.psychology_status(), request_id, environ)
@@ -226,6 +226,7 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             result = SERVICE.record_learning_attempt(_read_json(environ)); return _json_response(start_response, HTTPStatus.OK, {"attempt": result, "execution_allowed": False}, request_id, environ)
         if path == "/" and method == "GET": return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
+        if path == "/manifest.webmanifest" and method == "GET": return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
         if path.startswith("/web/") and method == "GET":
             candidate = (ROOT / path.lstrip("/")).resolve()
             if WEB_DIR not in candidate.parents: return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
@@ -233,9 +234,14 @@ def application(environ, start_response):
             content_type = "text/html; charset=utf-8" if candidate.suffix == ".html" else "text/javascript; charset=utf-8" if candidate.suffix == ".js" else "text/css; charset=utf-8" if candidate.suffix == ".css" else "application/octet-stream"
             return _file_response(start_response, candidate, content_type, request_id, environ)
         return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-    except PermissionError as exc: return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc: return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": str(exc), "request_id": request_id}, request_id, environ)
-    except Exception as exc: return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
+    except PublicSaaSNotReady:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Serviço SaaS indisponível até que o armazenamento seguro esteja configurado.", "request_id": request_id}, request_id, environ)
+    except PermissionError:
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Acesso não autorizado.", "request_id": request_id}, request_id, environ)
+    except (ValueError, KeyError, TypeError, RuntimeError):
+        return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada ou operação inválida.", "request_id": request_id}, request_id, environ)
+    except Exception:
+        return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
 
 
 def run() -> None:
