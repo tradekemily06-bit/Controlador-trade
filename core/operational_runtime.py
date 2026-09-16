@@ -107,15 +107,26 @@ def build_operational_runtime(
             risk_store=demo_risk_state,
             risk_fingerprint_provider=demo_risk_state.fingerprint,
         )
-    else:
+        runtime_risk_provider: RiskStateProvider = demo_risk_state
+    elif isinstance(executor, PaperExecutor):
+        # PAPER remains inside the same authoritative DEMO risk guard even when
+        # explicitly injected. A caller cannot swap in an arbitrary executor
+        # and thereby bypass the runtime's risk-state contract.
+        effective_executor = DemoRiskDispatchGuard(
+            executor,
+            risk_store=demo_risk_state,
+            risk_fingerprint_provider=demo_risk_state.fingerprint,
+        )
+        runtime_risk_provider = demo_risk_state
+    elif isinstance(executor, DemoBrokerExecutionPort):
         if risk_state_provider is None:
-            raise RuntimeError("non-PAPER DEMO execution requires an authoritative risk-state provider")
-        if isinstance(executor, DemoBrokerExecutionPort):
-            effective_executor = GatewayBoundDemoExecutionPort(executor)
-        else:
-            effective_executor = executor
-
-    runtime_risk_provider = risk_state_provider or demo_risk_state
+            raise RuntimeError("broker DEMO execution requires an authoritative risk-state provider")
+        effective_executor = GatewayBoundDemoExecutionPort(executor)
+        runtime_risk_provider = risk_state_provider
+    else:
+        raise RuntimeError(
+            "executor operacional não autorizado; use PaperExecutor ou DemoBrokerExecutionPort"
+        )
 
     gateway = ExecutionGateway(
         effective_executor,
