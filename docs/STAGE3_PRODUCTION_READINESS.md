@@ -1,60 +1,27 @@
 # Stage 3 — Production Readiness
 
-## Purpose
+## Estado
 
-Stage 3 starts from the consolidated Stage 2 tree and prepares the ecosystem for controlled production integration without enabling REAL execution.
+**Preparada estruturalmente, ainda não liberada.** Stage 3 só pode receber trabalho de produção depois que a matriz final da Stage 2 estiver verde.
 
-This stage is a readiness gate, not a permission to trade REAL.
+## Dependências obrigatórias da Stage 2
 
-## Non-negotiable boundary
+Antes de qualquer expansão de produção:
 
-REAL remains blocked until every applicable gate below is proven with executable validation and an explicit operational decision. Documentation alone never grants REAL authority.
+1. fechar a origem/emissão da identidade privilegiada REAL;
+2. fechar o binding `DecisionSnapshot.symbol -> ExecutionRequest.symbol` na fronteira REAL;
+3. aplicar a política de frescor da decisão como barreira obrigatória também no caminho REAL;
+4. validar reconstrução após restart, compatibilidade legada e ausência de side doors;
+5. executar a matriz consolidada com CI verde, incluindo o run mais recente do workflow.
 
-## Gate A — Stage 2 closure
+## Trabalho permitido enquanto Stage 2 fecha
 
-- Full CI on the exact consolidated tree is successful.
-- Concurrency/replay/reconciliation tests are green.
-- No unresolved execution side-door is present.
-- Runtime, incident, kill-switch, freshness and risk-state barriers remain authoritative.
-- REAL identity remains bound across authorization, admission, request, broker and adapter.
+Somente preparação que não aumenta a capacidade de execução REAL, como documentação de arquitetura, contratos de teste, observabilidade e especificações de integração DEMO/sandbox.
 
-## Gate B — Production state authority
+## Primeiro trabalho de produção após os gates
 
-- Persistent operational state has one authoritative source for the deployment topology.
-- Multi-instance deployments cannot silently fall back to per-process safety state.
-- Startup with corrupt, missing or incompatible critical state fails closed.
-- Recovery cannot silently convert UNKNOWN execution into a new submission.
+A primeira integração concreta continua sendo IC Markets MT5 DEMO, conforme `P127_PLAN.md`. O objetivo é validar disponibilidade, contrato comum, `order_check()`, execução controlada, external_id, reconciliação e auditoria em DEMO. Não há autorização para abrir REAL.
 
-## Gate C — Broker integration readiness
+## Regra de segurança
 
-- Broker adapter identity is explicit and stable.
-- Market-data identity and execution identity refer to the same intended instrument context.
-- External order identifiers are persisted before an operation is considered terminally accepted.
-- Adapter uncertainty always becomes UNKNOWN and requires reconciliation.
-- Reconciliation evidence is read-only, scoped to the persisted operation identity, and independently verified.
-
-## Gate D — Operational controls
-
-- Kill switch and technical incident stop work across the supported deployment topology.
-- Maintenance and recovery states are observable and fail closed.
-- Important security and operational events are auditable without persisting secrets or raw sensitive request data.
-- Health and notification surfaces remain informational and cannot grant execution authority.
-
-## Gate E — Human/operator readiness
-
-- First-use guidance explains DEMO, safety state, decision lifecycle and reconciliation without exposing technical clutter.
-- The operational screen keeps the execution decision path distinct from learning, notifications and diagnostics.
-- Any future REAL enablement requires an explicit, separately authorized operational action; UI preferences alone cannot enable it.
-
-## Stage 3 work sequence
-
-1. Close the remaining Stage 2 validation gaps.
-2. Validate deployment/state authority for the intended production topology.
-3. Validate the first broker integration contract end-to-end in DEMO/sandbox.
-4. Validate observability, recovery and reconciliation under restart and failure scenarios.
-5. Perform a final independent REAL-release review.
-6. Only after all gates pass, decide whether a controlled REAL enablement design is appropriate.
-
-## Current status
-
-Stage 3 is **prepared but not released**. The branch is intentionally based on the current Stage 2 validation tree. No REAL execution capability is enabled by this document or branch.
+Nenhum trabalho de Stage 3 pode contornar, enfraquecer ou substituir as barreiras da Stage 2. A habilitação REAL permanece uma decisão posterior, separada e explicitamente controlada.
