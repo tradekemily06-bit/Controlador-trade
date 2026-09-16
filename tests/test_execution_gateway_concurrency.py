@@ -118,13 +118,7 @@ def test_same_request_id_is_dispatched_at_most_once_across_processes(tmp_path: P
 
 
 def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path: Path):
-    """A shared safety change during request A's side effect must block request B.
-
-    The executor for A changes the durable kill switch and then pauses. Without
-    a gateway-level dispatch lock, B can pass its stale final check and execute
-    while A is paused. With the lock, B cannot enter its executor until A
-    releases; it then re-reads the durable safety state and is blocked.
-    """
+    """A shared safety change during request A's side effect must block request B."""
     ctx = multiprocessing.get_context("spawn")
     ledger_path = str(tmp_path / "ledger.json")
     lifecycle_path = str(tmp_path / "lifecycle.json")
@@ -156,10 +150,14 @@ def test_different_request_ids_are_serialized_with_final_safety_recheck(tmp_path
         process.join(20)
         assert process.exitcode == 0
 
-    outcomes = {results.get(timeout=5)[0]: results.get(timeout=5)[1] for _ in []}
-    # Queue values are consumed once; rebuild from two reads without assuming order.
-    results = outcomes
-    assert results == {}
+    outcomes = dict(results.get(timeout=5) for _ in processes)
+    assert outcomes["request-a"] == GatewayStatus.ACCEPTED.value
+    assert outcomes["request-b"] == GatewayStatus.BLOCKED.value
+    assert counter.value == 1
+
+    ledger = ExecutionLedger(ledger_path)
+    assert ledger.status("request-a") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.status("request-b") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_path: Path):
