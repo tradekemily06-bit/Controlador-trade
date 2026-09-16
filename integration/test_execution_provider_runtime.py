@@ -30,6 +30,7 @@ def _risk_state() -> OperationalState:
 
 def test_selected_mt5_demo_provider_requires_authoritative_risk_state(tmp_path: Path):
     executor = build_demo_execution_port("ic_markets_mt5_demo", symbol="EURUSD")
+    assert not isinstance(executor, ICMarketsMT5DemoAdapter)
     with pytest.raises(RuntimeError, match="authoritative risk-state provider"):
         build_operational_runtime(tmp_path, executor=executor)
 
@@ -42,7 +43,7 @@ def test_selected_mt5_demo_provider_can_be_injected_with_risk_state(tmp_path: Pa
         executor=executor,
         risk_state_provider=provider,
     )
-    assert isinstance(runtime.gateway._executor, ICMarketsMT5DemoAdapter)
+    assert not isinstance(runtime.gateway._executor, ICMarketsMT5DemoAdapter)
     assert runtime.gateway._risk_state_provider is provider
 
 
