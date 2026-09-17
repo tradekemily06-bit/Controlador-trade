@@ -87,7 +87,10 @@ class EcosystemIncidentManager:
     def active(self) -> tuple[TechnicalIncident, ...]:
         with self._lock:
             if self._store is not None:
-                state = self._store.status()
+                try:
+                    state = self._store.status()
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    return (_unavailable_state_incident(),)
                 if state["status"] == "INCIDENT":
                     persisted_id = str(state.get("incident_id") or "persisted-incident")
                     local = self._incidents.get(persisted_id)
@@ -106,15 +109,21 @@ class EcosystemIncidentManager:
             return True
 
     def status(self) -> dict[str, object]:
-        try:
-            active = self.active()
-        except (OSError, ValueError, TypeError, RuntimeError):
-            return {"status": "INCIDENT", "execution_blocked": True, "active_incidents": (), "reason": "estado de incidente indisponível"}
+        active = self.active()
         return {"status": "INCIDENT" if active else "HEALTHY", "execution_blocked": bool(active), "active_incidents": tuple(item.incident_id for item in active), "reason": active[0].message if active else None}
 
     def _publish(self, incident: TechnicalIncident) -> None:
         if self._notification_center is not None:
             self._notification_center.publish_global(EcosystemNotification(f"incident-open-{incident.incident_id}", NotificationKind.EXECUTION, NotificationSeverity.CRITICAL, "Problema técnico detectado", f"{incident.message} Novas ordens estão bloqueadas enquanto o problema é investigado e resolvido.", requires_attention=True, blocking=True))
+
+
+def _unavailable_state_incident() -> TechnicalIncident:
+    return TechnicalIncident(
+        incident_id="incident-state-unavailable",
+        title="Estado de incidente indisponível",
+        message="O estado persistente de incidentes não pôde ser validado; a execução permanece bloqueada.",
+        started_at=datetime.now(timezone.utc),
+    )
 
 
 def _utc(value: datetime) -> datetime:
