@@ -46,8 +46,10 @@ def redact(value: Any) -> Any:
     """Return a safe copy suitable for logs/audit diagnostics.
 
     Caller-owned structures are never mutated. Sensitive mapping keys are
-    replaced entirely, nested containers are traversed, and free-form strings
-    are scanned for common credential-bearing patterns.
+    replaced entirely, nested containers are traversed, free-form strings are
+    scanned for common credential-bearing patterns, byte payloads are removed,
+    and exception objects are reduced to their type name so their message or
+    repr cannot cross the observability boundary.
     """
     if isinstance(value, Mapping):
         return {
@@ -62,6 +64,10 @@ def redact(value: Any) -> Any:
         return {redact(item) for item in value}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [redact(item) for item in value]
+    if isinstance(value, (bytes, bytearray)):
+        return REDACTED
+    if isinstance(value, BaseException):
+        return type(value).__name__
     if isinstance(value, str):
         return redact_text(value)
     return value
