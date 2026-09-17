@@ -32,7 +32,7 @@ def _literal_string(node: ast.AST) -> str | None:
 
 
 def test_dynamic_getattr_cannot_reach_raw_execution_surfaces():
-    """Dynamic attribute lookup must not reopen known execution side doors."""
+    """Dynamic lookup must not immediately invoke known raw execution surfaces."""
     forbidden = {"execute", "order_send"}
     offenders: list[str] = []
 
@@ -47,11 +47,13 @@ def test_dynamic_getattr_cannot_reach_raw_execution_surfaces():
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            if not isinstance(node.func, ast.Name) or node.func.id != "getattr":
+            if not isinstance(node.func, ast.Call):
                 continue
-            if len(node.args) < 2:
+            if not isinstance(node.func.func, ast.Name) or node.func.func.id != "getattr":
                 continue
-            name = _literal_string(node.args[1])
+            if len(node.func.args) < 2:
+                continue
+            name = _literal_string(node.func.args[1])
             if name in forbidden:
                 offenders.append(f"{relative}:{node.lineno}:{name}")
 
