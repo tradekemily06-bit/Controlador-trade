@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
+from audit.events import AuditEvent, AuditEventType, AuditLogger
+from audit.execution_audit import ExecutionAuditEvent, ExecutionAuditLog
+from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity
 from core.observability_redaction import REDACTED, redact, redact_event
 from core.p21_observability import HealthState, RuntimeHealthMonitor, RecoveryState
+from execution.execution_lifecycle import ExecutionLifecycleState
 
 
 def test_redaction_recurses_without_mutating_input():
@@ -10,6 +16,7 @@ def test_redaction_recurses_without_mutating_input():
         "authorization": "Bearer secret-token",
         "nested": {"api_key": "abc", "symbol": "EURUSD"},
         "items": [{"password": "pw", "value": 3}],
+        "diagnostic": "authorization=hidden-token",
     }
 
     safe = redact(original)
@@ -18,6 +25,7 @@ def test_redaction_recurses_without_mutating_input():
     assert safe["nested"]["api_key"] == REDACTED
     assert safe["items"][0]["password"] == REDACTED
     assert safe["nested"]["symbol"] == "EURUSD"
+    assert REDACTED in safe["diagnostic"]
     assert original["authorization"] == "Bearer secret-token"
 
 
@@ -25,6 +33,54 @@ def test_event_boundary_requires_type_and_mapping():
     event = redact_event(event_type="EXECUTION_BLOCKED", payload={"token": "hidden", "reason": "kill-switch"})
     assert event["event_type"] == "EXECUTION_BLOCKED"
     assert event["payload"]["token"] == REDACTED
+
+
+def test_audit_logger_redacts_structured_and_free_form_diagnostics():
+    event = AuditEvent(
+        AuditEventType.ERROR,
+        "falha authorization=super-secret",
+        datetime.now(timezone.utc),
+        {"api_key": "abc", "symbol": "EURUSD"},
+    )
+    logger = AuditLogger()
+    logger.record(event)
+    stored = logger.events()[0]
+    assert REDACTED in stored.message
+    assert stored.data["api_key"] == REDACTED
+    assert stored.data["symbol"] == "EURUSD"
+
+
+def test_execution_audit_redacts_messages():
+    event = ExecutionAuditEvent(
+        "req-1",
+        ExecutionLifecycleState.REJECTED,
+        datetime.now(timezone.utc),
+        "rejected password=super-secret",
+    )
+    audit = ExecutionAuditLog()
+    audit.append(event)
+    assert REDACTED in audit.events()[0].message
+
+
+def test_global_notifications_are_durable_and_visible_to_scoped_users(tmp_path):
+    from security.http_identity import clear_trusted_identity, require_trusted_identity
+    from storage.scoped_state_store import SQLiteScopedStateStore
+
+    state = SQLiteScopedStateStore(tmp_path / "state.db")
+    center = EcosystemNotificationCenter(state_store=state, require_durable=True)
+    center.publish_global(EcosystemNotification("global-1", NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, "Update", "authorization=hidden"))
+    try:
+        require_trusted_identity({
+            "PATH_INFO": "/api/notifications",
+            "controlador.trusted_tenant_id": "tenant-a",
+            "controlador.trusted_subject_id": "user-a",
+            "controlador.trusted_role": "user",
+        })
+        visible = EcosystemNotificationCenter(state_store=state, require_durable=True).all()
+        assert [item.notification_id for item in visible] == ["global-1"]
+        assert REDACTED in visible[0].message
+    finally:
+        clear_trusted_identity()
 
 
 def test_health_states_are_observational_not_authorization_states():
