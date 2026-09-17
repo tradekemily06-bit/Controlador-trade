@@ -2,7 +2,37 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from core.release_readiness import FinalReadinessEvidence, ReadinessState, assess_final_readiness
+from core.release_readiness import (
+    FinalReadinessEvidence,
+    ReadinessEvidenceRef,
+    ReadinessState,
+    assess_final_readiness,
+)
+
+
+_REQUIRED_GATES = (
+    "stage2_green",
+    "stage3_green",
+    "stage4_green",
+    "stage5_green",
+    "stage6_green",
+    "side_doors_scanned",
+    "threat_model_reviewed",
+    "secrets_reviewed",
+    "rollback_tested",
+    "reconciliation_tested",
+    "incident_response_tested",
+    "demo_real_separation_tested",
+    "legacy_compatibility_tested",
+    "ci_green",
+)
+
+
+def _refs() -> tuple[ReadinessEvidenceRef, ...]:
+    return tuple(
+        ReadinessEvidenceRef(gate, f"evidence-{gate}", f"verified://{gate}")
+        for gate in _REQUIRED_GATES
+    )
 
 
 def _complete() -> FinalReadinessEvidence:
@@ -21,6 +51,7 @@ def _complete() -> FinalReadinessEvidence:
         demo_real_separation_tested=True,
         legacy_compatibility_tested=True,
         ci_green=True,
+        evidence_refs=_refs(),
     )
 
 
@@ -48,3 +79,34 @@ def test_final_matrix_requires_legacy_compatibility_evidence():
     assert assessment.state is ReadinessState.NOT_READY
     assert assessment.missing == ("legacy_compatibility_tested",)
     assert assessment.real_enabled is False
+
+
+def test_green_gate_without_traceable_reference_is_not_ready():
+    refs = tuple(ref for ref in _refs() if ref.gate != "rollback_tested")
+    evidence = replace(_complete(), evidence_refs=refs)
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert assessment.missing == ("rollback_tested_evidence",)
+    assert assessment.real_enabled is False
+
+
+def test_false_gate_does_not_require_separate_evidence_reference():
+    evidence = replace(
+        _complete(),
+        rollback_tested=False,
+        evidence_refs=tuple(ref for ref in _refs() if ref.gate != "rollback_tested"),
+    )
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert assessment.missing == ("rollback_tested",)
+
+
+def test_evidence_reference_requires_identity_and_source():
+    try:
+        ReadinessEvidenceRef("ci_green", "", "verified://ci")
+    except ValueError as exc:
+        assert str(exc) == "evidence_id is required"
+    else:
+        raise AssertionError("missing evidence identity must be rejected")
