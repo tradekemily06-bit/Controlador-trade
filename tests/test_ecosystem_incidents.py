@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from core.ecosystem_incidents import EcosystemIncidentManager, IncidentStatus
 from core.ecosystem_notifications import EcosystemNotificationCenter, NotificationSeverity
 from core.technical_incident_store import TechnicalIncidentStore
@@ -70,11 +68,13 @@ def test_corrupt_persistent_incident_state_fails_closed(tmp_path: Path):
     incidents = EcosystemIncidentManager(store=TechnicalIncidentStore(store_path))
 
     assert incidents.execution_blocked() is True
+    active = incidents.active()
+    assert len(active) == 1
+    assert active[0].incident_id == "incident-state-unavailable"
+    assert active[0].execution_blocked is True
+
     status = incidents.status()
     assert status["status"] == "INCIDENT"
     assert status["execution_blocked"] is True
-    assert status["active_incidents"] == ()
-    assert status["reason"] == "estado de incidente indisponível"
-
-    with pytest.raises(ValueError, match="estado de incidente técnico inválido"):
-        incidents.active()
+    assert status["active_incidents"] == ("incident-state-unavailable",)
+    assert "permanece bloqueada" in status["reason"]
