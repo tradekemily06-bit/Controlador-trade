@@ -4,7 +4,7 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 ## Audit target
 
-- Stage 7 head: `c7b6e0c9e9e8c9a5f0f0a0d5f1b7c8d9e0f1a2b3`
+- Stage 7 head: `e25bcbd44f61095d3b39175cf6dfd99be91c4efe`
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head)
 - Current Stage 7 PR: #252
 - The predecessor head `513f44d315138f1a3b91d6d51fe0b4702b0b03dd` was validated by CI workflow run #1731. Its full suite passed, dependency audit passed, Python compilation passed, production container build passed, and production health smoke test passed.
