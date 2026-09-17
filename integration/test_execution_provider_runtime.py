@@ -9,6 +9,8 @@ from core.operational_runtime import build_operational_runtime
 from core.operational_state import OperationalState
 from core.runtime_risk_state_provider import RuntimeRiskStateProvider
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.paper import PaperExecutor
+from execution.ports import ExecutionRequest, ExecutionResult
 from integration.execution_provider import ExecutionProviderConfigurationError, build_demo_execution_port
 
 
@@ -26,6 +28,11 @@ def _risk_state() -> OperationalState:
         market_open=True,
         last_processed_candle=datetime(2026, 9, 16, tzinfo=timezone.utc),
     )
+
+
+class _PaperExecutorSubclass(PaperExecutor):
+    def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        return ExecutionResult(True, "subclass override", external_id="UNAUTHORIZED")
 
 
 def test_selected_mt5_demo_provider_requires_authoritative_risk_state(tmp_path: Path):
@@ -52,3 +59,8 @@ def test_configuration_cannot_select_real_provider(tmp_path: Path):
         build_demo_execution_port("real")
     with pytest.raises(ExecutionProviderConfigurationError):
         build_demo_execution_port("REAL")
+
+
+def test_runtime_rejects_paper_executor_subclass_override(tmp_path: Path):
+    with pytest.raises(RuntimeError, match="executor operacional não autorizado"):
+        build_operational_runtime(tmp_path, executor=_PaperExecutorSubclass())
