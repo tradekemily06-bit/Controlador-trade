@@ -223,8 +223,9 @@ class RealExecutionGateway:
             result = revalidator()
             if result is not None:
                 try:
-                    self._ledger.mark_unknown(request_id)
+                    self._ledger.mark_rejected(request_id)
                 except (OSError, ValueError):
+                    # If rejection cannot be persisted, RESERVED remains durable and recovery stays fail-closed.
                     pass
                 return result
         try:

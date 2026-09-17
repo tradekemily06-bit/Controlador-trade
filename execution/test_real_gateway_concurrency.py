@@ -117,7 +117,7 @@ def test_same_request_id_concurrent_processes_can_dispatch_at_most_once(tmp_path
         assert process.exitcode == 0
 
     results = [queue.get(timeout=2)[1] for _ in processes]
-    assert sorted(results) == sorted([RealGatewayStatus.ADMITTED, RealGatewayStatus.UNKNOWN])
+    assert sorted(results) == sorted([RealGatewayStatus.ADMITTED, RealGatewayStatus.BLOCKED])
 
     lines = log_path.read_text(encoding="utf-8").splitlines()
     assert lines == [f"{request_id}:start", f"{request_id}:end"]
