@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from core.p112_real_execution_contract import RealExecutionAuthorization, _issue_real_authorization
+from core.p112_real_execution_contract import (
+    RealExecutionAuthorization,
+    _AUTHORIZATION_ISSUER_CAPABILITY,
+    _issue_real_authorization,
+)
 from core.p116_real_release_audit import RealReleaseAudit, _is_boundary_verified_audit
 
 
@@ -42,4 +46,5 @@ class RealAuthorizationIssuer:
             adapter_id=adapter_id,
             request_id=request_id,
             symbol=symbol,
+            issuer_capability=_AUTHORIZATION_ISSUER_CAPABILITY,
         )
