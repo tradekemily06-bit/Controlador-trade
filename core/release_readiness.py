@@ -80,6 +80,18 @@ def assess_final_readiness(evidence: FinalReadinessEvidence) -> FinalReadinessAs
         raise TypeError("final readiness evidence is required")
 
     missing = [name for name in _REQUIRED if getattr(evidence, name) is not True]
+    invalid_refs = [ref.gate for ref in evidence.evidence_refs if ref.gate not in _REQUIRED]
+    if invalid_refs:
+        missing.append("invalid_evidence_gate")
+
+    duplicate_gates = {
+        gate
+        for gate in (ref.gate for ref in evidence.evidence_refs)
+        if sum(item.gate == gate for item in evidence.evidence_refs) > 1
+    }
+    if duplicate_gates:
+        missing.append("duplicate_evidence_gate")
+
     refs_by_gate = {ref.gate: ref for ref in evidence.evidence_refs}
 
     # A green boolean without a traceable reference is not sufficient for a
