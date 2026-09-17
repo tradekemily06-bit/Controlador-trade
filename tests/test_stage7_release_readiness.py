@@ -110,3 +110,23 @@ def test_evidence_reference_requires_identity_and_source():
         assert str(exc) == "evidence_id is required"
     else:
         raise AssertionError("missing evidence identity must be rejected")
+
+
+def test_unknown_evidence_gate_is_not_accepted():
+    evidence = replace(
+        _complete(),
+        evidence_refs=_refs() + (ReadinessEvidenceRef("unknown_gate", "id", "verified://unknown"),),
+    )
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert "invalid_evidence_gate" in assessment.missing
+
+
+def test_duplicate_evidence_gate_is_not_accepted():
+    duplicate = ReadinessEvidenceRef("ci_green", "second-ci", "verified://ci-2")
+    evidence = replace(_complete(), evidence_refs=_refs() + (duplicate,))
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert "duplicate_evidence_gate" in assessment.missing
