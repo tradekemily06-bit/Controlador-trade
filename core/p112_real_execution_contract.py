@@ -8,6 +8,12 @@ class _AuthorizationProvenanceToken:
     """Private identity token proving issuance by the REAL authorization issuer."""
 
 
+# A second, exact capability is required to enter the low-level factory. The
+# factory remains in this contract module because it owns the immutable object,
+# but callers must come through the dedicated issuer boundary. This is an
+# in-process capability check; structural tests additionally ensure the helper
+# is not called from another production module.
+_AUTHORIZATION_ISSUER_CAPABILITY = object()
 _AUTHORIZATION_PROVENANCE: dict[int, weakref.ReferenceType[_AuthorizationProvenanceToken]] = {}
 
 
@@ -66,8 +72,11 @@ def _issue_real_authorization(
     adapter_id: str,
     request_id: str,
     symbol: str,
+    issuer_capability: object,
 ) -> RealExecutionAuthorization:
     """Create the active contract only for the dedicated issuer boundary."""
+    if issuer_capability is not _AUTHORIZATION_ISSUER_CAPABILITY:
+        raise PermissionError("somente o emissor autorizado pode criar autoridade REAL ativa.")
     token = _AuthorizationProvenanceToken()
     authorization = RealExecutionAuthorization(
         authorization_id, audit_id, broker_id, adapter_id, request_id, symbol,
