@@ -5,22 +5,18 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXECUTION = ROOT / "execution"
-CORE = ROOT / "core"
 
 
 def _production_python_files() -> list[Path]:
-    return [
-        path for path in EXECUTION.glob("*.py")
-        if path.is_file() and not path.name.startswith("test_")
-    ]
-
-
-def _core_production_python_files() -> list[Path]:
-    return [
-        path for path in CORE.glob("*.py")
-        if path.is_file() and not path.name.startswith("test_")
-    ]
+    """Scan every production Python module, not only selected packages."""
+    excluded_roots = {".git", ".venv", "venv", "__pycache__"}
+    return sorted(
+        path
+        for path in ROOT.rglob("*.py")
+        if path.is_file()
+        and not any(part in excluded_roots for part in path.parts)
+        and not path.name.startswith("test_")
+    )
 
 
 def _imports_private_name(tree: ast.AST, private_name: str) -> bool:
@@ -34,12 +30,18 @@ def _imports_private_name(tree: ast.AST, private_name: str) -> bool:
     return False
 
 
+def _parsed_production_files() -> list[tuple[Path, ast.AST]]:
+    return [
+        (path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+        for path in _production_python_files()
+    ]
+
+
 def test_no_production_factory_constructs_real_gateway_outside_gateway_module():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "real_gateway.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "RealExecutionGateway":
                 offenders.append(str(path.relative_to(ROOT)))
@@ -48,10 +50,9 @@ def test_no_production_factory_constructs_real_gateway_outside_gateway_module():
 
 def test_real_gateway_dispatch_method_is_confined_to_real_gateway():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "real_gateway.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "execute_from_real_gateway":
                 offenders.append(str(path.relative_to(ROOT)))
@@ -60,10 +61,9 @@ def test_real_gateway_dispatch_method_is_confined_to_real_gateway():
 
 def test_registry_adapter_lookup_side_door_is_confined_to_adapter_gateway():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "adapter_gateway.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "_get_for_gateway":
                 offenders.append(str(path.relative_to(ROOT)))
@@ -92,10 +92,9 @@ def test_raw_broker_order_send_is_confined_to_mt5_adapter():
 
 def test_mt5_demo_adapter_construction_is_confined_to_demo_broker_port():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "demo_broker_port.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ICMarketsMT5DemoAdapter":
                 offenders.append(str(path.relative_to(ROOT)))
@@ -103,7 +102,7 @@ def test_mt5_demo_adapter_construction_is_confined_to_demo_broker_port():
 
 
 def test_registry_does_not_expose_adapter_objects_through_legacy_getters():
-    source = (EXECUTION / "broker_registry.py").read_text(encoding="utf-8")
+    source = (ROOT / "execution" / "broker_registry.py").read_text(encoding="utf-8")
     assert "def get(" not in source
     assert "def get_adapter(" not in source
     assert "return self._adapters" not in source
@@ -111,10 +110,9 @@ def test_registry_does_not_expose_adapter_objects_through_legacy_getters():
 
 def test_registry_private_adapter_storage_is_not_read_outside_registry():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "broker_registry.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute) and node.attr in {"_adapters", "_adapter_ids"}:
                 offenders.append(str(path.relative_to(ROOT)))
@@ -123,10 +121,9 @@ def test_registry_private_adapter_storage_is_not_read_outside_registry():
 
 def test_broker_gateway_capability_import_is_confined_to_adapter_gateway():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "adapter_gateway.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_BROKER_GATEWAY_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
     assert not offenders, f"broker gateway capability leaked outside adapter gateway: {offenders}"
@@ -134,10 +131,9 @@ def test_broker_gateway_capability_import_is_confined_to_adapter_gateway():
 
 def test_real_adapter_gateway_capability_import_is_confined_to_real_gateway():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "real_gateway.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_REAL_ADAPTER_GATEWAY_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
     assert not offenders, f"REAL adapter gateway capability leaked outside real gateway: {offenders}"
@@ -145,10 +141,9 @@ def test_real_adapter_gateway_capability_import_is_confined_to_real_gateway():
 
 def test_demo_adapter_capability_import_is_confined_to_demo_port():
     offenders: list[str] = []
-    for path in _production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name == "demo_broker_port.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_DEMO_ADAPTER_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
     assert not offenders, f"DEMO adapter capability leaked outside demo port: {offenders}"
@@ -156,10 +151,9 @@ def test_demo_adapter_capability_import_is_confined_to_demo_port():
 
 def test_real_authorization_capability_import_is_confined_to_issuer():
     offenders: list[str] = []
-    for path in _core_production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name in {"real_privilege_issuer.py", "p112_real_execution_contract.py"}:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_REAL_AUTHORIZATION_ISSUER_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
     assert not offenders, f"REAL authorization issuer capability leaked outside authority: {offenders}"
@@ -167,21 +161,19 @@ def test_real_authorization_capability_import_is_confined_to_issuer():
 
 def test_real_admission_capability_import_is_confined_to_issuer():
     offenders: list[str] = []
-    for path in _core_production_python_files():
+    for path, tree in _parsed_production_files():
         if path.name in {"real_privilege_issuer.py", "p117_real_admission.py"}:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         if _imports_private_name(tree, "_REAL_ADMISSION_ISSUER_CAPABILITY"):
             offenders.append(str(path.relative_to(ROOT)))
-    assert not offenders, f"REAL admission capability leaked outside authority: {offenders}"
+    assert not offenders, f"REAL admission issuer capability leaked outside authority: {offenders}"
 
 
 def test_no_production_module_constructs_active_real_authorization_directly():
     offenders: list[str] = []
-    for path in [*_production_python_files(), *_core_production_python_files()]:
+    for path, tree in _parsed_production_files():
         if path.name == "p112_real_execution_contract.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "RealExecutionAuthorization":
                 offenders.append(str(path.relative_to(ROOT)))
