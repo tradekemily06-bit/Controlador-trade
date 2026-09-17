@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from core.p112_real_execution_contract import RealExecutionAuthorization, _ISSUER_CAPABILITY
+from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p116_real_release_audit import RealReleaseAudit
 
 
 class RealAuthorizationIssuer:
-    """Single controlled issuer for an active REAL authorization.
+    """Factory for the established REAL authorization contract.
 
-    Construction of an authorization object alone is never sufficient to make
-    it active. The issuer requires a verified P116 release audit and an
-    explicit approval at the issuance boundary. No broker or execution call is
-    performed here.
+    This layer does not itself enable REAL. It requires a VERIFIED P116 audit
+    and explicit approval before constructing the already-established contract.
+    The actual dispatch path remains responsible for authoritative safety,
+    identity, admission and barrier checks.
     """
 
     def issue(
@@ -32,13 +32,6 @@ class RealAuthorizationIssuer:
         if explicit_approval is not True:
             raise ValueError("aprovação explícita é obrigatória para emitir autorização REAL.")
         return RealExecutionAuthorization(
-            authorization_id=authorization_id,
-            audit_id=audit_id,
-            broker_id=broker_id,
-            adapter_id=adapter_id,
-            request_id=request_id,
-            symbol=symbol,
-            explicitly_enabled=True,
-            real_execution_allowed=True,
-            _issuer_capability=_ISSUER_CAPABILITY,
+            authorization_id, audit_id, broker_id, adapter_id, request_id, symbol,
+            True, True,
         )
