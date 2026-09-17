@@ -40,7 +40,7 @@ def test_pre_dispatch_barrier_block_is_known_rejection_not_unknown(tmp_path):
     record = lifecycle.get("req-pre-block")
     assert record is not None
     assert record.state is ExecutionLifecycleState.REJECTED
-    assert "barreira" in record.message.lower()
+    assert "bloqueado" in record.message.lower()
 
 
 def test_pre_dispatch_block_does_not_become_reconciliation_unknown(tmp_path):
