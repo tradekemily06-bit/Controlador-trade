@@ -42,7 +42,7 @@ class Risk(RiskStateProvider):
         )
 
 
-class Safety(R ealSafetyProvider):
+class Safety(RealSafetyProvider):
     def current_real_safety(self) -> RealSafetyReport:
         return RealSafetyGate().evaluate(
             authorization_active=True,
