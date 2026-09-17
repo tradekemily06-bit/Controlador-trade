@@ -30,15 +30,24 @@ def test_unknown_state_survives_restart_and_requires_explicit_reconciliation(tmp
         restored.reserve("req-unknown")
 
 
+def test_reconciliation_requires_authoritative_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-evidence")
+    ledger.mark_unknown("req-evidence")
+
+    with pytest.raises(ValueError, match="evidence_id e evidence_source autoritativos"):
+        ledger.reconcile("req-evidence", executed=True)
+
+
 def test_reconciliation_requires_complete_evidence_pair(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-evidence")
     ledger.mark_unknown("req-evidence")
 
-    with pytest.raises(ValueError, match="devem ser fornecidos juntos"):
+    with pytest.raises(ValueError, match="evidence_id e evidence_source autoritativos"):
         ledger.reconcile("req-evidence", executed=True, evidence_id="evidence-1")
 
-    with pytest.raises(ValueError, match="devem ser fornecidos juntos"):
+    with pytest.raises(ValueError, match="evidence_id e evidence_source autoritativos"):
         ledger.reconcile("req-evidence", executed=True, evidence_source="broker")
 
 
