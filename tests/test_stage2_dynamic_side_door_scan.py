@@ -60,6 +60,72 @@ def test_dynamic_getattr_cannot_reach_raw_execution_surfaces():
     assert not offenders, f"dynamic execution side door detected: {offenders}"
 
 
+def test_dynamic_getattr_cannot_reach_raw_execution_surfaces_indirectly():
+    """A dynamically resolved execution method must not be stored and invoked later."""
+    forbidden = {"execute", "order_send"}
+    offenders: list[str] = []
+
+    class ScopeVisitor(ast.NodeVisitor):
+        def __init__(self, relative: Path) -> None:
+            self.relative = relative
+            self.scopes: list[set[str]] = [set()]
+
+        def _visit_scope(self, node: ast.AST) -> None:
+            self.scopes.append(set())
+            for child in ast.iter_child_nodes(node):
+                self.visit(child)
+            self.scopes.pop()
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_scope(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_scope(node)
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            self._visit_scope(node)
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            if (
+                isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "getattr"
+                and len(node.value.args) >= 2
+                and _literal_string(node.value.args[1]) in forbidden
+            ):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        self.scopes[-1].add(target.id)
+                        offenders.append(f"{self.relative}:{node.lineno}:{target.id}")
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            if (
+                isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "getattr"
+                and len(node.value.args) >= 2
+                and _literal_string(node.value.args[1]) in forbidden
+            ):
+                if isinstance(node.target, ast.Name):
+                    self.scopes[-1].add(node.target.id)
+                    offenders.append(f"{self.relative}:{node.lineno}:{node.target.id}")
+            self.generic_visit(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Name) and any(node.func.id in scope for scope in self.scopes):
+                offenders.append(f"{self.relative}:{node.lineno}:{node.func.id}()")
+            self.generic_visit(node)
+
+    for path, tree in _parsed_production_files():
+        relative = path.relative_to(ROOT)
+        if relative in {Path("execution/adapter_gateway.py"), Path("execution/icmarkets_mt5_demo_adapter.py")}:
+            continue
+        ScopeVisitor(relative).visit(tree)
+
+    assert not offenders, f"indirect dynamic execution side door detected: {offenders}"
+
+
 def test_dynamic_getattr_cannot_reach_private_real_capabilities():
     """Private capability objects must not be recoverable through dynamic lookup."""
     forbidden = {
