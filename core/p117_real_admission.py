@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import weakref
 
 
 class RealAdmissionStatus(str, Enum):
@@ -37,6 +38,19 @@ class RealAdmission:
         return self.status is RealAdmissionStatus.ADMITTED
 
 
+# Admission is a gate, not merely a data shape. The execution gateway must
+# distinguish a boundary-issued admission from a field-identical fabricated
+# dataclass. Keep identity provenance without retaining admissions forever.
+_ADMITTED_PROVENANCE: dict[int, weakref.ReferenceType[RealAdmission]] = {}
+
+
+def _is_boundary_admitted(admission: object) -> bool:
+    if not isinstance(admission, RealAdmission) or not admission.admitted:
+        return False
+    reference = _ADMITTED_PROVENANCE.get(id(admission))
+    return reference is not None and reference() is admission
+
+
 class RealAdmissionBoundary:
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
@@ -69,7 +83,14 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(
+        admission = RealAdmission(
             admission_id, audit_id, status, broker_id, adapter_id,
             request_id, symbol, tuple(reasons),
         )
+        if admission.admitted:
+            key = id(admission)
+            _ADMITTED_PROVENANCE[key] = weakref.ref(
+                admission,
+                lambda _reference, key=key: _ADMITTED_PROVENANCE.pop(key, None),
+            )
+        return admission
