@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p112_real_execution_contract import RealExecutionAuthorization, _issue_real_authorization
 from core.p116_real_release_audit import RealReleaseAudit, _is_boundary_verified_audit
 
 
@@ -12,8 +12,8 @@ class RealAuthorizationIssuer:
     construct the already-established contract. Directly fabricating a
     ``RealReleaseAudit(..., VERIFIED, ...)`` object is intentionally rejected.
 
-    The provenance check is an in-process code-level control. It is not a
-    cryptographic identity system and does not authenticate an external human;
+    The provenance checks are in-process code-level controls. They are not a
+    cryptographic identity system and do not authenticate an external human;
     future release governance must provide that higher-level authority.
     """
 
@@ -35,7 +35,11 @@ class RealAuthorizationIssuer:
             raise ValueError("audit_id não corresponde à auditoria P116.")
         if explicit_approval is not True:
             raise ValueError("aprovação explícita é obrigatória para emitir autorização REAL.")
-        return RealExecutionAuthorization(
-            authorization_id, audit_id, broker_id, adapter_id, request_id, symbol,
-            True, True,
+        return _issue_real_authorization(
+            authorization_id=authorization_id,
+            audit_id=audit_id,
+            broker_id=broker_id,
+            adapter_id=adapter_id,
+            request_id=request_id,
+            symbol=symbol,
         )
