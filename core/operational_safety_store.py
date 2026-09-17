@@ -207,7 +207,7 @@ class OperationalSafetyStore:
             payload = self._read_payload()
             audit = DecisionAudit()
             for item in payload.get("audit", []):
-                audit.add(self._audit_record(item))
+                audit.append(self._audit_record(item))
             persisted = payload.get("kill_switch", {})
             if not isinstance(persisted, dict):
                 raise ValueError("estado do kill switch inválido.")
