@@ -4,10 +4,11 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 ## Audit target
 
-- Stage 7 head: `ea3dfa4ed5579598d818909871a58a567d3453d1`
+- Stage 7 head: `6e300f0eb72252d271636649b543fc123702c7a6`
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head)
 - Current Stage 7 PR: #252
-- Current Stage 7 CI: workflow run #1720, completed successfully against the exact Stage 7 head.
+- CI for the immediately preceding Stage 7 head `ea3dfa4ed5579598d818909871a58a567d3453d1`: workflow run #1720, completed successfully.
+- The newly added evidence-register commit itself requires a fresh CI run before `ci_green` is considered current.
 
 ## Verified evidence already located
 
@@ -17,7 +18,6 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 | `stage4_green` | CI run #1712 on Stage 4 HEAD `f677c5f347f9e9522f950909b075a305ca26cce7` | GitHub Actions / commit | VERIFIED, subject to descendant-contract review |
 | `stage5_green` | PR #246 merged; Stage 5 HEAD `e269cf80b4bcbf64ec5e8f855c48abd979fd4752` and merge commit `f677c5f347f9e9522f950909b075a305ca26cce7` | Git history / PR | VERIFIED |
 | `stage6_green` | PR #251 merged; Stage 6 HEAD `585fb5684cf4f05b911c80463930278b4b64bcdf` and merge commit `297514933163f8ebfbc9801373f7d896eabfa6b8` | Git history / PR | VERIFIED |
-| `ci_green` | CI run #1720 completed SUCCESS against exact Stage 7 HEAD `ea3dfa4ed5579598d818909871a58a567d3453d1` | GitHub Actions | VERIFIED |
 
 ## Explicitly unresolved / requiring gate-specific proof
 
