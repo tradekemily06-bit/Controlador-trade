@@ -71,8 +71,6 @@ class ExecutionLedger:
         for request_id, raw_status in states_payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
-            if request_id in states:
-                raise ValueError("ledger de execução inválido: request_id duplicado.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
             except ValueError as exc:
@@ -118,11 +116,12 @@ class ExecutionLedger:
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(json.dumps({
+        payload: dict[str, Any] = {
             "states": {key: self._states[key].value for key in sorted(self._states)},
             "reconciliation_evidence": {key: self._reconciliation_evidence[key] for key in sorted(self._reconciliation_evidence)},
             "execution_context": {key: self._execution_context[key] for key in sorted(self._execution_context)},
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        }
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
@@ -217,8 +216,10 @@ class ExecutionLedger:
 
     def reconcile(self, request_id: str, *, executed: bool, evidence_id: str | None = None, evidence_source: str | None = None) -> None:
         self._validate_id(request_id)
+        if evidence_id is None or evidence_source is None:
+            raise ValueError("reconciliação exige evidence_id e evidence_source autoritativos")
         if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
-            raise ValueError("reconciliação exige evidence_id e evidence_source válidos")
+            raise ValueError("evidência externa inválida")
         normalized_evidence_id = evidence_id.strip()
         normalized_evidence_source = evidence_source.strip()
         def mutation() -> None:
