@@ -5,7 +5,7 @@ from core.models import Signal
 from core.operational_state import OperationalState
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
-from core.p116_real_release_audit import RealReleaseAudit, ReleaseAuditStatus
+from core.p116_real_release_audit import RealReleaseAuditBoundary
 from core.p117_real_admission import RealAdmissionBoundary
 from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.global_operational_barrier import GlobalOperationalBarrier
@@ -62,7 +62,10 @@ def _snapshot(provider: RiskProvider) -> DecisionSnapshot:
 
 
 def _authorized_context(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
-    audit = RealReleaseAudit("audit", ReleaseAuditStatus.VERIFIED, ("P111", "P112", "P113", "P114", "P115"), ())
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     authorization = RealAuthorizationIssuer().issue(
         audit=audit, authorization_id="auth", audit_id="audit", broker_id=broker_id,
         adapter_id=adapter_id, request_id=request_id, symbol=symbol, explicit_approval=True,
