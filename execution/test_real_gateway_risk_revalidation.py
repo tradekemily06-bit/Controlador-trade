@@ -182,6 +182,26 @@ def test_real_blocks_missing_decision_risk_identity(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_blocks_request_risk_identity_mismatch(tmp_path: Path):
+    original = state()
+    provider = Provider(original)
+    adapter = Adapter()
+    gateway_instance = gateway(tmp_path, provider, adapter)
+    auth = authorization("risk-request-mismatch")
+    stale_request = replace(
+        request("risk-request-mismatch"),
+        risk_state_fingerprint="stale-risk-identity",
+    )
+    result = gateway_instance.execute(
+        broker="fake", request_id="risk-request-mismatch", request=stale_request,
+        authorization=auth, admission=admission(auth), safety=safety(auth),
+        snapshot=snapshot(original),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "identidade de risco da requisição difere do snapshot" in result.message
+    assert adapter.calls == 0
+
+
 def test_real_provider_failure_is_fail_closed_and_sanitized(tmp_path: Path):
     class BrokenProvider:
         def current_risk_state(self):
