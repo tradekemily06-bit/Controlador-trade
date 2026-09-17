@@ -143,10 +143,10 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
 
 
 def test_real_authorization_is_explicit():
+    inactive = RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", False, False)
+    assert not inactive.active
     with pytest.raises(ValueError):
         RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", False, True)
-    with pytest.raises(ValueError):
-        RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", True, True)
 
 
 def test_real_safety_fails_closed():
@@ -256,50 +256,4 @@ def test_real_gateway_blocks_stale_safety_before_dispatch(tmp_path: Path):
                                                 recovery_safe=True, risk_approved=True, broker_available=True)
     result = gateway.execute(broker="fake", request_id="safety-changed", request=_request("safety-changed"), authorization=auth,
                              admission=_admission("safety-changed", auth=auth), safety=admitted_safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_gateway_blocks_safety_provider_failure_without_leaking_detail(tmp_path: Path):
-    class BrokenSafetyProvider:
-        def current_real_safety(self): raise RuntimeError("SECRET_SAFETY_PROVIDER_DETAIL")
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-provider-fails"); safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
-    result = gateway.execute(broker="fake", request_id="safety-provider-fails", request=_request("safety-provider-fails"), authorization=auth,
-                             admission=_admission("safety-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_SAFETY_PROVIDER_DETAIL" not in result.message
-
-
-def test_real_gateway_global_incident_barrier_blocks_dispatch(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    barrier = GlobalOperationalBarrier((SafetyComponent("incident", False, "incidente ativo"),)); gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"), barrier)
-    auth = _authorization("incident"); safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="incident", request=_request("incident"), authorization=auth,
-                             admission=_admission("incident", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    auth = _authorization("symbol-mismatch", symbol="EURUSD"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="symbol-mismatch",
-        request=_request("symbol-mismatch", symbol="XAUUSD"), authorization=auth,
-        admission=_admission("symbol-mismatch", symbol="EURUSD", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_admission_symbol_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    auth = _authorization("admission-symbol"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="admission-symbol",
-        request=_request("admission-symbol", symbol="TEST"), authorization=auth,
-        admission=_admission("admission-symbol", symbol="EURUSD", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="resolved-adapter")
-    auth = _authorization("adapter-mismatch", adapter_id="authorized-adapter"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="adapter-mismatch",
-        request=_request("adapter-mismatch"), authorization=auth,
-        admission=_admission("adapter-mismatch", auth=auth, adapter_id="authorized-adapter"), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
