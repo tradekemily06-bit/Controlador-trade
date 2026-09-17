@@ -78,3 +78,23 @@ def test_reload_reflects_external_removal_without_stale_memory(tmp_path):
 
     assert store.get("req-1") is None
     assert store.records() == ()
+
+
+def test_terminal_states_cannot_regress_to_pending(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    for terminal in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN):
+        request_id = f"{terminal.value.lower()}-req"
+        store.put(ExecutionLifecycleRecord(request_id, terminal, now))
+        with pytest.raises(ValueError):
+            store.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, now, "regression"))
+
+
+def test_reconciliation_cannot_override_non_unknown_state(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        store.reconcile("req-1", ExecutionLifecycleState.REJECTED, updated_at=now)
