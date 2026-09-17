@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import pytest
@@ -29,3 +30,13 @@ def test_same_incident_can_be_reasserted_without_changing_identity(tmp_path):
     assert status["status"] == "INCIDENT"
     assert status["incident_id"] == "incident-a"
     assert status["reason"] == "updated"
+
+
+def test_incomplete_active_incident_state_fails_closed(tmp_path):
+    path = tmp_path / "incident.json"
+    path.write_text(
+        json.dumps({"status": "INCIDENT", "incident_id": None, "reason": "failure", "changed_at": datetime.now(timezone.utc).isoformat()}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="incompleto"):
+        TechnicalIncidentStore(path).status()
