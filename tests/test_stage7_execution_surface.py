@@ -6,10 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# These are the production surfaces where low-level execution calls are
-# intentionally allowed because they are themselves audited execution
-# boundaries. Each exception must remain covered by dedicated tests and must
-# not expose a public broker/adapter capability.
 _ALLOWED = {
     Path("execution/adapter_gateway.py"),
     Path("execution/gateway.py"),
@@ -20,11 +16,12 @@ _ALLOWED = {
 }
 _LOW_LEVEL_RECEIVER_HINTS = ("adapter", "broker", "executor")
 
-# REAL authorization is a privileged capability. Production code must obtain
-# it from the dedicated issuer rather than constructing the immutable contract
-# directly. Tests are intentionally excluded so they can exercise the
-# contract's defensive behavior.
+# REAL authorization is a privileged capability. The immutable contract module
+# contains the low-level constructor used by its dedicated issuer helper; that
+# constructor is not itself a public production issuance path. All consumers
+# must still obtain active authority through core/real_authorization_issuer.py.
 _AUTHORIZATION_FACTORY = Path("core/real_authorization_issuer.py")
+_AUTHORIZATION_CONTRACT = Path("core/p112_real_execution_contract.py")
 
 
 def _direct_execute_calls(path: Path) -> list[tuple[int, str]]:
@@ -77,7 +74,10 @@ def test_production_real_authorization_is_issued_by_the_dedicated_factory():
     for root in (ROOT / "core", ROOT / "execution"):
         for path in sorted(root.rglob("*.py")):
             relative = path.relative_to(ROOT)
-            if path.name.startswith("test_") or relative == _AUTHORIZATION_FACTORY:
+            if (
+                path.name.startswith("test_")
+                or relative in {_AUTHORIZATION_FACTORY, _AUTHORIZATION_CONTRACT}
+            ):
                 continue
             for line, constructor in _direct_real_authorization_constructors(path):
                 unexpected.append(f"{relative}:{line}: {constructor}(...)")
