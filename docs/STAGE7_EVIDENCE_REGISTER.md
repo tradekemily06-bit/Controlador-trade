@@ -4,11 +4,11 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 ## Audit target
 
-- Stage 7 head: `6e300f0eb72252d271636649b543fc123702c7a6`
+- Stage 7 head: `8c0088df6970ce3989ef3bb40345ecd063279956`
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head)
 - Current Stage 7 PR: #252
-- CI for the immediately preceding Stage 7 head `ea3dfa4ed5579598d818909871a58a567d3453d1`: workflow run #1720, completed successfully.
-- The newly added evidence-register commit itself requires a fresh CI run before `ci_green` is considered current.
+- Previous exact-head CI run #1724 on `47fdd212a581ad42f5820ea0e371c113209aa88a6` failed in the full test suite because the new execution-surface guard treated ordinary `gateway.execute(...)` facade calls as low-level side doors. That guard was refined in `8c0088df...` to inspect low-level adapter/broker/executor receivers instead.
+- A fresh CI run on the current head is required before `ci_green` is considered current.
 
 ## Verified evidence already located
 
@@ -24,7 +24,7 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 The following must not be represented as green merely because related code or documentation exists:
 
 - `stage3_green`: no CI run directly attached to Stage 3 HEAD was found; descendant coverage must be proven gate-by-gate or this remains pending.
-- `side_doors_scanned`: current-tree scan must identify the complete execution surface and its result.
+- `side_doors_scanned`: current-tree scan must identify the complete execution surface and its result; the structural guard now exists but still needs a passing current CI execution.
 - `threat_model_reviewed`: current review artifact and scope must be identified.
 - `secrets_reviewed`: production configuration/secrets review evidence must be identified without exposing secret values.
 - `rollback_tested`: an actual rollback/recovery execution artifact is required; documentation alone is insufficient.
