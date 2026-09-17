@@ -1,3 +1,4 @@
+from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p116_real_release_audit import RealReleaseAudit, RealReleaseAuditBoundary, ReleaseAuditStatus
 from core.real_authorization_issuer import RealAuthorizationIssuer
 
@@ -66,3 +67,32 @@ def test_blocked_audit_is_never_registered_as_verified():
         assert "fronteira" in str(exc)
     else:
         raise AssertionError("blocked audit must never issue REAL authorization")
+
+
+def test_field_identical_active_authorization_without_issuer_provenance_is_inactive():
+    forged = RealExecutionAuthorization(
+        "auth", "audit", "broker", "adapter", "request", "TEST", True, True
+    )
+    assert not forged.active
+
+
+def test_issuer_provenance_makes_authorization_active():
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="issued-audit",
+        pre_real_verified=True,
+        shadow_passed=True,
+        safety_ready=True,
+        broker_boundary_ready=True,
+        explicit_real_contract=True,
+    )
+    authorization = RealAuthorizationIssuer().issue(
+        audit=audit,
+        authorization_id="issued-auth",
+        audit_id="issued-audit",
+        broker_id="broker",
+        adapter_id="adapter",
+        request_id="request",
+        symbol="TEST",
+        explicit_approval=True,
+    )
+    assert authorization.active
