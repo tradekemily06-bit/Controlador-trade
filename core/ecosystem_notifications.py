@@ -149,6 +149,10 @@ class EcosystemNotificationCenter:
         self._global_notifications = list(events)
         self._global_loaded = True
 
+    def _global(self) -> list[EcosystemNotification]:
+        """Backward-compatible global cache accessor for legacy callers."""
+        return self._load_global()
+
     def _scoped(self, scope: tuple[str, str]) -> list[EcosystemNotification]:
         cached = self._scoped_notifications.get(scope)
         if cached is not None:
