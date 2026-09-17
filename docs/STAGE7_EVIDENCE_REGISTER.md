@@ -6,8 +6,8 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 - Current Stage 7 PR: #252.
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head).
-- Current audit target before this register commit: `cb2ccec2f735b62c12362a4123eb7a3a3da9b6be`.
-- CI workflow run #1783 completed successfully on `cb2ccec2f735b62c12362a4123eb7a3a3da9b6be`.
+- Current audit target: `2eb4b1996fab3440be95e80fe03c584d99cff00b`.
+- CI workflow run #1796 and CodeQL run #9 completed successfully on `2eb4b1996fab3440be95e80fe03c584d99cff00b` before this register update.
 - This register update creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
 
 ## Verified evidence already located
@@ -27,7 +27,7 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 Stage 3 consolidated HEAD `31c18b5ce51623c38205a27fb6d0c05481113b4b` is an ancestor of the Stage 7 audit target: the comparison reports 63 commits ahead and zero commits behind. The current full CI pipeline on the descendant therefore provides regression evidence for contracts still present in the descendant tree, but it does not automatically prove every historical Stage 3 requirement.
 
-- `stage3_green`: remains PENDING until the Stage 3 contract is mapped to concrete descendant tests and the current execution proves those contracts. Do not promote this gate merely because Stage 3 is an ancestor.
+- `stage3_green`: descendant contract mapping is now concrete and current CI #1796 executes the relevant descendant tests. Gate A composition/topology is covered by `tests/test_stage3_production_topology.py` and `tests/test_stage3_production_state_authority.py`; Gate B identity by `tests/test_stage3_demo_market_identity.py`; Gate C controlled DEMO execution by `tests/test_stage3_mt5_demo_readiness.py` plus current Stage 7 execution/reconciliation suites; Gate D failure/restart/reconciliation by `tests/test_stage4_recovery_matrix.py`, `tests/test_stage7_resilience_e2e.py`, `tests/test_stage7_ledger_lifecycle_crash_windows.py`, and `tests/test_stage7_reconciliation_race.py`; Gate E observability/identity is covered by the descendant Stage 5 observability contract suite. The current CI run is therefore evidence for the mapped contracts, not merely ancestry.
 
 ## Execution-surface finding
 
@@ -48,14 +48,17 @@ This classification is structural evidence about where low-level calls exist; it
 
 The following must not be represented as green merely because related code or documentation exists:
 
-- `stage3_green`: descendant coverage must be mapped gate-by-gate as described above.
 - `threat_model_reviewed`: current review artifact and scope must be identified.
 - `rollback_tested`: an actual rollback/recovery execution artifact is required; documentation alone is insufficient.
-- `reconciliation_tested`: current executable reconciliation evidence must be linked.
-- `incident_response_tested`: current incident/kill-switch exercise evidence must be linked.
 - `demo_real_separation_tested`: end-to-end current evidence across code/config/API/UI must be linked.
-- `legacy_compatibility_tested`: current compatibility evidence must be linked.
 - `ci_green`: a fresh run is required after this register update commit.
+
+### Newly exercised current evidence
+
+- `reconciliation_tested`: current cross-process reconciliation race tests and end-to-end broker-evidence reconciliation are present and passed in CI #1796.
+- `incident_response_tested`: current incident persistence/restart/recovery exercises are present and passed in CI #1796.
+- `legacy_compatibility_tested`: current legacy REAL rejection, legacy snapshot boundary, and fabricated-authority provenance tests are present and passed in CI #1796.
+- `demo_real_separation_tested`: current Stage 3 DEMO adapter tests, legacy gateway REAL rejection, REAL gateway provenance/barrier tests, and execution-surface guards passed in CI #1796; final API/UI/deployment evidence is still outside this code-only proof.
 
 ## Evidence inheritance rule
 
