@@ -225,7 +225,9 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
         event_time = timestamp or datetime.now(timezone.utc)
-        if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
+        # Caller timestamps are audit/event time, never authority over the live maintenance window.
+        operational_now = datetime.now(timezone.utc)
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=operational_now):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
         if self._incident_manager is not None and self._incident_manager.execution_blocked():
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada por incidente técnico ativo.")
