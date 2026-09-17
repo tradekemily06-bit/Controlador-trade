@@ -4,11 +4,11 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 ## Audit target
 
-- Stage 7 head: `8c0088df6970ce3989ef3bb40345ecd063279956`
+- Stage 7 head: `c3ad02499c99aabb76a15cd3c6261a01dace19a7`
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head)
 - Current Stage 7 PR: #252
-- Previous exact-head CI run #1724 on `47fdd212a581ad42f5820ea0e371c113209aa88a6` failed in the full test suite because the new execution-surface guard treated ordinary `gateway.execute(...)` facade calls as low-level side doors. That guard was refined in `8c0088df...` to inspect low-level adapter/broker/executor receivers instead.
-- A fresh CI run on the current head is required before `ci_green` is considered current.
+- The diagnostic CI rerun on the preceding merge tree (workflow run #1726, attempt 2) executed the full suite and reported `1651 passed, 1 failed, 2 subtests passed`; the sole failure was the new execution-surface guard, which correctly exposed three intentional low-level calls in `execution/demo_broker_port.py` and `execution/demo_risk_dispatch_guard.py` that had not yet been included in its audited-boundary allowlist.
+- The guard was then tightened by explicitly classifying those two files as audited DEMO execution boundaries; the workflow was restored to the original full validation pipeline. A fresh CI execution for the current head is still required before `ci_green` is considered current.
 
 ## Verified evidence already located
 
@@ -19,12 +19,25 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 | `stage5_green` | PR #246 merged; Stage 5 HEAD `e269cf80b4bcbf64ec5e8f855c48abd979fd4752` and merge commit `f677c5f347f9e9522f950909b075a305ca26cce7` | Git history / PR | VERIFIED |
 | `stage6_green` | PR #251 merged; Stage 6 HEAD `585fb5684cf4f05b911c80463930278b4b64bcdf` and merge commit `297514933163f8ebfbc9801373f7d896eabfa6b8` | Git history / PR | VERIFIED |
 
+## Execution-surface finding
+
+The current structural scan intentionally treats these as audited boundaries rather than unexplained side doors:
+
+- `execution/adapter_gateway.py` — broker adapter gateway boundary;
+- `execution/gateway.py` — execution gateway boundary;
+- `execution/real_gateway.py` — REAL dispatch boundary;
+- `execution/p125_sandbox_validation.py` — DEMO sandbox validation boundary;
+- `execution/demo_broker_port.py` — DEMO broker port with a module-private capability required for adapter dispatch;
+- `execution/demo_risk_dispatch_guard.py` — DEMO risk gate that forwards only after authoritative risk fingerprint validation.
+
+This classification is structural evidence about where low-level calls exist; it is not, by itself, proof that every boundary is behaviorally safe. Dedicated tests and current CI remain required.
+
 ## Explicitly unresolved / requiring gate-specific proof
 
 The following must not be represented as green merely because related code or documentation exists:
 
 - `stage3_green`: no CI run directly attached to Stage 3 HEAD was found; descendant coverage must be proven gate-by-gate or this remains pending.
-- `side_doors_scanned`: current-tree scan must identify the complete execution surface and its result; the structural guard now exists but still needs a passing current CI execution.
+- `side_doors_scanned`: current-tree scan is now enumerated and the intentional boundaries are identified, but a passing current CI execution is still required before closure.
 - `threat_model_reviewed`: current review artifact and scope must be identified.
 - `secrets_reviewed`: production configuration/secrets review evidence must be identified without exposing secret values.
 - `rollback_tested`: an actual rollback/recovery execution artifact is required; documentation alone is insufficient.
@@ -32,6 +45,7 @@ The following must not be represented as green merely because related code or do
 - `incident_response_tested`: current incident/kill-switch exercise evidence must be linked.
 - `demo_real_separation_tested`: end-to-end current evidence across code/config/API/UI must be linked.
 - `legacy_compatibility_tested`: current compatibility evidence must be linked.
+- `ci_green`: current head has not yet completed a successful full CI validation.
 
 ## Evidence inheritance rule
 
