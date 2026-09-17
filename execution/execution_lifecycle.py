@@ -54,6 +54,8 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
+                if record.request_id in loaded:
+                    raise ValueError("ciclo de execução persistido inválido: request_id duplicado.")
                 loaded[record.request_id] = record
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
