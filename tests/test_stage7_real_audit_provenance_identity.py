@@ -1,0 +1,68 @@
+from core.p116_real_release_audit import RealReleaseAudit, RealReleaseAuditBoundary, ReleaseAuditStatus
+from core.real_authorization_issuer import RealAuthorizationIssuer
+
+
+def test_field_identical_verified_audit_copy_cannot_be_used_for_real_authorization():
+    genuine = RealReleaseAuditBoundary().audit(
+        audit_id="same-audit",
+        pre_real_verified=True,
+        shadow_passed=True,
+        safety_ready=True,
+        broker_boundary_ready=True,
+        explicit_real_contract=True,
+    )
+    forged_copy = RealReleaseAudit(
+        genuine.audit_id,
+        genuine.status,
+        genuine.prerequisites,
+        genuine.reasons,
+    )
+
+    assert genuine.verified
+    assert forged_copy == genuine
+    assert forged_copy is not genuine
+
+    try:
+        RealAuthorizationIssuer().issue(
+            audit=forged_copy,
+            authorization_id="auth",
+            audit_id="same-audit",
+            broker_id="broker",
+            adapter_id="adapter",
+            request_id="request",
+            symbol="TEST",
+            explicit_approval=True,
+        )
+    except ValueError as exc:
+        assert "fronteira" in str(exc)
+    else:
+        raise AssertionError("field-identical fabricated audit must never issue REAL authorization")
+
+
+def test_blocked_audit_is_never_registered_as_verified():
+    blocked = RealReleaseAuditBoundary().audit(
+        audit_id="blocked-audit",
+        pre_real_verified=True,
+        shadow_passed=False,
+        safety_ready=True,
+        broker_boundary_ready=True,
+        explicit_real_contract=True,
+    )
+    assert blocked.status is ReleaseAuditStatus.BLOCKED
+    assert not blocked.verified
+
+    try:
+        RealAuthorizationIssuer().issue(
+            audit=blocked,
+            authorization_id="auth",
+            audit_id="blocked-audit",
+            broker_id="broker",
+            adapter_id="adapter",
+            request_id="request",
+            symbol="TEST",
+            explicit_approval=True,
+        )
+    except ValueError as exc:
+        assert "fronteira" in str(exc)
+    else:
+        raise AssertionError("blocked audit must never issue REAL authorization")
