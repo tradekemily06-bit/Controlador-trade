@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -17,7 +18,12 @@ _SENSITIVE_KEY_PARTS = (
     "credential",
     "authorization",
     "cookie",
-    "session",
+)
+
+_TEXT_PATTERNS = (
+    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)\s*[=:]\s*)[^\s,;]+"),
+    re.compile(r"(?i)((?:password|passwd|secret)\s*[=:]\s*)[^\s,;]+"),
 )
 
 
@@ -28,12 +34,20 @@ def is_sensitive_key(key: object) -> bool:
     return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
 
 
+def redact_text(value: object) -> str:
+    """Redact common credential-bearing patterns from free-form diagnostics."""
+    text = str(value)
+    for pattern in _TEXT_PATTERNS:
+        text = pattern.sub(lambda match: match.group(1) + REDACTED, text)
+    return text
+
+
 def redact(value: Any) -> Any:
     """Return a safe copy suitable for logs/audit diagnostics.
 
-    This function never mutates caller-owned structures and fails closed for
-    sensitive mapping keys. It deliberately preserves ordinary scalar values
-    so diagnostics remain useful without exposing credential-bearing fields.
+    Caller-owned structures are never mutated. Sensitive mapping keys are
+    replaced entirely, nested containers are traversed, and free-form strings
+    are scanned for common credential-bearing patterns.
     """
     if isinstance(value, Mapping):
         return {
@@ -48,6 +62,8 @@ def redact(value: Any) -> Any:
         return {redact(item) for item in value}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [redact(item) for item in value]
+    if isinstance(value, str):
+        return redact_text(value)
     return value
 
 
