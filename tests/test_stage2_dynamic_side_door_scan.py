@@ -126,6 +126,49 @@ def test_dynamic_getattr_cannot_reach_raw_execution_surfaces_indirectly():
     assert not offenders, f"indirect dynamic execution side door detected: {offenders}"
 
 
+def test_dynamic_attribute_helpers_cannot_reach_raw_execution_surfaces():
+    """Common reflective helpers must not dynamically resolve raw execution methods."""
+    forbidden = {"execute", "order_send"}
+    offenders: list[str] = []
+
+    for path, tree in _parsed_production_files():
+        relative = path.relative_to(ROOT)
+        if relative in {Path("execution/adapter_gateway.py"), Path("execution/icmarkets_mt5_demo_adapter.py")}:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                # operator.attrgetter("execute") / attrgetter("order_send")
+                func = node.func
+                if (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "attrgetter"
+                    and node.args
+                    and _literal_string(node.args[0]) in forbidden
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:attrgetter:{_literal_string(node.args[0])}")
+
+                # object.__getattribute__(obj, "execute") and equivalent direct reflective access.
+                if (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "__getattribute__"
+                    and len(node.args) >= 2
+                    and _literal_string(node.args[1]) in forbidden
+                ):
+                    offenders.append(f"{relative}:{node.lineno}:__getattribute__:{_literal_string(node.args[1])}")
+
+            if isinstance(node, ast.Subscript):
+                key = node.slice
+                name = _literal_string(key)
+                if name in forbidden:
+                    value = node.value
+                    if isinstance(value, ast.Attribute) and value.attr == "__dict__":
+                        offenders.append(f"{relative}:{node.lineno}:__dict__:{name}")
+                    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "vars":
+                        offenders.append(f"{relative}:{node.lineno}:vars:{name}")
+
+    assert not offenders, f"reflective execution side door detected: {offenders}"
+
+
 def test_dynamic_getattr_cannot_reach_private_real_capabilities():
     """Private capability objects must not be recoverable through dynamic lookup."""
     forbidden = {
