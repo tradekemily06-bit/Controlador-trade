@@ -154,7 +154,7 @@ class MT5DemoRiskStateProvider:
             if not isinstance(contract, (int, float)) or not math.isfinite(float(contract)) or contract <= 0:
                 return None
             total += abs(float(volume) * float(price) * float(contract))
-        return round(total, 12)
+        return round(total, 10)
 
     @staticmethod
     def _is_entry(deal: Any, mt5: Any) -> bool:
