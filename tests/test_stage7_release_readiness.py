@@ -29,8 +29,10 @@ _REQUIRED_GATES = (
 
 
 def _refs() -> tuple[ReadinessEvidenceRef, ...]:
+    # These are deliberately test-only placeholders. They are not production
+    # evidence and must never be copied into a real readiness assessment.
     return tuple(
-        ReadinessEvidenceRef(gate, f"evidence-{gate}", f"verified://{gate}")
+        ReadinessEvidenceRef(gate, f"test-evidence-{gate}", f"test://{gate}")
         for gate in _REQUIRED_GATES
     )
 
@@ -105,7 +107,7 @@ def test_false_gate_does_not_require_separate_evidence_reference():
 
 def test_evidence_reference_requires_identity_and_source():
     try:
-        ReadinessEvidenceRef("ci_green", "", "verified://ci")
+        ReadinessEvidenceRef("ci_green", "", "test://ci")
     except ValueError as exc:
         assert str(exc) == "evidence_id is required"
     else:
@@ -115,7 +117,7 @@ def test_evidence_reference_requires_identity_and_source():
 def test_unknown_evidence_gate_is_not_accepted():
     evidence = replace(
         _complete(),
-        evidence_refs=_refs() + (ReadinessEvidenceRef("unknown_gate", "id", "verified://unknown"),),
+        evidence_refs=_refs() + (ReadinessEvidenceRef("unknown_gate", "id", "test://unknown"),),
     )
     assessment = assess_final_readiness(evidence)
 
@@ -124,7 +126,7 @@ def test_unknown_evidence_gate_is_not_accepted():
 
 
 def test_duplicate_evidence_gate_is_not_accepted():
-    duplicate = ReadinessEvidenceRef("ci_green", "second-ci", "verified://ci-2")
+    duplicate = ReadinessEvidenceRef("ci_green", "second-ci", "test://ci-2")
     evidence = replace(_complete(), evidence_refs=_refs() + (duplicate,))
     assessment = assess_final_readiness(evidence)
 
