@@ -21,6 +21,14 @@ class KillSwitchState:
         if self.reason is not None and not isinstance(self.reason, str):
             raise KillSwitchValidationError("reason deve ser texto ou None.")
 
+    @property
+    def state(self) -> "KillSwitchState":
+        """Backward-compatible self-view for persisted state consumers."""
+        return self
+
+    def allows_execution(self) -> bool:
+        return not self.enabled
+
 
 class KillSwitch:
     """Safety gate independent from broker or execution adapter."""
@@ -54,12 +62,7 @@ class KillSwitch:
         return self._commit(KillSwitchState(enabled=False, reason=None))
 
     def synchronize(self, state: KillSwitchState) -> KillSwitchState:
-        """Adopt trusted persisted state without invoking persistence callbacks.
-
-        This is intentionally separate from activate/deactivate so a runtime
-        can refresh a cross-process safety decision without rewriting the
-        source of truth it just read.
-        """
+        """Adopt trusted persisted state without invoking persistence callbacks."""
         if not isinstance(state, KillSwitchState):
             raise KillSwitchValidationError("state deve ser KillSwitchState.")
         self._state = state

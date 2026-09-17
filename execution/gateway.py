@@ -188,20 +188,18 @@ class ExecutionGateway:
         return replace(request, risk_state_fingerprint=snapshot.risk_state_identity)
 
     def _dispatch_with_authoritative_barriers(
-        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None
+        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
         lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
         with lock:
-            final_safety_error = self._final_safety_barrier(
-                now=datetime.now(timezone.utc), snapshot=snapshot
-            )
+            final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
             if final_safety_error is not None:
                 return None, final_safety_error
             try:
                 effective_request = self._request_for_dispatch(request, snapshot)
-            except ValueError as exc:
-                return None, str(exc)
+            except ValueError:
+                return None, "requisição incompatível com o snapshot; dispatch bloqueado."
             return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
@@ -227,7 +225,9 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
         event_time = timestamp or datetime.now(timezone.utc)
-        if self._maintenance is not None and self._maintenance.execution_blocked(now=event_time):
+        # Caller timestamps are audit/event time, never authority over the live maintenance window.
+        operational_now = datetime.now(timezone.utc)
+        if self._maintenance is not None and self._maintenance.execution_blocked(now=operational_now):
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada durante manutenção ativa do ecossistema.")
         if self._incident_manager is not None and self._incident_manager.execution_blocked():
             return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada por incidente técnico ativo.")
@@ -266,7 +266,7 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
         try:
-            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
+            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, now=operational_now)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:
@@ -276,7 +276,7 @@ class ExecutionGateway:
                     pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
         if barrier_error is not None:
-            self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
+            self._mark_pre_dispatch_block(request_id, event_time, barrier_error)
             return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
@@ -294,7 +294,14 @@ class ExecutionGateway:
                     self._mark_unknown(request_id, event_time, "execução rejeitada, mas ledger não foi persistido")
                     return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução rejeitada, mas persistência falhou; estado UNKNOWN", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError):
+                    return GatewayResult(
+                        GatewayStatus.EXECUTOR_ERROR,
+                        "execução rejeitada, mas persistência do ciclo falhou; recuperação/reconciliação obrigatória",
+                        result,
+                    )
             self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
         if self._ledger is not None:
@@ -314,6 +321,26 @@ class ExecutionGateway:
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+
+    def _mark_pre_dispatch_block(self, request_id: str, timestamp: datetime, message: str) -> None:
+        """Persist a known pre-dispatch block; UNKNOWN is reserved for uncertain dispatch outcomes."""
+        if self._ledger is not None:
+            try:
+                current_status = self._ledger.status(request_id)
+                if current_status is ExecutionLedgerStatus.RESERVED:
+                    self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is None:
+            return
+        try:
+            current = self._lifecycle.get(request_id)
+            if current is None:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+            elif current.state is ExecutionLifecycleState.PENDING:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+        except (OSError, ValueError):
+            pass
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         if self._ledger is not None:

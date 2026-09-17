@@ -47,6 +47,7 @@ class RuntimeCheckpointStore:
             with temporary.open("rb") as handle:
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
+            self._fsync_directory()
 
     def load(self) -> RuntimeCheckpoint | None:
         with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
@@ -66,6 +67,13 @@ class RuntimeCheckpointStore:
                 return checkpoint
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                 raise ValueError("checkpoint de runtime inválido.") from exc
+
+    def _fsync_directory(self) -> None:
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     @staticmethod
     def _validate(checkpoint: RuntimeCheckpoint) -> None:

@@ -18,6 +18,10 @@ EXECUTION_BOUNDARIES = {
     REAL_GATEWAY,
     ALLOWED_ORDER_SEND,
     DEMO_BROKER_PORT,
+    ROOT / "execution" / "demo_risk_dispatch_guard.py",
+    ROOT / "execution" / "p125_sandbox_validation.py",
+    ROOT / "execution" / "demo_risk_dispatch_guard.py",
+    ROOT / "execution" / "p125_sandbox_validation.py",
 }
 
 

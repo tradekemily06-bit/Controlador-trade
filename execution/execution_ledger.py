@@ -125,6 +125,11 @@ class ExecutionLedger:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     def _mutate_locked(self, mutation) -> None:
         with self._process_lock():
@@ -216,23 +221,20 @@ class ExecutionLedger:
 
     def reconcile(self, request_id: str, *, executed: bool, evidence_id: str | None = None, evidence_source: str | None = None) -> None:
         self._validate_id(request_id)
-        if (evidence_id is None) != (evidence_source is None):
-            raise ValueError("evidence_id e evidence_source devem ser fornecidos juntos")
-        if evidence_id is not None:
-            if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
-                raise ValueError("evidência externa inválida")
-        normalized_evidence_id = evidence_id.strip() if isinstance(evidence_id, str) else None
-        normalized_evidence_source = evidence_source.strip() if isinstance(evidence_source, str) else None
+        if evidence_id is None or evidence_source is None:
+            raise ValueError("reconciliação exige evidence_id e evidence_source autoritativos")
+        if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("evidência externa inválida")
+        normalized_evidence_id = evidence_id.strip()
+        normalized_evidence_source = evidence_source.strip()
         def mutation() -> None:
             if self._states.get(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
-            if normalized_evidence_id is not None:
-                for other_request_id, other_evidence in self._reconciliation_evidence.items():
-                    if other_request_id != request_id and other_evidence.get("evidence_id") == normalized_evidence_id:
-                        raise ValueError("evidence_id já está vinculado a outra operação.")
+            for other_request_id, other_evidence in self._reconciliation_evidence.items():
+                if other_request_id != request_id and other_evidence.get("evidence_id") == normalized_evidence_id:
+                    raise ValueError("evidence_id já está vinculado a outra operação.")
             self._states[request_id] = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            if normalized_evidence_id is not None and normalized_evidence_source is not None:
-                self._reconciliation_evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": normalized_evidence_source}
+            self._reconciliation_evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": normalized_evidence_source}
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:

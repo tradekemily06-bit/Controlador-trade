@@ -6,6 +6,7 @@ from core.operational_state import OperationalState
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
 from core.p117_real_admission import RealAdmissionBoundary
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.risk_state_fingerprint import risk_state_identity
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
@@ -74,7 +75,8 @@ def _authorized_context(request_id="req-1", symbol="TEST", broker_id="fake", ada
 
 def _gateway(registry, ledger, provider, safety):
     return RealExecutionGateway(
-        BrokerAdapterGateway(registry), ledger, provider, SafetyProvider(safety)
+        BrokerAdapterGateway(registry), ledger, provider, SafetyProvider(safety),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 
@@ -195,7 +197,7 @@ def test_safety_provider_failure_is_unknown_without_leaking_detail(tmp_path: Pat
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, admission, safety = _authorized_context()
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider, BrokenSafetyProvider())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider, BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
     request = _request(risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(
         broker="fake", request_id="req-1", request=request,

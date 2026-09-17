@@ -86,6 +86,30 @@ def test_lifecycle_terminal_state_diverging_from_ledger_requires_reconciliation(
     assert result.can_resume is False
 
 
+def test_terminal_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-ledger-only")
+    coordinator.execution_ledger.mark_accepted("req-ledger-only")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_reconciled_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reconciled-only")
+    coordinator.execution_ledger.mark_unknown("req-reconciled-only")
+    coordinator.execution_ledger.reconcile(
+        "req-reconciled-only",
+        executed=False,
+        evidence_id="evidence-1",
+        evidence_source="demo-broker",
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
 def test_pending_requires_verification(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)

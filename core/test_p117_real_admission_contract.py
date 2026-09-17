@@ -12,6 +12,9 @@ def test_real_admission_accepts_only_strict_boolean_prerequisites():
         safety_ready=True,
         broker_available=True,
         broker_id="broker",
+        adapter_id="adapter",
+        request_id="req",
+        symbol="TEST",
     )
     assert admission.status is RealAdmissionStatus.ADMITTED
 
@@ -46,5 +49,5 @@ def test_real_admission_rejects_non_string_identity_fields():
             authorization_active=True,
             safety_ready=True,
             broker_available=True,
-            broker_id="broker",
+            broker_id="broker", adapter_id="adapter", request_id="req", symbol="TEST",
         )

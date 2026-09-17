@@ -54,6 +54,8 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
+                if record.request_id in loaded:
+                    raise ValueError("request_id duplicado no ciclo de execução persistido.")
                 loaded[record.request_id] = record
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
@@ -70,13 +72,33 @@ class ExecutionLifecycleStore:
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
+    @staticmethod
+    def _allowed_transition(previous: ExecutionLifecycleState, current: ExecutionLifecycleState) -> bool:
+        """Allow only monotonic lifecycle progress; reconciliation is the only exit from UNKNOWN."""
+        allowed = {
+            ExecutionLifecycleState.PENDING: {
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.ACCEPTED,
+                ExecutionLifecycleState.REJECTED,
+                ExecutionLifecycleState.UNKNOWN,
+            },
+            ExecutionLifecycleState.ACCEPTED: {ExecutionLifecycleState.ACCEPTED},
+            ExecutionLifecycleState.REJECTED: {ExecutionLifecycleState.REJECTED},
+            ExecutionLifecycleState.UNKNOWN: {ExecutionLifecycleState.UNKNOWN},
+        }
+        return current in allowed[previous]
+
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
         with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
             self._load()
             previous = self._records.get(record.request_id)
-            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            if previous is not None and not self._allowed_transition(previous.state, record.state):
+                if previous.state is ExecutionLifecycleState.UNKNOWN:
+                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                raise ValueError(
+                    f"transição de ciclo inválida de {previous.state.value} para {record.state.value}."
+                )
             candidate = dict(self._records)
             candidate[record.request_id] = record
             self._save(candidate)
@@ -100,6 +122,9 @@ class ExecutionLifecycleStore:
             self._load()
             if self._records.get(request_id) is None:
                 raise ValueError("execução não encontrada.")
+            previous = self._records[request_id]
+            if previous.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("reconciliação explícita exige estado UNKNOWN.")
             candidate = dict(self._records)
             candidate[request_id] = record
             self._save(candidate)
@@ -125,3 +150,8 @@ class ExecutionLifecycleStore:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)

@@ -96,15 +96,18 @@ class EcosystemPreferencesStore:
     def _decode(payload: dict[str, Any]) -> EcosystemPreferences:
         candle = payload.get("candle", {})
         notifications = payload.get("notifications", {})
+        chart_theme = payload.get("chart_theme", ChartTheme.DARK.value)
+        candle_style = candle.get("style", CandleStyle.CANDLESTICK.value)
+        candle_color_mode = candle.get("color_mode", CandleColorMode.DEFAULT.value)
         return EcosystemPreferences(
             default_symbol=str(payload.get("default_symbol", "EURUSD")),
             default_timeframe=str(payload.get("default_timeframe", "5m")),
             require_closed_candle=bool(payload.get("require_closed_candle", True)),
             require_filters=bool(payload.get("require_filters", True)),
-            chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
+            chart_theme=ChartTheme(chart_theme.value if isinstance(chart_theme, ChartTheme) else str(chart_theme)),
             candle=CandleAppearance(
-                style=CandleStyle(str(candle.get("style", CandleStyle.CANDLESTICK.value))),
-                color_mode=CandleColorMode(str(candle.get("color_mode", CandleColorMode.DEFAULT.value))),
+                style=CandleStyle(candle_style.value if isinstance(candle_style, CandleStyle) else str(candle_style)),
+                color_mode=CandleColorMode(candle_color_mode.value if isinstance(candle_color_mode, CandleColorMode) else str(candle_color_mode)),
                 bullish_color=str(candle.get("bullish_color", "#58d68d")),
                 bearish_color=str(candle.get("bearish_color", "#ff7676")),
                 wick_color=str(candle.get("wick_color", "#aab5c8")),

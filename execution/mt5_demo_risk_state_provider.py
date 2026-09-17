@@ -34,13 +34,7 @@ class MT5DemoRiskStateProvider:
     as a processed bar would create a false authority claim in the risk identity.
     """
 
-    def __init__(
-        self,
-        config: MT5DemoRiskStateConfig | None = None,
-        *,
-        mt5_module: Any = None,
-        now: Callable[[], datetime] | None = None,
-    ) -> None:
+    def __init__(self, config: MT5DemoRiskStateConfig | None = None, *, mt5_module: Any = None, now: Callable[[], datetime] | None = None) -> None:
         self.config = config or MT5DemoRiskStateConfig()
         self._mt5 = mt5_module
         self._now = now or (lambda: datetime.now(timezone.utc))
@@ -62,21 +56,17 @@ class MT5DemoRiskStateProvider:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5RiskStateProviderError("conta MT5 não confirmada como DEMO")
-
             positions = mt5.positions_get()
             if positions is None:
                 raise MT5RiskStateProviderError("posições MT5 indisponíveis")
-
             now = self._utc_now()
             start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
             deals = mt5.history_deals_get(start, now)
             if deals is None:
                 raise MT5RiskStateProviderError("histórico de transações MT5 indisponível")
-
             balance = self._number(account, "balance")
             equity = self._number(account, "equity")
             unrealized = self._number(account, "profit")
-
             scoped_positions = self._scope_positions(positions)
             return OperationalState(
                 balance=balance,
@@ -94,9 +84,7 @@ class MT5DemoRiskStateProvider:
         except MT5RiskStateProviderError:
             raise
         except Exception as exc:
-            raise MT5RiskStateProviderError(
-                f"falha ao ler estado de risco MT5: {type(exc).__name__}"
-            ) from exc
+            raise MT5RiskStateProviderError(f"falha ao ler estado de risco MT5: {type(exc).__name__}") from exc
         finally:
             try:
                 mt5.shutdown()
@@ -166,24 +154,17 @@ class MT5DemoRiskStateProvider:
             if not isinstance(contract, (int, float)) or not math.isfinite(float(contract)) or contract <= 0:
                 return None
             total += abs(float(volume) * float(price) * float(contract))
-        return total
+        return round(total, 10)
 
     @staticmethod
     def _is_entry(deal: Any, mt5: Any) -> bool:
         entry = getattr(deal, "entry", None)
-        return entry in {
-            getattr(mt5, "DEAL_ENTRY_IN", 0),
-            getattr(mt5, "DEAL_ENTRY_INOUT", 2),
-        }
+        return entry in {getattr(mt5, "DEAL_ENTRY_IN", 0), getattr(mt5, "DEAL_ENTRY_INOUT", 2)}
 
     @staticmethod
     def _is_exit(deal: Any, mt5: Any) -> bool:
         entry = getattr(deal, "entry", None)
-        return entry in {
-            getattr(mt5, "DEAL_ENTRY_OUT", 1),
-            getattr(mt5, "DEAL_ENTRY_OUT_BY", 3),
-            getattr(mt5, "DEAL_ENTRY_INOUT", 2),
-        }
+        return entry in {getattr(mt5, "DEAL_ENTRY_OUT", 1), getattr(mt5, "DEAL_ENTRY_OUT_BY", 3), getattr(mt5, "DEAL_ENTRY_INOUT", 2)}
 
     @staticmethod
     def _deal_net(deal: Any) -> float | None:
@@ -199,7 +180,6 @@ class MT5DemoRiskStateProvider:
 
     @staticmethod
     def _deal_position_id(deal: Any) -> int | None:
-        """Return MT5's logical position identity; missing identity is UNKNOWN."""
         value = getattr(deal, "position_id", None)
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             return None
@@ -211,27 +191,10 @@ class MT5DemoRiskStateProvider:
 
     @classmethod
     def _consecutive_losses(cls, deals: Any, mt5: Any) -> int | None:
-        """Count consecutive losing position segments, not individual exit deals.
-
-        Partial OUT/OUT_BY deals belonging to one position segment are aggregated.
-        DEAL_ENTRY_INOUT is a reversal: its P/L closes the current segment and a
-        new segment begins immediately afterward. This matters because MT5 can
-        expose a position's reversal history under position-related identifiers;
-        grouping every exit for a position into one bucket could merge distinct
-        logical trade segments and understate the loss streak.
-        """
-        ordered_deals = sorted(
-            enumerate(deals),
-            key=lambda item: (
-                getattr(item[1], "time_msc", 0),
-                getattr(item[1], "time", 0),
-                item[0],
-            ),
-        )
+        ordered_deals = sorted(enumerate(deals), key=lambda item: (getattr(item[1], "time_msc", 0), getattr(item[1], "time", 0), item[0]))
         segment_net: dict[tuple[int, int], float] = {}
         segment_order: list[tuple[int, int]] = []
         active_segment: dict[int, int] = {}
-
         for _, deal in ordered_deals:
             if not cls._is_exit(deal, mt5):
                 continue
@@ -249,7 +212,6 @@ class MT5DemoRiskStateProvider:
             segment_net[key] += net
             if getattr(deal, "entry", None) == getattr(mt5, "DEAL_ENTRY_INOUT", 2):
                 active_segment[position_id] = segment + 1
-
         streak = 0
         for key in reversed(segment_order):
             result = segment_net[key]
@@ -284,10 +246,4 @@ class MT5DemoRiskStateProvider:
         return True
 
     def _last_candle(self, mt5: Any) -> datetime | None:
-        """Never equate an available MT5 bar with a strategy-processed bar.
-
-        The authoritative processed-candle marker must come from the strategy
-        runtime itself. Until that source is connected, UNKNOWN is safer than
-        fabricating processing state from market-data availability.
-        """
         return None

@@ -92,6 +92,22 @@ class RecoveryCoordinator:
             ):
                 inconsistent.append(record.request_id)
 
+        # The inverse direction matters too: a terminal ledger entry without
+        # a lifecycle record means the two durable sources no longer describe
+        # the same execution history. Resume is therefore unsafe until the
+        # discrepancy is explicitly investigated/reconciled.
+        terminal_ledger_states = {
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.REJECTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        }
+        for request_id, ledger_status in ledger_states.items():
+            if ledger_status in terminal_ledger_states and request_id not in lifecycle_by_id:
+                inconsistent.append(request_id)
+
+        inconsistent = sorted(set(inconsistent))
+
         checkpoint_orphan = None
         if checkpoint is not None and checkpoint.last_request_id:
             request_id = checkpoint.last_request_id

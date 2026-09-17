@@ -20,6 +20,14 @@ class ICMarketsMT5DemoConfig:
     deviation: int = 20
     magic: int = 2609001
 
+    def __post_init__(self) -> None:
+        if self.symbol is not None and (not isinstance(self.symbol, str) or not self.symbol.strip()):
+            raise ValueError("symbol inválido")
+        if isinstance(self.deviation, bool) or not isinstance(self.deviation, int) or self.deviation < 0:
+            raise ValueError("deviation inválido")
+        if isinstance(self.magic, bool) or not isinstance(self.magic, int) or self.magic < 0:
+            raise ValueError("magic inválido")
+
 
 class ICMarketsMT5DemoAdapter:
     """IC Markets MT5 DEMO boundary."""
@@ -124,20 +132,36 @@ class ICMarketsMT5DemoAdapter:
             }
             check = mt5.order_check(payload)
             if check is None or getattr(check, "retcode", 0) != 0:
-                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
-            result = mt5.order_send(payload)
+                return ExecutionResult(False, "order_check bloqueou a ordem.")
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                raise MT5AdapterError("MT5 order_send terminou sem confirmação determinística") from exc
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                raise MT5AdapterError("MT5 order_send sem confirmação determinística")
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
+            ambiguous_codes = {
+                getattr(mt5, "TRADE_RETCODE_PLACED", 10008),
+                getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010),
+                getattr(mt5, "TRADE_RETCODE_TIMEOUT", 10012),
+            }
+            if retcode in ambiguous_codes:
+                raise MT5AdapterError(f"MT5 order_send retornou estado potencialmente executado sem confirmação terminal: retcode={retcode}")
             if success_code is None or retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
-                return ExecutionResult(False, "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.")
+                raise MT5AdapterError("MT5 aceitou a ordem, mas não forneceu identificador externo")
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
         finally:
-            mt5.shutdown()
+            try:
+                mt5.shutdown()
+            except Exception:
+                # A transport cleanup failure must never turn a broker-confirmed
+                # result into a false rejection. Any execution uncertainty is
+                # already handled at the order_send boundary above.
+                pass
 
     @staticmethod
     def _last_error(mt5: Any) -> str:

@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -85,10 +87,7 @@ def test_demo_buy_is_sent_after_order_check():
 
 def test_real_request_is_blocked_before_mt5_call():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(
-        request(mode=ExecutionMode.REAL)
-    )
-
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(mode=ExecutionMode.REAL))
     assert result.accepted is False
     assert fake.sent == []
 
@@ -96,7 +95,6 @@ def test_real_request_is_blocked_before_mt5_call():
 def test_non_demo_account_is_blocked():
     fake = FakeMT5(demo=False)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert fake.sent == []
 
@@ -104,7 +102,6 @@ def test_non_demo_account_is_blocked():
 def test_aguardar_is_blocked():
     fake = FakeMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(Signal.AGUARDAR))
-
     assert result.accepted is False
     assert fake.sent == []
 
@@ -112,7 +109,6 @@ def test_aguardar_is_blocked():
 def test_order_check_blocks_send():
     fake = FakeMT5(order_ok=False)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert fake.sent == []
 
@@ -120,7 +116,6 @@ def test_order_check_blocks_send():
 def test_volume_below_symbol_minimum_is_blocked():
     fake = FakeMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.001))
-
     assert result.accepted is False
     assert fake.sent == []
 
@@ -128,7 +123,6 @@ def test_volume_below_symbol_minimum_is_blocked():
 def test_volume_not_aligned_to_symbol_step_is_blocked():
     fake = FakeMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=0.015))
-
     assert result.accepted is False
     assert fake.sent == []
 
@@ -137,29 +131,21 @@ def test_invalid_price_is_blocked():
     fake = FakeMT5()
     fake.symbol_info_tick = lambda symbol: SimpleNamespace(ask=0.0, bid=1.1000)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert fake.sent == []
 
 
-def test_missing_external_id_is_not_confirmed():
+def test_missing_external_id_is_ambiguous_not_confirmed():
     fake = FakeMT5(external_id=False)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
-    assert result.accepted is False
-    assert result.external_id is None
+    with pytest.raises(MT5AdapterError):
+        ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
     assert len(fake.sent) == 1
 
 
 def test_configured_symbol_mismatch_is_blocked_before_mt5():
     fake = FakeMT5()
-    adapter = ICMarketsMT5DemoAdapter(
-        config=adapter_config("GBPUSD"),
-        mt5_module=fake,
-    )
-
+    adapter = ICMarketsMT5DemoAdapter(config=adapter_config("GBPUSD"), mt5_module=fake)
     result = adapter.execute(request(symbol="EURUSD"))
-
     assert result.accepted is False
     assert fake.sent == []
     assert fake.selected == []
@@ -168,7 +154,6 @@ def test_configured_symbol_mismatch_is_blocked_before_mt5():
 def test_send_rejection_is_not_accepted():
     fake = FakeMT5(send_ok=False)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert result.external_id is None
     assert len(fake.sent) == 1
@@ -177,7 +162,6 @@ def test_send_rejection_is_not_accepted():
 def test_initialize_failure_blocks_before_account_access():
     fake = FakeMT5(initialize_ok=False)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert fake.sent == []
     assert fake.shutdown_calls == 0
@@ -187,7 +171,6 @@ def test_missing_tick_blocks_order_send():
     fake = FakeMT5()
     fake.symbol_info_tick = lambda symbol: None
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-
     assert result.accepted is False
     assert fake.sent == []
     assert fake.shutdown_calls == 1
@@ -200,5 +183,4 @@ def test_demo_availability_requires_demo_account():
 
 def adapter_config(symbol):
     from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
-
     return ICMarketsMT5DemoConfig(symbol=symbol)

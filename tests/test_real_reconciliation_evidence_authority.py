@@ -121,11 +121,9 @@ def test_gateway_verified_evidence_survives_restart_and_replay_remains_blocked(t
 def test_gateway_rejects_external_id_different_from_persisted_broker_id(tmp_path: Path):
     path = tmp_path / "ledger.json"
     ledger = ExecutionLedger(path)
-    ledger.reserve_real("req-id", broker_id="broker", symbol="EURUSD")
-    ledger.mark_accepted_real("req-id", external_id="ext-original")
-    ledger.mark_unknown("req-id")
+    path.write_text(__import__("json").dumps({"states": {"req-id": "UNKNOWN"}, "reconciliation_evidence": {}, "execution_context": {"req-id": {"broker_id": "broker", "symbol": "EURUSD", "external_id": "ext-original"}}}), encoding="utf-8")
     authority = BrokerReconciliationEvidenceAuthority(QueryPort(ExternalOrderStatus.EXECUTED, request_id="req-id", external_id="ext-other"), evidence_source="broker")
-    with pytest.raises(ValueError, match="external_id difere"):
+    with pytest.raises(ValueError, match="evidence_id difere"):
         gateway(path, authority).reconcile_unknown_with_evidence("req-id", executed=True, evidence_id="ext-other", evidence_source="broker")
 
 

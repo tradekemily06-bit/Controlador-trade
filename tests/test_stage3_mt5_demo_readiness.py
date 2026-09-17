@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -94,6 +96,6 @@ def test_stage3_mt5_order_check_precedes_send():
 def test_stage3_mt5_confirmed_demo_execution_requires_external_id():
     mt5 = FakeMT5(external_id=None)
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
-    result = adapter.execute(_request())
-    assert not result.accepted
+    with pytest.raises(MT5AdapterError, match="identificador externo"):
+        adapter.execute(_request())
     assert mt5.order_sends == 1
