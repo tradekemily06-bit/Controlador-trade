@@ -6,14 +6,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# These are the only production surfaces where a low-level execution call is
-# intentionally allowed. Tests and sandbox simulators are excluded from this
-# structural guard because they exercise adapters directly by design.
+# These are the production surfaces where low-level execution calls are
+# intentionally allowed because they are themselves audited execution
+# boundaries. Each exception must remain covered by dedicated tests and must
+# not expose a public broker/adapter capability.
 _ALLOWED = {
     Path("execution/adapter_gateway.py"),
     Path("execution/gateway.py"),
     Path("execution/real_gateway.py"),
     Path("execution/p125_sandbox_validation.py"),
+    Path("execution/demo_broker_port.py"),
+    Path("execution/demo_risk_dispatch_guard.py"),
 }
 _LOW_LEVEL_RECEIVER_HINTS = ("adapter", "broker", "executor")
 
