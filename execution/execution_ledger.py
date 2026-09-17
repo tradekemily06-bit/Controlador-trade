@@ -71,6 +71,8 @@ class ExecutionLedger:
         for request_id, raw_status in states_payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
+            if request_id in states:
+                raise ValueError("ledger de execução inválido: request_id duplicado.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
             except ValueError as exc:
@@ -116,12 +118,11 @@ class ExecutionLedger:
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        payload: dict[str, Any] = {
+        temporary.write_text(json.dumps({
             "states": {key: self._states[key].value for key in sorted(self._states)},
             "reconciliation_evidence": {key: self._reconciliation_evidence[key] for key in sorted(self._reconciliation_evidence)},
             "execution_context": {key: self._execution_context[key] for key in sorted(self._execution_context)},
-        }
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
@@ -216,23 +217,18 @@ class ExecutionLedger:
 
     def reconcile(self, request_id: str, *, executed: bool, evidence_id: str | None = None, evidence_source: str | None = None) -> None:
         self._validate_id(request_id)
-        if (evidence_id is None) != (evidence_source is None):
-            raise ValueError("evidence_id e evidence_source devem ser fornecidos juntos")
-        if evidence_id is not None:
-            if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
-                raise ValueError("evidência externa inválida")
-        normalized_evidence_id = evidence_id.strip() if isinstance(evidence_id, str) else None
-        normalized_evidence_source = evidence_source.strip() if isinstance(evidence_source, str) else None
+        if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
+            raise ValueError("reconciliação exige evidence_id e evidence_source válidos")
+        normalized_evidence_id = evidence_id.strip()
+        normalized_evidence_source = evidence_source.strip()
         def mutation() -> None:
             if self._states.get(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
-            if normalized_evidence_id is not None:
-                for other_request_id, other_evidence in self._reconciliation_evidence.items():
-                    if other_request_id != request_id and other_evidence.get("evidence_id") == normalized_evidence_id:
-                        raise ValueError("evidence_id já está vinculado a outra operação.")
+            for other_request_id, other_evidence in self._reconciliation_evidence.items():
+                if other_request_id != request_id and other_evidence.get("evidence_id") == normalized_evidence_id:
+                    raise ValueError("evidence_id já está vinculado a outra operação.")
             self._states[request_id] = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            if normalized_evidence_id is not None and normalized_evidence_source is not None:
-                self._reconciliation_evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": normalized_evidence_source}
+            self._reconciliation_evidence[request_id] = {"evidence_id": normalized_evidence_id, "evidence_source": normalized_evidence_source}
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
