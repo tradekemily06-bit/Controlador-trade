@@ -120,6 +120,16 @@ class EcosystemPreferencesStore:
             real_execution_enabled=bool(payload.get("real_execution_enabled", False)),
         )
 
+    @staticmethod
+    def _encode(value: Any) -> Any:
+        if isinstance(value, Enum):
+            return value.value
+        if isinstance(value, dict):
+            return {key: EcosystemPreferencesStore._encode(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [EcosystemPreferencesStore._encode(item) for item in value]
+        return value
+
     def _current(self) -> EcosystemPreferences:
         scope = self._require_scope_for_durable_state()
         if scope is None:
@@ -161,7 +171,7 @@ class EcosystemPreferencesStore:
         else:
             self._scoped[scope] = value
             if self._state_store is not None:
-                self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=asdict(value))
+                self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=self._encode(asdict(value)))
         return value
 
     def update(self, **changes) -> EcosystemPreferences:

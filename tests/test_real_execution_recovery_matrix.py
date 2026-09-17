@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import multiprocessing
 from pathlib import Path
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
+from core.test_p111_p119_real_release import _authorization as _trusted_authorization, _admission as _trusted_admission
 from core.models import Signal
 from core.operational_state import OperationalState
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
 from core.p117_real_admission import RealAdmissionBoundary
 from core.risk_state_fingerprint import risk_state_identity
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from core.real_reconciliation_authority import BrokerReconciliationEvidenceAuthority
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -54,9 +60,20 @@ class CrashBeforeMarkAcceptedLedger(ExecutionLedger):
     def mark_accepted(self, request_id: str) -> None:
         raise OSError("simulated process death before mark_accepted")
 
+    def mark_accepted_real(self, request_id: str, *, external_id: str) -> None:
+        raise OSError("simulated process death before mark_accepted_real")
+
 
 def _state() -> OperationalState:
     return RiskProvider().current_risk_state()
+
+
+def _safety() -> RealSafetyReport:
+    return RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True,
+        risk_approved=True, broker_available=True,
+    )
 
 
 def _snapshot() -> DecisionSnapshot:
@@ -68,46 +85,37 @@ def _snapshot() -> DecisionSnapshot:
         market_direction=None, market_score=None, operational_state_available=True,
         trades_today=state.trades_today, consecutive_losses=state.consecutive_losses,
         symbol="TEST", timeframe="5m", risk_state_identity=risk_state_identity(state),
+        created_at=datetime.now(timezone.utc),
     )
 
 
-def _authorization() -> RealExecutionAuthorization:
-    return RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", True, True)
+def _authorization(request_id="req-1"):
+    return _trusted_authorization(request_id)
 
 
-def _admission():
-    return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True, broker_available=True,
-        broker_id="fake",
-    )
-
-
-def _safety() -> RealSafetyReport:
-    return RealSafetyGate().evaluate(
-        authorization_active=True, kill_switch_clear=True,
-        market_healthy=True, recovery_safe=True,
-        risk_approved=True, broker_available=True,
-    )
+def _admission(request_id="req-1", auth=None):
+    return _trusted_admission(request_id, auth=auth)
 
 
 def _request(request_id: str) -> ExecutionRequest:
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id)
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id, risk_state_fingerprint=risk_state_identity(RiskProvider().current_risk_state()))
 
 
-def _gateway(path: Path, calls) -> RealExecutionGateway:
+def _gateway(path: Path, calls, authority=None) -> RealExecutionGateway:
     registry = BrokerRegistry()
-    registry.register("fake", CountingAdapter(calls))
+    registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(path),
         RiskProvider(), SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        reconciliation_evidence_verifier=authority,
     )
 
 
 def _dispatch(path: str, request_id: str, calls, queue) -> None:
     result = _gateway(Path(path), calls).execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(), admission=_admission(),
+        authorization=_authorization(request_id), admission=_admission(request_id),
         safety=_safety(), snapshot=_snapshot(),
     )
     queue.put(result.status)
@@ -115,13 +123,17 @@ def _dispatch(path: str, request_id: str, calls, queue) -> None:
 
 def _reconcile(path: str, request_id: str, queue) -> None:
     calls = multiprocessing.Value("i", 0)
-    _gateway(Path(path), calls).reconcile_unknown(request_id, executed=False)
+    class Query:
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, "not executed", request_id=request_id, evidence_source="broker", broker_id="fake", symbol="TEST")
+    authority = BrokerReconciliationEvidenceAuthority(Query(), evidence_source="broker")
+    _gateway(Path(path), calls, authority=authority).reconcile_unknown_with_evidence(request_id, executed=False, evidence_id="ext-" + request_id, evidence_source="broker")
     queue.put("RECONCILED")
 
 
 def test_reserved_dispatch_and_reconciliation_race_never_sends(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    ExecutionLedger(path).reserve("reserved-race")
+    ExecutionLedger(path).reserve_real("reserved-race", broker_id="fake", symbol="TEST")
     calls = multiprocessing.Value("i", 0)
     queue = multiprocessing.Queue()
     ctx = multiprocessing.get_context("fork")
@@ -148,7 +160,7 @@ def test_accepted_request_remains_terminal_across_restart_and_cannot_send_again(
     first = _gateway(path, calls)
     first_result = first.execute(
         broker="fake", request_id="terminal-restart", request=_request("terminal-restart"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("terminal-restart"), admission=_admission("terminal-restart"), safety=_safety(), snapshot=_snapshot(),
     )
     assert first_result.status is RealGatewayStatus.ADMITTED
     assert calls.value == 1
@@ -157,7 +169,7 @@ def test_accepted_request_remains_terminal_across_restart_and_cannot_send_again(
     restored = _gateway(path, restored_calls)
     second_result = restored.execute(
         broker="fake", request_id="terminal-restart", request=_request("terminal-restart"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("terminal-restart"), admission=_admission("terminal-restart"), safety=_safety(), snapshot=_snapshot(),
     )
     assert second_result.status is RealGatewayStatus.BLOCKED
     assert restored_calls.value == 0
@@ -167,17 +179,21 @@ def test_accepted_request_remains_terminal_across_restart_and_cannot_send_again(
 def test_reconciled_executed_state_is_terminal_and_never_resubmits(tmp_path: Path):
     path = tmp_path / "ledger.json"
     ledger = ExecutionLedger(path)
-    ledger.reserve("reconciled-executed")
+    ledger.reserve_real("reconciled-executed", broker_id="fake", symbol="TEST")
     ledger.mark_unknown("reconciled-executed")
     calls = multiprocessing.Value("i", 0)
-    gateway = _gateway(path, calls)
-    gateway.reconcile_unknown("reconciled-executed", executed=True)
+    class Query:
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "executed", request_id="reconciled-executed", evidence_source="broker", broker_id="fake", symbol="TEST")
+    authority = BrokerReconciliationEvidenceAuthority(Query(), evidence_source="broker")
+    gateway = _gateway(path, calls, authority=authority)
+    gateway.reconcile_unknown_with_evidence("reconciled-executed", executed=True, evidence_id="ext-reconciled-executed", evidence_source="broker")
 
     restored_calls = multiprocessing.Value("i", 0)
     restored = _gateway(path, restored_calls)
     result = restored.execute(
         broker="fake", request_id="reconciled-executed", request=_request("reconciled-executed"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("reconciled-executed"), admission=_admission("reconciled-executed"), safety=_safety(), snapshot=_snapshot(),
     )
     assert result.status is RealGatewayStatus.BLOCKED
     assert restored_calls.value == 0
@@ -189,15 +205,17 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     path = tmp_path / "ledger.json"
     calls = multiprocessing.Value("i", 0)
     registry = BrokerRegistry()
-    registry.register("fake", CountingAdapter(calls))
+    registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     crashed = RealExecutionGateway(
         BrokerAdapterGateway(registry), CrashBeforeMarkAcceptedLedger(path),
         RiskProvider(), SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        reconciliation_evidence_verifier=None,
     )
 
     first = crashed.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("crash-window"), admission=_admission("crash-window"), safety=_safety(), snapshot=_snapshot(),
     )
 
     # External side effect happened exactly once, but local persistence never
@@ -212,13 +230,18 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     restored = _gateway(path, restored_calls)
     after_restart = restored.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("crash-window"), admission=_admission("crash-window"), safety=_safety(), snapshot=_snapshot(),
     )
     assert after_restart.status is RealGatewayStatus.UNKNOWN
     assert restored_calls.value == 0
 
     # Reconciliation confirms the external execution; it does not submit again.
-    restored.reconcile_unknown("crash-window", executed=True)
+    class Query:
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "executed", request_id="crash-window", evidence_source="broker", broker_id="fake", symbol="TEST")
+    authority = BrokerReconciliationEvidenceAuthority(Query(), evidence_source="broker")
+    restored = _gateway(path, restored_calls, authority=authority)
+    restored.reconcile_unknown_with_evidence("crash-window", executed=True, evidence_id="ext-crash-window", evidence_source="broker")
     assert ExecutionLedger(path).status("crash-window") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
     # A replay after reconciliation, including the exact same request_id, remains blocked.
@@ -226,7 +249,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     final_gateway = _gateway(path, final_calls)
     replay = final_gateway.execute(
         broker="fake", request_id="crash-window", request=_request("crash-window"),
-        authorization=_authorization(), admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        authorization=_authorization("crash-window"), admission=_admission("crash-window"), safety=_safety(), snapshot=_snapshot(),
     )
     assert replay.status is RealGatewayStatus.BLOCKED
     assert final_calls.value == 0

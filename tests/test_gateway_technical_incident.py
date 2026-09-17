@@ -14,13 +14,14 @@ class CountingExecutor:
         return ExecutionResult(True, "ok", external_id="demo-1")
 
 
-def _request():
+def _request(request_id="request-incident-1"):
     return ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 
@@ -53,8 +54,8 @@ def test_executor_failure_opens_incident_and_blocks_following_order():
     incidents = EcosystemIncidentManager()
     gateway = ExecutionGateway(executor, KillSwitch(), incident_manager=incidents)
 
-    first = gateway.execute("request-incident-2", _request())
-    second = gateway.execute("request-incident-3", _request())
+    first = gateway.execute("request-incident-2", _request("request-incident-2"))
+    second = gateway.execute("request-incident-3", _request("request-incident-3"))
 
     assert first.status is GatewayStatus.EXECUTOR_ERROR
     assert second.status is GatewayStatus.BLOCKED

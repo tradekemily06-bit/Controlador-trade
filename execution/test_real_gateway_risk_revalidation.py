@@ -4,11 +4,15 @@ from pathlib import Path
 import pytest
 
 from core.decision_snapshot import DecisionSnapshot
+from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from core.operational_state import OperationalState
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p111_pre_real_audit import PreRealAuditBoundary
 from core.p114_real_safety_gate import RealSafetyGate
-from core.p117_real_admission import RealAdmissionBoundary
+from core.p115_shadow_validation import ShadowValidationBoundary
+from core.p116_real_release_audit import RealReleaseAuditBoundary
+from core.real_privilege_issuer import RealPrivilegeIssuer
+from core.real_safety_provider import RealSafetyProvider
 from core.risk_state_fingerprint import risk_state_identity
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
@@ -37,6 +41,14 @@ class Provider:
         return self.state
 
 
+class SafetyProvider(RealSafetyProvider):
+    def current_real_safety(self):
+        return RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        )
+
+
 def state():
     return OperationalState(
         balance=1000.0, equity=1000.0, realized_pnl=0.0,
@@ -54,53 +66,73 @@ def snapshot(s):
         market_direction=None, market_score=None, operational_state_available=True,
         trades_today=s.trades_today, consecutive_losses=s.consecutive_losses,
         symbol="TEST", timeframe="5m", risk_state_identity=risk_state_identity(s),
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+def _release_audit():
+    p111 = PreRealAuditBoundary().audit(
+        audit_id="a111", p110_decision="VALIDATED", safety_verified=True,
+        risk_verified=True, gateway_present=True, broker_boundary_present=True,
+    )
+    shadow = ShadowValidationBoundary().validate(
+        validation_id="shadow", adapter_available=True, real_safety_ready=True,
+        duplicate_blocked=True, kill_switch_blocked=True, real_mode_rejected_by_shadow=True,
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+    return RealReleaseAuditBoundary().audit(
+        audit_id="a116", pre_real_verified=p111.verified,
+        shadow_passed=shadow.passed, safety_ready=safety.ready,
+        broker_boundary_ready=True, explicit_real_contract=True,
+    )
+
+
+def _authorization(request_id):
+    registry = BrokerRegistry()
+    registry.register("fake", Adapter(), adapter_id="fake-adapter")
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id)
+    return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_authorization(
+        authorization_id=f"auth-{request_id}", release_audit=_release_audit(), broker="fake",
+        request=request, explicit_real_enablement=True,
+    )
+
+
+def _admission(auth):
+    registry = BrokerRegistry()
+    registry.register("fake", Adapter(), adapter_id="fake-adapter")
+    return RealPrivilegeIssuer(BrokerAdapterGateway(registry)).issue_admission(
+        admission_id=f"adm-{auth.request_id}", authorization=auth, release_audit=_release_audit(),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ), broker_available=True,
     )
 
 
 def gateway(tmp_path: Path, provider: Provider, adapter: Adapter):
     registry = BrokerRegistry()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     return RealExecutionGateway(
-        BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), provider
+        BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"),
+        provider, SafetyProvider(),
+        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
     )
 
 
-def authorization():
-    return RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
-
-
-def admission(auth):
-    return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=auth.active, safety_ready=True,
-        broker_available=True, broker_id="fake",
-    )
-
-
-def safety(auth):
-    return RealSafetyGate().evaluate(
-        authorization_active=auth.active, kill_switch_clear=True,
-        market_healthy=True, recovery_safe=True, risk_approved=True,
-        broker_available=True,
-    )
-
-
-def request():
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def request(request_id):
+    current = state()
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id, risk_state_fingerprint=risk_state_identity(current))
 
 
 @pytest.mark.parametrize(
     "field, value",
     [
-        ("balance", 999.0),
-        ("equity", 999.0),
-        ("realized_pnl", -1.0),
-        ("unrealized_pnl", 1.0),
-        ("trades_today", 1),
-        ("consecutive_losses", 1),
-        ("open_positions", 1),
-        ("net_position", 1.0),
-        ("exposure", 100.0),
+        ("balance", 999.0), ("equity", 999.0), ("realized_pnl", -1.0),
+        ("unrealized_pnl", 1.0), ("trades_today", 1), ("consecutive_losses", 1),
+        ("open_positions", 1), ("net_position", 1.0), ("exposure", 100.0),
         ("market_open", False),
         ("last_processed_candle", datetime(2026, 9, 15, 0, 1, tzinfo=timezone.utc)),
     ],
@@ -113,48 +145,50 @@ def test_real_blocks_every_changed_risk_field(tmp_path: Path, field, value):
     changed_values = {name: getattr(original, name) for name in original.__dataclass_fields__}
     changed_values[field] = value
     provider.state = OperationalState(**changed_values)
-    auth = authorization()
-
+    request_id = f"risk-{field}"
+    auth = _authorization(request_id)
+    req = request(request_id)
     result = gateway_instance.execute(
-        broker="fake", request_id=f"risk-{field}", request=request(),
-        authorization=auth, admission=admission(auth), safety=safety(auth),
-        snapshot=snapshot(original),
+        broker="fake", request_id=request_id, request=req,
+        authorization=auth, admission=_admission(auth),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ), snapshot=snapshot(original),
     )
-
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
 
 
 def test_real_allows_unchanged_authoritative_risk_state(tmp_path: Path):
-    original = state()
-    provider = Provider(original)
-    adapter = Adapter()
+    original = state(); provider = Provider(original); adapter = Adapter()
     gateway_instance = gateway(tmp_path, provider, adapter)
-    auth = authorization()
+    auth = _authorization("risk-unchanged"); req = request("risk-unchanged")
     result = gateway_instance.execute(
-        broker="fake", request_id="risk-unchanged", request=request(),
-        authorization=auth, admission=admission(auth), safety=safety(auth),
-        snapshot=snapshot(original),
+        broker="fake", request_id=req.request_id, request=req,
+        authorization=auth, admission=_admission(auth),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ), snapshot=snapshot(original),
     )
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
 
 
 def test_real_blocks_missing_decision_risk_identity(tmp_path: Path):
-    original = state()
-    provider = Provider(original)
-    adapter = Adapter()
+    original = state(); provider = Provider(original); adapter = Adapter()
     gateway_instance = gateway(tmp_path, provider, adapter)
     base = snapshot(original)
-    snapshot_without_identity = DecisionSnapshot(**{
-        **base.as_dict(),
-        "risk_state_identity": None,
-    })
-    auth = authorization()
+    snapshot_without_identity = DecisionSnapshot(**{**base.as_dict(), "risk_state_identity": None, "risk_state_fingerprint": None})
+    auth = _authorization("risk-no-identity"); req = request("risk-no-identity")
     result = gateway_instance.execute(
-        broker="fake", request_id="risk-no-identity", request=request(),
-        authorization=auth, admission=admission(auth), safety=safety(auth),
-        snapshot=snapshot_without_identity,
+        broker="fake", request_id=req.request_id, request=req,
+        authorization=auth, admission=_admission(auth),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ), snapshot=snapshot_without_identity,
     )
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
@@ -164,15 +198,16 @@ def test_real_provider_failure_is_fail_closed_and_sanitized(tmp_path: Path):
     class BrokenProvider:
         def current_risk_state(self):
             raise RuntimeError("SECRET_PROVIDER_DETAILS")
-
-    original = state()
-    adapter = Adapter()
+    original = state(); adapter = Adapter()
     gateway_instance = gateway(tmp_path, BrokenProvider(), adapter)
-    auth = authorization()
+    auth = _authorization("risk-provider-error"); req = request("risk-provider-error")
     result = gateway_instance.execute(
-        broker="fake", request_id="risk-provider-error", request=request(),
-        authorization=auth, admission=admission(auth), safety=safety(auth),
-        snapshot=snapshot(original),
+        broker="fake", request_id=req.request_id, request=req,
+        authorization=auth, admission=_admission(auth),
+        safety=RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True, market_healthy=True,
+            recovery_safe=True, risk_approved=True, broker_available=True,
+        ), snapshot=snapshot(original),
     )
     assert result.status == RealGatewayStatus.UNKNOWN
     assert "SECRET_PROVIDER_DETAILS" not in result.message

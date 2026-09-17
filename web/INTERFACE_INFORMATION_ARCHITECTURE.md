@@ -8,6 +8,19 @@ A capability is **primary** when it can directly change, block, authorize, or in
 
 Secondary capabilities may use progressive disclosure. This is intentional: the interface should expose the primary workflow first and defer advanced/rarely used material instead of putting every feature on the first screen.
 
+## Visual composition rule
+
+The final product interface must **not use a dashboard made of repeated grids of cards/boxes as the primary visual language**. The goal is a clean, chart-first operational interface.
+
+- Charts/market visualization are the dominant visual elements where a chart materially communicates information.
+- Keep only controls and status elements that are necessary for operating, understanding, or safely blocking the system.
+- Avoid decorative card grids, metric-box mosaics, nested boxes, and repeated bordered panels that make the screen look like a collection of tiles.
+- Do not create a chart merely to replace every piece of text; use concise text for status, explanation, alerts, and controls when that is clearer.
+- Statistics should prefer meaningful charts (trend, distribution, comparison) over rows of metric cards.
+- Operational decision, risk, environment, execution, reconciliation, and critical alerts may use compact status treatments when necessary, but they should not become a wall of cards.
+- The chart area must remain readable on mobile and should be prioritized over secondary decoration.
+- Progressive disclosure should reduce visual density without hiding safety-critical state.
+
 ## Layer 1 — Operational cockpit
 
 Keep immediately reachable:
@@ -83,4 +96,7 @@ The interface is considered correctly organized only when:
 4. technical/admin detail is separated from user-facing operation;
 5. critical conditions can surface to the cockpit regardless of their normal section;
 6. mobile navigation does not require a long row of unrelated top-level destinations;
-7. the information architecture does not remove any existing safe API capability merely to make the UI cleaner.
+7. the information architecture does not remove any existing safe API capability merely to make the UI cleaner;
+8. the primary visual language is chart-first rather than a repeated grid of dashboard cards;
+9. only necessary controls/status surfaces use compact containers;
+10. charts remain legible and useful on mobile.

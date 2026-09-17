@@ -30,13 +30,14 @@ def make_snapshot() -> DecisionSnapshot:
     )
 
 
-def make_request() -> ExecutionRequest:
+def make_request(request_id: str = "req-default") -> ExecutionRequest:
     return ExecutionRequest(
         symbol="BTCUSD",
         signal=Signal.COMPRA,
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id=request_id,
     )
 
 
@@ -47,7 +48,7 @@ def test_gateway_audits_before_memory_and_reuses_same_audit_event():
 
     result = gateway.execute(
         "req-audit-1",
-        make_request(),
+        make_request(request_id="req-audit-1"),
         snapshot=make_snapshot(),
         timestamp=timestamp,
         entry_conditions=("candle_confirmado", "contexto_favoravel"),
@@ -73,7 +74,7 @@ def test_blocked_execution_is_audited_but_not_written_to_operation_memory():
 
     result = gateway.execute(
         "req-blocked-1",
-        make_request(),
+        make_request(request_id="req-blocked-1"),
         snapshot=make_snapshot(),
     )
 
@@ -91,6 +92,7 @@ def test_invalid_request_is_not_audit_event():
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="req-invalid-1",
     )
 
     result = gateway.execute("req-invalid-1", invalid, snapshot=make_snapshot())

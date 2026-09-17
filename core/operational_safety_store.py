@@ -36,6 +36,8 @@ class OperationalSafetyStore:
                 trades_today=data.get("trades_today"), consecutive_losses=data.get("consecutive_losses"),
                 symbol=data.get("symbol"), timeframe=data.get("timeframe"),
                 risk_state_identity=data.get("risk_state_identity"),
+                risk_state_fingerprint=data.get("risk_state_fingerprint"),
+                created_at=(datetime.fromisoformat(str(data["created_at"])) if data.get("created_at") else None),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("snapshot persistido inválido.") from exc
@@ -173,9 +175,30 @@ class OperationalSafetyStore:
             }
             self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
 
+    def load_execution_audit(self) -> tuple[dict[str, object], ...]:
+        """Load the validated execution-audit projection without mutating state."""
+        with self._lock():
+            payload = self._read_payload()
+            persisted = payload.get("execution_audit", [])
+            if not isinstance(persisted, list):
+                raise ValueError("auditoria de execução persistida inválida.")
+            normalized = [self._execution_audit_item(item) for item in persisted]
+            return tuple(normalized)
+
+    def save_execution_audit(self, events: tuple[dict[str, object], ...] | list[dict[str, object]]) -> None:
+        """Atomically merge validated execution-audit events into the safety store."""
+        if not isinstance(events, (tuple, list)):
+            raise TypeError("events deve ser lista ou tupla.")
+        with self._lock():
+            payload = self._read_payload()
+            persisted = payload.get("execution_audit", [])
+            merged = self._merge_execution_audit(persisted, list(events))
+            payload["execution_audit"] = merged
+            self._write_payload(payload)
+
     def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
-            raise TypeError("enabled deve ser bool.")
+            raise TypeError("enabled deve ser bool")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
             raise ValueError("reason é obrigatório ao ativar o kill switch.")
         with self._lock():
@@ -192,8 +215,11 @@ class OperationalSafetyStore:
         with self._lock():
             payload = self._read_payload()
             audit = DecisionAudit()
-            for item in payload.get("audit", []):
-                audit.add(self._audit_record(item))
+            persisted_audit = payload.get("audit", [])
+            if not isinstance(persisted_audit, list):
+                raise ValueError("auditoria persistida inválida.")
+            for item in persisted_audit:
+                audit.append(self._audit_record(item))
             persisted = payload.get("kill_switch", {})
             if not isinstance(persisted, dict):
                 raise ValueError("estado do kill switch inválido.")

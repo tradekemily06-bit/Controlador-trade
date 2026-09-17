@@ -22,7 +22,7 @@ def _api_paths_in_application() -> set[str]:
         if not isinstance(node, ast.If):
             continue
         test = node.test
-        if not isinstance(test, ast.BoolOp) or test.op is not ast.And:
+        if not isinstance(test, ast.BoolOp) or not isinstance(test.op, ast.And):
             continue
         for item in test.values:
             if not isinstance(item, ast.Compare):

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from .decision_engine import DecisionResult
 from .market_context import MarketContextResult
 from .models import AnalysisResult
 from .operational_state import OperationalState
-from .risk_state_fingerprint import risk_state_identity
+from .risk_state_fingerprint import risk_state_fingerprint
 from .signal_quality import SignalQuality
 
 
@@ -31,9 +32,21 @@ class DecisionSnapshot:
     consecutive_losses: int | None
     symbol: str | None
     timeframe: str | None
-    # Optional for backward compatibility with persisted/legacy snapshots.
-    # New snapshots built from operational state always carry the full identity.
+    risk_state_fingerprint: str | None = None
+    created_at: datetime | None = None
+    # Compatibility alias for older persisted snapshots/callers. Both fields
+    # are normalized to the same immutable identity in __post_init__.
     risk_state_identity: str | None = None
+
+    def __post_init__(self) -> None:
+        fingerprint = self.risk_state_fingerprint
+        identity = self.risk_state_identity
+        if fingerprint is not None and identity is not None and fingerprint != identity:
+            raise ValueError("risk_state_fingerprint e risk_state_identity divergem")
+        if fingerprint is None and identity is not None:
+            object.__setattr__(self, "risk_state_fingerprint", identity)
+        elif identity is None and fingerprint is not None:
+            object.__setattr__(self, "risk_state_identity", fingerprint)
 
     @classmethod
     def from_results(
@@ -44,7 +57,13 @@ class DecisionSnapshot:
         decision: DecisionResult,
         market_context: MarketContextResult | None,
         operational_state: OperationalState | None,
+        created_at: datetime | None = None,
     ) -> "DecisionSnapshot":
+        fingerprint = (
+            risk_state_fingerprint(operational_state)
+            if operational_state is not None
+            else None
+        )
         return cls(
             signal=analysis.signal.value,
             analysis_score=analysis.score,
@@ -76,11 +95,8 @@ class DecisionSnapshot:
             ),
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
-            risk_state_identity=(
-                risk_state_identity(operational_state)
-                if operational_state is not None
-                else None
-            ),
+            risk_state_fingerprint=fingerprint,
+            created_at=created_at,
         )
 
     def explain(self) -> str:
@@ -113,7 +129,9 @@ class DecisionSnapshot:
             "operational_state_available": self.operational_state_available,
             "trades_today": self.trades_today,
             "consecutive_losses": self.consecutive_losses,
+            "risk_state_fingerprint": self.risk_state_fingerprint,
             "risk_state_identity": self.risk_state_identity,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "created_at": self.created_at,
         }

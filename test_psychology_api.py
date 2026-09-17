@@ -67,4 +67,4 @@ def test_public_saas_psychology_fails_closed_without_tenant_data_plane(monkeypat
         },
     )
     assert status.startswith("503")
-    assert "tenant-scoped data plane" in data["error"]
+    assert data["error"] == "Serviço SaaS indisponível até que o armazenamento seguro esteja configurado."

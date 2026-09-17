@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, _DEMO_ADAPTER_CAPABILITY
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -67,11 +67,26 @@ def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA):
     )
 
 
-def test_demo_order_checks_before_send_and_confirms():
+def dispatch(adapter, req):
+    return adapter.execute_from_port(req, capability=_DEMO_ADAPTER_CAPABILITY)
+
+
+def test_public_execute_is_non_dispatching():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
 
     result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert "dispatch direto" in result.message
+    assert mt5.calls == []
+
+
+def test_demo_order_checks_before_send_and_confirms():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    result = dispatch(adapter, request())
 
     assert result.accepted is True
     assert result.external_id == "123456"
@@ -83,7 +98,7 @@ def test_aguardar_never_reaches_mt5():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
 
-    result = adapter.execute(request(signal=Signal.AGUARDAR))
+    result = dispatch(adapter, request(signal=Signal.AGUARDAR))
 
     assert result.accepted is False
     assert mt5.calls == []
@@ -93,7 +108,7 @@ def test_real_mode_is_blocked_before_mt5_access():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
 
-    result = adapter.execute(request(mode=ExecutionMode.REAL))
+    result = dispatch(adapter, request(mode=ExecutionMode.REAL))
 
     assert result.accepted is False
     assert "somente DEMO" in result.message
@@ -104,7 +119,7 @@ def test_order_check_failure_blocks_send():
     mt5 = FakeMT5(check_code=10019)
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
 
-    result = adapter.execute(request())
+    result = dispatch(adapter, request())
 
     assert result.accepted is False
     assert "order_check" in result.message

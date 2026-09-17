@@ -14,11 +14,16 @@ class AdapterGatewayError(RuntimeError):
     """Raised when an adapter cannot safely receive an execution request."""
 
 
+_REAL_ADAPTER_GATEWAY_CAPABILITY = object()
+
+
 @dataclass(frozen=True)
 class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
+    uncertain: bool = False
+    adapter_id: str | None = None
 
 
 class BrokerAdapterGateway:
@@ -26,7 +31,6 @@ class BrokerAdapterGateway:
 
     @staticmethod
     def _safe_error(exc: Exception) -> str:
-        """Expose only the exception type across the broker boundary."""
         return type(exc).__name__
 
     def __init__(self, registry: BrokerRegistry) -> None:
@@ -34,41 +38,58 @@ class BrokerAdapterGateway:
             raise ValueError("registry inválido.")
         self._registry = registry
 
+    def adapter_id(self, broker: str) -> str:
+        """Resolve adapter identity without exposing the executable adapter."""
+        try:
+            return self._registry.adapter_id(broker)
+        except BrokerRegistryError as exc:
+            raise AdapterGatewayError(f"adapter identity unavailable: {self._safe_error(exc)}") from exc
+
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
-        # This boundary is reserved for the explicit REAL dispatch path.
-        # DEMO must stay behind the DEMO gateway/executor so a low-level broker
-        # adapter cannot accidentally become an execution bypass.
+        """Public compatibility port; REAL dispatch is denied outside RealExecutionGateway."""
+        return AdapterExecutionResult(False, "dispatch REAL direto pelo BrokerAdapterGateway está bloqueado; use o RealExecutionGateway.")
+
+    def execute_from_real_gateway(self, broker: str, request: ExecutionRequest, *, capability: object) -> AdapterExecutionResult:
+        """Dispatch REAL only for the private capability held by RealExecutionGateway."""
+        if capability is not _REAL_ADAPTER_GATEWAY_CAPABILITY:
+            return AdapterExecutionResult(False, "capacidade de dispatch REAL inválida; execução bloqueada.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "broker adapter rejeitou requisição fora do modo REAL.")
 
         try:
-            adapter = self._registry._get_for_gateway(
+            adapter = self._registry.resolve_for_gateway(
                 broker,
                 capability=_BROKER_GATEWAY_CAPABILITY,
             )
+            resolved_adapter_id = self._registry.adapter_id(broker)
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, f"broker registry rejected request: {self._safe_error(exc)}")
 
         try:
             available = adapter.is_available()
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter availability check failed: {self._safe_error(exc)}")
+            return AdapterExecutionResult(False, f"adapter availability check failed: {self._safe_error(exc)}", adapter_id=resolved_adapter_id)
 
         if not isinstance(available, bool):
-            return AdapterExecutionResult(False, "adapter availability returned an invalid non-boolean state.")
+            return AdapterExecutionResult(False, "adapter availability returned an invalid non-boolean state.", adapter_id=resolved_adapter_id)
         if not available:
-            return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
+            return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.", adapter_id=resolved_adapter_id)
 
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter execution failed; execution not confirmed: {self._safe_error(exc)}")
+            return AdapterExecutionResult(
+                False,
+                f"adapter execution failed; execution not confirmed: {self._safe_error(exc)}",
+                uncertain=True,
+                adapter_id=resolved_adapter_id,
+            )
 
         if not isinstance(result, ExecutionResult):
-            return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+            return AdapterExecutionResult(False, "adapter retornou resultado inválido; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
         if not isinstance(result.accepted, bool):
-            return AdapterExecutionResult(False, "adapter retornou estado de aceite inválido.")
+            return AdapterExecutionResult(False, "adapter retornou estado de aceite inválido; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
         if not isinstance(result.message, str):
-            return AdapterExecutionResult(False, "adapter retornou mensagem inválida.")
+            return AdapterExecutionResult(False, "adapter retornou mensagem inválida; execução não confirmável.", uncertain=True, adapter_id=resolved_adapter_id)
 
-        return AdapterExecutionResult(result.accepted, result.message, result)
+        return AdapterExecutionResult(result.accepted, result.message, result, adapter_id=resolved_adapter_id)

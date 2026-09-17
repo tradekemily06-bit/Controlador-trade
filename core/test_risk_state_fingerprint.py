@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from core.operational_state import OperationalState
-from core.risk_state_fingerprint import risk_state_identity
+from core.risk_state_fingerprint import risk_state_fingerprint, risk_state_identity
 
 
 def _state(**overrides) -> OperationalState:
@@ -28,6 +28,11 @@ def _state(**overrides) -> OperationalState:
 
 def test_risk_state_identity_is_deterministic() -> None:
     assert risk_state_identity(_state()) == risk_state_identity(_state())
+
+
+def test_legacy_fingerprint_export_is_exact_compatibility_alias() -> None:
+    assert risk_state_fingerprint is risk_state_identity
+    assert risk_state_fingerprint(_state()) == risk_state_identity(_state())
 
 
 def test_equivalent_instants_with_different_offsets_have_same_identity() -> None:

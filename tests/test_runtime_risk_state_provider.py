@@ -47,7 +47,7 @@ def test_operational_runtime_passes_explicit_risk_provider_to_gateway(tmp_path):
     assert runtime.gateway._risk_state_provider is provider
 
 
-def test_operational_runtime_keeps_provider_absent_by_default(tmp_path):
+def test_operational_runtime_binds_default_demo_risk_provider(tmp_path):
     runtime = build_operational_runtime(tmp_path)
 
-    assert runtime.gateway._risk_state_provider is None
+    assert runtime.gateway._risk_state_provider is runtime.demo_risk_state_store

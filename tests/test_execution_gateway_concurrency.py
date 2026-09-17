@@ -13,8 +13,8 @@ from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
-def _request() -> ExecutionRequest:
-    return ExecutionRequest(symbol="BTCUSD", signal=Signal.COMPRA, amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO)
+def _request(request_id: str = "same-request") -> ExecutionRequest:
+    return ExecutionRequest(symbol="BTCUSD", signal=Signal.COMPRA, amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO, request_id=request_id)
 
 
 class _CountingExecutor:
@@ -60,7 +60,7 @@ def _different_request_worker(ledger_path: str, lifecycle_path: str, safety_path
         safety_store=OperationalSafetyStore(safety_path),
     )
     barrier.wait(timeout=15)
-    results.put((request_id, gateway.execute(request_id, _request()).status.value))
+    results.put((request_id, gateway.execute(request_id, _request(request_id)).status.value))
 
 
 def test_same_request_id_is_dispatched_at_most_once_across_processes(tmp_path: Path):
@@ -103,6 +103,6 @@ def test_lifecycle_conflict_cannot_leave_new_ledger_reservation_stranded(tmp_pat
     lifecycle.put(ExecutionLifecycleRecord("conflict-request", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "existing cycle"))
     ledger = ExecutionLedger(ledger_path)
     gateway = ExecutionGateway(_NoopExecutor(), KillSwitch(), ledger=ledger, lifecycle=lifecycle)
-    result = gateway.execute("conflict-request", _request())
+    result = gateway.execute("conflict-request", _request("conflict-request"))
     assert result.status is GatewayStatus.DUPLICATE
     assert ledger.status("conflict-request") is ExecutionLedgerStatus.UNKNOWN

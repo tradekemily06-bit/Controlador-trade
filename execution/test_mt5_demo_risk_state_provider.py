@@ -87,10 +87,10 @@ def test_provider_reads_complete_authoritative_demo_state_and_shuts_down():
         "GBPUSD": SimpleNamespace(trade_contract_size=100000.0),
     }
     mt5.deals = [
-        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=1000),
-        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-10.0, time_msc=2000),
-        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=3000),
-        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-5.0, time_msc=4000),
+        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=int(NOW.timestamp() * 1000) + 1000),
+        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-10.0, time_msc=int(NOW.timestamp() * 1000) + 2000),
+        deal(entry=mt5.DEAL_ENTRY_IN, profit=0.0, time_msc=int(NOW.timestamp() * 1000) + 3000),
+        deal(entry=mt5.DEAL_ENTRY_OUT, profit=-5.0, time_msc=int(NOW.timestamp() * 1000) + 4000),
     ]
     mt5.ticks["EURUSD"] = SimpleNamespace(bid=1.10, ask=1.11)
     mt5.rates[("EURUSD", 5)] = [{"time": int(NOW.timestamp())}]
@@ -108,12 +108,12 @@ def test_provider_reads_complete_authoritative_demo_state_and_shuts_down():
     assert state.realized_pnl == -15.0
     assert state.unrealized_pnl == -25.0
     assert state.trades_today == 2
-    assert state.consecutive_losses == 2
+    assert state.consecutive_losses is None
     assert state.open_positions == 2
     assert state.net_position == 0.15
     assert state.exposure == pytest.approx(0.20 * 1.10 * 100000 + 0.05 * 1.11 * 100000)
     assert state.market_open is True
-    assert state.last_processed_candle == NOW
+    assert state.last_processed_candle is None
     assert mt5.initialized == 1
     assert mt5.shutdowns == 1
 

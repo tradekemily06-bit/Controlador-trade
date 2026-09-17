@@ -21,6 +21,14 @@ class KillSwitchState:
         if self.reason is not None and not isinstance(self.reason, str):
             raise KillSwitchValidationError("reason deve ser texto ou None.")
 
+    @property
+    def state(self) -> "KillSwitchState":
+        """Compatibility projection for callers that treat loaded state as a gate."""
+        return self
+
+    def allows_execution(self) -> bool:
+        return not self.enabled
+
 
 class KillSwitch:
     """Safety gate independent from broker or execution adapter."""
