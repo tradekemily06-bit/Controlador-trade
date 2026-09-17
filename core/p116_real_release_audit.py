@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from weakref import WeakSet
+import weakref
 
 
 class ReleaseAuditStatus(str, Enum):
@@ -24,14 +24,20 @@ class RealReleaseAudit:
 
 # A verified audit must come from the release-audit boundary itself. A caller
 # must not be able to manufacture a VERIFIED dataclass with the same fields and
-# thereby satisfy the REAL authorization issuer. This is an in-process
-# provenance guard; it is not a cryptographic identity system and does not
-# claim to authenticate an external human/operator.
-_VERIFIED_AUDITS: WeakSet[RealReleaseAudit] = WeakSet()
+# thereby satisfy the REAL authorization issuer. Equality-based containers
+# such as WeakSet are insufficient here because a separately fabricated,
+# field-identical dataclass compares equal to the genuine object. The registry
+# below therefore verifies object identity while retaining weak references.
+# This is an in-process provenance guard; it is not a cryptographic identity
+# system and does not claim to authenticate an external human/operator.
+_VERIFIED_AUDITS: dict[int, weakref.ReferenceType[RealReleaseAudit]] = {}
 
 
 def _is_boundary_verified_audit(audit: object) -> bool:
-    return isinstance(audit, RealReleaseAudit) and audit in _VERIFIED_AUDITS
+    if not isinstance(audit, RealReleaseAudit):
+        return False
+    reference = _VERIFIED_AUDITS.get(id(audit))
+    return reference is not None and reference() is audit
 
 
 class RealReleaseAuditBoundary:
@@ -58,5 +64,9 @@ class RealReleaseAuditBoundary:
             tuple(reasons),
         )
         if audit.verified:
-            _VERIFIED_AUDITS.add(audit)
+            key = id(audit)
+            _VERIFIED_AUDITS[key] = weakref.ref(
+                audit,
+                lambda _reference, key=key: _VERIFIED_AUDITS.pop(key, None),
+            )
         return audit
