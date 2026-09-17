@@ -10,10 +10,11 @@ from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
-from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
+from core.p116_real_release_audit import RealReleaseAuditBoundary, RealReleaseAudit, ReleaseAuditStatus
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.risk_state_fingerprint import risk_state_identity
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
@@ -76,7 +77,11 @@ def _snapshot(state=None):
 
 
 def _authorization(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
-    return RealExecutionAuthorization("auth", "a116", broker_id, adapter_id, request_id, symbol, True, True)
+    audit = RealReleaseAudit("a116", ReleaseAuditStatus.VERIFIED, ("P111", "P112", "P113", "P114", "P115"), ())
+    return RealAuthorizationIssuer().issue(
+        audit=audit, authorization_id="auth", audit_id="a116", broker_id=broker_id,
+        adapter_id=adapter_id, request_id=request_id, symbol=symbol, explicit_approval=True,
+    )
 
 
 def _safety(auth=None):
@@ -109,14 +114,20 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p111 = PreRealAuditBoundary().audit(audit_id="a111", p110_decision="VALIDATED", safety_verified=True,
                                         risk_verified=True, gateway_present=True, broker_boundary_present=True)
     assert p111.status is PreRealAuditStatus.VERIFIED
-    auth = _authorization(); safety = _safety(auth); assert safety.state is RealSafetyState.READY
     shadow = ShadowValidationBoundary().validate(validation_id="shadow", adapter_available=True, real_safety_ready=True,
                                                  duplicate_blocked=True, kill_switch_blocked=True, real_mode_rejected_by_shadow=True)
     assert shadow.passed
+    safety = _safety(); assert safety.state is RealSafetyState.READY
     p116 = RealReleaseAuditBoundary().audit(audit_id="a116", pre_real_verified=p111.verified,
                                              shadow_passed=shadow.passed, safety_ready=safety.ready,
                                              broker_boundary_ready=True, explicit_real_contract=True)
     assert p116.status is ReleaseAuditStatus.VERIFIED
+    auth = RealAuthorizationIssuer().issue(
+        audit=p116, authorization_id="auth", audit_id="a116", broker_id="fake",
+        adapter_id="fake-adapter", request_id="req-1", symbol="TEST", explicit_approval=True,
+    )
+    assert auth.active
+    safety = _safety(auth)
     p117 = _admission(auth=auth); assert p117.status is RealAdmissionStatus.ADMITTED
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "real-ledger.json"); gateway = _gateway(registry, ledger)
@@ -134,6 +145,8 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
 def test_real_authorization_is_explicit():
     with pytest.raises(ValueError):
         RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", False, True)
+    with pytest.raises(ValueError):
+        RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", True, True)
 
 
 def test_real_safety_fails_closed():
