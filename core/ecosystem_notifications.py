@@ -124,12 +124,7 @@ class EcosystemNotificationCenter:
             if self._require_durable:
                 raise RuntimeError("durable notification state provider is required")
             return
-        self._state_store.put(
-            tenant_id=scope[0],
-            subject_id=scope[1],
-            namespace=self.NAMESPACE,
-            payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events],
-        )
+        self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
 
     def _load_global(self) -> list[EcosystemNotification]:
         if self._state_store is None:
@@ -139,11 +134,7 @@ class EcosystemNotificationCenter:
                 self._global_notifications = []
                 self._global_loaded = True
             return self._global_notifications
-        payload = self._state_store.get(
-            tenant_id=self.GLOBAL_TENANT,
-            subject_id=self.GLOBAL_SUBJECT,
-            namespace=self.NAMESPACE,
-        )
+        payload = self._state_store.get(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE)
         self._global_notifications = [] if payload is None else self._decode(payload)
         self._global_loaded = True
         return self._global_notifications
@@ -155,12 +146,7 @@ class EcosystemNotificationCenter:
             self._global_notifications = list(events)
             self._global_loaded = True
             return
-        self._state_store.put(
-            tenant_id=self.GLOBAL_TENANT,
-            subject_id=self.GLOBAL_SUBJECT,
-            namespace=self.NAMESPACE,
-            payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events],
-        )
+        self._state_store.put(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
         self._global_notifications = list(events)
         self._global_loaded = True
 
@@ -186,8 +172,6 @@ class EcosystemNotificationCenter:
         global_events = tuple(self._load_global())
         scope = self._trusted_scope()
         if scope is None:
-            if self._state_store is not None or self._require_durable:
-                return global_events
             return global_events
         return global_events + tuple(self._scoped(scope))
 
@@ -204,7 +188,7 @@ class EcosystemNotificationCenter:
             raise ValueError("notification is required")
         scope = self._required_scope()
         if scope is None:
-            raise PermissionError("trusted scope is required for scoped notification")
+            return self.publish_global(notification)
         events = self._load(scope)
         events.append(notification)
         self._save(scope, events)
