@@ -13,11 +13,13 @@ from integration.execution_provider import (
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_DIRS = (ROOT / "core", ROOT / "execution", ROOT / "integration", ROOT / "security")
-PRODUCTION_ROOT_FILES = (ROOT / "app.py",)
+PRODUCTION_ROOT_FILES = tuple(ROOT.glob("*.py"))
 
 
+# This is intentionally a single authority-closure scan: Stage 2 must fail if
+# a new production Python surface is added outside the scanned graph.
 def _production_files() -> list[Path]:
-    files: list[Path] = [path for path in PRODUCTION_ROOT_FILES if path.is_file()]
+    files: list[Path] = [path for path in PRODUCTION_ROOT_FILES if path.is_file() and not path.name.startswith("test_")]
     for directory in PRODUCTION_DIRS:
         if not directory.exists():
             continue
@@ -25,7 +27,11 @@ def _production_files() -> list[Path]:
             path for path in directory.glob("*.py")
             if path.is_file() and not path.name.startswith("test_")
         )
-    return files
+    return sorted(set(files))
+
+
+def _tree(path: Path) -> ast.AST:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
 def test_no_production_real_authority_uses_unsafe_serialization_hooks():
@@ -34,7 +40,7 @@ def test_no_production_real_authority_uses_unsafe_serialization_hooks():
     forbidden_methods = {"__setstate__", "__reduce__", "__reduce_ex__"}
 
     for path in _production_files():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _tree(path)
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 if any(alias.name.split(".", 1)[0] in forbidden_imports for alias in node.names):
@@ -54,12 +60,30 @@ def test_raw_broker_order_send_call_is_ast_confined_to_mt5_adapter():
     for path in _production_files():
         if path.name == allowed:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
+        for node in ast.walk(_tree(path)):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "order_send":
                 offenders.append(str(path.relative_to(ROOT)))
 
     assert not offenders, f"raw broker order_send side door detected: {offenders}"
+
+
+def test_raw_adapter_execute_call_is_confined_to_authorized_dispatch_surfaces():
+    offenders: list[str] = []
+    allowed = {"adapter_gateway.py", "icmarkets_mt5_demo_adapter.py"}
+    for path in _production_files():
+        if path.name in allowed:
+            continue
+        for node in ast.walk(_tree(path)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "execute"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "adapter"
+            ):
+                offenders.append(str(path.relative_to(ROOT)))
+
+    assert not offenders, f"raw adapter.execute side door detected: {offenders}"
 
 
 @pytest.mark.parametrize("provider", ["real", "REAL", "live", "LIVE", "production", "PRODUCTION"])
