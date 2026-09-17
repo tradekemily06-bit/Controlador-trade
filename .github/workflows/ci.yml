@@ -6,6 +6,9 @@ on:
     branches: [main]
   pull_request:
 
+# Keep only the newest validation run for a branch. This prevents a stream of
+# superseded PR commits from occupying the Actions pending queue and ensures
+# CI validates the latest tree rather than stale intermediate revisions.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
@@ -32,8 +35,8 @@ jobs:
       - name: Run P1.9 robustness tests
         run: python -m pytest -q core/test_strategy_robustness.py
 
-      - name: Run Stage 7 isolation tests
-        run: python -m pytest -q tests/test_stage7_execution_surface.py tests/test_stage7_release_readiness.py
+      - name: Run full test suite
+        run: python -m pytest -q
 
       - name: Dependency security audit
         run: |
