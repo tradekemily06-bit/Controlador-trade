@@ -22,7 +22,7 @@ _SENSITIVE_KEY_PARTS = (
 
 _TEXT_PATTERNS = (
     re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"(?i)((?:api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)\s*[=:]\s*)[^\s,;]+"),
+    re.compile(r"(?i)((?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)\s*[=:]\s*)[^\s,;]+"),
     re.compile(r"(?i)((?:password|passwd|secret)\s*[=:]\s*)[^\s,;]+"),
 )
 
