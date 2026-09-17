@@ -23,12 +23,10 @@ class ReadinessEvidenceRef:
     source_ref: str
 
     def __post_init__(self) -> None:
-        if not self.gate.strip():
-            raise ValueError("evidence gate is required")
-        if not self.evidence_id.strip():
-            raise ValueError("evidence_id is required")
-        if not self.source_ref.strip():
-            raise ValueError("source_ref is required")
+        for name in ("gate", "evidence_id", "source_ref"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} is required")
 
 
 @dataclass(frozen=True)
@@ -80,19 +78,24 @@ def assess_final_readiness(evidence: FinalReadinessEvidence) -> FinalReadinessAs
         raise TypeError("final readiness evidence is required")
 
     missing = [name for name in _REQUIRED if getattr(evidence, name) is not True]
-    invalid_refs = [ref.gate for ref in evidence.evidence_refs if ref.gate not in _REQUIRED]
+    invalid_refs = [ref for ref in evidence.evidence_refs if not isinstance(ref, ReadinessEvidenceRef)]
     if invalid_refs:
+        missing.append("invalid_evidence_ref")
+
+    valid_refs = [ref for ref in evidence.evidence_refs if isinstance(ref, ReadinessEvidenceRef)]
+    invalid_gates = [ref.gate for ref in valid_refs if ref.gate not in _REQUIRED]
+    if invalid_gates:
         missing.append("invalid_evidence_gate")
 
     duplicate_gates = {
         gate
-        for gate in (ref.gate for ref in evidence.evidence_refs)
-        if sum(item.gate == gate for item in evidence.evidence_refs) > 1
+        for gate in (ref.gate for ref in valid_refs)
+        if sum(item.gate == gate for item in valid_refs) > 1
     }
     if duplicate_gates:
         missing.append("duplicate_evidence_gate")
 
-    refs_by_gate = {ref.gate: ref for ref in evidence.evidence_refs}
+    refs_by_gate = {ref.gate: ref for ref in valid_refs if ref.gate in _REQUIRED}
 
     # A green boolean without a traceable reference is not sufficient for a
     # release gate. This prevents governance from becoming an un-auditable
