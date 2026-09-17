@@ -69,8 +69,8 @@ def build_operational_runtime(
     demo_risk_state = DemoRiskStateStore(root / "demo-risk-state.json")
     try:
         safety_audit, persisted_switch = safety_store.load()
-        initial_enabled = persisted_switch.state.enabled
-        initial_reason = persisted_switch.state.reason
+        initial_enabled = persisted_switch.enabled
+        initial_reason = persisted_switch.reason
         safety_state_valid = True
     except (OSError, ValueError, TypeError) as exc:
         safety_audit = DecisionAudit()
