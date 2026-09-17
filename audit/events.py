@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping
 
+from core.observability_redaction import redact, redact_text
+
 
 class AuditEventType(str, Enum):
     ANALYSIS = "ANALYSIS"
@@ -18,20 +20,23 @@ class AuditEventType(str, Enum):
 class AuditEvent:
     event_type: AuditEventType
     message: str
-    timestamp: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     data: Mapping[str, Any] = field(default_factory=dict)
+    request_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.message.strip():
             raise ValueError("message não pode ser vazio.")
-
         if self.timestamp.tzinfo is None:
             raise ValueError("timestamp deve possuir timezone.")
-
         if not isinstance(self.data, Mapping):
             raise TypeError("data deve ser um Mapping.")
+        if self.request_id is not None:
+            if not isinstance(self.request_id, str) or not self.request_id.strip():
+                raise ValueError("request_id deve ser uma string não vazia.")
+            object.__setattr__(self, "request_id", self.request_id.strip())
+        object.__setattr__(self, "message", redact_text(self.message.strip()))
+        object.__setattr__(self, "data", redact(self.data))
 
 
 class AuditLogger:
@@ -39,6 +44,8 @@ class AuditLogger:
         self._events: list[AuditEvent] = []
 
     def record(self, event: AuditEvent) -> None:
+        if not isinstance(event, AuditEvent):
+            raise TypeError("event deve ser um AuditEvent.")
         self._events.append(event)
 
     def events(self) -> tuple[AuditEvent, ...]:

@@ -36,7 +36,7 @@ def test_global_system_notification_is_visible_without_becoming_private_state(tm
     try:
         clear_trusted_identity()
         center = EcosystemNotificationCenter(state_store=state, require_durable=True)
-        center.publish(EcosystemNotification("g1", NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, "Update", "system"))
+        center.publish_global(EcosystemNotification("g1", NotificationKind.SYSTEM_UPDATE, NotificationSeverity.IMPORTANT, "Update", "system"))
 
         _identity("tenant-a", "user-a")
         assert [item.notification_id for item in EcosystemNotificationCenter(state_store=state, require_durable=True).all()] == ["g1"]

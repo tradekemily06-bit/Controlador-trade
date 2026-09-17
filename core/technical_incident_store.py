@@ -39,7 +39,9 @@ class TechnicalIncidentStore:
         changed_at = value.get("changed_at")
         if changed_at is not None and (not isinstance(changed_at, str) or datetime.fromisoformat(changed_at).tzinfo is None):
             raise ValueError("timestamp de incidente técnico inválido")
-        if value.get("status") == "INCIDENT" and incident_id is None:
+        if value.get("status") == "INCIDENT":
+            if incident_id is None or reason is None or changed_at is None:
+                raise ValueError("incidente técnico ativo está incompleto")
             return value
         if value.get("status") == "HEALTHY" and incident_id is not None:
             raise ValueError("incidente resolvido não pode manter incident_id ativo")
@@ -74,9 +76,13 @@ class TechnicalIncidentStore:
         if not isinstance(reason, str) or not reason.strip(): raise ValueError("reason é obrigatório")
         timestamp = now or datetime.now(timezone.utc)
         if timestamp.tzinfo is None: raise ValueError("timestamp deve conter timezone")
-        payload = {"status":"INCIDENT","incident_id":incident_id.strip(),"reason":reason.strip(),"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
+        normalized_id = incident_id.strip()
+        payload = {"status":"INCIDENT","incident_id":normalized_id,"reason":reason.strip(),"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
         with self._lock_local, self._file_lock():
-            self._read(); self._write(payload)
+            current = self._read()
+            if current.get("status") == "INCIDENT" and current.get("incident_id") != normalized_id:
+                raise ValueError("já existe outro incidente técnico ativo")
+            self._write(payload)
         return payload
 
     def resolve(self, incident_id: str, *, now: datetime | None = None) -> dict[str, object]:
@@ -87,7 +93,7 @@ class TechnicalIncidentStore:
             current = self._read()
             if current.get("status") != "INCIDENT": raise ValueError("nenhum incidente técnico ativo")
             persisted_id = current.get("incident_id")
-            if persisted_id is not None and persisted_id != incident_id.strip(): raise ValueError("incident_id não corresponde ao incidente técnico ativo")
+            if persisted_id != incident_id.strip(): raise ValueError("incident_id não corresponde ao incidente técnico ativo")
             payload = {"status":"HEALTHY","incident_id":None,"reason":None,"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
             self._write(payload)
         return payload

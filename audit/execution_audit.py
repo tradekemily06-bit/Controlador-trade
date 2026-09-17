@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from core.observability_redaction import redact_text
 from core.operational_safety_store import OperationalSafetyStore
 from execution.execution_lifecycle import ExecutionLifecycleState
 
@@ -19,10 +20,12 @@ class ExecutionAuditEvent:
             raise ValueError("request_id é obrigatório.")
         if not isinstance(self.state, ExecutionLifecycleState):
             raise ValueError("estado inválido.")
-        if not isinstance(self.timestamp, datetime):
+        if not isinstance(self.timestamp, datetime) or self.timestamp.tzinfo is None:
             raise ValueError("timestamp inválido.")
         if not isinstance(self.message, str) or not self.message.strip():
             raise ValueError("message é obrigatório.")
+        object.__setattr__(self, "request_id", self.request_id.strip())
+        object.__setattr__(self, "message", redact_text(self.message.strip()))
 
     def as_dict(self) -> dict[str, object]:
         return {"request_id": self.request_id, "state": self.state.value, "timestamp": self.timestamp.isoformat(), "message": self.message}
@@ -32,11 +35,19 @@ class ExecutionAuditEvent:
         if not isinstance(data, dict):
             raise ValueError("evento de auditoria inválido.")
         try:
+            request_id = data["request_id"]
+            state = data["state"]
+            timestamp = data["timestamp"]
+            message = data["message"]
+            if not isinstance(request_id, str) or not request_id.strip():
+                raise ValueError("request_id inválido")
+            if not isinstance(message, str) or not message.strip():
+                raise ValueError("message inválido")
             return cls(
-                request_id=str(data["request_id"]),
-                state=ExecutionLifecycleState(str(data["state"])),
-                timestamp=datetime.fromisoformat(str(data["timestamp"])),
-                message=str(data["message"]),
+                request_id=request_id,
+                state=ExecutionLifecycleState(str(state)),
+                timestamp=datetime.fromisoformat(str(timestamp)),
+                message=message,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("evento de auditoria persistido inválido.") from exc
@@ -68,4 +79,5 @@ class ExecutionAuditLog:
     def for_request(self, request_id: str) -> tuple[ExecutionAuditEvent, ...]:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id é obrigatório.")
-        return tuple(event for event in self._events if event.request_id == request_id)
+        normalized = request_id.strip()
+        return tuple(event for event in self._events if event.request_id == normalized)

@@ -35,7 +35,7 @@ def test_notifications_survive_restart_and_do_not_cross_tenants(tmp_path):
 def test_global_notifications_are_visible_without_cross_tenant_private_data(tmp_path):
     state = SQLiteScopedStateStore(tmp_path / "state.db")
     center = EcosystemNotificationCenter(state_store=state, require_durable=True)
-    center.publish(EcosystemNotification("global-1", NotificationKind.SYSTEM_UPDATE, NotificationSeverity.CRITICAL, "Update", "global"))
+    center.publish_global(EcosystemNotification("global-1", NotificationKind.SYSTEM_UPDATE, NotificationSeverity.CRITICAL, "Update", "global"))
 
     try:
         _identity("tenant-a", "user-a")

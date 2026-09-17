@@ -150,3 +150,8 @@ class ExecutionLifecycleStore:
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
