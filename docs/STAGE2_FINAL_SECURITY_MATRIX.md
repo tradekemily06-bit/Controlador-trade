@@ -23,7 +23,8 @@ Status: **validation in progress**. This document is a gate record, not a releas
 - RealPrivilegeIssuer derives authorization identity from the trusted ExecutionRequest and adapter identity from the authoritative BrokerAdapterGateway; admission identity is derived from the already-issued authorization.
 - REAL authorization and admission provenance proofs are immutable and identity-bound, so dataclasses.replace or field rebinding cannot preserve an active/admitted privilege.
 - Legacy/pickle-style reconstruction fails closed when the private issuance proof is absent or no longer valid.
-- Executable AST scanning checks production execution surfaces for direct active REAL authorization/admission constructors and the intended issuer boundary.
+- Executable AST scanning checks all production Python surfaces in the root plus `core/`, `execution/`, `integration/` and `security/` for direct active REAL authority construction, unsafe reconstruction hooks and broker dispatch side doors.
+- Raw adapter execution is statically confined to the authorized dispatch surfaces; raw broker `order_send` is statically confined to the MT5 adapter.
 - Issuer negative coverage checks direct construction, inactive/forged admission attempts, audit failures and safety failures.
 - CI concurrency cancels superseded branch runs and the CI job timeout is bounded.
 - The application startup path has regression coverage for explicit PORT selection in addition to the production WSGI container path.
@@ -60,7 +61,7 @@ The ledger reconciliation contract requires explicit external evidence identity 
 
 ### 5. Configuration / environment side doors — 🟡 PARTIALLY VERIFIED
 
-DEMO provider configuration rejects known REAL provider aliases, and factory composition tests cover the intended production construction boundaries. The remaining audit must cover every production configuration/factory surface, including app/core integration paths, and prove that configuration cannot select an execution route outside the authoritative gateway. Current app configuration selects DEMO/paper providers only; environment variables do not directly select a REAL adapter gateway.
+DEMO provider configuration rejects known REAL provider aliases, and factory composition tests cover the intended production construction boundaries. The authority closure scanner now automatically includes every root-level production Python module, in addition to `core/`, `execution/`, `integration/` and `security/`. Current app configuration selects DEMO/paper providers only; environment variables do not directly select a REAL adapter gateway.
 
 ### 6. Identity mutation / cross-context reuse — 🟡 PARTIALLY VERIFIED
 
@@ -76,7 +77,7 @@ Ledger writes fsync the temporary file, atomically replace the target, and then 
 
 ## Current CI evidence
 
-The current Stage 2 head is **`53cb85ee9eb8523db556c248072685cee00c7fc0`**. CI run **#1664** completed successfully for that commit, including the full test suite, dependency security audit, Python compilation, production container build and production health smoke test.
+The current Stage 2 head is **`31023e38907fb0e83f6936413b91ef2c1cf80c14`**. CI run **#1675** completed successfully for this exact commit, including the full test suite, dependency security audit, Python compilation, production container build and production health smoke test.
 
 This matrix update is documentation-only and creates a newer head after the successful CI run; therefore the matrix itself is not yet represented by a CI run. A new CI run must complete successfully on the latest head before any Stage 2 closure claim.
 
