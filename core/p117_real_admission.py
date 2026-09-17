@@ -35,7 +35,10 @@ class RealAdmission:
 
     @property
     def admitted(self) -> bool:
-        return self.status is RealAdmissionStatus.ADMITTED
+        if self.status is not RealAdmissionStatus.ADMITTED:
+            return False
+        reference = _ADMITTED_PROVENANCE.get(id(self))
+        return reference is not None and reference() is self
 
 
 # Admission is a gate, not merely a data shape. The execution gateway must
