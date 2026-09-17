@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from audit.events import AuditEvent, AuditEventType, AuditLogger
 from audit.execution_audit import ExecutionAuditEvent, ExecutionAuditLog
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity
-from core.observability_redaction import REDACTED, redact, redact_event
+from core.observability_redaction import REDACTED, redact, redact_event, redact_text
 from core.p21_observability import HealthState, RuntimeHealthMonitor, RecoveryState
 from execution.execution_lifecycle import ExecutionLifecycleState
 
@@ -38,6 +38,17 @@ def test_redaction_drops_bytes_and_exception_payloads():
     assert safe["body"] == REDACTED
     assert safe["error"] == "RuntimeError"
     assert "opaque-secret-token" not in repr(safe)
+
+
+def test_redaction_closes_json_and_url_credential_bypasses():
+    text = 'payload={"token": "json-secret", "password": "pw-secret"} https://example.test/callback?access_token=url-secret&symbol=EURUSD'
+    safe = redact_text(text)
+
+    assert "json-secret" not in safe
+    assert "pw-secret" not in safe
+    assert "url-secret" not in safe
+    assert safe.count(REDACTED) == 3
+    assert "symbol=EURUSD" in safe
 
 
 def test_event_boundary_requires_type_and_mapping():

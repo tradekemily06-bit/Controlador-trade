@@ -21,9 +21,11 @@ _SENSITIVE_KEY_PARTS = (
 )
 
 _TEXT_PATTERNS = (
-    re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+"),
-    re.compile(r"(?i)((?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)\s*[=:]\s*)[^\s,;]+"),
-    re.compile(r"(?i)((?:password|passwd|secret)\s*[=:]\s*)[^\s,;]+"),
+    re.compile(r"(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)((?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret)\\s*[=:]\\s*)[^\\s,;]+"),
+    re.compile(r"(?i)((?:password|passwd|secret)\\s*[=:]\\s*)[^\\s,;]+"),
+    re.compile(r'''(?i)([\\\"']?(?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|token|cookie)[\\\"']?\\s*:\\s*[\\\"'])[^\\\"']*([\\\"'])'''),
+    re.compile(r"(?i)([?&](?:authorization|api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|secret|token|cookie)=)[^&#\\s]+"),
 )
 
 
@@ -38,7 +40,10 @@ def redact_text(value: object) -> str:
     """Redact common credential-bearing patterns from free-form diagnostics."""
     text = str(value)
     for pattern in _TEXT_PATTERNS:
-        text = pattern.sub(lambda match: match.group(1) + REDACTED, text)
+        if pattern.groups == 2:
+            text = pattern.sub(lambda match: match.group(1) + REDACTED + match.group(2), text)
+        else:
+            text = pattern.sub(lambda match: match.group(1) + REDACTED, text)
     return text
 
 
