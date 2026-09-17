@@ -188,14 +188,12 @@ class ExecutionGateway:
         return replace(request, risk_state_fingerprint=snapshot.risk_state_identity)
 
     def _dispatch_with_authoritative_barriers(
-        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None
+        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
         lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
         with lock:
-            final_safety_error = self._final_safety_barrier(
-                now=datetime.now(timezone.utc), snapshot=snapshot
-            )
+            final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
             if final_safety_error is not None:
                 return None, final_safety_error
             try:
@@ -266,7 +264,7 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
         try:
-            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot)
+            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, now=event_time)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:
