@@ -41,10 +41,12 @@ def test_audit_logger_redacts_structured_and_free_form_diagnostics():
         "falha authorization=super-secret",
         datetime.now(timezone.utc),
         {"api_key": "abc", "symbol": "EURUSD"},
+        "req-1",
     )
     logger = AuditLogger()
     logger.record(event)
     stored = logger.events()[0]
+    assert stored.request_id == "req-1"
     assert REDACTED in stored.message
     assert stored.data["api_key"] == REDACTED
     assert stored.data["symbol"] == "EURUSD"
