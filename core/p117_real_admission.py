@@ -90,7 +90,7 @@ class RealAdmissionBoundary:
             admission_id, audit_id, status, broker_id, adapter_id,
             request_id, symbol, tuple(reasons),
         )
-        if admission.admitted:
+        if admission.status is RealAdmissionStatus.ADMITTED:
             key = id(admission)
             _ADMITTED_PROVENANCE[key] = weakref.ref(
                 admission,
