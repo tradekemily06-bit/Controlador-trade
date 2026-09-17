@@ -29,6 +29,17 @@ def test_redaction_recurses_without_mutating_input():
     assert original["authorization"] == "Bearer secret-token"
 
 
+def test_redaction_drops_bytes_and_exception_payloads():
+    secret_bytes = b"Bearer opaque-secret-token"
+    secret_exception = RuntimeError("authorization=opaque-secret-token")
+
+    safe = redact({"body": secret_bytes, "error": secret_exception})
+
+    assert safe["body"] == REDACTED
+    assert safe["error"] == "RuntimeError"
+    assert "opaque-secret-token" not in repr(safe)
+
+
 def test_event_boundary_requires_type_and_mapping():
     event = redact_event(event_type="EXECUTION_BLOCKED", payload={"token": "hidden", "reason": "kill-switch"})
     assert event["event_type"] == "EXECUTION_BLOCKED"
