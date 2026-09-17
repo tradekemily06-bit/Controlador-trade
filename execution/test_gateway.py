@@ -135,7 +135,7 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
 
 def test_gateway_blocks_active_maintenance_before_executor():
-    now = datetime(2026, 9, 14, 20, 0, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
     maintenance = MaintenanceManager()
     maintenance.schedule(
         maintenance_id="maint-1",
