@@ -114,6 +114,32 @@ def test_evidence_reference_requires_identity_and_source():
         raise AssertionError("missing evidence identity must be rejected")
 
 
+def test_evidence_reference_fields_must_be_strings():
+    for field_values in (
+        (None, "id", "test://ci"),
+        ("ci_green", 123, "test://ci"),
+        ("ci_green", "id", object()),
+    ):
+        try:
+            ReadinessEvidenceRef(*field_values)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("malformed evidence identity must be rejected")
+
+
+def test_non_evidence_ref_object_is_fail_closed():
+    evidence = replace(_complete(), evidence_refs=("not-an-evidence-ref",))
+    assessment = assess_final_readiness(evidence)
+
+    assert assessment.state is ReadinessState.NOT_READY
+    assert assessment.missing == (
+        "invalid_evidence_ref",
+        *(f"{gate}_evidence" for gate in _REQUIRED_GATES),
+    )
+    assert assessment.real_enabled is False
+
+
 def test_unknown_evidence_gate_is_not_accepted():
     evidence = replace(
         _complete(),
