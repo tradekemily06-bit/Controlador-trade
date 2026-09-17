@@ -1,6 +1,6 @@
 import pytest
 
-from security.http_identity import PublicSaaSNotReady, require_tenant_scoped_data_plane
+from security.http_identity import PublicSaaSNotReady, clear_trusted_identity, require_trusted_identity, require_tenant_scoped_data_plane
 
 
 def test_public_saas_data_plane_requires_durable_provider(monkeypatch, tmp_path):
@@ -8,6 +8,8 @@ def test_public_saas_data_plane_requires_durable_provider(monkeypatch, tmp_path)
     monkeypatch.delenv("CONTROLADOR_PRODUCTION_DB", raising=False)
     monkeypatch.delenv("CONTROLADOR_MULTI_INSTANCE", raising=False)
 
+    clear_trusted_identity()
+    require_trusted_identity({"PATH_INFO":"/api/status","controlador.trusted_subject_id":"user-1","controlador.trusted_tenant_id":"tenant-1","controlador.trusted_role":"user"})
     with pytest.raises(PublicSaaSNotReady):
         require_tenant_scoped_data_plane()
 
@@ -17,6 +19,8 @@ def test_public_saas_data_plane_accepts_durable_single_instance_sqlite(monkeypat
     monkeypatch.setenv("CONTROLADOR_PRODUCTION_DB", str(tmp_path / "production.sqlite3"))
     monkeypatch.delenv("CONTROLADOR_MULTI_INSTANCE", raising=False)
 
+    clear_trusted_identity()
+    require_trusted_identity({"PATH_INFO":"/api/status","controlador.trusted_subject_id":"user-1","controlador.trusted_tenant_id":"tenant-1","controlador.trusted_role":"user"})
     require_tenant_scoped_data_plane()
 
 

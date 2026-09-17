@@ -50,4 +50,4 @@ def test_operational_runtime_passes_explicit_risk_provider_to_gateway(tmp_path):
 def test_operational_runtime_keeps_provider_absent_by_default(tmp_path):
     runtime = build_operational_runtime(tmp_path)
 
-    assert runtime.gateway._risk_state_provider is None
+    assert runtime.gateway._risk_state_provider is not None

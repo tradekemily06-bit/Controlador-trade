@@ -73,10 +73,9 @@ class EcosystemNotificationCenter:
         return (tenant_id, subject_id) if tenant_id and subject_id else None
 
     def _required_scope(self) -> tuple[str, str] | None:
-        scope = self._trusted_scope()
-        if scope is None and (self._require_durable or self._state_store is not None):
-            raise PermissionError("trusted scope is required for notification state")
-        return scope
+        # No trusted user scope means only system-wide update notifications may
+        # be addressed. Private notifications remain fail-closed.
+        return self._trusted_scope()
 
     @staticmethod
     def _decode(payload: object) -> list[EcosystemNotification]:
@@ -103,10 +102,16 @@ class EcosystemNotificationCenter:
         self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
 
     def _global(self) -> list[EcosystemNotification]:
-        if self._state_store is not None or self._require_durable:
-            raise PermissionError("global notification scope is reserved for system control plane")
+        if self._state_store is None:
+            if self._require_durable:
+                raise RuntimeError("durable notification state provider is required")
+            if not self._global_loaded:
+                self._global_notifications = []
+                self._global_loaded = True
+            return self._global_notifications
         if not self._global_loaded:
-            self._global_notifications = []
+            payload = self._state_store.get(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE)
+            self._global_notifications = [] if payload is None else self._decode(payload)
             self._global_loaded = True
         return self._global_notifications
 
@@ -124,8 +129,6 @@ class EcosystemNotificationCenter:
 
     def _replace_cache(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> None:
         if scope == (self.GLOBAL_TENANT, self.GLOBAL_SUBJECT):
-            if self._state_store is not None or self._require_durable:
-                raise PermissionError("global notification scope is reserved for system control plane")
             self._global_notifications = events
             self._global_loaded = True
             return
@@ -136,9 +139,10 @@ class EcosystemNotificationCenter:
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
         scope = self._required_scope()
+        global_events = self._global()
         if scope is None:
-            return tuple(self._global())
-        return tuple(self._scoped(scope))
+            return tuple(global_events)
+        return tuple(global_events) + tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):
@@ -147,10 +151,24 @@ class EcosystemNotificationCenter:
             raise ValueError("notification id, title and message are required")
         scope = self._required_scope()
         if scope is None:
-            events = list(self._global())
+            if self._state_store is None and not self._require_durable:
+                events = list(self._global())
+                events.append(notification)
+                self._global_notifications = events
+                self._global_loaded = True
+                return notification
+            if notification.kind is not NotificationKind.SYSTEM_UPDATE:
+                raise PermissionError("trusted scope is required for private notification state")
+            if self._state_store is not None:
+                payload = self._state_store.get(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE)
+                events = [] if payload is None else self._decode(payload)
+            else:
+                events = list(self._global())
             events.append(notification)
             self._global_notifications = events
             self._global_loaded = True
+            if self._state_store is not None:
+                self._state_store.put(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
             return notification
         events = self._load(scope)
         events.append(notification)

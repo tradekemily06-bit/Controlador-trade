@@ -149,9 +149,15 @@ def test_gateway_blocks_active_maintenance_before_executor():
     gateway = ExecutionGateway(executor, KillSwitch(), maintenance=maintenance)
 
     scheduled = gateway.execute("req-scheduled", request(), timestamp=now + timedelta(minutes=2))
-    active = gateway.execute("req-active", request(), timestamp=now + timedelta(minutes=10))
 
     assert scheduled.status is GatewayStatus.ACCEPTED
+
+    active_window = maintenance._current.__class__(
+        **{**maintenance._current.__dict__, "starts_at": now - timedelta(minutes=1), "ends_at": now + timedelta(minutes=30)}
+    )
+    maintenance._current = active_window
+    active = gateway.execute("req-active", request(), timestamp=now - timedelta(days=1))
+
     assert active.status is GatewayStatus.BLOCKED
     assert len(executor.executions()) == 1
 

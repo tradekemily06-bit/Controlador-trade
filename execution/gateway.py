@@ -198,8 +198,8 @@ class ExecutionGateway:
                 return None, final_safety_error
             try:
                 effective_request = self._request_for_dispatch(request, snapshot)
-            except ValueError as exc:
-                return None, str(exc)
+            except ValueError:
+                return None, "requisição incompatível com o snapshot; dispatch bloqueado."
             return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
@@ -266,7 +266,7 @@ class ExecutionGateway:
                 self._abandon_reserved_request(request_id)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
         try:
-            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, now=event_time)
+            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, now=operational_now)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
             if self._incident_manager is not None:

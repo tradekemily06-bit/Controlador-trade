@@ -2,11 +2,15 @@ from pathlib import Path
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
-from execution.default_registry import (
-    IC_MARKETS_MT5_DEMO,
-    _build_demo_registry,
-    build_ic_markets_mt5_demo_gateway,
-)
+from execution.default_registry import IC_MARKETS_MT5_DEMO, build_ic_markets_mt5_demo_gateway
+from execution.broker_registry import BrokerRegistry
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
+
+
+def _build_demo_registry(*, mt5_module=None, symbol=None):
+    registry = BrokerRegistry()
+    registry.register(IC_MARKETS_MT5_DEMO, ICMarketsMT5DemoAdapter(ICMarketsMT5DemoConfig(symbol=symbol), mt5_module=mt5_module))
+    return registry
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import GatewayStatus
