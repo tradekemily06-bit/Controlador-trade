@@ -10,7 +10,7 @@ from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
-from core.p116_real_release_audit import RealReleaseAuditBoundary, RealReleaseAudit, ReleaseAuditStatus
+from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
@@ -77,7 +77,10 @@ def _snapshot(state=None):
 
 
 def _authorization(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
-    audit = RealReleaseAudit("a116", ReleaseAuditStatus.VERIFIED, ("P111", "P112", "P113", "P114", "P115"), ())
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="a116", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAuthorizationIssuer().issue(
         audit=audit, authorization_id="auth", audit_id="a116", broker_id=broker_id,
         adapter_id=adapter_id, request_id=request_id, symbol=symbol, explicit_approval=True,
@@ -140,6 +143,16 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p119 = RealReleaseClosureBoundary().close(release_id="release", p116_verified=p116.verified,
                                                p117_admitted=p117.admitted, p118_available=True, multi_broker_boundary=True)
     assert p119.state is RealReleaseState.RELEASED
+
+
+def test_real_authorization_rejects_fabricated_verified_audit():
+    from core.p116_real_release_audit import RealReleaseAudit
+    fabricated = RealReleaseAudit("forged", ReleaseAuditStatus.VERIFIED, ("P111", "P112", "P113", "P114", "P115"), ())
+    with pytest.raises(ValueError, match="fronteira"):
+        RealAuthorizationIssuer().issue(
+            audit=fabricated, authorization_id="auth", audit_id="forged", broker_id="fake",
+            adapter_id="fake-adapter", request_id="req", symbol="TEST", explicit_approval=True,
+        )
 
 
 def test_real_authorization_is_explicit():
