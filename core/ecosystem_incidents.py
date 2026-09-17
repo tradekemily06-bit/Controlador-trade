@@ -81,7 +81,7 @@ class EcosystemIncidentManager:
             resolved = TechnicalIncident(current.incident_id, current.title, current.message, current.started_at, IncidentStatus.RESOLVED, resolved_at)
             self._incidents[key] = resolved
             if self._notification_center is not None:
-                self._notification_center.publish(EcosystemNotification(f"incident-resolved-{uuid4().hex}", NotificationKind.RECOVERY, NotificationSeverity.IMPORTANT, "Problema técnico resolvido", f"O incidente {key} foi resolvido. O ecossistema só volta a operar se as demais barreiras de segurança também estiverem liberadas.", requires_attention=True))
+                self._notification_center.publish_global(EcosystemNotification(f"incident-resolved-{uuid4().hex}", NotificationKind.RECOVERY, NotificationSeverity.IMPORTANT, "Problema técnico resolvido", f"O incidente {key} foi resolvido. O ecossistema só volta a operar se as demais barreiras de segurança também estiverem liberadas.", requires_attention=True))
             return resolved
 
     def active(self) -> tuple[TechnicalIncident, ...]:
@@ -114,7 +114,7 @@ class EcosystemIncidentManager:
 
     def _publish(self, incident: TechnicalIncident) -> None:
         if self._notification_center is not None:
-            self._notification_center.publish(EcosystemNotification(f"incident-open-{incident.incident_id}", NotificationKind.EXECUTION, NotificationSeverity.CRITICAL, "Problema técnico detectado", f"{incident.message} Novas ordens estão bloqueadas enquanto o problema é investigado e resolvido.", requires_attention=True, blocking=True))
+            self._notification_center.publish_global(EcosystemNotification(f"incident-open-{incident.incident_id}", NotificationKind.EXECUTION, NotificationSeverity.CRITICAL, "Problema técnico detectado", f"{incident.message} Novas ordens estão bloqueadas enquanto o problema é investigado e resolvido.", requires_attention=True, blocking=True))
 
 
 def _utc(value: datetime) -> datetime:

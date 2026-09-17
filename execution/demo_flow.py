@@ -40,25 +40,29 @@ class DemoFlow:
         self.clock = clock or (lambda: datetime.now(timezone.utc))
 
     def run(self, *, analysis: AnalysisResult, market_context: MarketContextResult | None, operational_state: OperationalState | None, senior_context: SeniorContextCycle | None, symbol: str, amount: float, duration_seconds: int, config: RuntimeConfig, market_data: MarketDataIntegrityReport, recovery: RecoveryAssessment) -> DemoFlowResult:
+        request_id = self.request_id_factory()
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido")
+        request_id = request_id.strip()
         quality = self.quality_evaluator.evaluate(analysis)
-        self.audit_logger.record(AuditEvent(event_type=AuditEventType.ANALYSIS, message="Análise recebida pelo fluxo DEMO.", data={"signal": analysis.signal.value, "score": analysis.score, "symbol": symbol, "quality_score": quality.score, "quality_level": quality.level.value, "actionable": quality.actionable}))
+        self.audit_logger.record(AuditEvent(event_type=AuditEventType.ANALYSIS, message="Análise recebida pelo fluxo DEMO.", request_id=request_id, data={"signal": analysis.signal.value, "score": analysis.score, "symbol": symbol, "quality_score": quality.score, "quality_level": quality.level.value, "actionable": quality.actionable}))
 
         if senior_context is None:
             decision = DecisionResult(decision=FinalDecision.AGUARDAR, signal=analysis.signal, reason="Contexto sênior obrigatório para o fluxo DEMO.")
         else:
             decision = self.decision_engine.evaluate(analysis=analysis, market_context=market_context, operational_state=operational_state, senior_context=senior_context)
 
-        self.audit_logger.record(AuditEvent(event_type=AuditEventType.DECISION, message="Decisão registrada.", data={"decision": decision.decision, "signal": decision.signal.value, "reason": decision.reason, "quality_level": quality.level.value, "quality_score": quality.score, "senior_context_supplied": senior_context is not None}))
+        self.audit_logger.record(AuditEvent(event_type=AuditEventType.DECISION, message="Decisão registrada.", request_id=request_id, data={"decision": decision.decision, "signal": decision.signal.value, "reason": decision.reason, "quality_level": quality.level.value, "quality_score": quality.score, "senior_context_supplied": senior_context is not None}))
 
         if decision.decision != FinalDecision.EXECUTAR:
-            self.audit_logger.record(AuditEvent(event_type=AuditEventType.RISK, message="Execução não autorizada.", data={"decision": decision.decision, "reason": decision.reason, "quality_level": quality.level.value}))
+            self.audit_logger.record(AuditEvent(event_type=AuditEventType.RISK, message="Execução não autorizada.", request_id=request_id, data={"decision": decision.decision, "reason": decision.reason, "quality_level": quality.level.value}))
             return DemoFlowResult(decision=decision, execution=None, quality=quality)
 
-        intent = ExecutionIntent(request_id=self.request_id_factory(), symbol=symbol, signal=decision.signal, amount=amount, duration_seconds=duration_seconds, mode=ExecutionMode.DEMO, created_at=self.clock())
+        intent = ExecutionIntent(request_id=request_id, symbol=symbol, signal=decision.signal, amount=amount, duration_seconds=duration_seconds, mode=ExecutionMode.DEMO, created_at=self.clock())
         execution_result = self.demo_coordinator.execute(config=config, market_data=market_data, recovery=recovery, intent=intent, senior_context=senior_context)
         execution = execution_result.gateway.execution if execution_result.gateway is not None else None
         readiness_message = "; ".join(execution_result.readiness.reasons)
         message = execution.message if execution is not None else readiness_message
 
-        self.audit_logger.record(AuditEvent(event_type=AuditEventType.EXECUTION, message="Resultado da execução DEMO registrado.", data={"accepted": execution is not None and execution.accepted, "external_id": execution.external_id if execution is not None else None, "message": message, "quality_level": quality.level.value, "quality_score": quality.score, "readiness": readiness_message}))
+        self.audit_logger.record(AuditEvent(event_type=AuditEventType.EXECUTION, message="Resultado da execução DEMO registrado.", request_id=request_id, data={"accepted": execution is not None and execution.accepted, "external_id": execution.external_id if execution is not None else None, "message": message, "quality_level": quality.level.value, "quality_score": quality.score, "readiness": readiness_message}))
         return DemoFlowResult(decision=decision, execution=execution, quality=quality, execution_result=execution_result)
