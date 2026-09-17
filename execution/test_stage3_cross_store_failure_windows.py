@@ -67,7 +67,7 @@ def test_rejected_ledger_with_failed_lifecycle_persistence_blocks_recovery(tmp_p
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("cross-rejected") is ExecutionLedgerStatus.REJECTED
-    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("cross-rejected").state is ExecutionLifecycleState.UNKNOWN
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("cross-rejected").state is ExecutionLifecycleState.PENDING
     assessed = recovery(tmp_path).assess()
     assert assessed.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessed.can_resume is False
