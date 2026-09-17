@@ -21,7 +21,13 @@ Cada gate marcado como verde precisa de uma referência explícita de evidência
 
 Um booleano `True` isolado não fecha um gate. A ausência da referência torna o gate pendente, mesmo que a flag esteja verde.
 
+Uma evidência de uma etapa anterior pode ser reutilizada por uma etapa descendente somente quando a relação de ancestralidade estiver comprovada e a execução citada realmente cobrir o contrato daquele gate. Um PR aberto, um SHA de merge não efetivado ou uma documentação isolada não contam como prova de que uma etapa foi integrada.
+
 A estrutura de rastreabilidade é de governança: ela organiza e exige a prova, mas não transforma a referência em autorização de execução.
+
+## Regra de fechamento independente
+
+Antes de marcar a matriz como completa, a revisão deve verificar os gates contra o histórico real do repositório, e não apenas preencher o objeto `FinalReadinessEvidence`. Quando uma etapa não possui CI próprio no SHA auditado, a revisão deve identificar explicitamente a execução descendente que a cobre ou manter o gate pendente.
 
 ## Proibição
 
