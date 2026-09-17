@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import weakref
 
@@ -8,6 +8,10 @@ import weakref
 class RealAdmissionStatus(str, Enum):
     ADMITTED = "ADMITTED"
     BLOCKED = "BLOCKED"
+
+
+class _AdmissionProvenanceToken:
+    """Private identity token proving issuance by RealAdmissionBoundary."""
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,7 @@ class RealAdmission:
     request_id: str
     symbol: str
     reasons: tuple[str, ...]
+    _provenance_token: _AdmissionProvenanceToken | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         for name in ("admission_id", "audit_id", "broker_id", "adapter_id", "request_id", "symbol"):
@@ -32,26 +37,35 @@ class RealAdmission:
             raise TypeError("status de admissão REAL inválido.")
         if not isinstance(self.reasons, tuple) or not all(isinstance(reason, str) for reason in self.reasons):
             raise TypeError("reasons da admissão REAL deve ser uma tupla de strings.")
+        if self._provenance_token is not None and not isinstance(self._provenance_token, _AdmissionProvenanceToken):
+            raise TypeError("proveniência da admissão REAL inválida.")
 
     @property
     def admitted(self) -> bool:
         if self.status is not RealAdmissionStatus.ADMITTED:
             return False
-        reference = _ADMITTED_PROVENANCE.get(id(self))
-        return reference is not None and reference() is self
+        token = self._provenance_token
+        if token is None:
+            return False
+        reference = _ADMITTED_PROVENANCE.get(id(token))
+        return reference is not None and reference() is token
 
 
 # Admission is a gate, not merely a data shape. The execution gateway must
 # distinguish a boundary-issued admission from a field-identical fabricated
-# dataclass. Keep identity provenance without retaining admissions forever.
-_ADMITTED_PROVENANCE: dict[int, weakref.ReferenceType[RealAdmission]] = {}
+# dataclass. The private token is held by the exact object and separately
+# registered by identity, without retaining admissions forever.
+_ADMITTED_PROVENANCE: dict[int, weakref.ReferenceType[_AdmissionProvenanceToken]] = {}
 
 
 def _is_boundary_admitted(admission: object) -> bool:
     if not isinstance(admission, RealAdmission) or not admission.admitted:
         return False
-    reference = _ADMITTED_PROVENANCE.get(id(admission))
-    return reference is not None and reference() is admission
+    token = admission._provenance_token
+    if token is None:
+        return False
+    reference = _ADMITTED_PROVENANCE.get(id(token))
+    return reference is not None and reference() is token
 
 
 class RealAdmissionBoundary:
@@ -86,14 +100,15 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
+        token = _AdmissionProvenanceToken() if status is RealAdmissionStatus.ADMITTED else None
         admission = RealAdmission(
             admission_id, audit_id, status, broker_id, adapter_id,
-            request_id, symbol, tuple(reasons),
+            request_id, symbol, tuple(reasons), token,
         )
-        if admission.status is RealAdmissionStatus.ADMITTED:
-            key = id(admission)
+        if token is not None:
+            key = id(token)
             _ADMITTED_PROVENANCE[key] = weakref.ref(
-                admission,
+                token,
                 lambda _reference, key=key: _ADMITTED_PROVENANCE.pop(key, None),
             )
         return admission
