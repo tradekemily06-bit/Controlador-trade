@@ -12,11 +12,11 @@ def _read(relative: str) -> str:
 
 def test_demo_gateway_is_explicitly_demo_only():
     source = _read("execution/gateway.py")
-    assert "ExecutionMode.DEMO" in source
-    assert "ExecutionMode.REAL" in source
-    assert "only DEMO/PAPER execution" in source
-    # The validation path must reject REAL rather than merely documenting that it is unsupported.
-    assert "request.mode is not ExecutionMode.DEMO" in source
+    assert 'class ExecutionGateway' in source
+    assert 'if request.mode is not ExecutionMode.DEMO:' in source
+    assert 'P5 aceita somente execução DEMO/PAPER' in source
+    # The source must not contain a REAL dispatch branch in this legacy/demo gateway.
+    assert 'request.mode is ExecutionMode.REAL' not in source
 
 
 def test_real_gateway_requires_active_authorization_and_admission():
@@ -40,14 +40,16 @@ def test_demo_remote_bridge_cannot_dispatch_real():
     source = _read("execution/remote_mt5_bridge.py")
     assert "ExecutionMode.DEMO" in source
     assert "execute_demo" in source
-    assert "ExecutionMode.REAL" in source
+    # This bridge exposes only the demo operation; absence of a REAL branch is intentional.
+    assert "ExecutionMode.REAL" not in source
 
 
 def test_default_demo_factory_does_not_return_a_raw_broker_adapter():
     source = _read("execution/default_registry.py")
     assert "build_ic_markets_mt5_demo_gateway" in source
     assert "build_ic_markets_mt5_demo_port" in source
-    assert "raw broker adapter not handed to ExecutionGateway" in source
+    assert "return runtime.gateway" in source
+    assert "return build_ic_markets_mt5_demo_port" not in source
 
 
 def test_real_authorization_defaults_to_disabled():
