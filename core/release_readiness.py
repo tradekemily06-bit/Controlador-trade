@@ -10,6 +10,28 @@ class ReadinessState(str, Enum):
 
 
 @dataclass(frozen=True)
+class ReadinessEvidenceRef:
+    """Traceable proof reference for one release-readiness gate.
+
+    The reference identifies where the proof lives. It does not itself create
+    authorization or imply that the referenced artifact is valid; callers must
+    supply the actual, current evidence.
+    """
+
+    gate: str
+    evidence_id: str
+    source_ref: str
+
+    def __post_init__(self) -> None:
+        if not self.gate.strip():
+            raise ValueError("evidence gate is required")
+        if not self.evidence_id.strip():
+            raise ValueError("evidence_id is required")
+        if not self.source_ref.strip():
+            raise ValueError("source_ref is required")
+
+
+@dataclass(frozen=True)
 class FinalReadinessEvidence:
     stage2_green: bool
     stage3_green: bool
@@ -25,6 +47,7 @@ class FinalReadinessEvidence:
     demo_real_separation_tested: bool
     legacy_compatibility_tested: bool
     ci_green: bool
+    evidence_refs: tuple[ReadinessEvidenceRef, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,8 +78,25 @@ _REQUIRED = (
 def assess_final_readiness(evidence: FinalReadinessEvidence) -> FinalReadinessAssessment:
     if not isinstance(evidence, FinalReadinessEvidence):
         raise TypeError("final readiness evidence is required")
-    missing = tuple(name for name in _REQUIRED if getattr(evidence, name) is not True)
+
+    missing = [name for name in _REQUIRED if getattr(evidence, name) is not True]
+    refs_by_gate = {ref.gate: ref for ref in evidence.evidence_refs}
+
+    # A green boolean without a traceable reference is not sufficient for a
+    # release gate. This prevents governance from becoming an un-auditable
+    # collection of manually asserted flags.
+    missing.extend(
+        f"{name}_evidence"
+        for name in _REQUIRED
+        if getattr(evidence, name) is True and name not in refs_by_gate
+    )
+
     if missing:
-        return FinalReadinessAssessment(ReadinessState.NOT_READY, missing, real_enabled=False)
+        return FinalReadinessAssessment(
+            ReadinessState.NOT_READY,
+            tuple(missing),
+            real_enabled=False,
+        )
+
     # Stage 7 is governance only. Passing the matrix never creates REAL authority.
     return FinalReadinessAssessment(ReadinessState.READY_FOR_REVIEW, (), real_enabled=False)
