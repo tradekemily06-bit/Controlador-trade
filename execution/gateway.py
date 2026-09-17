@@ -276,7 +276,7 @@ class ExecutionGateway:
                     pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
         if barrier_error is not None:
-            self._mark_unknown(request_id, event_time, "barreira de segurança bloqueou o dispatch")
+            self._mark_pre_dispatch_block(request_id, event_time, barrier_error)
             return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
@@ -314,6 +314,26 @@ class ExecutionGateway:
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+
+    def _mark_pre_dispatch_block(self, request_id: str, timestamp: datetime, message: str) -> None:
+        """Persist a known pre-dispatch block; UNKNOWN is reserved for uncertain dispatch outcomes."""
+        if self._ledger is not None:
+            try:
+                current_status = self._ledger.status(request_id)
+                if current_status is ExecutionLedgerStatus.RESERVED:
+                    self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is None:
+            return
+        try:
+            current = self._lifecycle.get(request_id)
+            if current is None:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+            elif current.state is ExecutionLifecycleState.PENDING:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+        except (OSError, ValueError):
+            pass
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         if self._ledger is not None:
