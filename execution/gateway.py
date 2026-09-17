@@ -294,7 +294,14 @@ class ExecutionGateway:
                     self._mark_unknown(request_id, event_time, "execução rejeitada, mas ledger não foi persistido")
                     return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução rejeitada, mas persistência falhou; estado UNKNOWN", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError):
+                    return GatewayResult(
+                        GatewayStatus.EXECUTOR_ERROR,
+                        "execução rejeitada, mas persistência do ciclo falhou; recuperação/reconciliação obrigatória",
+                        result,
+                    )
             self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
         if self._ledger is not None:
