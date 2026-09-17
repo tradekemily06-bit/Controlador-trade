@@ -40,3 +40,8 @@ def risk_state_identity(state: OperationalState) -> str:
         ensure_ascii=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def risk_state_fingerprint(state: OperationalState) -> str:
+    """Compatibility entry point used by DecisionSnapshot and runtime gates."""
+    return risk_state_identity(state)
