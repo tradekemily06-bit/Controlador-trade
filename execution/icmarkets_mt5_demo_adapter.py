@@ -141,6 +141,13 @@ class ICMarketsMT5DemoAdapter:
                 raise MT5AdapterError("MT5 order_send sem confirmação determinística")
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
+            ambiguous_codes = {
+                getattr(mt5, "TRADE_RETCODE_PLACED", 10008),
+                getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", 10010),
+                getattr(mt5, "TRADE_RETCODE_TIMEOUT", 10012),
+            }
+            if retcode in ambiguous_codes:
+                raise MT5AdapterError(f"MT5 order_send retornou estado potencialmente executado sem confirmação terminal: retcode={retcode}")
             if success_code is None or retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
