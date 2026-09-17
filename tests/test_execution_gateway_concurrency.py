@@ -72,7 +72,7 @@ def test_same_request_id_is_dispatched_at_most_once_across_processes(tmp_path: P
     for process in processes:
         process.join(20)
         assert process.exitcode == 0
-    assert sorted(results.get(timeout=5) for _ in processes) == [GatewayStatus.ACCEPTED.value, GatewayStatus.BLOCKED.value]
+    assert sorted(results.get(timeout=5) for _ in processes) == [GatewayStatus.ACCEPTED.value, GatewayStatus.DUPLICATE.value]
     assert counter.value == 1
     assert ExecutionLedger(ledger_path).status("same-request") is ExecutionLedgerStatus.ACCEPTED
     assert ExecutionLifecycleStore(lifecycle_path).get("same-request").state is ExecutionLifecycleState.ACCEPTED
