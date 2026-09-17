@@ -9,7 +9,6 @@ from core.ecosystem_incidents import EcosystemIncidentManager
 from core.global_operational_barrier import GlobalOperationalBarrier
 from core.models import Signal
 from core.operational_state import OperationalState
-from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
 from core.p116_real_release_audit import RealReleaseAuditBoundary
 from core.p117_real_admission import RealAdmissionBoundary
@@ -139,7 +138,7 @@ def test_cross_process_real_gateway_has_single_dispatch_winner(tmp_path: Path):
     results = sorted(result_queue.get(timeout=15) for _ in processes)
     for process in processes:
         process.join(timeout=15)
-    assert results == [RealGatewayStatus.ADMITTED, RealGatewayStatus.UNKNOWN]
+    assert results == [RealGatewayStatus.ADMITTED, RealGatewayStatus.BLOCKED]
     assert marker_path.read_text(encoding="utf-8").splitlines() == ["shared-process-request"]
     assert ExecutionLedger(ledger_path).status("shared-process-request") is ExecutionLedgerStatus.ACCEPTED
     assert all(process.exitcode == 0 for process in processes)
