@@ -74,9 +74,13 @@ class TechnicalIncidentStore:
         if not isinstance(reason, str) or not reason.strip(): raise ValueError("reason é obrigatório")
         timestamp = now or datetime.now(timezone.utc)
         if timestamp.tzinfo is None: raise ValueError("timestamp deve conter timezone")
-        payload = {"status":"INCIDENT","incident_id":incident_id.strip(),"reason":reason.strip(),"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
+        normalized_id = incident_id.strip()
+        payload = {"status":"INCIDENT","incident_id":normalized_id,"reason":reason.strip(),"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
         with self._lock_local, self._file_lock():
-            self._read(); self._write(payload)
+            current = self._read()
+            if current.get("status") == "INCIDENT" and current.get("incident_id") not in (None, normalized_id):
+                raise ValueError("já existe outro incidente técnico ativo")
+            self._write(payload)
         return payload
 
     def resolve(self, incident_id: str, *, now: datetime | None = None) -> dict[str, object]:
