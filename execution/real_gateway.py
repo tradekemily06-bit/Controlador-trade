@@ -99,11 +99,11 @@ class RealExecutionGateway:
     ) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not isinstance(authorization, RealExecutionAuthorization):
+        if type(authorization) is not RealExecutionAuthorization:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "autorização REAL inválida.")
-        if not isinstance(admission, RealAdmission):
+        if type(admission) is not RealAdmission:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "admissão REAL inválida.")
-        if not isinstance(safety, RealSafetyReport):
+        if type(safety) is not RealSafetyReport:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL inválida.")
         if (
             authorization.explicitly_enabled is not True
@@ -325,7 +325,7 @@ class RealExecutionGateway:
         """
         if type(reconciliation_boundary) is not ExternalOrderReconciliationBoundary:
             raise ValueError("boundary de reconciliação inválida.")
-        if not isinstance(authorization, RealExecutionAuthorization):
+        if type(authorization) is not RealExecutionAuthorization:
             raise ValueError("autorização REAL inválida.")
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido para reconciliação.")
