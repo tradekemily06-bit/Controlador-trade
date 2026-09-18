@@ -55,7 +55,22 @@ class RealExecutionLocks:
     def _file_lock(path: Path) -> Iterator[None]:
         with path.open("a+b") as handle:
             if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                except OSError as exc:
+                    raise RealExecutionLockError(
+                        f"não foi possível adquirir lock interprocesso: {exc}"
+                    ) from exc
+                try:
+                    yield
+                finally:
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                    except OSError:
+                        # Losing the unlock syscall must not be converted into
+                        # a second application-level state transition. The OS
+                        # will release the descriptor lock when the handle closes.
+                        pass
             else:  # pragma: no cover - Windows fallback
                 try:
                     handle.seek(0)
@@ -64,12 +79,9 @@ class RealExecutionLocks:
                     raise RealExecutionLockError(
                         "não foi possível adquirir lock interprocesso."
                     ) from exc
-            try:
-                yield
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-                else:  # pragma: no cover - Windows fallback
+                try:
+                    yield
+                finally:
                     try:
                         handle.seek(0)
                         msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
