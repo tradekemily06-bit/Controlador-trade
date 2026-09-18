@@ -7,7 +7,7 @@ from core.p4_operational_recorder import P4OperationalRecorder
 from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
