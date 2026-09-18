@@ -69,8 +69,8 @@ class ExternalExecutionReconciliationService:
         query_order_by_request_id cannot use this path. No order submission is
         ever attempted here.
         """
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id inválido.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico.")
 
         query = self._query_port
         method = getattr(query, "query_order_by_request_id", None)
@@ -84,7 +84,7 @@ class ExternalExecutionReconciliationService:
         # recovery worker could bind an external identity while a live execution
         # is still between the final authority check and the broker response.
         with self._coordinator.request_execution_lock(request_id):
-            observation = method(request_id.strip())
+            observation = method(request_id)
             if not isinstance(observation, ExternalOrderObservation):
                 raise ValueError("consulta externa por request_id retornou observação inválida.")
             if not isinstance(observation.external_id, str) or not observation.external_id.strip():
