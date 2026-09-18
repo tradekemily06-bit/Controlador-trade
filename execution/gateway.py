@@ -9,7 +9,7 @@ from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
 
@@ -213,7 +213,6 @@ class ExecutionGateway:
 
     @staticmethod
     def _ledger_status_reserved():
-        from execution.execution_ledger import ExecutionLedgerStatus
         return ExecutionLedgerStatus.RESERVED
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
