@@ -61,3 +61,16 @@ def test_result_is_immutable():
     result = AutomationAdmission().admit(request(), readiness=approved_readiness(), risk_budget=approved_budget())
     with pytest.raises(FrozenInstanceError):
         result.admitted = False
+
+def test_blocks_real_mode_cycle_even_when_other_boundaries_approve():
+    from datetime import datetime, timezone
+    real_request = AutomationCycleRequest(
+        "cycle-real", datetime(2026, 1, 1, tzinfo=timezone.utc), mode="REAL"
+    )
+    result = AutomationAdmission().admit(
+        real_request, readiness=approved_readiness(), risk_budget=approved_budget()
+    )
+    assert result.admitted is False
+    assert result.request is None
+    assert "only DEMO cycle requests can be admitted" in result.reasons
+
