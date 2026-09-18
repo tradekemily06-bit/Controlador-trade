@@ -129,23 +129,13 @@ class RealExecutionGateway:
                     RealGatewayStatus.BLOCKED,
                     "request_id já possui lifecycle terminal; replay REAL recusado.",
                 )
-            try:
-                self._lifecycle.put(
-                    ExecutionLifecycleRecord(
-                        request_id,
-                        ExecutionLifecycleState.PENDING,
-                        datetime.now(timezone.utc),
-                        "REAL reservado; aguardando resultado do broker.",
-                    )
-                )
-            except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL: {exc}")
         try:
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
+        # Recheck after durable reservation but before publishing lifecycle PENDING.
         if self._recovery is not None:
             final_recovery = self._recovery.assess()
             if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
@@ -169,6 +159,23 @@ class RealExecutionGateway:
                     RealGatewayStatus.BLOCKED,
                     f"execução REAL bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
                 )
+
+        if self._lifecycle is not None:
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.PENDING,
+                        datetime.now(timezone.utc),
+                        "REAL reservado; aguardando resultado do broker.",
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError):
+                    pass
+                return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL; estado incerto bloqueado: {exc}")
 
         try:
             result = self._gateway.execute(broker, request)
