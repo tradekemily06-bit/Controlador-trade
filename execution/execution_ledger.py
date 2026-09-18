@@ -190,7 +190,24 @@ class ExecutionLedger:
         )
 
     def mark_unknown(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current is None:
+                raise ValueError("request_id não foi reservado.")
+            if current.status is not ExecutionLedgerStatus.RESERVED:
+                raise ValueError(
+                    f"transição inválida de {current.status.value} para UNKNOWN."
+                )
+            # UNKNOWN is a safety barrier, but the broker reference is still
+            # valuable evidence. Never discard a durable external_id here.
+            self._states[request_id] = ExecutionLedgerEntry(
+                ExecutionLedgerStatus.UNKNOWN,
+                current.external_id,
+            )
+
+        self._mutate_locked(mutation)
 
     def reconcile(
         self,
@@ -214,11 +231,20 @@ class ExecutionLedger:
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+            if (
+                current.external_id is not None
+                and external_id is not None
+                and current.external_id != external_id
+            ):
+                raise ValueError("external_id conflitante na reconciliação.")
+            resolved_external_id = external_id or current.external_id
+            if executed and not resolved_external_id:
+                raise ValueError("external_id é obrigatório para reconciliação como EXECUTED.")
             self._states[request_id] = ExecutionLedgerEntry(
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
                 else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
-                external_id if executed else None,
+                resolved_external_id if executed else current.external_id,
             )
 
         self._mutate_locked(mutation)
@@ -245,8 +271,6 @@ class ExecutionLedger:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            # UNKNOWN is a terminal safety barrier. It can leave UNKNOWN only
-            # through explicit reconcile(), never through a normal promotion.
             if current.status is not ExecutionLedgerStatus.RESERVED:
                 raise ValueError(
                     f"transição inválida de {current.status.value} para {status.value}."
