@@ -907,3 +907,29 @@ def test_real_reconciliation_fails_closed_when_lock_acquisition_breaks(tmp_path,
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
         )
     assert ledger.status("reconcile-lock-failure") is ExecutionLedgerStatus.RESERVED
+
+
+def test_real_gateway_rejects_overridable_dependency_subclasses(tmp_path):
+    class GatewayOverride(BrokerAdapterGateway):
+        def execute_real(self, *args, **kwargs):
+            raise AssertionError("override must never be trusted by REAL boundary")
+
+    class LedgerOverride(ExecutionLedger):
+        pass
+
+    class LifecycleOverride(ExecutionLifecycleStore):
+        pass
+
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    base_gateway = BrokerAdapterGateway(registry)
+    with pytest.raises(ValueError, match="adapter_gateway inválido"):
+        RealExecutionGateway(GatewayOverride(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="ledger é obrigatório"):
+        RealExecutionGateway(base_gateway, LedgerOverride(tmp_path / "ledger-override.json"))
+    with pytest.raises(ValueError, match="lifecycle inválido"):
+        RealExecutionGateway(
+            base_gateway,
+            ExecutionLedger(tmp_path / "ledger.json"),
+            LifecycleOverride(tmp_path / "lifecycle-override.json"),
+        )
