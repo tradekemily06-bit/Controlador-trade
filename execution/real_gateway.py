@@ -236,18 +236,18 @@ class RealExecutionGateway:
                 broker, request, capability=capability, request_id=request_id, authorization_id=authorization_id
             )
         except Exception as exc:
-            self._mark_unknown(
-                request_id,
-                f"resultado REAL incerto: {type(exc).__name__}: {exc}",
-            )
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                f"resultado REAL incerto: {type(exc).__name__}: {exc}",
-            )
+            message = f"resultado REAL incerto: {type(exc).__name__}: {exc}"
+            persistence_warning = self._mark_unknown(request_id, message)
+            if persistence_warning:
+                message = f"{message}; persistência de estado incerto também falhou: {persistence_warning}"
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, message)
 
         if result.execution is None:
-            self._mark_unknown(request_id, result.message)
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+            persistence_warning = self._mark_unknown(request_id, result.message)
+            message = result.message
+            if persistence_warning:
+                message = f"{message}; persistência de estado incerto também falhou: {persistence_warning}"
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, message)
 
         execution = result.execution
 
@@ -273,15 +273,11 @@ class RealExecutionGateway:
 
         external_id = execution.external_id
         if not isinstance(external_id, str) or not external_id.strip():
-            self._mark_unknown(
-                request_id,
-                "aceite REAL sem external_id; reconciliação por referência do broker é impossível.",
-            )
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                "aceite REAL sem external_id; reconciliação por referência do broker é impossível.",
-                execution,
-            )
+            message = "aceite REAL sem external_id; reconciliação por referência do broker é impossível."
+            persistence_warning = self._mark_unknown(request_id, message)
+            if persistence_warning:
+                message = f"{message}; persistência de estado incerto também falhou: {persistence_warning}"
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, message, execution)
 
         try:
             self._ledger.attach_external_id(request_id, external_id)
@@ -485,16 +481,18 @@ class RealExecutionGateway:
             )
         )
 
-    def _mark_unknown(self, request_id: str, message: str) -> None:
+    def _mark_unknown(self, request_id: str, message: str) -> str | None:
+        failures: list[str] = []
         try:
             self._ledger.mark_unknown(request_id)
-        except (OSError, ValueError):
-            pass
+        except (OSError, ValueError) as exc:
+            failures.append(f"Ledger: {exc}")
         if self._lifecycle is not None:
             try:
                 self._set_lifecycle(request_id, ExecutionLifecycleState.UNKNOWN, message)
-            except (OSError, ValueError):
-                pass
+            except (OSError, ValueError) as exc:
+                failures.append(f"Lifecycle: {exc}")
+        return "; ".join(failures) if failures else None
 
     def _check_consistency(
         self,
