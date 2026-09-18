@@ -84,3 +84,37 @@ def test_append_does_not_mutate_memory_when_durability_fails(tmp_path, monkeypat
 
     assert log.events() == ()
     assert store.load_execution_audit() == ()
+
+
+def test_concurrent_audit_log_cannot_append_out_of_order_timestamp(tmp_path):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    first = ExecutionAuditLog(store)
+    second = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+
+    first_event = ExecutionAuditEvent(
+        "req-first",
+        ExecutionLifecycleState.PENDING,
+        datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+        "first",
+    )
+    second_event = ExecutionAuditEvent(
+        "req-second",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime(2026, 1, 1, 0, 2, tzinfo=timezone.utc),
+        "second",
+    )
+    stale_event = ExecutionAuditEvent(
+        "req-stale",
+        ExecutionLifecycleState.UNKNOWN,
+        datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc),
+        "stale",
+    )
+
+    first.append(first_event)
+    second.append(second_event)
+
+    with pytest.raises(ValueError, match="cronológica"):
+        first.append(stale_event)
+
+    restored = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    assert restored.events() == (first_event, second_event)
