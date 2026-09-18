@@ -203,13 +203,15 @@ class ExecutionLedger:
         return self.status(request_id) is not None
 
     def reserve(self, request_id: str) -> None:
-        # Reservation itself changes global REAL recovery admissibility. Keep the
-        # global barrier first, then the per-request identity lock, so a new
-        # RESERVED request cannot appear while another REAL broker call owns the
-        # global execution window.
-        with self.real_execution_lock():
-            with self.request_execution_lock(request_id):
-                self._reserve_locked(request_id)
+        """Reserve a request under its identity lock.
+
+        REAL callers that need the global execution barrier acquire
+        real_execution_lock() explicitly and then call _reserve_locked().
+        Keeping the generic Ledger API mode-agnostic prevents DEMO callers from
+        accidentally entering the REAL global barrier.
+        """
+        with self.request_execution_lock(request_id):
+            self._reserve_locked(request_id)
 
     def _reserve_locked(self, request_id: str) -> None:
         self._validate_id(request_id)
