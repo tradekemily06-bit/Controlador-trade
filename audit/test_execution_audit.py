@@ -46,6 +46,26 @@ def test_execution_audit_is_restored_from_existing_safety_store(tmp_path):
     assert restored.for_request("req-30")[0].state is ExecutionLifecycleState.ACCEPTED
 
 
+def test_stale_generic_save_cannot_clear_durable_kill_switch(tmp_path):
+    path = tmp_path / "safety.json"
+    fresh = OperationalSafetyStore(path)
+    stale = OperationalSafetyStore(path)
+
+    from core.decision_audit import DecisionAudit
+    from core.kill_switch import KillSwitch
+
+    fresh_switch = KillSwitch()
+    fresh_switch.activate("durable emergency")
+    fresh.save(DecisionAudit(), fresh_switch)
+
+    stale_switch = KillSwitch()
+    stale.save(DecisionAudit(), stale_switch)
+
+    _, restored_switch = OperationalSafetyStore(path).load()
+    assert restored_switch.allows_execution() is False
+    assert restored_switch.state.reason == "durable emergency"
+
+
 def test_operational_safety_save_preserves_execution_audit(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     log = ExecutionAuditLog(store)
