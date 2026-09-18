@@ -134,3 +134,21 @@ def test_real_dispatch_blocks_registry_toctou_before_adapter_execute():
     assert result.accepted is False
     assert first.calls == 0
     assert second.calls == 0
+
+
+
+def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
+    adapter = FakeAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    assert capability is not None
+
+    adapter.adapter_id = "different-adapter"
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=capability,
+    )
+
+    assert result.accepted is False
+    assert adapter.calls == 0
