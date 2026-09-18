@@ -66,6 +66,7 @@ class ExecutionLifecycleStore:
             payload = json.loads(
                 self.path.read_text(encoding="utf-8"),
                 object_pairs_hook=self._unique_json_object,
+                parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"constante JSON não permitida: {value}")),
             )
             if not isinstance(payload, list):
                 raise ValueError
@@ -96,12 +97,20 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
-            raise ValueError("request_id inválido.")
+        if (
+            not isinstance(record.request_id, str)
+            or not record.request_id.strip()
+            or record.request_id != record.request_id.strip()
+        ):
+            raise ValueError("request_id inválido ou não canônico.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if (
+            not isinstance(record.updated_at, datetime)
+            or record.updated_at.tzinfo is None
+            or record.updated_at.utcoffset() is None
+        ):
+            raise ValueError("timestamp deve ser timezone-aware.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
