@@ -241,7 +241,7 @@ def test_gateway_reconciliation_race_after_final_recovery_check_never_dispatches
                 updated_at=datetime.now(timezone.utc),
                 message="reconciliado antes do executor",
             )
-        return ledger.status(request_id)
+        return original_status(request_id)
 
     monkeypatch.setattr(ledger, "status", status_with_reconciliation)
     executor = PaperExecutor()
