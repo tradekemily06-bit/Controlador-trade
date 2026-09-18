@@ -201,3 +201,36 @@ def test_service_rejects_request_id_query_identity_conflict(tmp_path: Path):
     assert ledger.external_id("req-conflict") == "EXT-DURABLE"
     assert ledger.status("req-conflict") is ExecutionLedgerStatus.RESERVED
     assert lifecycle.get("req-conflict").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_request_id_recovery_binds_identity_even_when_external_order_is_still_pending(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-pending-recovery")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-pending-recovery",
+            ExecutionLifecycleState.UNKNOWN,
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        )
+    )
+
+    class Query:
+        def query_order(self, _external_id):
+            raise AssertionError("must not require a pre-existing external_id")
+
+        def query_order_by_request_id(self, request_id):
+            assert request_id == "req-pending-recovery"
+            return ExternalOrderObservation("EXT-PENDING", ExternalOrderStatus.PENDING, "broker still processing")
+
+    service = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle),
+        query_port=Query(),
+    )
+
+    result = service.reconcile_request_by_request_id("req-pending-recovery")
+
+    assert result.status is ExternalOrderStatus.PENDING
+    assert ledger.external_id("req-pending-recovery") == "EXT-PENDING"
+    assert ledger.status("req-pending-recovery") is ExecutionLedgerStatus.RESERVED
+    assert lifecycle.get("req-pending-recovery").state is ExecutionLifecycleState.UNKNOWN
