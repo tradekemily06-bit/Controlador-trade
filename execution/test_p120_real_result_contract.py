@@ -62,6 +62,10 @@ def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
         )
 
 
+def _request():
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+
 class UnavailableAdapter:
     def __init__(self):
         self.calls = 0
