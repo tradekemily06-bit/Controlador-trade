@@ -75,6 +75,21 @@ class OperationMemoryStore:
         payload = [self._serialize(record) for record in memory.records()]
         atomic_write_json(self.path, payload)
 
+    @staticmethod
+    def _identity(record: OperationMemoryRecord) -> tuple[object, ...]:
+        return (
+            record.timestamp,
+            record.signal,
+            record.score,
+            record.decision,
+            record.reason,
+            record.symbol,
+            record.timeframe,
+            record.quality_score,
+            record.quality_level,
+            record.entry_conditions,
+        )
+
     def save(self, memory: OperationMemory) -> None:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
@@ -82,12 +97,38 @@ class OperationMemoryStore:
             durable = self._load_unlocked()
             durable_records = durable.records()
             incoming = memory.records()
-            # save() accepts only an exact durable snapshot. A longer incoming
-            # snapshot may be based on an older process state and can otherwise
-            # overwrite a competing append with a different record.
-            if durable_records and incoming != durable_records:
+            if not durable_records:
+                self._write_unlocked(memory)
+                return
+
+            # Preserve the legacy full-snapshot API while making stale writes
+            # non-destructive. New records may extend the durable snapshot;
+            # an existing operation may only move from PENDENTE to one final
+            # result. Competing replacements are rejected instead of guessed.
+            durable_by_identity = {self._identity(record): record for record in durable_records}
+            merged = list(durable_records)
+            positions = {self._identity(record): index for index, record in enumerate(merged)}
+            for record in incoming:
+                identity = self._identity(record)
+                existing = durable_by_identity.get(identity)
+                if existing is None:
+                    positions[identity] = len(merged)
+                    merged.append(record)
+                    durable_by_identity[identity] = record
+                    continue
+                if existing == record:
+                    continue
+                if existing.result == "PENDENTE" and record.result != "PENDENTE":
+                    merged[positions[identity]] = record
+                    durable_by_identity[identity] = record
+                    continue
                 raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
-            self._write_unlocked(memory)
+
+            merged.sort(key=lambda item: item.timestamp)
+            rebuilt = OperationMemory()
+            for record in merged:
+                rebuilt.append(record)
+            self._write_unlocked(rebuilt)
 
     def append(self, record: OperationMemoryRecord) -> OperationMemoryRecord:
         """Atomically append to the latest durable snapshot, avoiding stale-snapshot loss."""
