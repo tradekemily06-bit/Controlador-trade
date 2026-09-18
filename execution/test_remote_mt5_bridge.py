@@ -49,3 +49,25 @@ def test_remote_bridge_executes_only_after_demo_health():
     assert result.accepted is True
     assert result.external_id == "demo-1"
     assert bridge.calls == 1
+
+
+def test_remote_bridge_rejects_non_boolean_health_flags():
+    bridge = FakeBridge(BridgeHealth("yes", True, "ok"))
+    result = SafeRemoteMT5Executor(bridge).execute(request())
+    assert result.accepted is False
+    assert "flags de health inválidas" in result.message
+    assert bridge.calls == 0
+
+
+def test_remote_bridge_rejects_malformed_execution_result():
+    @dataclass
+    class MalformedBridge(FakeBridge):
+        def execute_demo(self, request: ExecutionRequest) -> ExecutionResult:
+            self.calls += 1
+            return ExecutionResult("yes", "demo enviada", "demo-1")
+
+    bridge = MalformedBridge(BridgeHealth(True, True, "ok"))
+    result = SafeRemoteMT5Executor(bridge).execute(request())
+    assert result.accepted is False
+    assert "accepted inválido" in result.message
+    assert bridge.calls == 1
