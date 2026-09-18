@@ -83,3 +83,25 @@ def test_orphaned_reserved_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
     assert "RESERVED/UNKNOWN" in result.message
+
+def test_terminal_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-terminal")
+    coordinator.execution_ledger.mark_accepted("req-terminal")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "ledger terminal sem lifecycle" in result.message
+
+
+def test_mismatched_terminal_states_require_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_accepted("req-mismatch")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.REJECTED, now, "mismatch")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
