@@ -741,3 +741,40 @@ def test_reconciliation_boundary_rejects_hand_built_observation():
             "ext-1",
             ExternalOrderObservation("ext-1", ExternalOrderStatus.EXECUTED, "forged"),
         )
+
+
+def test_reconciliation_blocks_when_ledger_and_lifecycle_disagree(tmp_path):
+    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    ledger.reserve("projection-mismatch")
+    ledger.attach_external_id("projection-mismatch", "broker-reconcile")
+    ledger.mark_unknown("projection-mismatch")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "projection-mismatch",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+    with pytest.raises(ValueError, match="Ledger × Lifecycle inconsistente"):
+        gw.reconcile_unknown(
+            "projection-mismatch",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert ledger.status("projection-mismatch") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_repair_lifecycle_projection_can_recreate_missing_projection(tmp_path):
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", "broker-repair-missing"))
+    )
+    result = execute(gw, "repair-missing")
+    assert result.status == RealGatewayStatus.ADMITTED
+    lifecycle_path = tmp_path / "execution-lifecycle.json"
+    lifecycle_path.unlink()
+    assert lifecycle.get("repair-missing") is None
+
+    gw.repair_lifecycle_projection("repair-missing")
+    assert ExecutionLifecycleStore(lifecycle_path).get("repair-missing").state is ExecutionLifecycleState.ACCEPTED
+    assert ledger.status("repair-missing") is ExecutionLedgerStatus.ACCEPTED
