@@ -247,3 +247,15 @@ def test_public_ledger_mutators_respect_request_execution_lock(tmp_path):
     worker.join(timeout=2)
     assert finished.is_set()
     assert ledger.status("req-lock") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_request_id_with_outer_whitespace_is_rejected(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    for operation in (
+        lambda: ledger.request_execution_lock(" req "),
+        lambda: ledger.reserve(" req "),
+        lambda: ledger.status(" req "),
+    ):
+        import pytest
+        with pytest.raises(ValueError, match="canônico"):
+            operation()
