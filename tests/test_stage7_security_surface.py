@@ -64,5 +64,16 @@ def test_legacy_execution_surfaces_are_not_allowed_to_create_real_authority():
     # legacy compatibility from silently becoming a second REAL authority source.
     for path in sorted((ROOT / "core").glob("p*.py")):
         text = path.read_text(encoding="utf-8")
-        if "RealExecutionAuthorization" in text:
-            assert "explicitly_enabled" in text or "real_execution_allowed" in text, path
+        if "RealExecutionAuthorization" not in text:
+            continue
+        # P112 owns the immutable authorization contract; P117 consumes that
+        # contract only as an input and never creates authority itself.
+        if path.name == "p112_real_execution_contract.py":
+            assert "_issue_real_authorization" in text
+            continue
+        if path.name == "p117_real_admission.py":
+            assert "RealAdmissionBoundary" in text
+            assert "_provenance_token" in text
+            assert "_ADMITTED_PROVENANCE" in text
+            continue
+        assert "_issue_real_authorization" not in text, path
