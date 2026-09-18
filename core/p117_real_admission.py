@@ -28,6 +28,9 @@ class RealAdmissionBoundary:
               broker_available: bool, broker_id: str) -> RealAdmission:
         if not admission_id.strip() or not audit_id.strip() or not broker_id.strip():
             raise ValueError("identificadores e broker_id são obrigatórios.")
+        for value in (audit_verified, authorization_active, safety_ready, broker_available):
+            if type(value) is not bool:
+                raise ValueError("pré-requisitos de admissão REAL precisam ser booleanos.")
         reasons = []
         for ok, label in (
             (audit_verified, "auditoria P116 não verificada"),
