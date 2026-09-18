@@ -6,9 +6,11 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 - Current Stage 7 PR: #252.
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head).
-- Current audit target: `7a25cd40f369620bfb002ebeaefb6a60dcc11c51`.
-- CI workflow run #1800 and CodeQL run #13 completed successfully on the current audit target.
-- Stage 7 controlled rollback drill run #1 completed successfully on the current audit target and produced artifact `stage7-rollback-evidence` (artifact id `10526753950`).
+- Current audit target: `2390d9a3c7cf43208a4233a5a629eeeb7bcbe7f4`.
+- CI workflow run #1800 and CodeQL run #13 are historical evidence from the older audited commit `7a25cd40f369620bfb002ebeaefb6a60dcc11c51`; they are not claimed as current evidence for this target.
+- Stage 7 controlled rollback drill run #1 and artifact `stage7-rollback-evidence` (artifact id `10526753950`) remain valid evidence for the older exercised commit, but are not claimed as execution evidence for this new target.
+- The readiness model now rejects evidence references whose `commit_sha` differs from the declared target commit.
+- This register update itself creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
 - This register update itself creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
 
 ## Verified evidence already located
@@ -21,7 +23,7 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 | `stage5_green` | PR #246 merged; Stage 5 HEAD `e269cf80b4bcbf64ec5e8f855c48abd979fd4752` and merge commit `f677c5f347f9e9522f950909b075a305ca26cce7` | Git history / PR | VERIFIED |
 | `stage6_green` | PR #251 merged; Stage 6 HEAD `585fb5684cf4f05b911c80463930278b4b64bcdf` | Git history / PR | VERIFIED |
 | `side_doors_scanned` | Structural execution-surface guards and REAL authorization-factory consumer guard passed on descendant CI and are re-run by current CI | GitHub Actions / tests | VERIFIED for current audit target once fresh register commit CI passes |
-| `ci_green` | CI #1800: full suite/build/container/smoke pipeline passed on `7a25cd40f369620bfb002ebeaefb6a60dcc11c51` | GitHub Actions | VERIFIED for current target; must be refreshed after this register commit |
+| `ci_green` | CI #1800: full suite/build/container/smoke pipeline passed on `7a25cd40f369620bfb002ebeaefb6a60dcc11c51` | GitHub Actions | HISTORICAL; not current evidence for this target |
 | `secrets_reviewed` | Secret-scanning/push-protection review; no repository-detected open provider-secret alerts were reported in the prior review | GitHub security settings | VERIFIED for repository scope; external deployment secrets remain outside repository evidence scope |
 | `repository_governance` | Main branch governance was previously verified | GitHub repository settings | VERIFIED |
 
@@ -65,7 +67,7 @@ The following must not be represented as green merely because related code or do
 - `threat_model_reviewed`: the current threat-model artifact is repository evidence, but external infrastructure/threat assumptions remain outside code-only scope.
 - `secrets_reviewed`: repository secret scanning does not prove that external deployment/broker/cloud secrets are configured correctly.
 - `demo_real_separation_tested`: current code/config tests are strong, but end-to-end external API/UI/deployment evidence remains outside repository-only proof.
-- `ci_green`: a fresh run is required after this register update commit.
+- `ci_green`: a fresh run is required after this register update commit and after the REAL-admission/readiness provenance fixes.
 
 ## Evidence inheritance rule
 
