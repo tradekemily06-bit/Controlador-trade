@@ -104,3 +104,33 @@ def test_real_capability_is_pinned_to_adapter_instance():
     )
     assert result.accepted is False
     assert second.calls == 0
+
+
+
+def test_real_dispatch_blocks_registry_toctou_before_adapter_execute():
+    first = FakeAdapter()
+    second = FakeAdapter()
+
+    class FlipRegistry(BrokerRegistry):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def get(self, name):
+            self.calls += 1
+            return first if self.calls <= 2 else second
+
+    registry = FlipRegistry()
+    gateway = BrokerAdapterGateway(registry)
+    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    assert capability is not None
+
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=capability,
+    )
+
+    assert result.accepted is False
+    assert first.calls == 0
+    assert second.calls == 0
