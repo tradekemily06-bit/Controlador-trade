@@ -8,6 +8,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -241,3 +242,97 @@ def test_real_executor_exception_persists_unknown_and_restart_blocks_adapter(tmp
 
     assert retry.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 1
+
+
+def test_real_gateway_persists_lifecycle_terminal_state(tmp_path: Path):
+    class AcceptedAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            return ExecutionResult(True, "accepted", "EXT-LIFE")
+
+    registry = BrokerRegistry()
+    registry.register("fake", AcceptedAdapter())
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    ).execute(
+        broker="fake",
+        request_id="real-lifecycle",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("real-lifecycle").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_broker_uncertainty_persists_unknown_in_both_authorities(tmp_path: Path):
+    class UncertainAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            raise TimeoutError("broker timeout")
+
+    registry = BrokerRegistry()
+    registry.register("fake", UncertainAdapter())
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    ).execute(
+        broker="fake",
+        request_id="real-unknown-lifecycle",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ExecutionLedger(ledger_path).status("real-unknown-lifecycle").value == "UNKNOWN"
+    assert ExecutionLifecycleStore(lifecycle_path).get("real-unknown-lifecycle").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_gateway_rejected_persists_lifecycle_rejected(tmp_path: Path):
+    class RejectingAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            return ExecutionResult(False, "rejected")
+
+    registry = BrokerRegistry()
+    registry.register("fake", RejectingAdapter())
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    ).execute(
+        broker="fake",
+        request_id="real-rejected-lifecycle",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.REJECTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("real-rejected-lifecycle").state is ExecutionLifecycleState.REJECTED
