@@ -6,12 +6,11 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 - Current Stage 7 PR: #252.
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head).
-- Current audit target: `2390d9a3c7cf43208a4233a5a629eeeb7bcbe7f4`.
-- CI workflow run #1800 and CodeQL run #13 are historical evidence from the older audited commit `7a25cd40f369620bfb002ebeaefb6a60dcc11c51`; they are not claimed as current evidence for this target.
+- Current audit target: the commit created by this evidence-register refresh; a fresh CI/CodeQL/rollback execution is required for that exact commit.
+- CI #1815, CodeQL #28, and rollback drill #16 passed on predecessor `3b5b8c658f50311867b509fd5716253e932f3d59`; they are predecessor evidence only until this register refresh receives fresh checks.
 - Stage 7 controlled rollback drill run #1 and artifact `stage7-rollback-evidence` (artifact id `10526753950`) remain valid evidence for the older exercised commit, but are not claimed as execution evidence for this new target.
 - The readiness model now rejects evidence references whose `commit_sha` differs from the declared target commit.
-- This register update itself creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
-- This register update itself creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
+- This register update creates a new audit-target commit; therefore the resulting HEAD requires fresh CI/CodeQL/rollback execution before current evidence is considered final.
 
 ## Verified evidence already located
 
@@ -67,7 +66,7 @@ The following must not be represented as green merely because related code or do
 - `threat_model_reviewed`: the current threat-model artifact is repository evidence, but external infrastructure/threat assumptions remain outside code-only scope.
 - `secrets_reviewed`: repository secret scanning does not prove that external deployment/broker/cloud secrets are configured correctly.
 - `demo_real_separation_tested`: current code/config tests are strong, but end-to-end external API/UI/deployment evidence remains outside repository-only proof.
-- `ci_green`: a fresh run is required after this register update commit and after the REAL-admission/readiness provenance fixes.
+- `ci_green`: predecessor CI #1815 passed after the provenance fixes; a fresh run is required after this register refresh commit.
 
 ## Evidence inheritance rule
 
