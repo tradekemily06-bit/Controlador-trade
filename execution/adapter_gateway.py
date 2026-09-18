@@ -65,6 +65,17 @@ class BrokerAdapterGateway:
             )
         return self._dispatch(broker, request, require_real=True)
 
+    def real_adapter_id(self, broker: str) -> str | None:
+        """Return the explicit identity bound to a REAL-capable adapter."""
+        try:
+            adapter = self._registry.get(broker)
+        except BrokerRegistryError:
+            return None
+        adapter_id = getattr(adapter, "adapter_id", None)
+        if not isinstance(adapter_id, str) or not adapter_id.strip():
+            return None
+        return adapter_id.strip()
+
     def _dispatch(
         self,
         broker: str,
@@ -77,11 +88,18 @@ class BrokerAdapterGateway:
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, str(exc))
 
-        if require_real and not bool(getattr(adapter, "supports_real_execution", False)):
-            return AdapterExecutionResult(
-                False,
-                "adapter não declara capacidade REAL; dispatch bloqueado antes do adapter.execute.",
-            )
+        if require_real:
+            if not bool(getattr(adapter, "supports_real_execution", False)):
+                return AdapterExecutionResult(
+                    False,
+                    "adapter não declara capacidade REAL; dispatch bloqueado antes do adapter.execute.",
+                )
+            adapter_id = getattr(adapter, "adapter_id", None)
+            if not isinstance(adapter_id, str) or not adapter_id.strip():
+                return AdapterExecutionResult(
+                    False,
+                    "adapter REAL sem identidade explícita; dispatch bloqueado antes do adapter.execute.",
+                )
 
         try:
             available = bool(adapter.is_available())
