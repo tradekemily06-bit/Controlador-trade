@@ -83,26 +83,31 @@ class ExternalExecutionReconciliationService:
         # Identity discovery must be serialized with REAL dispatch. Otherwise a
         # recovery worker could bind an external identity while a live execution
         # is still between the final authority check and the broker response.
-        with self._coordinator.request_execution_lock(request_id):
-            observation = method(request_id)
-            if not isinstance(observation, ExternalOrderObservation):
-                raise ValueError("consulta externa por request_id retornou observação inválida.")
-            if not isinstance(observation.external_id, str) or not observation.external_id.strip():
-                raise ValueError("consulta externa por request_id não retornou external_id.")
-            durable_external_id = self._coordinator.external_id_for(request_id)
-            if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
-                raise ValueError(
-                    "consulta por request_id retornou external_id diferente da identidade durável."
+        # Request-id identity discovery is itself a recovery-state mutation.
+        # It must use the same lock order as REAL dispatch:
+        # global REAL barrier -> request identity lock -> durable mutation.
+        # Otherwise a worker could bind an external order while another process
+        # is between its final admission check and the broker side effect.
+        with self._coordinator.ledger.real_execution_lock():
+            with self._coordinator.request_execution_lock(request_id):
+                observation = method(request_id)
+                if not isinstance(observation, ExternalOrderObservation):
+                    raise ValueError("consulta externa por request_id retornou observação inválida.")
+                if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+                    raise ValueError("consulta externa por request_id não retornou external_id.")
+                durable_external_id = self._coordinator.external_id_for(request_id)
+                if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
+                    raise ValueError(
+                        "consulta por request_id retornou external_id diferente da identidade durável."
+                    )
+
+                if durable_external_id is None:
+                    self._coordinator.bind_external_id(request_id, observation.external_id.strip())
+
+                # Reconcile while retaining both locks so the observation cannot
+                # become stale between identity binding and terminalization.
+                return self._coordinator.reconcile(
+                    request_id,
+                    observation.external_id.strip(),
+                    observation,
                 )
-
-            if durable_external_id is None:
-                self._coordinator.bind_external_id(request_id, observation.external_id.strip())
-
-        # Reconciliation acquires the same lock again and revalidates the
-        # observation against the authoritative post-query state, preventing a
-        # stale observation from finalizing a concurrently changed request.
-        return self._coordinator.reconcile(
-            request_id,
-            observation.external_id.strip(),
-            observation,
-        )
