@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -303,9 +304,7 @@ class RealExecutionGateway:
             ExecutionLifecycleRecord(
                 request_id=request_id,
                 state=state,
-                updated_at=__import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ),
+                updated_at=datetime.now(timezone.utc),
                 message=message,
             )
         )
