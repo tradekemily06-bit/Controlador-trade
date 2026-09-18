@@ -141,16 +141,20 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
-        if self._lifecycle is None:
-            return
-        try:
-            current = self._lifecycle.get(request_id)
-            if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-            elif current.state is not ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-        except (OSError, ValueError):
-            pass
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                elif current.state is not ExecutionLifecycleState.UNKNOWN:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+            except (OSError, ValueError):
+                pass
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
