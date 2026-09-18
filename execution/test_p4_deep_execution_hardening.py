@@ -15,6 +15,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
     ExternalOrderReconciliationBoundary,
+    ReconciliationResult,
     ExternalOrderStatus,
 )
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
