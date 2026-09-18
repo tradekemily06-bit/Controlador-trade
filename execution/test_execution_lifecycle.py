@@ -72,3 +72,16 @@ def test_duplicate_persisted_request_id_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
         ExecutionLifecycleStore(path)
+
+
+def test_terminal_lifecycle_state_cannot_be_overwritten_by_reconciliation(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.ACCEPTED, now))
+
+    with pytest.raises(ValueError, match="PENDING/UNKNOWN"):
+        store.reconcile("req-terminal", ExecutionLifecycleState.REJECTED, updated_at=now)
+
+    assert store.get("req-terminal").state is ExecutionLifecycleState.ACCEPTED
