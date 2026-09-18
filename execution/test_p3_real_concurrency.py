@@ -645,7 +645,7 @@ def test_real_process_interrupt_after_broker_acceptance_never_replays(tmp_path):
             raise KeyboardInterrupt("simulated process interruption after broker-side effect")
 
     registry = BrokerRegistry()
-    registry.register("test-broker", InterruptingAdapter())
+    registry.register("fake", InterruptingAdapter())
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(registry),
         ExecutionLedger(ledger_path),
@@ -660,14 +660,15 @@ def test_real_process_interrupt_after_broker_acceptance_never_replays(tmp_path):
         mode=ExecutionMode.REAL,
     )
 
+    auth, admission, safety = _contracts()
     with pytest.raises(KeyboardInterrupt):
         gateway.execute(
-            broker="test-broker",
+            broker="fake",
             request_id="req-hard-interrupt",
             request=request,
-            authorization=_authorization("test-broker"),
-            admission=_admission("test-broker"),
-            safety=_safety(),
+            authorization=auth,
+            admission=admission,
+            safety=safety,
         )
 
     assert calls["count"] == 1
@@ -691,19 +692,19 @@ def test_real_process_interrupt_after_broker_acceptance_never_replays(tmp_path):
             raise AssertionError("replay must never reach broker")
 
     registry2 = BrokerRegistry()
-    registry2.register("test-broker", FailingReplayAdapter())
+    registry2.register("fake", FailingReplayAdapter())
     restarted = RealExecutionGateway(
         BrokerAdapterGateway(registry2),
         ExecutionLedger(ledger_path),
         ExecutionLifecycleStore(lifecycle_path),
     )
     result = restarted.execute(
-        broker="test-broker",
+        broker="fake",
         request_id="req-hard-interrupt",
         request=request,
-        authorization=_authorization("test-broker"),
-        admission=_admission("test-broker"),
-        safety=_safety(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
     )
     assert result.status == RealGatewayStatus.UNKNOWN
     assert calls["count"] == 1
