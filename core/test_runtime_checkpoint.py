@@ -84,3 +84,22 @@ def test_duplicate_json_keys_in_checkpoint_fail_closed(tmp_path):
     )
     with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
         RuntimeCheckpointStore(path).load()
+
+
+def test_checkpoint_publication_failure_preserves_previous_durable_state(tmp_path, monkeypatch):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    old = RuntimeCheckpoint("old", 1, "old-request", datetime.now(timezone.utc))
+    new = RuntimeCheckpoint("new", 2, "new-request", datetime.now(timezone.utc))
+    store.save(old)
+
+    def fail_fsync(fd):
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr("core.runtime_checkpoint.os.fsync", fail_fsync)
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        store.save(new)
+
+    assert store.load() == old
+    assert not path.with_name(".checkpoint.json.tmp").exists()
+
