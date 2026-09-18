@@ -25,6 +25,7 @@ class CTraderDemoTransport(Protocol):
 
 
 class CTraderDemoAdapter:
+    supports_real_execution = False
     """Fail-closed DEMO-only adapter boundary for cTrader Open API."""
 
     endpoint = CTRADER_DEMO_ENDPOINT
