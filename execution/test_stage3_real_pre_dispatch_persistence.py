@@ -77,9 +77,13 @@ def test_post_reservation_pre_dispatch_risk_change_is_rejected_not_unknown(tmp_p
     )
     rid = "post-reservation-risk-change"
     auth = authorization(rid)
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     admission = RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=auth.active, safety_ready=True, broker_available=True,
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True, broker_available=True,
         broker_id="fake", adapter_id="fake-adapter", request_id=rid, symbol="TEST",
     )
     safety = RealSafetyGate().evaluate(
