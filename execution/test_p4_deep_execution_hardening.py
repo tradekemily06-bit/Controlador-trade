@@ -27,6 +27,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class FakeAdapter:
+    supports_real_execution = True
     def __init__(self, result: ExecutionResult | None = None):
         self.calls = 0
         self.result = result or ExecutionResult(True, "accepted", "ext-1")
