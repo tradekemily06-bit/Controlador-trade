@@ -215,9 +215,35 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         if self._lifecycle is not None:
             try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), result.execution.message))
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.ACCEPTED,
+                        datetime.now(timezone.utc),
+                        result.execution.message,
+                    )
+                )
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
+                # Ledger is already terminal and externally identified. The
+                # lifecycle must never remain PENDING after broker acceptance:
+                # persist UNKNOWN as the explicit cross-store uncertainty
+                # marker, then let recovery repair/reconcile it later.
+                try:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
+                        )
+                    )
+                except (OSError, ValueError):
+                    pass
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
+                    result.execution,
+                )
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(
