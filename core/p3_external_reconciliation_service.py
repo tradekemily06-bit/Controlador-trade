@@ -96,7 +96,7 @@ class ExternalExecutionReconciliationService:
                 )
 
             if durable_external_id is None:
-                self._coordinator._bind_external_id_locked(request_id, observation.external_id.strip())
+                self._coordinator.bind_external_id(request_id, observation.external_id.strip())
 
         # Reconciliation acquires the same lock again and revalidates the
         # observation against the authoritative post-query state, preventing a
