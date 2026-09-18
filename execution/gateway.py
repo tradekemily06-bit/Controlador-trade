@@ -80,6 +80,12 @@ class ExecutionGateway:
         if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.DUPLICATE, f"request_id não pôde ser reservado com segurança: {exc}")
+
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
