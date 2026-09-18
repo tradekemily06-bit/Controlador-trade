@@ -49,12 +49,24 @@ class ExecutionLifecycleStore:
         self._records: dict[str, ExecutionLifecycleRecord] = {}
         self._load()
 
+    @staticmethod
+    def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("objeto JSON do lifecycle contém chave duplicada.")
+            result[key] = value
+        return result
+
     def _load(self) -> None:
         self._records = {}
         if not self.path.exists():
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(
+                self.path.read_text(encoding="utf-8"),
+                object_pairs_hook=self._unique_json_object,
+            )
             if not isinstance(payload, list):
                 raise ValueError
             seen_request_ids: set[str] = set()
