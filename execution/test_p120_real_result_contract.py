@@ -86,7 +86,7 @@ def test_final_boundary_blocks_reconciled_not_executed(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("terminal-not-executed")
-    ledger.reconcile("terminal-not-executed", executed=False)
+    ledger._reconcile_locked("terminal-not-executed", executed=False)
     lifecycle.put(ExecutionLifecycleRecord("terminal-not-executed", ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), "reconciled"))
     gateway = _gateway(tmp_path, registry, ledger, lifecycle=lifecycle)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
