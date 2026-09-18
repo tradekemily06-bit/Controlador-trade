@@ -162,4 +162,4 @@ def test_invalid_external_ticket_is_not_confirmed():
     fake = InvalidExternalIdMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
     assert result.accepted is False
-    assert "identificador externo" in result.message or result.message
+    assert "identificador externo" in result.message
