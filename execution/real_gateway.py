@@ -6,7 +6,6 @@ import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p121_external_order_reconciliation import (
-    ExternalOrderQueryPort,
     ExternalOrderReconciliationBoundary,
     ExternalOrderStatus,
 )
@@ -265,8 +264,9 @@ class RealExecutionGateway:
         self,
         request_id: str,
         *,
+        broker: str,
+        authorization: RealExecutionAuthorization,
         reconciliation_boundary: ExternalOrderReconciliationBoundary,
-        query_port: ExternalOrderQueryPort,
     ) -> None:
         """Reconcile only from a broker-side read, never from local state.
 
@@ -277,8 +277,20 @@ class RealExecutionGateway:
         """
         if not isinstance(reconciliation_boundary, ExternalOrderReconciliationBoundary):
             raise ValueError("boundary de reconciliação inválida.")
-        if not isinstance(query_port, ExternalOrderQueryPort):
-            raise ValueError("query_port de reconciliação inválido.")
+        if not authorization.active:
+            raise ValueError("autorização REAL inativa.")
+        if not isinstance(broker, str) or not broker.strip():
+            raise ValueError("broker inválido.")
+        if broker.strip().lower() != authorization.broker_id.strip().lower():
+            raise ValueError("broker da reconciliação difere da autorização.")
+        query_port = self._gateway.real_query_port(
+            broker,
+            expected_adapter_id=authorization.adapter_id,
+        )
+        if query_port is None:
+            raise ValueError(
+                "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
+            )
 
         with self._locks.acquire(request_id):
             status = self._ledger.status(request_id)
