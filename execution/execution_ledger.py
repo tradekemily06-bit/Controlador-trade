@@ -89,6 +89,7 @@ class ExecutionLedger:
             raise ValueError("ledger de execução inválido.")
 
         states: dict[str, ExecutionLedgerEntry] = {}
+        external_ids: dict[str, str] = {}
         for request_id, raw in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
@@ -126,6 +127,11 @@ class ExecutionLedger:
                 ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
             ) and external_id is None:
                 status = ExecutionLedgerStatus.UNKNOWN
+            if external_id is not None:
+                previous_request_id = external_ids.get(external_id)
+                if previous_request_id is not None and previous_request_id != request_id:
+                    raise ValueError("ledger de execução inválido: external_id duplicado.")
+                external_ids[external_id] = request_id
             states[request_id] = ExecutionLedgerEntry(status, external_id)
         return states
 
@@ -251,6 +257,9 @@ class ExecutionLedger:
                 raise ValueError("external_id só pode ser associado a estado incerto/reservado.")
             if current.external_id is not None and current.external_id != external_id:
                 raise ValueError("external_id conflitante.")
+            owner = self._external_id_owner(external_id, excluding=request_id)
+            if owner is not None:
+                raise ValueError("external_id já associado a outro request_id: " + owner + ".")
             self._states[request_id] = ExecutionLedgerEntry(
                 current.status,
                 external_id,
@@ -327,6 +336,9 @@ class ExecutionLedger:
                 raise ValueError(
                     "external_id é obrigatório para qualquer reconciliação terminal."
                 )
+            owner = self._external_id_owner(resolved_external_id, excluding=request_id)
+            if owner is not None:
+                raise ValueError("external_id já associado a outro request_id: " + owner + ".")
             self._states[request_id] = ExecutionLedgerEntry(
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
@@ -339,6 +351,12 @@ class ExecutionLedger:
     def records(self) -> tuple[str, ...]:
         self._load()
         return tuple(sorted(self._states))
+
+    def _external_id_owner(self, external_id: str, *, excluding: str) -> str | None:
+        for request_id, entry in self._states.items():
+            if request_id != excluding and entry.external_id == external_id:
+                return request_id
+        return None
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
