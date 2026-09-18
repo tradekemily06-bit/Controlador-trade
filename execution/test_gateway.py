@@ -271,7 +271,7 @@ def test_gateway_persistence_failure_after_broker_acceptance_blocks_restart_resu
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("req-persist-fail") is ExecutionLedgerStatus.ACCEPTED
-    assert lifecycle.get("req-persist-fail").state is ExecutionLifecycleState.PENDING
+    assert lifecycle.get("req-persist-fail").state is ExecutionLifecycleState.UNKNOWN
 
     recovery = RecoveryCoordinator(
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
