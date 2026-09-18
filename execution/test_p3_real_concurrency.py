@@ -1210,6 +1210,77 @@ def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp
     assert calls["count"] >= 2
 
 
+def test_reconciliation_rejects_stale_observation_after_concurrent_terminalization(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("stale-reconciliation")
+    ledger.bind_external_id("stale-reconciliation", "EXT-STALE")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "stale-reconciliation",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    coordinator = ExecutionReconciliationCoordinator(
+        ledger=ExecutionLedger(ledger_path),
+        lifecycle=ExecutionLifecycleStore(lifecycle_path),
+    )
+    entered = threading.Event()
+    release = threading.Event()
+
+    def terminalize_while_locked():
+        with ledger.request_execution_lock("stale-reconciliation"):
+            entered.set()
+            ledger.reconcile("stale-reconciliation", executed=True)
+            lifecycle.reconcile(
+                "stale-reconciliation",
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message="execution completed while reconciliation waited",
+            )
+            release.wait(timeout=5)
+
+    holder = threading.Thread(target=terminalize_while_locked)
+    holder.start()
+    assert entered.wait(timeout=5)
+
+    errors = []
+
+    def reconcile_stale():
+        try:
+            coordinator.reconcile(
+                "stale-reconciliation",
+                "EXT-STALE",
+                ExternalOrderObservation(
+                    "EXT-STALE",
+                    ExternalOrderStatus.NOT_EXECUTED,
+                    "stale negative observation",
+                ),
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=reconcile_stale)
+    worker.start()
+    # Ensure the worker has had time to reach the shared request lock.
+    worker.join(timeout=0.2)
+    assert worker.is_alive()
+
+    release.set()
+    holder.join(timeout=5)
+    worker.join(timeout=5)
+
+    assert len(errors) == 1
+    assert "diverge" in str(errors[0])
+    assert ledger.status("stale-reconciliation") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("stale-reconciliation").state is ExecutionLifecycleState.ACCEPTED
+
+
 def test_two_reconciliation_workers_converge_without_cross_store_corruption(tmp_path: Path):
     ledger_path = tmp_path / "ledger.json"
     lifecycle_path = tmp_path / "lifecycle.json"
