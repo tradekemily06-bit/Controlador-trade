@@ -119,17 +119,26 @@ class OperationalSafetyStore:
             with locked_path(self.path):
                 payload = self._read_payload_unlocked()
                 execution_audit = self._normalize_execution_audit(payload)
-                # save() must not let an older in-memory audit erase records
-                # written by another instance. Merge instead of replacing.
+                # save() must not let an older in-memory audit or disabled
+                # kill-switch snapshot erase newer durable safety state.
                 incoming = audit.records()
-                merged_audit = list(self._audit_from_payload(payload).records())
+                durable_audit = self._audit_from_payload(payload)
+                merged_audit = list(durable_audit.records())
                 for record in incoming:
                     if record not in merged_audit:
                         merged_audit.append(record)
                 merged_audit.sort(key=lambda item: item.timestamp)
+                durable_kill = self._normalize_kill_switch(payload.get("kill_switch", {}))
+                # Safety is monotonic for stale snapshots: an already-active
+                # durable kill switch can only be explicitly changed through
+                # save_kill_switch(), never by a generic stale save().
+                if durable_kill["enabled"] and not state.enabled:
+                    persisted_kill = durable_kill
+                else:
+                    persisted_kill = {"enabled": state.enabled, "reason": state.reason}
                 payload = {
                     "audit": [self._audit_dict(record) for record in merged_audit],
-                    "kill_switch": {"enabled": state.enabled, "reason": state.reason},
+                    "kill_switch": persisted_kill,
                     "execution_audit": execution_audit,
                 }
                 atomic_write_json(self.path, payload)
