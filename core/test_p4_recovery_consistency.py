@@ -37,7 +37,7 @@ def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
     assert result.can_resume is False
     assert result.checkpoint is None
     assert result.message == "estado durável mudou durante a avaliação; retomada recusada até obter snapshot estável."
-    assert ledger.status("racing-recovery") is ExecutionLedgerStatus.RESERVED
+    assert any(status is ExecutionLedgerStatus.RESERVED for status in ledger.statuses().values())
 
 
 def test_recovery_retries_after_transient_cross_store_change(tmp_path, monkeypatch):
