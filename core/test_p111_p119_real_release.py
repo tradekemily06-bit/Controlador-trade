@@ -41,6 +41,7 @@ class FakeAdapter:
 
 class NoExternalIdAdapter:
     supports_real_execution = True
+    adapter_id = "fake-adapter"
 
     def is_available(self):
         return True
@@ -51,6 +52,7 @@ class NoExternalIdAdapter:
 
 class UnknownAdapter:
     supports_real_execution = True
+    adapter_id = "fake-adapter"
 
     def is_available(self):
         return True
