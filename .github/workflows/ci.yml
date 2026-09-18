@@ -23,6 +23,22 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install --upgrade pip pytest
 
+      - name: Verify execution ledger import authority
+        run: |
+          python - <<'PY'
+          import inspect
+          from execution.execution_ledger import ExecutionLedger
+
+          source = inspect.getsourcefile(ExecutionLedger)
+          method = inspect.getsource(ExecutionLedger._validate_id)
+          print(f"ExecutionLedger source: {source}")
+          print(method)
+          if source is None or not source.endswith("execution/execution_ledger.py"):
+              raise SystemExit("ExecutionLedger foi importado de uma origem inesperada")
+          if 'request_id != request_id.strip()' not in method:
+              raise SystemExit("_validate_id sem contrato de identidade canônica")
+          PY
+
       - name: Run P1.9 robustness tests
         run: python -m pytest -q core/test_strategy_robustness.py
 
