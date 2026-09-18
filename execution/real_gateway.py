@@ -66,6 +66,25 @@ class RealExecutionGateway:
             return False
         return True
 
+    def _mark_not_dispatched(self, request_id: str, message: str) -> bool:
+        """Persist a definitive pre-broker stop without manufacturing UNKNOWN."""
+        try:
+            self._ledger.mark_rejected(request_id)
+        except (OSError, ValueError):
+            return False
+        try:
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.REJECTED,
+                    datetime.now(timezone.utc),
+                    message,
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        return True
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
@@ -152,26 +171,10 @@ class RealExecutionGateway:
             if self._recovery is not None:
                 final_recovery = self._recovery.assess(ignore_request_id=request_id)
                 if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
-                    try:
-                        self._ledger.mark_unknown(request_id)
-                    except (OSError, ValueError):
-                        pass
-                    if self._lifecycle is not None:
-                        try:
-                            self._lifecycle.put(
-                                ExecutionLifecycleRecord(
-                                    request_id,
-                                    ExecutionLifecycleState.UNKNOWN,
-                                    datetime.now(timezone.utc),
-                                    f"recovery mudou antes do executor REAL: {final_recovery.state.value}",
-                                )
-                            )
-                        except (OSError, ValueError):
-                            pass
-                    return RealGatewayResult(
-                        RealGatewayStatus.BLOCKED,
-                        f"execução REAL bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
-                    )
+                    message = f"execução REAL bloqueada antes do broker pelo estado de recovery: {final_recovery.state.value}."
+                    if not self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
     
             if self._lifecycle is not None:
                 try:
@@ -184,22 +187,10 @@ class RealExecutionGateway:
                         )
                     )
                 except (OSError, ValueError) as exc:
-                    try:
-                        self._ledger.mark_unknown(request_id)
-                    except (OSError, ValueError):
-                        pass
-                    try:
-                        self._lifecycle.put(
-                            ExecutionLifecycleRecord(
-                                request_id,
-                                ExecutionLifecycleState.UNKNOWN,
-                                datetime.now(timezone.utc),
-                                f"não foi possível preparar o lifecycle REAL; estado incerto: {exc}",
-                            )
-                        ) if self._lifecycle is not None else None
-                    except (OSError, ValueError):
-                        pass
-                    return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL; estado incerto bloqueado: {exc}")
+                    message = f"não foi possível preparar o lifecycle REAL; broker ainda não foi chamado: {exc}"
+                    if not self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message}; persistência do bloqueio terminal falhou.")
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
     
     
         # Serialize the final authority check with the broker side effect.
@@ -212,26 +203,10 @@ class RealExecutionGateway:
             try:
                 final_status = self._ledger.status(request_id)
             except (OSError, ValueError) as exc:
-                try:
-                    self._ledger.mark_unknown(request_id)
-                except (OSError, ValueError):
-                    pass
-                if self._lifecycle is not None:
-                    try:
-                        self._lifecycle.put(
-                            ExecutionLifecycleRecord(
-                                request_id,
-                                ExecutionLifecycleState.UNKNOWN,
-                                datetime.now(timezone.utc),
-                                f"não foi possível confirmar a autoridade REAL antes do broker: {exc}",
-                            )
-                        )
-                    except (OSError, ValueError):
-                        pass
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    f"autoridade REAL indisponível; broker não chamado: {exc}",
-                )
+                message = f"autoridade REAL indisponível; broker não chamado: {exc}"
+                if self._mark_not_dispatched(request_id, message):
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message}; persistência do bloqueio terminal falhou.")
             if final_status is not ExecutionLedgerStatus.RESERVED:
                 if final_status in (
                     ExecutionLedgerStatus.ACCEPTED,
@@ -253,26 +228,10 @@ class RealExecutionGateway:
                 # the last check and the broker call.
                 with self._kill_switch.execution_window():
                     if not self._kill_switch.allows_execution():
-                        try:
-                            self._ledger.mark_unknown(request_id)
-                        except (OSError, ValueError):
-                            pass
-                        if self._lifecycle is not None:
-                            try:
-                                self._lifecycle.put(
-                                    ExecutionLifecycleRecord(
-                                        request_id,
-                                        ExecutionLifecycleState.UNKNOWN,
-                                        datetime.now(timezone.utc),
-                                        "kill switch ativado antes da fronteira final do broker.",
-                                    )
-                                )
-                            except (OSError, ValueError):
-                                pass
-                        return RealGatewayResult(
-                            RealGatewayStatus.BLOCKED,
-                            "execução REAL bloqueada pelo kill switch antes do broker.",
-                        )
+                        message = "execução REAL bloqueada pelo kill switch antes do broker."
+                        if self._mark_not_dispatched(request_id, message):
+                            return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
                     result = self._gateway.execute(broker, request)
             except Exception as exc:
                 try:
@@ -286,6 +245,10 @@ class RealExecutionGateway:
                         pass
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
             if result.execution is None:
+                if not result.dispatch_attempted:
+                    if self._mark_not_dispatched(request_id, result.message):
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, result.message)
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{result.message}; persistência do bloqueio terminal falhou.")
                 try:
                     self._ledger.mark_unknown(request_id)
                 except (OSError, ValueError):
