@@ -33,6 +33,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 class FakeAdapter:
     supports_real_execution = True
+    adapter_id = "adapter"
 
     def __init__(self, result: ExecutionResult | None = None):
         self.calls = 0
