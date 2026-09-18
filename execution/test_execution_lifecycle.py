@@ -137,3 +137,17 @@ def test_two_lifecycle_instances_preserve_both_concurrent_records(tmp_path):
     restored = ExecutionLifecycleStore(path)
     assert restored.get("req-a") is not None
     assert restored.get("req-b") is not None
+
+def test_stale_lifecycle_record_cannot_regress_durable_timestamp(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    newer = datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc)
+
+    store.put(ExecutionLifecycleRecord("req-stale", ExecutionLifecycleState.PENDING, newer, "newer"))
+
+    with pytest.raises(ValueError, match="obsoleto"):
+        store.put(ExecutionLifecycleRecord("req-stale", ExecutionLifecycleState.PENDING, older, "older"))
+
+    assert store.get("req-stale").updated_at == newer
+    assert store.get("req-stale").message == "newer"
