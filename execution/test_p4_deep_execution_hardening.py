@@ -240,7 +240,13 @@ def test_accepted_but_lifecycle_failure_keeps_ledger_authority(tmp_path):
     adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-456"))
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    lifecycle = ExplodingLifecycle(tmp_path / "execution-lifecycle.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+    original_put = lifecycle.put
+    def fail_accepted(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("lifecycle write failed")
+        return original_put(record)
+    lifecycle.put = fail_accepted
     gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
 
     result = execute(gw)
