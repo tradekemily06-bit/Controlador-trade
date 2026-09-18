@@ -152,8 +152,7 @@ class RecoveryCoordinator:
         inconsistent = [
             r.request_id
             for r in lifecycle
-            if r.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED)
-            and r.request_id != ignored_id
+            if r.request_id != ignored_id
             and (
                 r.request_id not in ledger_ids
                 or (
@@ -165,6 +164,16 @@ class RecoveryCoordinator:
                     r.state is ExecutionLifecycleState.REJECTED
                     and ledger_statuses.get(r.request_id)
                     not in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED)
+                )
+                or (
+                    r.state is ExecutionLifecycleState.PENDING
+                    and ledger_statuses.get(r.request_id)
+                    in (
+                        ExecutionLedgerStatus.ACCEPTED,
+                        ExecutionLedgerStatus.REJECTED,
+                        ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                        ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                    )
                 )
             )
         ]
