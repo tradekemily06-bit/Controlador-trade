@@ -370,6 +370,55 @@ def test_save_rejects_divergent_snapshot_after_competing_append(tmp_path):
     assert restored[-1].reason == "first append"
 
 
+def test_record_operation_retry_after_audit_commit_before_memory_failure_is_idempotent(tmp_path, monkeypatch):
+    memory_path = tmp_path / "memory.json"
+    safety_path = tmp_path / "safety.json"
+    recorder = PersistentOperationalRecorder.from_path(memory_path, safety_path=safety_path)
+    snapshot = DecisionSnapshot(
+        signal="COMPRA",
+        analysis_score=90,
+        confirmed=True,
+        quality_score=90,
+        quality_level="A",
+        actionable=True,
+        decision="EXECUTAR",
+        decision_reason="persistência",
+        market_context=None,
+        market_direction=None,
+        market_score=None,
+        operational_state_available=True,
+        trades_today=0,
+        consecutive_losses=0,
+        symbol="TEST",
+        timeframe="5m",
+    )
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    original_append = recorder.store.append
+    calls = {"count": 0}
+
+    def fail_once(record):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("simulated memory persistence failure")
+        return original_append(record)
+
+    monkeypatch.setattr(recorder.store, "append", fail_once)
+
+    with pytest.raises(OSError, match="simulated memory persistence failure"):
+        recorder.record_operation(snapshot, timestamp=timestamp)
+
+    persisted_audit, _ = recorder.safety_store.load()
+    assert len(persisted_audit.records()) == 1
+    assert recorder.memory.records() == ()
+
+    retry = recorder.record_operation(snapshot, timestamp=timestamp)
+    restored = PersistentOperationalRecorder.from_path(memory_path, safety_path=safety_path)
+
+    assert len(restored.memory.records()) == 1
+    assert len(restored.audit.records()) == 1
+    assert retry.memory == restored.memory.records()[0]
+
+
 def test_record_operation_retry_after_ambiguous_memory_commit_is_idempotent(tmp_path, monkeypatch):
     store = OperationMemoryStore(tmp_path / "memory.json")
     safety = OperationalSafetyStore(tmp_path / "safety.json")
