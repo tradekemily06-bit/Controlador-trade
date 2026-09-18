@@ -54,7 +54,7 @@ class ExecutionReconciliationCoordinator:
         status = self._ledger.status(request_id)
         if status is None:
             raise ValueError("request_id não existe nas autoridades duráveis.")
-        self._ledger.bind_external_id(request_id, external_id.strip())
+        self._ledger._bind_external_id_locked(request_id, external_id.strip())
 
     def bind_external_id(self, request_id: str, external_id: str) -> None:
         """Durably bind a broker identity under the same lock used by REAL dispatch."""
@@ -206,7 +206,7 @@ class ExecutionReconciliationCoordinator:
 
             if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 try:
-                    self._ledger.reconcile(request_id, executed=executed)
+                    self._ledger._reconcile_locked(request_id, executed=executed)
                 except ValueError:
                     raced_state = self._ledger.status(request_id)
                     if raced_state is not ledger_target:
