@@ -239,3 +239,37 @@ def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path, exe
 
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
+
+
+@pytest.mark.parametrize(
+    ("lifecycle_state", "ledger_action", "expected"),
+    [
+        (ExecutionLifecycleState.PENDING, "reserve", RecoveryState.REQUIRES_RECONCILIATION),
+        (ExecutionLifecycleState.UNKNOWN, "unknown", RecoveryState.REQUIRES_RECONCILIATION),
+        (ExecutionLifecycleState.ACCEPTED, "accepted", RecoveryState.SAFE_TO_RESUME),
+        (ExecutionLifecycleState.REJECTED, "rejected", RecoveryState.SAFE_TO_RESUME),
+    ],
+)
+def test_restart_assessment_after_each_execution_state(tmp_path, lifecycle_state, ledger_action, expected):
+    request_id = "req-restart-matrix"
+    now = datetime.now(timezone.utc)
+    coordinator = make_coordinator(tmp_path)
+
+    coordinator.execution_ledger.reserve(request_id)
+    if ledger_action == "accepted":
+        coordinator.execution_ledger.mark_accepted(request_id)
+    elif ledger_action == "rejected":
+        coordinator.execution_ledger.mark_rejected(request_id)
+    elif ledger_action == "unknown":
+        coordinator.execution_ledger.mark_unknown(request_id)
+
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(request_id, lifecycle_state, now, f"state={lifecycle_state.value}")
+    )
+
+    # Simulate a process restart: every authority is reconstructed from disk.
+    restarted = make_coordinator(tmp_path)
+    result = restarted.assess()
+
+    assert result.state is expected
+    assert result.can_resume is (expected in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME))
