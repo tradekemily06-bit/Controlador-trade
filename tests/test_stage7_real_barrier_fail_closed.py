@@ -99,11 +99,16 @@ def _authorization(request_id: str):
 
 
 def _admission(request_id: str):
+    auth = _authorization(request_id)
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="stage7-audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAdmissionBoundary().admit(
         admission_id="stage7-admission",
         audit_id="stage7-audit",
-        audit_verified=True,
-        authorization_active=True,
+        audit_verified=audit,
+        authorization_active=auth,
         safety_ready=True,
         broker_available=True,
         broker_id="stage7-broker",
@@ -111,7 +116,6 @@ def _admission(request_id: str):
         request_id=request_id,
         symbol="TEST",
     )
-
 
 def test_real_dispatch_fails_closed_when_global_barrier_is_missing(tmp_path: Path):
     request_id = "stage7-no-global-barrier"
