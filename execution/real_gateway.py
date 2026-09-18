@@ -64,7 +64,7 @@ class RealExecutionGateway:
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
-        if not isinstance(request, ExecutionRequest):
+        if type(request) is not ExecutionRequest:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
@@ -112,7 +112,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         for field_name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
             field_value = getattr(authorization, field_name, None)
-            if not isinstance(field_value, str) or not field_value.strip():
+            if type(field_value) is not str or not field_value.strip():
                 return RealGatewayResult(
                     RealGatewayStatus.REJECTED,
                     f"campo {field_name} da autorização REAL é inválido.",
@@ -131,14 +131,14 @@ class RealExecutionGateway:
                 RealGatewayStatus.REJECTED,
                 "request_id externo e request.request_id precisam coincidir no REAL.",
             )
-        if not isinstance(broker, str) or not broker.strip():
+        if type(broker) is not str or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        if not isinstance(admission.broker_id, str) or admission.broker_id.strip().lower() != broker.strip().lower():
+        if type(admission.broker_id) is not str or admission.broker_id.strip().lower() != broker.strip().lower():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
                 "broker da admissão difere do broker da execução REAL.",
             )
-        if not isinstance(admission.audit_id, str) or admission.audit_id.strip().lower() != authorization.audit_id.strip().lower():
+        if type(admission.audit_id) is not str or admission.audit_id.strip().lower() != authorization.audit_id.strip().lower():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
                 "auditoria da admissão difere da autorização REAL.",
@@ -340,7 +340,7 @@ class RealExecutionGateway:
             raise ValueError("autorização REAL inativa.")
         for field_name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
             field_value = getattr(authorization, field_name, None)
-            if not isinstance(field_value, str) or not field_value.strip():
+            if type(field_value) is not str or not field_value.strip():
                 raise ValueError(f"campo {field_name} da autorização REAL é inválido.")
         if not isinstance(broker, str) or not broker.strip():
             raise ValueError("broker inválido.")
