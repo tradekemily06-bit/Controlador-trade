@@ -851,3 +851,59 @@ def test_real_authorization_rejects_truthy_non_boolean_flags(tmp_path):
         safety=safety(),
     )
     assert result.status == RealGatewayStatus.BLOCKED
+
+
+def test_real_gateway_execute_fails_closed_when_lock_acquisition_breaks(tmp_path, monkeypatch):
+    import execution.real_execution_locks as lock_module
+
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+
+    class BrokenFcntl:
+        LOCK_EX = 1
+        LOCK_UN = 2
+
+        @staticmethod
+        def flock(_fd, operation):
+            if operation == BrokenFcntl.LOCK_EX:
+                raise OSError("simulated gateway lock failure")
+
+    monkeypatch.setattr(lock_module, "fcntl", BrokenFcntl)
+    monkeypatch.setattr(lock_module, "msvcrt", None)
+    result = execute(gw, "gateway-lock-failure")
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "lock de execução indisponível" in result.message
+
+
+def test_real_reconciliation_fails_closed_when_lock_acquisition_breaks(tmp_path, monkeypatch):
+    import execution.real_execution_locks as lock_module
+
+    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    ledger.reserve("reconcile-lock-failure")
+    ledger.attach_external_id("reconcile-lock-failure", "broker-reconcile")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reconcile-lock-failure",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    class BrokenFcntl:
+        LOCK_EX = 1
+        LOCK_UN = 2
+
+        @staticmethod
+        def flock(_fd, operation):
+            if operation == BrokenFcntl.LOCK_EX:
+                raise OSError("simulated reconciliation lock failure")
+
+    monkeypatch.setattr(lock_module, "fcntl", BrokenFcntl)
+    monkeypatch.setattr(lock_module, "msvcrt", None)
+    with pytest.raises(ValueError, match="lock de reconciliação indisponível"):
+        gw.reconcile_unknown(
+            "reconcile-lock-failure",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert ledger.status("reconcile-lock-failure") is ExecutionLedgerStatus.RESERVED
