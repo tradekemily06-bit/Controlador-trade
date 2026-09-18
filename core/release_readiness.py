@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import re
+
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class ReadinessState(str, Enum):
@@ -11,28 +15,29 @@ class ReadinessState(str, Enum):
 
 @dataclass(frozen=True)
 class ReadinessEvidenceRef:
-    """Traceable proof reference for one release-readiness gate.
+    """Traceable proof reference bound to the exact audit target commit.
 
-    The reference identifies where the proof lives. It does not itself create
-    authorization or imply that the referenced artifact is valid; callers must
-    supply the actual, current evidence. External evidence is deliberately not
-    fetched here: readiness remains a governance assessment, not an authorization
-    or deployment mechanism.
+    This record identifies where proof lives. It does not fetch or authenticate
+    external evidence; the caller must provide the actual current evidence.
     """
 
     gate: str
     evidence_id: str
     source_ref: str
+    commit_sha: str
 
     def __post_init__(self) -> None:
         for name in ("gate", "evidence_id", "source_ref"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} is required")
+        if not isinstance(self.commit_sha, str) or not _SHA_RE.fullmatch(self.commit_sha.strip().lower()):
+            raise ValueError("commit_sha must be a 40-character hexadecimal SHA")
 
 
 @dataclass(frozen=True)
 class FinalReadinessEvidence:
+    target_commit_sha: str
     stage2_green: bool
     stage3_green: bool
     stage4_green: bool
@@ -48,6 +53,10 @@ class FinalReadinessEvidence:
     legacy_compatibility_tested: bool
     ci_green: bool
     evidence_refs: tuple[ReadinessEvidenceRef, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.target_commit_sha, str) or not _SHA_RE.fullmatch(self.target_commit_sha.strip().lower()):
+            raise ValueError("target_commit_sha must be a 40-character hexadecimal SHA")
 
 
 @dataclass(frozen=True)
@@ -97,11 +106,14 @@ def assess_final_readiness(evidence: FinalReadinessEvidence) -> FinalReadinessAs
     if duplicate_gates:
         missing.append("duplicate_evidence_gate")
 
-    refs_by_gate = {ref.gate: ref for ref in valid_refs if ref.gate in _REQUIRED}
+    stale_refs = [
+        ref.gate for ref in valid_refs
+        if ref.commit_sha.strip().lower() != evidence.target_commit_sha.strip().lower()
+    ]
+    if stale_refs:
+        missing.append("stale_evidence_commit")
 
-    # A green boolean without a traceable reference is not sufficient for a
-    # release gate. This prevents governance from becoming an un-auditable
-    # collection of manually asserted flags.
+    refs_by_gate = {ref.gate: ref for ref in valid_refs if ref.gate in _REQUIRED}
     missing.extend(
         f"{name}_evidence"
         for name in _REQUIRED
@@ -109,11 +121,6 @@ def assess_final_readiness(evidence: FinalReadinessEvidence) -> FinalReadinessAs
     )
 
     if missing:
-        return FinalReadinessAssessment(
-            ReadinessState.NOT_READY,
-            tuple(missing),
-            real_enabled=False,
-        )
+        return FinalReadinessAssessment(ReadinessState.NOT_READY, tuple(dict.fromkeys(missing)), real_enabled=False)
 
-    # Stage 7 is governance only. Passing the matrix never creates REAL authority.
     return FinalReadinessAssessment(ReadinessState.READY_FOR_REVIEW, (), real_enabled=False)
