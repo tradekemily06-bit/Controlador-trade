@@ -123,6 +123,47 @@ def test_reconciled_executed_with_accepted_lifecycle_is_safe(tmp_path):
     assert result.can_resume is True
 
 
+@pytest.mark.parametrize(
+    ("lifecycle_state", "ledger_reconcile_executed"),
+    [
+        (ExecutionLifecycleState.ACCEPTED, False),
+        (ExecutionLifecycleState.REJECTED, True),
+    ],
+)
+def test_reconciled_terminal_mismatch_blocks_resume(tmp_path, lifecycle_state, ledger_reconcile_executed):
+    coordinator = make_coordinator(tmp_path)
+    request_id = "req-reconciled-mismatch"
+    now = datetime.now(timezone.utc)
+
+    coordinator.execution_ledger.reserve(request_id)
+    coordinator.execution_ledger.reconcile(request_id, executed=ledger_reconcile_executed)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(request_id, lifecycle_state, now, "reconciled mismatch")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_reconciled_executed_requires_matching_accepted_lifecycle(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    request_id = "req-reconciled-executed"
+    now = datetime.now(timezone.utc)
+
+    coordinator.execution_ledger.reserve(request_id)
+    coordinator.execution_ledger.reconcile(request_id, executed=True)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, now, "matched")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.FRESH
+    assert result.can_resume is True
+
+
 def test_reconciled_not_executed_with_rejected_lifecycle_is_safe(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
