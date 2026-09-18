@@ -24,6 +24,7 @@ def test_unknown_executed_reconciliation_closes_both_authorities(tmp_path):
     now = datetime.now(timezone.utc)
     ledger.reserve(request_id)
     ledger.mark_unknown(request_id)
+    ledger.bind_external_id(request_id, "ext-1")
     lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
 
     result = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
@@ -43,6 +44,7 @@ def test_reserved_not_executed_reconciliation_is_safe_and_closes_both(tmp_path):
     request_id = "req-reserved"
     now = datetime.now(timezone.utc)
     ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-2")
     lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, now, "before broker"))
 
     ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
@@ -134,6 +136,7 @@ def test_repeated_reconciliation_is_idempotent(tmp_path):
     request_id = "req-retry"
     now = datetime.now(timezone.utc)
     ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-7")
     lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now))
 
     coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
@@ -152,6 +155,7 @@ def test_reconciliation_keeps_recovery_blocked_if_cross_store_write_fails(tmp_pa
     request_id = "req-partial"
     now = datetime.now(timezone.utc)
     ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-8")
     lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now))
 
     original = lifecycle.reconcile
@@ -187,3 +191,67 @@ def test_reconciliation_keeps_recovery_blocked_if_cross_store_write_fails(tmp_pa
     )
 
     assert lifecycle.get(request_id).state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_uncertain_reconciliation_rejects_external_id_mismatch_without_mutation(tmp_path):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-bound-mismatch"
+    now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-bound")
+    ledger.mark_unknown(request_id)
+    lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
+
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    with pytest.raises(ValueError, match="identidade externa"):
+        coordinator.reconcile(
+            request_id,
+            "ext-other",
+            ExternalOrderObservation("ext-other", ExternalOrderStatus.EXECUTED, "filled"),
+            updated_at=now,
+        )
+
+    assert ledger.status(request_id) is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id(request_id) == "ext-bound"
+    assert lifecycle.get(request_id).state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_uncertain_reconciliation_without_durable_external_id_fails_closed(tmp_path):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-no-bound-id"
+    now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
+    ledger.mark_unknown(request_id)
+    lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
+
+    with pytest.raises(ValueError, match="sem external_id"):
+        ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
+            request_id,
+            "ext-unproven",
+            ExternalOrderObservation("ext-unproven", ExternalOrderStatus.EXECUTED, "filled"),
+            updated_at=now,
+        )
+
+    assert ledger.status(request_id) is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get(request_id).state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_terminal_ledger_with_bound_external_id_rejects_foreign_external_fact(tmp_path):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-terminal-bound"
+    now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-terminal")
+    ledger.mark_accepted(request_id)
+
+    with pytest.raises(ValueError, match="identidade externa"):
+        ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
+            request_id,
+            "ext-foreign",
+            ExternalOrderObservation("ext-foreign", ExternalOrderStatus.EXECUTED, "filled"),
+            updated_at=now,
+        )
+
+    assert ledger.status(request_id) is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id(request_id) == "ext-terminal"
+    assert lifecycle.get(request_id) is None
