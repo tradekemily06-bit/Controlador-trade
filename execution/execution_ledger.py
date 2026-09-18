@@ -107,8 +107,7 @@ class ExecutionLedger:
         """Serialize read/modify/write; callers may hold the REAL global lock."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+"):
-            with lock_path.open("a+", encoding="utf-8") as lock_file:
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
                 if fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 try:
@@ -170,8 +169,37 @@ class ExecutionLedger:
             external_id=external_id,
         )
 
-    def mark_rejected(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.REJECTED)
+    def attach_external_id(self, request_id: str, external_id: str) -> None:
+        self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido.")
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current is None or current.status not in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            ):
+                raise ValueError("external_id só pode ser associado a estado incerto/reservado.")
+            if current.external_id is not None and current.external_id != external_id:
+                raise ValueError("external_id conflitante.")
+            self._states[request_id] = ExecutionLedgerEntry(
+                current.status,
+                external_id,
+            )
+
+        self._mutate_locked(mutation)
+
+    def mark_rejected(self, request_id: str, external_id: str | None = None) -> None:
+        if external_id is not None and (
+            not isinstance(external_id, str) or not external_id.strip()
+        ):
+            raise ValueError("external_id inválido.")
+        self._transition(
+            request_id,
+            ExecutionLedgerStatus.REJECTED,
+            external_id=external_id,
+        )
 
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
