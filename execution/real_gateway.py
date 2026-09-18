@@ -158,20 +158,20 @@ class RealExecutionGateway:
                     "request_id já possui lifecycle terminal; replay REAL recusado.",
                 )
         with self._ledger.real_execution_lock():
-            # REAL reservation is part of the global admission barrier. Use the
-            # Ledger's locked primitive directly so this REAL-only barrier does not
-            # leak into generic/DEMO reservation callers.
-            with self._ledger.request_execution_lock(request_id):
-                try:
-                    self._ledger._reserve_locked(request_id)
-                    self._processed_request_ids.add(request_id)
-                except (OSError, ValueError) as exc:
-                    return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+            # REAL reservation is already inside the global REAL barrier.
+            # The generic Ledger.reserve() remains mode-agnostic and only acquires
+            # the per-request identity lock, so DEMO callers do not inherit the
+            # REAL global barrier.
+            try:
+                self._ledger.reserve(request_id)
+                self._processed_request_ids.add(request_id)
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
     
-                # Serialize recovery recheck and lifecycle publication with request-identity
-                # discovery. A recovery worker must not resolve RESERVED between the final
-                # recovery admission and the publication of PENDING.
-                # Recheck after durable reservation but before publishing lifecycle PENDING.
+            # Serialize recovery recheck and lifecycle publication with request-identity
+            # discovery. A recovery worker must not resolve RESERVED between the final
+            # recovery admission and the publication of PENDING.
+            # Recheck after durable reservation but before publishing lifecycle PENDING.
                 if self._recovery is not None:
                     final_recovery = self._recovery.assess(ignore_request_id=request_id)
                     if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
