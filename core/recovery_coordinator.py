@@ -162,9 +162,17 @@ class RecoveryCoordinator:
                 return current
             raise ValueError("lifecycle terminal diverge do ledger; reparo destrutivo recusado.")
 
+        repair = ExecutionLifecycleRecord(
+            request_id,
+            target,
+            updated_at,
+            message or f"lifecycle alinhado ao estado terminal durável do ledger: {ledger_status.value}",
+        )
+        if current is None:
+            return self.lifecycle_store.repair_terminal(repair)
         return self.lifecycle_store.reconcile(
             request_id,
             target,
             updated_at=updated_at,
-            message=message or f"lifecycle alinhado ao estado terminal durável do ledger: {ledger_status.value}",
+            message=repair.message,
         )
