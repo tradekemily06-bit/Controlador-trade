@@ -107,35 +107,12 @@ def test_real_capability_is_pinned_to_adapter_instance():
 
 
 
-def test_real_dispatch_blocks_registry_toctou_before_adapter_execute():
-    first = FakeAdapter()
-    second = FakeAdapter()
-
+def test_real_dispatch_rejects_overridable_registry_before_dispatch():
     class FlipRegistry(BrokerRegistry):
-        def __init__(self):
-            super().__init__()
-            self.calls = 0
+        pass
 
-        def get(self, name):
-            self.calls += 1
-            return first if self.calls <= 2 else second
-
-    registry = FlipRegistry()
-    gateway = BrokerAdapterGateway(registry)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
-    assert capability is not None
-
-    result = gateway.execute_real(
-        "fake",
-        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
-        capability=capability,
-    )
-
-    assert result.accepted is False
-    assert first.calls == 0
-    assert second.calls == 0
-
-
+    with pytest.raises(ValueError, match="registry inválido"):
+        BrokerAdapterGateway(FlipRegistry())
 
 def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
     adapter = FakeAdapter()
