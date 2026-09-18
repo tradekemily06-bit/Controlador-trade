@@ -126,7 +126,7 @@ def test_invalid_duration_is_blocked_before_mt5():
     bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 0, ExecutionMode.DEMO, "req-duration")
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
     assert result.accepted is False
-    assert fake.sent == []
+    assert fake.calls == []
 
 
 def test_invalid_signal_is_blocked_before_mt5():
@@ -134,4 +134,4 @@ def test_invalid_signal_is_blocked_before_mt5():
     bad = ExecutionRequest("EURUSD", object(), 0.01, 60, ExecutionMode.DEMO, "req-signal")
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
     assert result.accepted is False
-    assert fake.sent == []
+    assert fake.calls == []
