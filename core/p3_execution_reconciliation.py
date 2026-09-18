@@ -172,11 +172,16 @@ class ExecutionReconciliationCoordinator:
                 )
             )
         elif lifecycle_record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
-            self._lifecycle.reconcile(
-                request_id,
-                lifecycle_target,
-                updated_at=timestamp,
-                message=f"reconciliado externamente: {result.message}",
-            )
+            try:
+                self._lifecycle.reconcile(
+                    request_id,
+                    lifecycle_target,
+                    updated_at=timestamp,
+                    message=f"reconciliado externamente: {result.message}",
+                )
+            except ValueError:
+                raced_lifecycle = self._lifecycle.get(request_id)
+                if raced_lifecycle is None or raced_lifecycle.state is not lifecycle_target:
+                    raise
 
         return result
