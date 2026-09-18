@@ -36,8 +36,7 @@ class ExternalExecutionReconciliationService:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
 
-        ledger = self._coordinator._ledger
-        external_id = ledger.external_id(request_id)
+        external_id = self._coordinator.external_id_for(request_id)
         if external_id is None:
             raise ValueError(
                 "request_id não possui external_id durável; consulta externa segura indisponível."
