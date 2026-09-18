@@ -287,6 +287,49 @@ def test_request_id_recovery_waits_for_dispatch_lock_before_binding_identity(tmp
     assert ledger.external_id("req-lock-recovery") == "EXT-LOCK"
     assert ledger.status("req-lock-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
+def test_request_id_recovery_waits_for_global_real_execution_barrier(tmp_path: Path):
+    from threading import Event, Thread
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-global-recovery")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-global-recovery",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "active REAL dispatch",
+        )
+    )
+
+    query_called = Event()
+    finished = Event()
+
+    class Query:
+        def query_order_by_request_id(self, request_id):
+            query_called.set()
+            return ExternalOrderObservation("EXT-GLOBAL", ExternalOrderStatus.EXECUTED, "filled")
+
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    service = ExternalExecutionReconciliationService(coordinator=coordinator, query_port=Query())
+
+    def run():
+        service.reconcile_request_by_request_id("req-global-recovery")
+        finished.set()
+
+    with ledger.real_execution_lock():
+        thread = Thread(target=run)
+        thread.start()
+        assert query_called.wait(timeout=0.3) is False
+        assert finished.is_set() is False
+
+    thread.join(timeout=5)
+    assert finished.is_set()
+    assert ledger.external_id("req-global-recovery") == "EXT-GLOBAL"
+    assert ledger.status("req-global-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
 def test_concurrent_request_id_recovery_same_identity_is_idempotent(tmp_path: Path):
     from threading import Thread
     from datetime import datetime, timezone
