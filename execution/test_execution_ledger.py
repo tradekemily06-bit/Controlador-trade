@@ -205,3 +205,17 @@ def test_per_request_execution_lock_serializes_dispatch_and_reconciliation(tmp_p
     second.join(timeout=2)
 
     assert order == ["holder-entered", "holder-exited", "waiter-entered"]
+
+
+
+def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    malicious = "../outside/../../request-id"
+
+    with ledger.request_execution_lock(malicious):
+        pass
+
+    assert not (tmp_path.parent / "outside").exists()
+    lock_files = list(tmp_path.glob(".*.execution.lock"))
+    assert len(lock_files) == 1
+    assert ".." not in lock_files[0].name
