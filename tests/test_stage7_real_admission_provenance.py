@@ -1,3 +1,5 @@
+import pytest
+
 from core.p116_real_release_audit import RealReleaseAuditBoundary
 from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
