@@ -118,7 +118,7 @@ def test_missing_request_id_is_blocked_before_mt5():
     bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, None)
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
     assert result.accepted is False
-    assert fake.sent == []
+    assert fake.calls == []
 
 
 def test_invalid_duration_is_blocked_before_mt5():
