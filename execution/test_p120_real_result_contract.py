@@ -1,6 +1,8 @@
 from core.kill_switch import KillSwitch
 from pathlib import Path
 
+import pytest
+
 from core.models import Signal
 from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator
@@ -36,7 +38,7 @@ def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, 
 def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
     registry = BrokerRegistry()
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    with __import__("pytest").raises(ValueError, match="lifecycle"):
+    with pytest.raises(ValueError, match="lifecycle"):
         RealExecutionGateway(
             BrokerAdapterGateway(registry),
             ledger,
