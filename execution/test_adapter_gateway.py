@@ -216,3 +216,19 @@ def test_real_dispatch_rejects_overridable_capability_subclass():
     )
     assert result.accepted is False
     assert adapter.calls == 0
+
+
+def test_real_dispatch_rejects_forged_exact_capability_instance():
+    from execution.adapter_gateway import _RealDispatchCapability
+
+    adapter = FakeAdapter()
+    gateway = gateway_with(adapter)
+    forged = _RealDispatchCapability(adapter, "fake-adapter")
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=forged,
+    )
+    assert result.accepted is False
+    assert "não emitida pelo gateway" in result.message
+    assert adapter.calls == 0
