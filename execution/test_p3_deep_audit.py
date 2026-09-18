@@ -296,4 +296,9 @@ def test_recovery_repairs_lifecycle_unknown_when_ledger_is_terminal(tmp_path: Pa
         updated_at=datetime.now(timezone.utc),
     )
     assert repaired.state is ExecutionLifecycleState.ACCEPTED
-    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
+    # Without a durable runtime checkpoint this is a clean FRESH start,
+    # not SAFE_TO_RESUME. The important assertion is that the divergence is
+    # gone and recovery no longer requires reconciliation.
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.FRESH
+    assert assessment.can_resume is True
