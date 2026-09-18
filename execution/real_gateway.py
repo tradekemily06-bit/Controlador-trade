@@ -188,60 +188,63 @@ class RealExecutionGateway:
                     pass
                 return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL; estado incerto bloqueado: {exc}")
 
-        # Final durable-authority check immediately before the broker side effect.
-        # A reconciliation worker may have completed this request after the
-        # admission snapshot; terminal/UNKNOWN authority must never be replayed.
-        try:
-            final_status = self._ledger.status(request_id)
-        except (OSError, ValueError) as exc:
+        # Serialize the final authority check with the broker side effect.
+        # Reconciliation for this request takes the same per-request lock, so it
+        # cannot resolve RESERVED between the last check and the external call.
+        with self._ledger.request_execution_lock(request_id):
+            # Final durable-authority check immediately before the broker side effect.
+            # A reconciliation worker may have completed this request after the
+            # admission snapshot; terminal/UNKNOWN authority must never be replayed.
             try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
-            if self._lifecycle is not None:
+                final_status = self._ledger.status(request_id)
+            except (OSError, ValueError) as exc:
                 try:
-                    self._lifecycle.put(
-                        ExecutionLifecycleRecord(
-                            request_id,
-                            ExecutionLifecycleState.UNKNOWN,
-                            datetime.now(timezone.utc),
-                            f"não foi possível confirmar a autoridade REAL antes do broker: {exc}",
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError):
+                    pass
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                f"não foi possível confirmar a autoridade REAL antes do broker: {exc}",
+                            )
                         )
-                    )
-                except (OSError, ValueError):
-                    pass
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                f"autoridade REAL indisponível; broker não chamado: {exc}",
-            )
-        if final_status is not ExecutionLedgerStatus.RESERVED:
-            if final_status in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
-            ):
+                    except (OSError, ValueError):
+                        pass
                 return RealGatewayResult(
-                    RealGatewayStatus.BLOCKED,
-                    f"execução REAL não enviada: autoridade durável já está {final_status.value}.",
+                    RealGatewayStatus.UNKNOWN,
+                    f"autoridade REAL indisponível; broker não chamado: {exc}",
                 )
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                f"execução REAL não enviada: autoridade durável está {final_status.value if final_status else 'AUSENTE'}.",
-            )
+            if final_status is not ExecutionLedgerStatus.RESERVED:
+                if final_status in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ):
+                    return RealGatewayResult(
+                        RealGatewayStatus.BLOCKED,
+                        f"execução REAL não enviada: autoridade durável já está {final_status.value}.",
+                    )
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"execução REAL não enviada: autoridade durável está {final_status.value if final_status else 'AUSENTE'}.",
+                )
 
-        try:
-            result = self._gateway.execute(broker, request)
-        except Exception as exc:
             try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
-            if self._lifecycle is not None:
+                result = self._gateway.execute(broker, request)
+            except Exception as exc:
                 try:
-                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), f"resultado REAL incerto: {type(exc).__name__}: {exc}"))
+                    self._ledger.mark_unknown(request_id)
                 except (OSError, ValueError):
                     pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
-
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), f"resultado REAL incerto: {type(exc).__name__}: {exc}"))
+                    except (OSError, ValueError):
+                        pass
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
         if result.execution is None:
             try:
                 self._ledger.mark_unknown(request_id)
