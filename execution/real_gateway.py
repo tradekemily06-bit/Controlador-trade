@@ -97,7 +97,7 @@ class RealExecutionGateway:
         admission: RealAdmission,
         safety: RealSafetyReport,
     ) -> RealGatewayResult:
-        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+        if type(request_id) is not str or not request_id.strip() or request_id != request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido ou não canônico.")
         if type(authorization) is not RealExecutionAuthorization:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "autorização REAL inválida.")
