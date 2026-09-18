@@ -1269,3 +1269,31 @@ def test_reconciliation_recreates_missing_lifecycle_projection(tmp_path):
 
     assert ledger.status("missing-projection") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ExecutionLifecycleStore(lifecycle_path).get("missing-projection").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconciliation_repairs_reserved_lifecycle_unknown_with_durable_external_id(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("reserved-projection")
+    ledger.attach_external_id("reserved-projection", "broker-reconcile")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reserved-projection",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    gw.reconcile_unknown(
+        "reserved-projection",
+        broker="fake",
+        authorization=auth(),
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+    )
+
+    assert ledger.status("reserved-projection") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("reserved-projection").state is ExecutionLifecycleState.ACCEPTED
