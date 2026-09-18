@@ -79,3 +79,39 @@ def test_adapter_transport_failure_is_unknown_not_rejected(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("transport-uncertain") is ExecutionLedgerStatus.UNKNOWN
+
+
+class RejectedWithExternalIdAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(False, "rejected with broker reference", "EXT-REJECTED-1")
+
+
+def test_rejected_response_with_external_id_is_unknown_and_reconcilable(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", RejectedWithExternalIdAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True,
+    )
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="rejected-with-id", request=request,
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("rejected-with-id") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id("rejected-with-id") == "EXT-REJECTED-1"
