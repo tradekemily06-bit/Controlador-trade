@@ -45,11 +45,23 @@ class RuntimeCheckpointStore:
         with self._mutation_lock():
             self._save_unlocked(checkpoint)
 
+    @staticmethod
+    def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("objeto JSON do checkpoint contém chave duplicada.")
+            result[key] = value
+        return result
+
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
             return None
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(
+                self.path.read_text(encoding="utf-8"),
+                object_pairs_hook=self._unique_json_object,
+            )
             if not isinstance(data, dict):
                 raise ValueError
             checkpoint = RuntimeCheckpoint(
