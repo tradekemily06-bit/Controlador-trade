@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 
 @dataclass(frozen=True)
@@ -15,7 +23,12 @@ class RuntimeCheckpoint:
 
 
 class RuntimeCheckpointStore:
-    """Durable checkpoint for safe runtime recovery; never replays an order."""
+    """Durable runtime checkpoint; never acts as execution authority.
+
+    Checkpoint writes are serialized across processes and published with
+    atomic replacement. A torn/partial checkpoint therefore cannot become a
+    valid recovery input; invalid persisted state fails closed on load.
+    """
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -24,21 +37,8 @@ class RuntimeCheckpointStore:
 
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        with self._mutation_lock():
+            self._save_unlocked(checkpoint)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
@@ -55,7 +55,14 @@ class RuntimeCheckpointStore:
             )
             self._validate(checkpoint)
             return checkpoint
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
             raise ValueError("checkpoint de runtime inválido.") from exc
 
     @staticmethod
@@ -64,11 +71,44 @@ class RuntimeCheckpointStore:
             raise ValueError("checkpoint inválido.")
         if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip():
             raise ValueError("checkpoint inválido.")
-        if not isinstance(checkpoint.last_cycle, int) or isinstance(checkpoint.last_cycle, bool) or checkpoint.last_cycle < 0:
+        if (
+            not isinstance(checkpoint.last_cycle, int)
+            or isinstance(checkpoint.last_cycle, bool)
+            or checkpoint.last_cycle < 0
+        ):
             raise ValueError("checkpoint inválido.")
         if checkpoint.last_request_id is not None and (
-            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
+            not isinstance(checkpoint.last_request_id, str)
+            or not checkpoint.last_request_id.strip()
         ):
             raise ValueError("request_id do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):
             raise ValueError("checkpoint inválido.")
+
+    @contextmanager
+    def _mutation_lock(self) -> Iterator[None]:
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock_file:
+            if fcntl is None:
+                raise OSError("checkpoint exige lock interprocesso suportado pelo sistema.")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _save_unlocked(self, checkpoint: RuntimeCheckpoint) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        payload = {
+            "session_id": checkpoint.session_id,
+            "last_cycle": checkpoint.last_cycle,
+            "last_request_id": checkpoint.last_request_id,
+            "updated_at": checkpoint.updated_at.isoformat(),
+        }
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
