@@ -1177,5 +1177,5 @@ def test_ledger_rejects_duplicate_json_keys(tmp_path):
         '{"dup": {"status": "RESERVED"}, "dup": {"status": "UNKNOWN"}}',
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="ledger de execução inválido"):
+    with pytest.raises(ValueError, match="chave duplicada"):
         ExecutionLedger(path)
