@@ -63,6 +63,7 @@ def test_orphan_terminal_ledger_can_be_completed_only_with_matching_external_fac
     request_id = "req-orphan"
     now = datetime.now(timezone.utc)
     ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-3")
     ledger.mark_accepted(request_id)
 
     ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
