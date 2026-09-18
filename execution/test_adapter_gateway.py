@@ -223,6 +223,8 @@ def test_real_dispatch_rejects_overridable_capability_subclass():
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
         capability=forged,
+        request_id="real-test",
+        authorization_id="auth",
     )
     assert result.accepted is False
     assert adapter.calls == 0
@@ -233,7 +235,7 @@ def test_real_dispatch_rejects_forged_exact_capability_instance():
 
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
-    forged = _RealDispatchCapability(adapter, "fake-adapter")
+    forged = _RealDispatchCapability(adapter, "fake-adapter", "fake", "real-test", "auth")
     result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
