@@ -38,9 +38,16 @@ class PersistentOperationalRecorder:
         recorder = P4OperationalRecorder(audit=audit, memory=store.load(), kill_switch=active_kill_switch)
         return cls(store=store, safety_store=safety_store, recorder=recorder)
 
-    def _persist_safety(self) -> None:
-        if self.safety_store is not None:
-            self.safety_store.save(self.audit, self.kill_switch)
+    def _reload_safety(self) -> None:
+        if self.safety_store is None:
+            return
+        audit, kill_switch = self.safety_store.load()
+        self.recorder.audit = audit
+        if kill_switch.state.enabled and not self.recorder.kill_switch.state.enabled:
+            self.recorder.kill_switch.activate(kill_switch.state.reason or "estado persistido")
+
+    def _reload_memory(self) -> None:
+        self.recorder.memory = self.store.load()
 
     @property
     def memory(self):
@@ -56,19 +63,38 @@ class PersistentOperationalRecorder:
 
     def record_decision(self, snapshot: DecisionSnapshot, *, timestamp: datetime) -> DecisionAuditRecord:
         record = self.recorder.record_decision(snapshot, timestamp=timestamp)
-        self._persist_safety()
+        try:
+            if self.safety_store is not None:
+                self.safety_store.append_audit(record)
+        except Exception:
+            self._reload_safety()
+            raise
         return record
 
     def record_operation(self, snapshot: DecisionSnapshot, *, timestamp: datetime, result: str = "PENDENTE", entry_conditions: tuple[str, ...] = (), audit_record: DecisionAuditRecord | None = None) -> RecordedOperation:
-        recorded = self.recorder.record_operation(snapshot, timestamp=timestamp, result=result, entry_conditions=entry_conditions, audit_record=audit_record)
-        self.store.save(self.memory)
-        self._persist_safety()
+        recorded = self.recorder.record_operation(
+            snapshot,
+            timestamp=timestamp,
+            result=result,
+            entry_conditions=entry_conditions,
+            audit_record=audit_record,
+        )
+        try:
+            if self.safety_store is not None:
+                self.safety_store.append_audit(recorded.audit)
+            self.store.append(recorded.memory)
+        except Exception:
+            self._reload_memory()
+            if self.safety_store is not None:
+                self._reload_safety()
+            raise
+        self._reload_memory()
+        self._reload_safety()
         return recorded
 
     def settle_operation(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
-        updated = self.recorder.settle_operation(record, result)
-        self.store.save(self.memory)
-        self._persist_safety()
+        updated = self.store.settle(record, result)
+        self._reload_memory()
         return updated
 
     def can_execute(self) -> bool:
@@ -84,7 +110,7 @@ class PersistentOperationalRecorder:
         candidate = KillSwitch()
         candidate.activate(reason)
         if self.safety_store is not None:
-            self.safety_store.save(self.audit, candidate)
+            self.safety_store.save_kill_switch(candidate)
         return self.kill_switch.activate(reason)
 
     def deactivate_kill_switch(self):
@@ -93,6 +119,6 @@ class PersistentOperationalRecorder:
         candidate = KillSwitch()
         candidate.deactivate()
         if self.safety_store is not None:
-            self.safety_store.save(self.audit, candidate)
+            self.safety_store.save_kill_switch(candidate)
         state = self.kill_switch.deactivate()
         return state
