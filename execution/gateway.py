@@ -128,6 +128,15 @@ class ExecutionGateway:
                     pass
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
 
+        if self._recovery is not None:
+            final_recovery = self._recovery.assess()
+            if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                self._mark_unknown(request_id, event_time, f"recovery mudou antes do executor: {final_recovery.state.value}")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
+                )
+
         try:
             result = self._executor.execute(request)
         except Exception as exc:
