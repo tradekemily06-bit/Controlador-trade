@@ -94,8 +94,8 @@ class QueryPort:
         return self.observation
 
 
-def request():
-    return ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL)
+def request(request_id="r1"):
+    return ExecutionRequest("TEST", Signal.COMPRA, 1.0, 60, ExecutionMode.REAL, request_id=request_id)
 
 
 def auth():
@@ -141,11 +141,46 @@ def execute(gw, request_id="r1"):
     return gw.execute(
         broker="fake",
         request_id=request_id,
-        request=request(),
+        request=request(request_id),
         authorization=auth(),
         admission=admission(),
         safety=safety(),
     )
+
+
+def test_real_request_id_must_match_request_payload(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    result = gw.execute(
+        broker="fake",
+        request_id="outer-id",
+        request=request("inner-id"),
+        authorization=auth(),
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+
+def test_real_admission_must_match_authorization_context(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    mismatched = RealAdmissionBoundary().admit(
+        admission_id="adm",
+        audit_id="different-audit",
+        audit_verified=True,
+        authorization_active=True,
+        safety_ready=True,
+        broker_available=True,
+        broker_id="other-broker",
+    )
+    result = gw.execute(
+        broker="fake",
+        request_id="r1",
+        request=request("r1"),
+        authorization=auth(),
+        admission=mismatched,
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
 
 
 def test_accepted_external_id_is_durable(tmp_path):
