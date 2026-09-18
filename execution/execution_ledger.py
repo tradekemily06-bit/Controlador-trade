@@ -67,6 +67,8 @@ class ExecutionLedger:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
+            if len(set(payload)) != len(payload):
+                raise ValueError("ledger de execução inválido: request_id duplicado.")
             return {
                 item: ExecutionLedgerEntry(ExecutionLedgerStatus.UNKNOWN)
                 for item in payload
