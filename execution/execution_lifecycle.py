@@ -89,6 +89,10 @@ class ExecutionLifecycleStore:
                         raise ValueError("execução UNKNOWN requer reconciliação explícita.")
                     if previous.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED) and record.state is not previous.state:
                         raise ValueError("estado terminal não pode ser alterado sem reconciliação explícita.")
+                    previous_aware = previous.updated_at.tzinfo is not None and previous.updated_at.utcoffset() is not None
+                    current_aware = record.updated_at.tzinfo is not None and record.updated_at.utcoffset() is not None
+                    if previous_aware != current_aware:
+                        raise ValueError("timestamps de ciclo devem usar o mesmo regime de timezone.")
                     if record.updated_at < previous.updated_at:
                         raise ValueError("registro de ciclo obsoleto não pode regredir o timestamp persistido.")
                 self._records[record.request_id] = record
