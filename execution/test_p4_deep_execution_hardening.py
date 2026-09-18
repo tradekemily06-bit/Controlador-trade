@@ -1111,6 +1111,7 @@ def test_reconciliation_keeps_ledger_terminal_when_lifecycle_projection_fails(tm
 
     assert ledger.status("reconcile-lifecycle-failure") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.UNKNOWN
+    lifecycle.reconcile = original_reconcile
     gw.repair_lifecycle_projection("reconcile-lifecycle-failure")
     assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.ACCEPTED
 
