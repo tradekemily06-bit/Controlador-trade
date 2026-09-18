@@ -1079,3 +1079,109 @@ def test_request_id_recovery_rejects_empty_external_identity_without_binding_or_
     assert ExecutionLedger(ledger_path).external_id("request-id-empty-external") is None
     assert ExecutionLedger(ledger_path).status("request-id-empty-external") is ExecutionLedgerStatus.RESERVED
     assert ExecutionLifecycleStore(lifecycle_path).get("request-id-empty-external").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_gateway_blocks_before_dispatch_when_durable_recovery_is_uncertain(tmp_path: Path):
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "must-not-dispatch", "EXT-NO-DISPATCH")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    checkpoint_path = tmp_path / "checkpoint.json"
+    ledger = ExecutionLedger(ledger_path)
+    ledger.reserve("blocking-uncertain")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(checkpoint_path),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    )
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+        recovery=recovery,
+    ).execute(
+        broker="fake",
+        request_id="new-real-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(ledger_path).status("new-real-request") is None
+
+
+def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path: Path, monkeypatch):
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "must-not-dispatch", "EXT-RACE-REAL")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    checkpoint_path = tmp_path / "checkpoint.json"
+    ledger = ExecutionLedger(ledger_path)
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(checkpoint_path),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    )
+    original_assess = recovery.assess
+    calls = {"count": 0}
+
+    def racing_assess():
+        calls["count"] += 1
+        result = original_assess()
+        if calls["count"] == 2:
+            ledger.reserve("racing-real-worker")
+        return result
+
+    monkeypatch.setattr(recovery, "assess", racing_assess)
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        ExecutionLifecycleStore(lifecycle_path),
+        recovery=recovery,
+    ).execute(
+        broker="fake",
+        request_id="guarded-real-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("guarded-real-request") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("racing-real-worker") is ExecutionLedgerStatus.RESERVED
+    assert calls["count"] >= 2
