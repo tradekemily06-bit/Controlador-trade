@@ -10,6 +10,9 @@ from core.p117_real_admission import RealAdmissionBoundary
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
 from core.p3_external_reconciliation_service import ExternalExecutionReconciliationService
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
