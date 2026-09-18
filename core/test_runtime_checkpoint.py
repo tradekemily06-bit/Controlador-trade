@@ -98,3 +98,15 @@ def test_older_checkpoint_from_other_session_cannot_overwrite_newer_checkpoint(t
     store.save(older)
 
     assert store.load() == newer
+
+def test_equal_timestamp_checkpoint_conflict_cannot_overwrite_newer_snapshot(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    timestamp = datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc)
+    newer = RuntimeCheckpoint("session-new", 7, "req-new", timestamp)
+    conflicting = RuntimeCheckpoint("session-old", 1, "req-old", timestamp)
+
+    store.save(newer)
+    store.save(conflicting)
+
+    assert store.load() == newer
