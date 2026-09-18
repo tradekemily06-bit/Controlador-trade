@@ -170,10 +170,11 @@ class BrokerAdapterGateway:
                     "adapter REAL mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
                 )
             current_id = getattr(adapter, "adapter_id", None)
+            expected_id = getattr(expected_adapter, "adapter_id", None)
             if (
                 not isinstance(current_id, str)
-                or current_id.strip().lower()
-                != getattr(expected_adapter, "adapter_id", "").strip().lower()
+                or not isinstance(expected_id, str)
+                or current_id.strip().lower() != expected_id.strip().lower()
             ):
                 return AdapterExecutionResult(
                     False,
