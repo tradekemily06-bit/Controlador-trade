@@ -329,9 +329,16 @@ def test_concurrent_request_id_recovery_conflicting_external_identity_fails_clos
     )
 
     errors = []
+
+    def run(service):
+        try:
+            service.reconcile_request_by_request_id("req-conflicting-recovery")
+        except Exception as exc:
+            errors.append(exc)
+
     threads = [
-        Thread(target=lambda: service_a.reconcile_request_by_request_id("req-conflicting-recovery"),),
-        Thread(target=lambda: service_b.reconcile_request_by_request_id("req-conflicting-recovery"),),
+        Thread(target=run, args=(service_a,)),
+        Thread(target=run, args=(service_b,)),
     ]
     for thread in threads:
         thread.start()
@@ -339,5 +346,7 @@ def test_concurrent_request_id_recovery_conflicting_external_identity_fails_clos
         thread.join()
 
     final_ledger = ExecutionLedger(tmp_path / "ledger.json")
+    assert len(errors) == 1
     assert final_ledger.external_id("req-conflicting-recovery") in {"EXT-A", "EXT-B"}
     assert final_ledger.status("req-conflicting-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("req-conflicting-recovery").state is ExecutionLifecycleState.ACCEPTED
