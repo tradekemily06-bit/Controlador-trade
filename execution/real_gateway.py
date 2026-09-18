@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -8,6 +9,7 @@ from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -28,13 +30,16 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -89,6 +94,18 @@ class RealExecutionGateway:
                 )
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
+        if self._lifecycle is not None:
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.PENDING,
+                        datetime.now(timezone.utc),
+                        "REAL reservado; aguardando resultado do broker.",
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL: {exc}")
         try:
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
@@ -102,6 +119,11 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), f"resultado REAL incerto: {type(exc).__name__}: {exc}"))
+                except (OSError, ValueError):
+                    pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
@@ -109,6 +131,11 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), result.message))
+                except (OSError, ValueError):
+                    pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if not result.execution.accepted:
@@ -116,6 +143,11 @@ class RealExecutionGateway:
                 self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), result.execution.message))
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
 
         # An accepted REAL result without a durable broker/exchange reference is
@@ -132,6 +164,11 @@ class RealExecutionGateway:
             self._ledger.mark_accepted(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
+        if self._lifecycle is not None:
+            try:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), result.execution.message))
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
