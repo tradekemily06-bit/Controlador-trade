@@ -231,41 +231,39 @@ class RecoveryCoordinator:
         if not isinstance(updated_at, datetime):
             raise ValueError("updated_at inválido.")
 
-        # Repair must share the same request boundary as REAL dispatch and
-        # broker reconciliation. The ledger is terminal-authoritative, but the
-        # lock prevents a repair worker from racing identity/state reconciliation.
+        # Repair shares the same request boundary as REAL dispatch and broker
+        # reconciliation, so a repair worker cannot race identity/state recovery.
         with self.execution_ledger.request_execution_lock(request_id):
-        ledger_status = self.execution_ledger.status(request_id)
-                target = {
-                    ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
-                    ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
-                    ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
-                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
-                }.get(ledger_status)
-                if target is None:
-                    raise ValueError("somente estados terminais do ledger podem reparar o lifecycle.")
-        
-                current = self.lifecycle_store.get(request_id)
-                if current is not None and current.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
-                    if (
-                        (current.state is ExecutionLifecycleState.ACCEPTED and target is ExecutionLifecycleState.ACCEPTED)
-                        or (current.state is ExecutionLifecycleState.REJECTED and target is ExecutionLifecycleState.REJECTED)
-                    ):
-                        return current
-                    raise ValueError("lifecycle terminal diverge do ledger; reparo destrutivo recusado.")
-        
-                repair = ExecutionLifecycleRecord(
-                    request_id,
-                    target,
-                    updated_at,
-                    message or f"lifecycle alinhado ao estado terminal durável do ledger: {ledger_status.value}",
-                )
-                if current is None:
-                    return self.lifecycle_store.repair_terminal(repair)
-                return self.lifecycle_store.reconcile(
-                    request_id,
-                    target,
-                    updated_at=updated_at,
-                    message=repair.message,
-                )
-        
+            ledger_status = self.execution_ledger.status(request_id)
+            target = {
+                ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
+            }.get(ledger_status)
+            if target is None:
+                raise ValueError("somente estados terminais do ledger podem reparar o lifecycle.")
+
+            current = self.lifecycle_store.get(request_id)
+            if current is not None and current.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+                if (
+                    (current.state is ExecutionLifecycleState.ACCEPTED and target is ExecutionLifecycleState.ACCEPTED)
+                    or (current.state is ExecutionLifecycleState.REJECTED and target is ExecutionLifecycleState.REJECTED)
+                ):
+                    return current
+                raise ValueError("lifecycle terminal diverge do ledger; reparo destrutivo recusado.")
+
+            repair = ExecutionLifecycleRecord(
+                request_id,
+                target,
+                updated_at,
+                message or f"lifecycle alinhado ao estado terminal durável do ledger: {ledger_status.value}",
+            )
+            if current is None:
+                return self.lifecycle_store.repair_terminal(repair)
+            return self.lifecycle_store.reconcile(
+                request_id,
+                target,
+                updated_at=updated_at,
+                message=repair.message,
+            )
