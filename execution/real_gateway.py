@@ -124,15 +124,20 @@ class RealExecutionGateway:
                 RealGatewayStatus.REJECTED,
                 "adapter da execução difere da autorização REAL.",
             )
-        capability = self._gateway.real_dispatch_capability(
-            broker,
-            expected_adapter_id=authorization.adapter_id,
-        )
-        if capability is None:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL autorizado não pôde ser fixado.")
-
         try:
             with self._locks.acquire(request_id):
+                # Pin the REAL adapter only after entering the same lock that
+                # protects reservation and dispatch. This removes the
+                # authorization-to-capability TOCTOU window.
+                capability = self._gateway.real_dispatch_capability(
+                    broker,
+                    expected_adapter_id=authorization.adapter_id,
+                )
+                if capability is None:
+                    return RealGatewayResult(
+                        RealGatewayStatus.BLOCKED,
+                        "adapter REAL autorizado não pôde ser fixado.",
+                    )
                 return self._execute_locked(
                     broker=broker,
                     request_id=request_id,
