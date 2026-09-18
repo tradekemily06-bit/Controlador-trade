@@ -170,9 +170,45 @@ def test_two_gateway_instances_same_request_are_idempotent(tmp_path):
     adapter = FakeAdapter()
     first, ledger, lifecycle = gateway(tmp_path, adapter)
     second, _, _ = gateway(tmp_path, adapter)
-    assert execute(first, "same") .status == RealGatewayStatus.ADMITTED
+    assert execute(first, "same").status == RealGatewayStatus.ADMITTED
     assert execute(second, "same").status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
+
+
+def test_lifecycle_second_instance_sees_write_after_construction(tmp_path):
+    path = tmp_path / "execution-lifecycle.json"
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+    first.put(
+        ExecutionLifecycleRecord(
+            "fresh", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+    assert second.get("fresh").state is ExecutionLifecycleState.PENDING
+
+
+def test_ledger_rejects_normal_promotion_from_unknown(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+    ledger.reserve("unknown")
+    ledger.mark_unknown("unknown")
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_accepted("unknown", "broker-1")
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_rejected("unknown")
+
+
+def test_ledger_requires_external_id_for_accepted(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+    ledger.reserve("accepted")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.mark_accepted("accepted")
+
+
+def test_ledger_requires_external_id_for_executed_reconciliation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+    ledger.reserve("reconcile")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.reconcile("reconcile", executed=True)
 
 
 def test_recovery_requires_reconciliation_for_every_mismatch(tmp_path):
@@ -209,7 +245,7 @@ def test_recovery_requires_reconciliation_for_every_mismatch(tmp_path):
     assessment = recovery.assess()
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert set(assessment.unknown_request_ids) >= {"case-0", "case-1"}
-    
+
 
 def test_recovery_detects_ledger_without_lifecycle(tmp_path):
     ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
