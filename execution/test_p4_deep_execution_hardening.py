@@ -306,8 +306,7 @@ def test_terminal_ledger_can_repair_lifecycle_projection(tmp_path):
         encoding="utf-8",
     )
     assert lifecycle.get("repair-me").state is ExecutionLifecycleState.PENDING
-    with pytest.raises(ValueError):
-        execute(gw, "repair-me")
+    assert execute(gw, "repair-me").status == RealGatewayStatus.UNKNOWN
     gw.repair_lifecycle_projection("repair-me")
     assert lifecycle.get("repair-me").state is ExecutionLifecycleState.ACCEPTED
 
