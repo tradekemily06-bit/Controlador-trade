@@ -27,9 +27,11 @@ class FakeAdapter:
     supports_real_execution = True
     adapter_id = "fake-adapter"
 
-    def __init__(self, available=True):
+    def __init__(self, available=True, observation=None):
         self.available = available
         self.calls = 0
+        self.observation = observation
+        self.query_calls = 0
 
     def is_available(self):
         return self.available
@@ -37,6 +39,12 @@ class FakeAdapter:
     def execute(self, request):
         self.calls += 1
         return ExecutionResult(True, "fake real execution accepted", "external-1")
+
+    def query_order(self, external_id):
+        self.query_calls += 1
+        if self.observation is None or external_id != self.observation.external_id:
+            raise ValueError("unexpected external_id")
+        return self.observation
 
 
 class NoExternalIdAdapter:
@@ -122,7 +130,11 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p117 = _admission(auth)
     assert p117.status is RealAdmissionStatus.ADMITTED
     registry = BrokerRegistry()
-    adapter = FakeAdapter()
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed"
+        )
+    )
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
@@ -189,10 +201,9 @@ def test_real_unknown_without_external_id_cannot_be_locally_closed(tmp_path: Pat
     with pytest.raises(ValueError):
         gateway.reconcile_unknown(
             "unknown-1",
+            broker="fake",
+            authorization=_authorization(),
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-            query_port=QueryPort(
-                ExternalOrderObservation("external-1", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent")
-            ),
         )
 
 
@@ -208,15 +219,13 @@ def test_real_unknown_with_durable_external_id_can_be_reconciled_from_broker_que
     ledger.mark_unknown("unknown-2")
 
     auth = _authorization()
-    query = QueryPort(
-        ExternalOrderObservation("external-2", ExternalOrderStatus.EXECUTED, "broker confirmed")
-    )
     gateway.reconcile_unknown(
         "unknown-2",
+        broker="fake",
+        authorization=auth,
         reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-        query_port=query,
     )
-    assert query.calls == 1
+    assert adapter.query_calls == 1
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -236,10 +245,9 @@ def test_real_reserved_after_restart_without_external_id_stays_unresolved(tmp_pa
     with pytest.raises(ValueError):
         gateway.reconcile_unknown(
             "crashed",
+            broker="fake",
+            authorization=_authorization(),
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-            query_port=QueryPort(
-                ExternalOrderObservation("crashed-broker-id", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent")
-            ),
         )
 
 
