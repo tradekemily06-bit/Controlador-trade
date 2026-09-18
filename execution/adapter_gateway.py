@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import weakref
 
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
@@ -19,7 +20,7 @@ class _RealDispatchCapability:
 
 # Issued capability identities are tracked so an external caller cannot forge
 # a capability merely by instantiating the private dataclass directly.
-_REAL_DISPATCH_CAPABILITIES: dict[int, _RealDispatchCapability] = {}
+_REAL_DISPATCH_CAPABILITIES: weakref.WeakValueDictionary[int, _RealDispatchCapability] = weakref.WeakValueDictionary()
 
 
 class _RealQueryCapability:
