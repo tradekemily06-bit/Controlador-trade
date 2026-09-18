@@ -128,15 +128,14 @@ class ExecutionLedger:
             yield
             return
         lock_path.touch(exist_ok=True)
-        try:
-            with locked_path(lock_path):
-                held.add(lock_path)
+        with locked_path(lock_path):
+            held.add(lock_path)
+            self._request_lock_local.held = held
+            try:
+                yield
+            finally:
+                held.discard(lock_path)
                 self._request_lock_local.held = held
-                try:
-                    yield
-                finally:
-                    held.discard(lock_path)
-                    self._request_lock_local.held = held
         # Keep the hashed lock inode stable. Removing it here would allow a
         # second process still waiting on the old inode to overlap with a third
         # process that creates a new inode at the same path.
