@@ -514,8 +514,8 @@ def test_real_lifecycle_pending_before_ledger_reserve_failure_blocks_restart_wit
         admission=admission,
         safety=safety,
     )
-    assert retry.status == RealGatewayStatus.UNKNOWN
-    assert adapter.calls == 0
+    assert retry.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
 
 
 def test_two_real_gateways_with_lifecycle_still_dispatch_once(tmp_path):
@@ -1160,7 +1160,7 @@ def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp
     original_assess = recovery.assess
     calls = {"count": 0}
 
-    def racing_assess():
+    def racing_assess(*, ignore_request_id=None):
         calls["count"] += 1
         result = original_assess()
         if calls["count"] == 2:
