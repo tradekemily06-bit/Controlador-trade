@@ -226,8 +226,8 @@ class RecoveryCoordinator:
         changes the ledger and never dispatches an order. The ledger terminal
         state is the source of truth for the lifecycle projection.
         """
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id não pode ser vazio ou não canônico.")
         if not isinstance(updated_at, datetime):
             raise ValueError("updated_at inválido.")
 
