@@ -73,3 +73,40 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+class InvalidAvailabilityTransport(FakeDemoTransport):
+    def is_available(self):
+        return "yes"
+
+
+class RaisingAvailabilityTransport(FakeDemoTransport):
+    def is_available(self):
+        raise RuntimeError("transport down")
+
+
+class AcceptedWithoutExternalIdTransport(FakeDemoTransport):
+    def __init__(self):
+        super().__init__(result=BrokerOrderResult(True, "accepted", None))
+
+
+def test_ctrader_rejects_non_boolean_availability():
+    adapter = CTraderDemoAdapter(InvalidAvailabilityTransport())
+    result = adapter.execute(request())
+    assert result.accepted is False
+    assert result.external_id is None
+    assert result.message
+
+
+def test_ctrader_rejects_availability_exception():
+    adapter = CTraderDemoAdapter(RaisingAvailabilityTransport())
+    result = adapter.execute(request())
+    assert result.accepted is False
+    assert result.external_id is None
+
+
+def test_ctrader_does_not_confirm_accepted_without_external_id():
+    adapter = CTraderDemoAdapter(AcceptedWithoutExternalIdTransport())
+    result = adapter.execute(request())
+    assert result.accepted is False
+    assert result.external_id is None
