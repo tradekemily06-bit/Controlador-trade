@@ -291,16 +291,19 @@ class RealExecutionGateway:
             raise ValueError("broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             raise ValueError("broker da reconciliação difere da autorização.")
-        query_port = self._gateway.real_query_port(
-            broker,
-            expected_adapter_id=authorization.adapter_id,
-        )
-        if query_port is None:
-            raise ValueError(
-                "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
-            )
-
         with self._locks.acquire(request_id):
+            # Resolve the query capability only after taking the same REAL
+            # request lock used for the Ledger. This avoids carrying a stale
+            # adapter instance across the authorization/check-to-use boundary.
+            query_port = self._gateway.real_query_port(
+                broker,
+                expected_adapter_id=authorization.adapter_id,
+            )
+            if query_port is None:
+                raise ValueError(
+                    "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
+                )
+
             status = self._ledger.status(request_id)
             if status not in (
                 ExecutionLedgerStatus.UNKNOWN,
