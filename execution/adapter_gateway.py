@@ -67,7 +67,7 @@ class BrokerAdapterGateway:
     """
 
     def __init__(self, registry: BrokerRegistry) -> None:
-        if not isinstance(registry, BrokerRegistry):
+        if type(registry) is not BrokerRegistry:
             raise ValueError("registry inválido.")
         self._registry = registry
 
