@@ -495,7 +495,7 @@ def test_pending_broker_observation_does_not_close_request(tmp_path):
 
 def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     registry = BrokerRegistry()
-    registry.register("fake", FakeAdapter())
+    registry.register("fake", FakeAdapter(observation=ExternalOrderObservation("broker-reconciled", ExternalOrderStatus.EXECUTED, "confirmed")))
     ledger_path = tmp_path / "ledger.json"
     lifecycle_path = tmp_path / "lifecycle.json"
     ledger = ExecutionLedger(ledger_path)
@@ -514,13 +514,11 @@ def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     with pytest.raises(OSError, match="lifecycle reconcile failed"):
         gw.reconcile_unknown(
             "reconcile-crash",
+            broker="fake",
+            authorization=auth(),
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-            query_port=QueryPort(
-                ExternalOrderObservation(
-                    "broker-reconciled", ExternalOrderStatus.EXECUTED, "confirmed"
-                )
-            ),
         )
+
 
     assert ExecutionLedger(ledger_path).status("reconcile-crash") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     repaired = RealExecutionGateway(
