@@ -109,6 +109,7 @@ class BrokerAdapterGateway:
             request,
             require_real=True,
             expected_adapter=capability.adapter,
+            expected_adapter_id=capability.adapter_id,
         )
 
     def real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
@@ -162,6 +163,7 @@ class BrokerAdapterGateway:
         *,
         require_real: bool,
         expected_adapter: object | None = None,
+        expected_adapter_id: str | None = None,
     ) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
@@ -202,11 +204,12 @@ class BrokerAdapterGateway:
                     "adapter REAL mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
                 )
             current_id = getattr(adapter, "adapter_id", None)
-            expected_id = getattr(expected_adapter, "adapter_id", None)
+            pinned_id = expected_adapter_id
             if (
                 not isinstance(current_id, str)
-                or not isinstance(expected_id, str)
-                or current_id.strip().lower() != expected_id.strip().lower()
+                or not isinstance(pinned_id, str)
+                or not pinned_id.strip()
+                or current_id.strip().lower() != pinned_id.strip().lower()
             ):
                 return AdapterExecutionResult(
                     False,
