@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+TARGET_SHA = "a" * 40
+
 from core.release_readiness import (
     FinalReadinessEvidence,
     ReadinessEvidenceRef,
@@ -32,7 +34,7 @@ def _refs() -> tuple[ReadinessEvidenceRef, ...]:
     # These are deliberately test-only placeholders. They are not production
     # evidence and must never be copied into a real readiness assessment.
     return tuple(
-        ReadinessEvidenceRef(gate, f"test-evidence-{gate}", f"test://{gate}")
+        ReadinessEvidenceRef(gate, f"test-evidence-{gate}", f"test://{gate}", TARGET_SHA)
         for gate in _REQUIRED_GATES
     )
 
@@ -53,6 +55,7 @@ def _complete() -> FinalReadinessEvidence:
         demo_real_separation_tested=True,
         legacy_compatibility_tested=True,
         ci_green=True,
+        target_commit_sha=TARGET_SHA,
         evidence_refs=_refs(),
     )
 
@@ -107,7 +110,7 @@ def test_false_gate_does_not_require_separate_evidence_reference():
 
 def test_evidence_reference_requires_identity_and_source():
     try:
-        ReadinessEvidenceRef("ci_green", "", "test://ci")
+        ReadinessEvidenceRef("ci_green", "", "test://ci", TARGET_SHA)
     except ValueError as exc:
         assert str(exc) == "evidence_id is required"
     else:
@@ -116,9 +119,9 @@ def test_evidence_reference_requires_identity_and_source():
 
 def test_evidence_reference_fields_must_be_strings():
     for field_values in (
-        (None, "id", "test://ci"),
-        ("ci_green", 123, "test://ci"),
-        ("ci_green", "id", object()),
+        (None, "id", "test://ci", TARGET_SHA),
+        ("ci_green", 123, "test://ci", TARGET_SHA),
+        ("ci_green", "id", object(), TARGET_SHA),
     ):
         try:
             ReadinessEvidenceRef(*field_values)
@@ -143,7 +146,7 @@ def test_non_evidence_ref_object_is_fail_closed():
 def test_unknown_evidence_gate_is_not_accepted():
     evidence = replace(
         _complete(),
-        evidence_refs=_refs() + (ReadinessEvidenceRef("unknown_gate", "id", "test://unknown"),),
+        evidence_refs=_refs() + (ReadinessEvidenceRef("unknown_gate", "id", "test://unknown", TARGET_SHA),),
     )
     assessment = assess_final_readiness(evidence)
 
@@ -152,9 +155,24 @@ def test_unknown_evidence_gate_is_not_accepted():
 
 
 def test_duplicate_evidence_gate_is_not_accepted():
-    duplicate = ReadinessEvidenceRef("ci_green", "second-ci", "test://ci-2")
+    duplicate = ReadinessEvidenceRef("ci_green", "second-ci", "test://ci-2", TARGET_SHA)
     evidence = replace(_complete(), evidence_refs=_refs() + (duplicate,))
     assessment = assess_final_readiness(evidence)
 
     assert assessment.state is ReadinessState.NOT_READY
     assert "duplicate_evidence_gate" in assessment.missing
+
+
+def test_stale_evidence_commit_is_not_ready():
+    stale = replace(
+        _complete(),
+        evidence_refs=tuple(
+            ReadinessEvidenceRef(ref.gate, ref.evidence_id, ref.source_ref, "b" * 40)
+            if ref.gate == "ci_green" else ref
+            for ref in _refs()
+        ),
+    )
+    assessment = assess_final_readiness(stale)
+    assert assessment.state is ReadinessState.NOT_READY
+    assert assessment.missing == ("stale_evidence_commit",)
+    assert assessment.real_enabled is False
