@@ -3,7 +3,8 @@ from threading import Thread
 
 import pytest
 
-from core.decision_audit import DecisionAudit
+from core.decision_audit import DecisionAudit, DecisionAuditRecord
+from core.decision_snapshot import DecisionSnapshot
 from core.durable_json import atomic_write_json
 from core.kill_switch import KillSwitch
 from core.operation_memory import OperationMemory
@@ -152,3 +153,103 @@ def test_deactivate_kill_switch_is_fail_closed_on_persistence_failure(tmp_path, 
 
     assert recorder.kill_switch.state.enabled is True
     assert recorder.kill_switch.state.reason == "safety stop"
+
+
+def _snapshot(index: int) -> DecisionSnapshot:
+    return DecisionSnapshot(
+        signal="COMPRA",
+        analysis_score=80.0 + index,
+        confirmed=True,
+        quality_score=90.0,
+        quality_level="FORTE",
+        actionable=True,
+        decision="EXECUTAR",
+        decision_reason=f"snapshot-{index}",
+        market_context="ALTA",
+        market_direction="COMPRA",
+        market_score=80.0,
+        operational_state_available=True,
+        trades_today=index,
+        consecutive_losses=0,
+        symbol="TEST",
+        timeframe="5m",
+    )
+
+
+def test_operation_memory_concurrent_appends_use_latest_durable_snapshot(tmp_path):
+    path = tmp_path / "memory.json"
+    first = OperationMemoryStore(path)
+    second = OperationMemoryStore(path)
+    now = datetime.now(timezone.utc)
+    from core.operation_memory import OperationMemoryRecord
+
+    records = [
+        OperationMemoryRecord(now, signal=__import__("core.models", fromlist=["Signal"]).Signal.COMPRA, score=80, decision="EXECUTAR", reason="a"),
+        OperationMemoryRecord(now, signal=__import__("core.models", fromlist=["Signal"]).Signal.VENDA, score=81, decision="EXECUTAR", reason="b"),
+    ]
+    errors = []
+
+    def append(store, record):
+        try:
+            store.append(record)
+        except Exception as exc:  # pragma: no cover - assertion below reports it
+            errors.append(exc)
+
+    threads = [
+        Thread(target=append, args=(first, records[0])),
+        Thread(target=append, args=(second, records[1])),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert set(OperationMemoryStore(path).load().records()) == set(records)
+
+
+def test_safety_audit_concurrent_appends_use_latest_durable_snapshot(tmp_path):
+    path = tmp_path / "safety.json"
+    first = OperationalSafetyStore(path)
+    second = OperationalSafetyStore(path)
+    timestamps = [datetime(2026, 1, 1, 0, i, tzinfo=timezone.utc) for i in (1, 2)]
+    records = [DecisionAuditRecord(timestamps[i], _snapshot(i)) for i in range(2)]
+    errors = []
+
+    def append(store, record):
+        try:
+            store.append_audit(record)
+        except Exception as exc:  # pragma: no cover - assertion below reports it
+            errors.append(exc)
+
+    threads = [
+        Thread(target=append, args=(first, records[0])),
+        Thread(target=append, args=(second, records[1])),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    restored, _ = OperationalSafetyStore(path).load()
+    assert restored.records() == tuple(records)
+
+
+def test_settle_persists_before_mutating_in_memory_recorder(tmp_path, monkeypatch):
+    from core.persistent_operational_recorder import PersistentOperationalRecorder
+
+    path = tmp_path / "memory.json"
+    recorder = PersistentOperationalRecorder.from_path(path)
+    recorded = recorder.record_operation(_snapshot(0), timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    def fail_fsync(_fd):
+        raise OSError("simulated durability failure")
+
+    monkeypatch.setattr("core.durable_json.os.fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated durability failure"):
+        recorder.settle_operation(recorded.memory, "WIN")
+
+    assert recorder.memory.records() == (recorded.memory,)
+    assert OperationMemoryStore(path).load().records() == (recorded.memory,)
