@@ -103,6 +103,20 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         if self._lifecycle is not None:
+            existing_lifecycle = self._lifecycle.get(request_id)
+            if existing_lifecycle is not None:
+                if existing_lifecycle.state in (
+                    ExecutionLifecycleState.PENDING,
+                    ExecutionLifecycleState.UNKNOWN,
+                ):
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        "request_id possui lifecycle pendente/incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+                    )
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "request_id já possui lifecycle terminal; replay REAL recusado.",
+                )
             try:
                 self._lifecycle.put(
                     ExecutionLifecycleRecord(
