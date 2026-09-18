@@ -196,8 +196,13 @@ class RealExecutionGateway:
         # Serialize the final authority check with the broker side effect.
         # Reconciliation for this request takes the same per-request lock, so it
         # cannot resolve RESERVED between the last check and the external call.
-        with self._ledger.request_execution_lock(request_id):
-            # Final durable-authority check immediately before the broker side effect.
+        with self._ledger.real_execution_lock():
+            # Global REAL admission lock closes the remaining cross-request race:
+            # another request becoming UNKNOWN/RESERVED during this final window
+            # cannot invalidate the recovery snapshot while this broker call is in
+            # flight. Reconciliation/repair workers use the same lock.
+            with self._ledger.request_execution_lock(request_id):
+                # Final durable-authority check immediately before the broker side effect.
             # A reconciliation worker may have completed this request after the
             # admission snapshot; terminal/UNKNOWN authority must never be replayed.
             try:
