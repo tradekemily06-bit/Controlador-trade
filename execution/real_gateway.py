@@ -75,11 +75,11 @@ class RealExecutionGateway:
         try:
             self._lifecycle.put(
                 ExecutionLifecycleRecord(
-                request_id,
+                    request_id,
                     ExecutionLifecycleState.REJECTED,
                     datetime.now(timezone.utc),
                     message,
-            )
+                )
             )
         except (OSError, ValueError):
             return False
@@ -400,6 +400,7 @@ class RealExecutionGateway:
                             )
                     return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
     
+
     def reconcile_unknown(
         self,
         request_id: str,
@@ -407,22 +408,22 @@ class RealExecutionGateway:
         executed: bool,
         external_id: str | None = None,
     ) -> None:
-            """Explicitly reconcile uncertainty without ever resubmitting the order.
+        """Explicitly reconcile uncertainty without ever resubmitting the order.
     
-            Reconciliation must cross durable authorities and carry externally
-            observed identity. A bare boolean cannot prove broker state, so the
-            old ledger-only reconciliation path is intentionally fail-closed.
-            """
+        Reconciliation must cross durable authorities and carry externally
+        observed identity. A bare boolean cannot prove broker state, so the
+        old ledger-only reconciliation path is intentionally fail-closed.
+        """
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
-                raise ValueError("request_id não está em estado incerto reconciliável.")
+            raise ValueError("request_id não está em estado incerto reconciliável.")
     
         # lifecycle and recovery are mandatory REAL authorities; this branch
-            # is retained as a defensive assertion for future refactors.
+        # is retained as a defensive assertion for future refactors.
         if self._lifecycle is None:
-                raise ValueError("reconciliação REAL exige lifecycle durável.")
+            raise ValueError("reconciliação REAL exige lifecycle durável.")
     
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError(
@@ -443,7 +444,7 @@ class RealExecutionGateway:
             ledger=self._ledger,
             lifecycle=self._lifecycle,
         ).reconcile(
-                request_id,
+            request_id,
             external_id.strip(),
             observation,
-            )
+        )
