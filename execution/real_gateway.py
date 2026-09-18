@@ -7,7 +7,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.adapter_gateway import BrokerAdapterGateway
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import (
     ExecutionLifecycleRecord,
@@ -174,7 +174,7 @@ class RealExecutionGateway:
             )
 
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute_real(broker, request, capability=_REAL_DISPATCH_CAPABILITY)
         except Exception as exc:
             self._mark_unknown(
                 request_id,
