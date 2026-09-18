@@ -17,6 +17,8 @@ class RealExecutionAuthorization:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} é obrigatório.")
+        if type(self.explicitly_enabled) is not bool or type(self.real_execution_allowed) is not bool:
+            raise ValueError("flags de autorização REAL precisam ser booleanos.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
 
