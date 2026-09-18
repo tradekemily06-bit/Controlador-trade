@@ -102,7 +102,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("lifecycle/ledger inconsistente requer reconciliação")
             if ledger_uncertain:
                 details.append("ledger RESERVED/UNKNOWN requer reconciliação")
             if orphaned_terminal_ledger:
