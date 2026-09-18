@@ -14,6 +14,11 @@ try:
 except ImportError:  # pragma: no cover
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover
+    msvcrt = None
+
 
 class ExecutionLifecycleState(str, Enum):
     PENDING = "PENDING"
@@ -160,11 +165,25 @@ class ExecutionLifecycleStore:
         with lock_path.open("a+b") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            elif msvcrt is not None:
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                except OSError as exc:
+                    raise OSError("não foi possível adquirir lock do lifecycle.") from exc
+            else:
+                raise OSError("lifecycle exige lock interprocesso suportado pelo sistema.")
             try:
                 yield
             finally:
                 if fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    try:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
 
     def _save_unlocked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -186,7 +205,16 @@ class ExecutionLifecycleStore:
             ),
             encoding="utf-8",
         )
+        with temporary.open("rb") as durable_file:
+            durable_file.flush()
+            os.fsync(durable_file.fileno())
         os.replace(temporary, self.path)
+        if fcntl is not None:
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def records_snapshot(self) -> tuple[ExecutionLifecycleRecord, ...]:
         return tuple(self._records[key] for key in sorted(self._records))
