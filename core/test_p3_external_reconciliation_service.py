@@ -187,6 +187,9 @@ def test_service_rejects_request_id_query_identity_conflict(tmp_path: Path):
         def query_order_by_request_id(self, _request_id):
             return ExternalOrderObservation("EXT-OTHER", ExternalOrderStatus.EXECUTED, "conflicting identity")
 
+        def query_order(self, _external_id):
+            raise AssertionError("external-id query must not be used in request-id recovery")
+
     service = ExternalExecutionReconciliationService(
         coordinator=ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle),
         query_port=Query(),
