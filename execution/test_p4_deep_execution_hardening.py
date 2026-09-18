@@ -1218,7 +1218,12 @@ def test_lifecycle_rejects_duplicate_json_keys(tmp_path):
 
 
 def test_reconciliation_repairs_partial_unknown_lifecycle_projection(tmp_path):
-    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
     ledger.reserve("projection-mismatch")
     ledger.attach_external_id("projection-mismatch", "broker-reconcile")
     ledger.mark_unknown("projection-mismatch")
@@ -1242,7 +1247,12 @@ def test_reconciliation_repairs_partial_unknown_lifecycle_projection(tmp_path):
 
 
 def test_reconciliation_recreates_missing_lifecycle_projection(tmp_path):
-    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
     ledger.reserve("missing-projection")
     ledger.attach_external_id("missing-projection", "broker-reconcile")
     ledger.mark_unknown("missing-projection")
