@@ -1,3 +1,4 @@
+import pytest
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
