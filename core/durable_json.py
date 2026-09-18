@@ -24,7 +24,12 @@ def locked_path(path: str | Path) -> Iterator[Path]:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     lock_path = target.with_name(f".{target.name}.lock")
-    with lock_path.open("a+", encoding="utf-8") as lock_file:
+    lock_path.touch(exist_ok=True)
+    with lock_path.open("r+", encoding="utf-8") as lock_file:
+        if lock_file.seek(0, 2) == 0:
+            lock_file.write("0")
+            lock_file.flush()
+        lock_file.seek(0)
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         elif msvcrt is not None:
