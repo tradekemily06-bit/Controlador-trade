@@ -232,3 +232,11 @@ def test_real_dispatch_rejects_forged_exact_capability_instance():
     assert result.accepted is False
     assert "não emitida pelo gateway" in result.message
     assert adapter.calls == 0
+
+
+def test_real_dispatch_control_surface_is_not_public():
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = BrokerAdapterGateway(registry)
+    assert not hasattr(gateway, "execute_real")
+    assert not hasattr(gateway, "real_dispatch_capability")
