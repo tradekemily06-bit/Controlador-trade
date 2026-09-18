@@ -130,4 +130,13 @@ class RuntimeCheckpointStore:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        with temporary.open("rb") as durable_file:
+            durable_file.flush()
+            os.fsync(durable_file.fileno())
         os.replace(temporary, self.path)
+        if fcntl is not None:
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
