@@ -239,16 +239,19 @@ class RecoveryCoordinator:
 
         # Repair shares the same request boundary as REAL dispatch and broker
         # reconciliation, so a repair worker cannot race identity/state recovery.
-        with self.execution_ledger.request_execution_lock(request_id):
-            ledger_status = self.execution_ledger.status(request_id)
-            target = {
-                ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
-                ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
-            }.get(ledger_status)
-            if target is None:
-                raise ValueError("somente estados terminais do ledger podem reparar o lifecycle.")
+        with self.execution_ledger.real_execution_lock():
+            # Lifecycle repair changes global recovery admissibility, so it must
+            # share the same barrier as REAL dispatch and reconciliation.
+            with self.execution_ledger.request_execution_lock(request_id):
+                ledger_status = self.execution_ledger.status(request_id)
+                target = {
+                    ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
+                    ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
+                }.get(ledger_status)
+                if target is None:
+                    raise ValueError("somente estados terminais do ledger podem reparar o lifecycle.")
 
             current = self.lifecycle_store.get(request_id)
             if current is not None and current.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
