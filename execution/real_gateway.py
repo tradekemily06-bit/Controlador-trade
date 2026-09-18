@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
-from core.p121_external_order_reconciliation import ExternalOrderStatus, ReconciliationResult
+from core.p121_external_order_reconciliation import (
+    ExternalOrderQueryPort,
+    ExternalOrderReconciliationBoundary,
+    ExternalOrderStatus,
+)
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
@@ -131,16 +135,10 @@ class RealExecutionGateway:
         request_id: str,
         request: ExecutionRequest,
     ) -> RealGatewayResult:
-        # Global lock -> request lock -> durable persistence is enforced by
-        # RealExecutionLocks. No broker call happens before RESERVED is durable.
         current_status = self._ledger.status(request_id)
         lifecycle_status = self._lifecycle_state(request_id)
 
-        consistency = self._check_consistency(
-            current_status,
-            lifecycle_status,
-            request_id,
-        )
+        consistency = self._check_consistency(current_status, lifecycle_status, request_id)
         if consistency is not None:
             return consistency
 
@@ -172,7 +170,9 @@ class RealExecutionGateway:
             )
 
         try:
-            result = self._gateway.execute_real(broker, request, capability=_REAL_DISPATCH_CAPABILITY)
+            result = self._gateway.execute_real(
+                broker, request, capability=_REAL_DISPATCH_CAPABILITY
+            )
         except Exception as exc:
             self._mark_unknown(
                 request_id,
@@ -191,10 +191,7 @@ class RealExecutionGateway:
 
         if not execution.accepted:
             try:
-                self._ledger.mark_rejected(
-                    request_id,
-                    external_id=execution.external_id,
-                )
+                self._ledger.mark_rejected(request_id, external_id=execution.external_id)
                 self._set_lifecycle(
                     request_id,
                     ExecutionLifecycleState.REJECTED,
@@ -212,18 +209,15 @@ class RealExecutionGateway:
                 execution,
             )
 
-        # The broker accepted. Persist the broker reference before attempting
-        # the terminal ACCEPTED transition so a crash cannot erase the
-        # reconciliation handle.
         external_id = execution.external_id
         if not isinstance(external_id, str) or not external_id.strip():
             self._mark_unknown(
                 request_id,
-                "aceite REAL sem external_id; reconciliação explícita necessária.",
+                "aceite REAL sem external_id; reconciliação por referência do broker é impossível.",
             )
             return RealGatewayResult(
                 RealGatewayStatus.UNKNOWN,
-                "aceite REAL sem external_id; reconciliação explícita necessária.",
+                "aceite REAL sem external_id; reconciliação por referência do broker é impossível.",
                 execution,
             )
 
@@ -244,8 +238,6 @@ class RealExecutionGateway:
                 execution.message,
             )
         except (OSError, ValueError) as exc:
-            # Ledger is authoritative and already contains external_id. The
-            # lifecycle projection cannot promote/downgrade execution locally.
             return RealGatewayResult(
                 RealGatewayStatus.UNKNOWN,
                 f"ordem REAL aceita e ledger persistido, mas lifecycle falhou: {exc}",
@@ -262,18 +254,20 @@ class RealExecutionGateway:
         self,
         request_id: str,
         *,
-        reconciliation: ReconciliationResult,
+        reconciliation_boundary: ExternalOrderReconciliationBoundary,
+        query_port: ExternalOrderQueryPort,
     ) -> None:
-        """Apply only a validated external reconciliation result."""
-        if not isinstance(reconciliation, ReconciliationResult):
-            raise ValueError("resultado de reconciliação externa obrigatório.")
-        if not reconciliation.reconciled:
-            raise ValueError("observação externa ainda não é reconciliável.")
-        if reconciliation.status not in (
-            ExternalOrderStatus.EXECUTED,
-            ExternalOrderStatus.NOT_EXECUTED,
-        ):
-            raise ValueError("status externo não permite fechamento da reconciliação.")
+        """Reconcile only from a broker-side read, never from local state.
+
+        The broker reference must already be durable in the Ledger. A request
+        with no external_id cannot be safely resolved through an external-id
+        lookup and therefore remains UNKNOWN until a broker-neutral
+        request-id/client-order-id query port exists.
+        """
+        if not isinstance(reconciliation_boundary, ExternalOrderReconciliationBoundary):
+            raise ValueError("boundary de reconciliação inválida.")
+        if not isinstance(query_port, ExternalOrderQueryPort):
+            raise ValueError("query_port de reconciliação inválido.")
 
         with self._locks.acquire(request_id):
             status = self._ledger.status(request_id)
@@ -283,9 +277,18 @@ class RealExecutionGateway:
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
 
-            existing_external_id = self._ledger.external_id(request_id)
-            if existing_external_id is not None and existing_external_id.strip() != reconciliation.external_id.strip():
-                raise ValueError("external_id da reconciliação difere do Ledger.")
+            external_id = self._ledger.external_id(request_id)
+            if external_id is None:
+                raise ValueError(
+                    "request_id não possui external_id durável; reconciliação por external_id bloqueada."
+                )
+
+            reconciliation = reconciliation_boundary.reconcile(
+                external_id,
+                query_port=query_port,
+            )
+            if not reconciliation.reconciled:
+                raise ValueError("broker ainda não fornece estado terminal; reconciliação permanece aberta.")
 
             executed = reconciliation.status is ExternalOrderStatus.EXECUTED
             self._ledger.reconcile(
@@ -303,16 +306,10 @@ class RealExecutionGateway:
                     request_id,
                     state,
                     updated_at=datetime.now(timezone.utc),
-                    message="reconciliação externa validada",
+                    message="reconciliação externa consultada no broker",
                 )
 
     def repair_lifecycle_projection(self, request_id: str) -> None:
-        """Repair only the Lifecycle projection from the authoritative Ledger.
-
-        This path never calls the broker and never changes Ledger authority. It
-        exists for the crash window where Ledger persistence succeeds but the
-        Lifecycle projection write fails.
-        """
         with self._locks.acquire(request_id):
             entry = self._ledger.entry(request_id)
             if entry is None:
