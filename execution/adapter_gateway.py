@@ -160,6 +160,31 @@ class BrokerAdapterGateway:
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
+        # is_available() is adapter code too. Revalidate the REAL capability
+        # immediately before the irreversible adapter.execute() call so a
+        # mutable adapter cannot change its identity/capability in between.
+        if expected_adapter is not None:
+            if adapter is not expected_adapter:
+                return AdapterExecutionResult(
+                    False,
+                    "adapter REAL mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
+                )
+            current_id = getattr(adapter, "adapter_id", None)
+            if (
+                not isinstance(current_id, str)
+                or current_id.strip().lower()
+                != getattr(expected_adapter, "adapter_id", "").strip().lower()
+            ):
+                return AdapterExecutionResult(
+                    False,
+                    "identidade do adapter REAL mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
+                )
+            if not bool(getattr(adapter, "supports_real_execution", False)):
+                return AdapterExecutionResult(
+                    False,
+                    "capacidade REAL do adapter mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
+                )
+
         try:
             result = adapter.execute(request)
         except Exception as exc:
