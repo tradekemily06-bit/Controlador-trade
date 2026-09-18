@@ -71,17 +71,6 @@ class DemoOnlyAdapter:
         return ExecutionResult(True, "demo accepted", "demo-ext")
 
 
-class ExplodingLifecycle(ExecutionLifecycleStore):
-    def put(self, record):
-        if record.state is ExecutionLifecycleState.ACCEPTED:
-            raise OSError("lifecycle write failed")
-        return super().put(record)
-
-
-class ExplodingReconcileLifecycle(ExecutionLifecycleStore):
-    def reconcile(self, *args, **kwargs):
-        raise OSError("lifecycle reconcile failed")
-
 
 class QueryPort:
     def __init__(self, observation):
@@ -585,7 +574,11 @@ def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     ledger_path = tmp_path / "ledger.json"
     lifecycle_path = tmp_path / "lifecycle.json"
     ledger = ExecutionLedger(ledger_path)
-    lifecycle = ExplodingReconcileLifecycle(lifecycle_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    original_reconcile = lifecycle.reconcile
+    def fail_reconcile(*args, **kwargs):
+        raise OSError("lifecycle reconcile failed")
+    lifecycle.reconcile = fail_reconcile
     gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
     ledger.reserve("reconcile-crash")
     ledger.attach_external_id("reconcile-crash", "broker-reconciled")
@@ -1044,7 +1037,13 @@ def test_reservation_survives_pending_projection_failure_without_dispatch(tmp_pa
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    lifecycle = ExplodingPendingLifecycle(tmp_path / "execution-lifecycle.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+    original_put = lifecycle.put
+    def fail_pending(record):
+        if record.state is ExecutionLifecycleState.PENDING:
+            raise OSError("pending lifecycle write failed")
+        return original_put(record)
+    lifecycle.put = fail_pending
     gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
 
     result = execute(gw, "pending-write-failure")
