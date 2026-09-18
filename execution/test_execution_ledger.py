@@ -87,3 +87,25 @@ def test_ledger_publication_failure_preserves_previous_durable_state(tmp_path, m
     assert not path.with_name(".ledger.json.tmp").exists()
     monkeypatch.setattr("execution.execution_ledger.os.fsync", original_fsync)
 
+
+
+def test_external_id_cannot_be_attached_to_two_requests(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-001")
+    ledger.reserve("req-002")
+    ledger.attach_external_id("req-001", "broker-001")
+
+    with pytest.raises(ValueError, match="external_id já associado"):
+        ledger.attach_external_id("req-002", "broker-001")
+
+
+def test_duplicate_external_id_in_persisted_ledger_fails_closed(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"req-001":{"status":"ACCEPTED","external_id":"broker-001"},'
+        '"req-002":{"status":"UNKNOWN","external_id":"broker-001"}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="external_id duplicado"):
+        ExecutionLedger(path)
