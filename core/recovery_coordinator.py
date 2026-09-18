@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -58,6 +58,14 @@ class RecoveryCoordinator:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
             ledger_ids = set(self.execution_ledger.records())
+            ledger_uncertain = {
+                request_id
+                for request_id in ledger_ids
+                if self.execution_ledger.status(request_id) in (
+                    ExecutionLedgerStatus.RESERVED,
+                    ExecutionLedgerStatus.UNKNOWN,
+                )
+            }
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
@@ -65,7 +73,7 @@ class RecoveryCoordinator:
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
         inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        if unknown or pending or inconsistent or ledger_uncertain:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -73,6 +81,8 @@ class RecoveryCoordinator:
                 details.append("PENDING requer verificação")
             if inconsistent:
                 details.append("ACCEPTED sem ledger requer reconciliação")
+            if ledger_uncertain:
+                details.append("ledger RESERVED/UNKNOWN requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
