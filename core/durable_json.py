@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -39,10 +40,16 @@ def atomic_write_json(path: str | Path, payload: object) -> None:
     """Write JSON atomically and durably; readers see old or new state, never a partial file."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    temporary_fd, temporary_name = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
     try:
         encoded = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-        with temporary.open("w", encoding="utf-8") as handle:
+        with os.fdopen(temporary_fd, "w", encoding="utf-8") as handle:
+            temporary_fd = -1
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
@@ -58,6 +65,11 @@ def atomic_write_json(path: str | Path, payload: object) -> None:
                 finally:
                     os.close(directory_fd)
     finally:
+        if temporary_fd != -1:
+            try:
+                os.close(temporary_fd)
+            except OSError:
+                pass
         try:
             temporary.unlink()
         except FileNotFoundError:
