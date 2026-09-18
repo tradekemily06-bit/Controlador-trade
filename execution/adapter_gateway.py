@@ -16,6 +16,9 @@ class AdapterGatewayError(RuntimeError):
 class _RealDispatchCapability:
     adapter: object
     adapter_id: str
+    broker: str
+    request_id: str
+    authorization_id: str
 
 
 # Issued capability identities are tracked so an external caller cannot forge
@@ -93,9 +96,17 @@ class BrokerAdapterGateway:
         request: ExecutionRequest,
         *,
         capability: _RealDispatchCapability,
+        request_id: str,
+        authorization_id: str,
     ) -> AdapterExecutionResult:
         if type(capability) is not _RealDispatchCapability:
             return AdapterExecutionResult(False, "capacidade REAL inválida; dispatch bloqueado.")
+        if (
+            capability.broker != broker
+            or capability.request_id != request_id
+            or capability.authorization_id != authorization_id
+        ):
+            return AdapterExecutionResult(False, "capacidade REAL não corresponde ao contexto autorizado; dispatch bloqueado.")
         if _REAL_DISPATCH_CAPABILITIES.get(id(capability)) is not capability:
             return AdapterExecutionResult(False, "capacidade REAL não emitida pelo gateway; dispatch bloqueado.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
@@ -120,8 +131,22 @@ class BrokerAdapterGateway:
             expected_adapter_id=capability.adapter_id,
         )
 
-    def _real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
-        if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
+    def _real_dispatch_capability(
+        self,
+        broker: str,
+        *,
+        expected_adapter_id: str,
+        request_id: str,
+        authorization_id: str,
+    ) -> _RealDispatchCapability | None:
+        if (
+            not isinstance(expected_adapter_id, str)
+            or not expected_adapter_id.strip()
+            or not isinstance(request_id, str)
+            or not request_id.strip()
+            or not isinstance(authorization_id, str)
+            or not authorization_id.strip()
+        ):
             return None
         try:
             adapter = self._registry.get(broker)
@@ -132,7 +157,13 @@ class BrokerAdapterGateway:
         adapter_id = getattr(adapter, "adapter_id", None)
         if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
             return None
-        capability = _RealDispatchCapability(adapter, adapter_id.strip())
+        capability = _RealDispatchCapability(
+            adapter,
+            adapter_id.strip(),
+            broker.strip().lower(),
+            request_id,
+            authorization_id,
+        )
         _REAL_DISPATCH_CAPABILITIES[id(capability)] = capability
         return capability
 
