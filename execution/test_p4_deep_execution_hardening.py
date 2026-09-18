@@ -765,8 +765,13 @@ def test_reconciliation_boundary_rejects_hand_built_observation():
         )
 
 
-def test_reconciliation_blocks_when_ledger_and_lifecycle_disagree(tmp_path):
-    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+def test_reconciliation_repairs_ledger_unknown_lifecycle_pending_mismatch(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
     ledger.reserve("projection-mismatch")
     ledger.attach_external_id("projection-mismatch", "broker-reconcile")
     ledger.mark_unknown("projection-mismatch")
@@ -777,15 +782,14 @@ def test_reconciliation_blocks_when_ledger_and_lifecycle_disagree(tmp_path):
             datetime.now(timezone.utc),
         )
     )
-    with pytest.raises(ValueError, match="Ledger × Lifecycle inconsistente"):
-        gw.reconcile_unknown(
-            "projection-mismatch",
-            broker="fake",
-            authorization=auth(),
-            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-        )
-    assert ledger.status("projection-mismatch") is ExecutionLedgerStatus.UNKNOWN
-
+    gw.reconcile_unknown(
+        "projection-mismatch",
+        broker="fake",
+        authorization=auth(),
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+    )
+    assert ledger.status("projection-mismatch") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("projection-mismatch").state is ExecutionLifecycleState.ACCEPTED
 
 def test_repair_lifecycle_projection_can_recreate_missing_projection(tmp_path):
     gw, ledger, lifecycle = gateway(
