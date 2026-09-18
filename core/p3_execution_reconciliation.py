@@ -94,7 +94,15 @@ class ExecutionReconciliationCoordinator:
                 raise ValueError(
                     "external_id informado difere da identidade externa durável do request_id."
                 )
-        elif bound_external_id is not None and bound_external_id != result.external_id:
+        elif bound_external_id is None:
+            # Legacy terminal entries may be repaired internally from the
+            # ledger, but external evidence is identity-sensitive. Without a
+            # durable binding we cannot prove that this broker observation
+            # belongs to this request.
+            raise ValueError(
+                "estado terminal sem external_id durável; reconciliação externa recusada."
+            )
+        elif bound_external_id != result.external_id:
             # For already-terminal ledger records, the external identity is
             # still authoritative when present. This prevents closing a
             # lifecycle projection using evidence belonging to another order.
