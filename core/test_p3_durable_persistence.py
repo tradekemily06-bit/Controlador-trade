@@ -252,3 +252,22 @@ def test_settle_persists_before_mutating_in_memory_recorder(tmp_path, monkeypatc
 
     assert recorder.memory.records() == (recorded.memory,)
     assert OperationMemoryStore(path).load().records() == (recorded.memory,)
+
+
+def test_kill_switch_update_preserves_audit_from_another_recorder(tmp_path):
+    from core.persistent_operational_recorder import PersistentOperationalRecorder
+
+    path = tmp_path / "memory.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    second = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    first.record_decision(_snapshot(0), timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    second.record_decision(_snapshot(1), timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    first.activate_kill_switch("concurrent safety stop")
+
+    restored, kill_switch = OperationalSafetyStore(safety_path).load()
+    assert len(restored.records()) == 2
+    assert kill_switch.state.enabled is True
+    assert kill_switch.state.reason == "concurrent safety stop"
