@@ -61,11 +61,27 @@ class ExecutionLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = {key: self._states[key].value for key in sorted(self._states)}
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+            if hasattr(os, "O_DIRECTORY"):
+                try:
+                    directory_fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                except OSError:
+                    directory_fd = None
+                if directory_fd is not None:
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
+        finally:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
