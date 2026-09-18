@@ -126,6 +126,11 @@ class ExecutionLedger:
         return self._external_ids.get(request_id)
 
     def bind_external_id(self, request_id: str, external_id: str) -> None:
+        """Bind external identity under the same per-request lock as REAL dispatch."""
+        with self.request_execution_lock(request_id):
+            self._bind_external_id_locked(request_id, external_id)
+
+    def _bind_external_id_locked(self, request_id: str, external_id: str) -> None:
         self._validate_id(request_id)
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id não pode ser vazio.")
