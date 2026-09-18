@@ -119,8 +119,20 @@ class OperationalSafetyStore:
             with locked_path(self.path):
                 payload = self._read_payload_unlocked()
                 execution_audit = self._normalize_execution_audit(payload)
+                # save() must not let an older in-memory audit erase records
+                # written by another instance. Merge instead of replacing.
+                merged_audit = list(audit.records())
+                for record in audit.records():
+                    if record not in merged_audit:
+                        merged_audit.append(record)
+                incoming = audit.records()
+                merged_audit = list(self._audit_from_payload(payload).records())
+                for record in incoming:
+                    if record not in merged_audit:
+                        merged_audit.append(record)
+                merged_audit.sort(key=lambda item: item.timestamp)
                 payload = {
-                    "audit": [self._audit_dict(record) for record in audit.records()],
+                    "audit": [self._audit_dict(record) for record in merged_audit],
                     "kill_switch": {"enabled": state.enabled, "reason": state.reason},
                     "execution_audit": execution_audit,
                 }
