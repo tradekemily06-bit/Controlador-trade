@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
@@ -57,26 +57,55 @@ class OperationMemoryStore:
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("registro persistido inválido.") from exc
 
+    def _load_unlocked(self) -> OperationMemory:
+        memory = OperationMemory()
+        if not self.path.exists():
+            return memory
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(payload, list):
+                raise ValueError("arquivo de memória deve conter uma lista.")
+            for item in payload:
+                memory.append(self._deserialize(item))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("arquivo de memória inválido.") from exc
+        return memory
+
+    def _write_unlocked(self, memory: OperationMemory) -> None:
+        payload = [self._serialize(record) for record in memory.records()]
+        atomic_write_json(self.path, payload)
+
     def save(self, memory: OperationMemory) -> None:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
-        payload = [self._serialize(record) for record in memory.records()]
         with locked_path(self.path):
-            atomic_write_json(self.path, payload)
+            self._write_unlocked(memory)
+
+    def append(self, record: OperationMemoryRecord) -> OperationMemoryRecord:
+        """Atomically append to the latest durable snapshot, avoiding stale-snapshot loss."""
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_path(self.path):
+            memory = self._load_unlocked()
+            memory.append(record)
+            self._write_unlocked(memory)
+        return record
+
+    def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
+        """Atomically settle against the latest durable snapshot."""
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_path(self.path):
+            memory = self._load_unlocked()
+            updated = memory.settle(record, result)
+            self._write_unlocked(memory)
+        return updated
 
     def load(self) -> OperationMemory:
-        memory = OperationMemory()
         try:
             with locked_path(self.path):
-                if not self.path.exists():
-                    return memory
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
-                if not isinstance(payload, list):
-                    raise ValueError("arquivo de memória deve conter uma lista.")
-                for item in payload:
-                    memory.append(self._deserialize(item))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("arquivo de memória inválido.") from exc
+                return self._load_unlocked()
         except ValueError:
             raise
-        return memory
+        except OSError as exc:
+            raise ValueError("arquivo de memória inválido.") from exc
