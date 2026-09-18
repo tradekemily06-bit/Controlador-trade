@@ -156,6 +156,11 @@ class ExecutionLedger:
         self._load()
         return tuple(sorted(self._states))
 
+    def statuses(self) -> dict[str, ExecutionLedgerStatus]:
+        """Return one fresh durable snapshot for recovery/observability checks."""
+        self._load()
+        return dict(self._states)
+
     @staticmethod
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
