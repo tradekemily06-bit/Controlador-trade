@@ -140,3 +140,101 @@ def test_real_persistence_failure_after_dispatch_never_releases_request_for_retr
     # The durable ledger remains RESERVED because the terminal write itself failed.
     assert ExecutionLedger(path).status("persist-failure").value == "RESERVED"
     assert original is not None
+
+def test_real_rejection_persistence_failure_keeps_request_non_replayable(tmp_path: Path, monkeypatch):
+    class RejectingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(False, "broker rejected")
+
+    adapter = RejectingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    path = tmp_path / "ledger.json"
+    auth, admission, safety = _contracts()
+    ledger = ExecutionLedger(path)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+
+    def fail_terminal(_request_id):
+        raise OSError("rejection persistence failed")
+
+    monkeypatch.setattr(ledger, "mark_rejected", fail_terminal)
+    first = gateway.execute(
+        broker="fake",
+        request_id="reject-persist-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+
+    restarted = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    retry = restarted.execute(
+        broker="fake",
+        request_id="reject-persist-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert retry.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    assert ExecutionLedger(path).status("reject-persist-failure").value == "RESERVED"
+
+
+def test_real_executor_exception_persists_unknown_and_restart_blocks_adapter(tmp_path: Path):
+    class FailingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            raise RuntimeError("network uncertainty")
+
+    adapter = FailingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    path = tmp_path / "ledger.json"
+    auth, admission, safety = _contracts()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(path),
+    )
+
+    first = gateway.execute(
+        broker="fake",
+        request_id="executor-error",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.UNKNOWN
+    assert ExecutionLedger(path).status("executor-error").value == "UNKNOWN"
+
+    restarted = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    retry = restarted.execute(
+        broker="fake",
+        request_id="executor-error",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert retry.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
