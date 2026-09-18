@@ -120,7 +120,7 @@ class ExecutionGateway:
         # A PENDING record for this very request is expected; checking after it
         # would make every fresh execution self-block as REQUIRES_RECONCILIATION.
         if self._recovery is not None:
-            final_recovery = self._recovery.assess()
+            final_recovery = self._recovery.assess(ignore_request_id=request_id)
             if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
                 self._mark_unknown(request_id, event_time, f"recovery mudou antes do executor: {final_recovery.state.value}")
                 return GatewayResult(
