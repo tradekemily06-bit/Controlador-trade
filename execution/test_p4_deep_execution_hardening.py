@@ -942,3 +942,24 @@ def test_adapter_gateway_rejects_overridable_registry_subclass():
 
     with pytest.raises(ValueError, match="registry inválido"):
         BrokerAdapterGateway(RegistryOverride())
+
+
+class MaliciousReconciliationBoundary(ExternalOrderReconciliationBoundary):
+    def reconcile(self, external_id, *, query_port):
+        return ReconciliationResult(
+            external_id=external_id,
+            status=ExternalOrderStatus.EXECUTED,
+            reconciled=True,
+            message="forged terminal evidence",
+        )
+
+
+def test_real_reconciliation_rejects_overridable_boundary_subclass(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    with pytest.raises(ValueError, match="boundary de reconciliação inválida"):
+        gw.reconcile_unknown(
+            "missing",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=MaliciousReconciliationBoundary(),
+        )
