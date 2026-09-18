@@ -559,3 +559,66 @@ def test_two_real_gateways_with_lifecycle_still_dispatch_once(tmp_path):
     assert any(result.status == RealGatewayStatus.ADMITTED for result in results)
     assert ExecutionLedger(ledger_path).status("same-real-lifecycle-id").value == "ACCEPTED"
     assert ExecutionLifecycleStore(lifecycle_path).get("same-real-lifecycle-id").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_binds_durable_request_id_into_broker_request(tmp_path):
+    class CapturingAdapter:
+        def __init__(self):
+            self.received = None
+
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            self.received = request
+            return ExecutionResult(True, "accepted", "EXT-ID")
+
+    adapter = CapturingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    auth, admission, safety = _contracts()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="durable-request-id",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.received.request_id == "durable-request-id"
+
+
+def test_real_gateway_rejects_conflicting_payload_request_id(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", type("Adapter", (), {
+        "is_available": lambda self: True,
+        "execute": lambda self, request: ExecutionResult(True, "accepted", "EXT-CONFLICT"),
+    })())
+    auth, admission, safety = _contracts()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+    )
+
+    conflicting = ExecutionRequest(
+        "TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL,
+        request_id="other-id",
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="durable-id",
+        request=conflicting,
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.REJECTED
+    assert "difere" in result.message
