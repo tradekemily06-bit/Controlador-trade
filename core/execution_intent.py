@@ -37,8 +37,8 @@ class ExecutionIntent:
             raise ValueError("modo de execução inválido.")
         if self.mode is ExecutionMode.REAL:
             raise ValueError("execução REAL permanece bloqueada nesta etapa.")
-        if not isinstance(self.created_at, datetime):
-            raise ValueError("created_at inválido.")
+        if not isinstance(self.created_at, datetime) or self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+            raise ValueError("created_at deve ser datetime timezone-aware.")
 
     def as_execution_request(self) -> ExecutionRequest:
         """Build the existing port DTO without invoking any execution adapter."""
