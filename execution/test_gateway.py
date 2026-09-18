@@ -221,3 +221,27 @@ def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_rejects_non_finite_or_boolean_amount_and_duration():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    for amount in (True, float("nan"), float("inf"), float("-inf")):
+        invalid = ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=amount,
+            duration_seconds=60,
+            mode=ExecutionMode.DEMO,
+        )
+        assert gateway.execute("req-amount-" + str(amount), invalid).status is GatewayStatus.INVALID_REQUEST
+
+    for duration in (True, 0, -1):
+        invalid = ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=10.0,
+            duration_seconds=duration,
+            mode=ExecutionMode.DEMO,
+        )
+        assert gateway.execute("req-duration-" + str(duration), invalid).status is GatewayStatus.INVALID_REQUEST
