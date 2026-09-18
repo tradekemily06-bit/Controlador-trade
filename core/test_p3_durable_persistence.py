@@ -303,3 +303,45 @@ def test_settle_operation_durable_commit_is_not_rolled_back_by_reload_failure(tm
 
     assert OperationMemoryStore(path).load().records()[0].result == "WIN"
     assert updated.result == "WIN"
+
+
+def test_record_operation_audit_commit_then_memory_failure_reloads_durable_truth(tmp_path, monkeypatch):
+    store = OperationMemoryStore(tmp_path / "memory.json")
+    safety = OperationalSafetyStore(tmp_path / "safety.json")
+    recorder = PersistentOperationalRecorder(store=store, safety_store=safety)
+    snapshot = _snapshot(9)
+
+    def fail_append(_record):
+        raise OSError("memory persistence failure")
+
+    monkeypatch.setattr(store, "append", fail_append)
+
+    with pytest.raises(OSError, match="memory persistence failure"):
+        recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
+
+    restored_safety = OperationalSafetyStore(tmp_path / "safety.json")
+    audit, _ = restored_safety.load()
+    assert len(audit) == 1
+    assert store.load().records == ()
+
+
+def test_record_operation_does_not_duplicate_after_post_commit_reload_failure(tmp_path, monkeypatch):
+    store = OperationMemoryStore(tmp_path / "memory.json")
+    safety = OperationalSafetyStore(tmp_path / "safety.json")
+    recorder = PersistentOperationalRecorder(store=store, safety_store=safety)
+    snapshot = _snapshot(10)
+
+    original_reload_memory = recorder._reload_memory
+    calls = {"count": 0}
+
+    def flaky_reload():
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise OSError("refresh failure")
+        return original_reload_memory()
+
+    monkeypatch.setattr(recorder, "_reload_memory", flaky_reload)
+
+    recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
+    assert recorded.memory.request_id
+    assert len(store.load().records) == 1
