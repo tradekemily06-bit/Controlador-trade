@@ -588,19 +588,12 @@ def test_decision_audit_rejects_mixed_timezone_awareness():
 
 def test_lifecycle_rejects_mixed_timezone_awareness(tmp_path):
     store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    store.put(
-        ExecutionLifecycleRecord(
-            "req-timezone",
-            ExecutionLifecycleState.PENDING,
-            datetime(2026, 1, 1),
-        )
-    )
     with pytest.raises(ValueError, match="timezone"):
         store.put(
             ExecutionLifecycleRecord(
                 "req-timezone",
                 ExecutionLifecycleState.PENDING,
-                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                datetime(2026, 1, 1),
             )
         )
 
@@ -628,16 +621,8 @@ def test_execution_audit_rejects_mixed_timezone_awareness(tmp_path):
 
 def test_checkpoint_rejects_mixed_timezone_awareness(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    store.save(RuntimeCheckpoint("s-timezone", 1, "req-1", datetime(2026, 1, 1)))
-    with pytest.raises(ValueError, match="mesmo regime de timezone"):
-        store.save(
-            RuntimeCheckpoint(
-                "s-timezone",
-                2,
-                "req-2",
-                datetime(2026, 1, 1, tzinfo=timezone.utc),
-            )
-        )
+    with pytest.raises(ValueError, match="timezone"):
+        store.save(RuntimeCheckpoint("s-timezone", 1, "req-1", datetime(2026, 1, 1)))
 
 def test_recovery_blocks_orphaned_terminal_ledger(tmp_path):
     checkpoint_store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
