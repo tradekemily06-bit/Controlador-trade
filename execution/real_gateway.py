@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 
@@ -78,6 +78,12 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id is not None and request.request_id != request_id:
+            return RealGatewayResult(
+                RealGatewayStatus.REJECTED,
+                "request_id do payload difere do request_id durável.",
+            )
+        request = replace(request, request_id=request_id)
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         normalized_broker = broker.strip().lower()
