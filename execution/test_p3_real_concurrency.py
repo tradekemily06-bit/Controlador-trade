@@ -1387,6 +1387,85 @@ def test_real_gateway_lifecycle_admission_failure_persists_unknown_in_both_autho
     assert lifecycle.get("real-lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
 
 
+
+def test_real_dispatch_and_reconciliation_share_request_lock_during_broker_call(tmp_path: Path):
+    broker_entered = threading.Event()
+    release_broker = threading.Event()
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    class BlockingAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            # Simulate the broker/exchange assigning its identity while the
+            # external call is still in flight. Reconciliation must wait on
+            # the same request lock instead of racing this side effect.
+            ledger.bind_external_id("real-lock-race", "EXT-LOCK-RACE")
+            broker_entered.set()
+            assert release_broker.wait(timeout=5)
+            return ExecutionResult(True, "accepted", "EXT-LOCK-RACE")
+
+    adapter = BlockingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    auth, admission, safety = _contracts()
+    gateway = _real_gateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+
+    result_holder = []
+    reconcile_holder = []
+
+    def run_execution():
+        result_holder.append(
+            gateway.execute(
+                broker="fake",
+                request_id="real-lock-race",
+                request=_request(),
+                authorization=auth,
+                admission=admission,
+                safety=safety,
+            )
+        )
+
+    def run_reconciliation():
+        reconcile_holder.append(
+            coordinator.reconcile(
+                "real-lock-race",
+                "EXT-LOCK-RACE",
+                ExternalOrderObservation(
+                    external_id="EXT-LOCK-RACE",
+                    status=ExternalOrderStatus.EXECUTED,
+                ),
+            )
+        )
+
+    execution_thread = threading.Thread(target=run_execution)
+    execution_thread.start()
+    assert broker_entered.wait(timeout=5)
+
+    reconciliation_thread = threading.Thread(target=run_reconciliation)
+    reconciliation_thread.start()
+    # The reconciliation worker must still be waiting while the broker call
+    # owns the per-request lock.
+    reconciliation_thread.join(timeout=0.2)
+    assert reconciliation_thread.is_alive()
+
+    release_broker.set()
+    execution_thread.join(timeout=5)
+    reconciliation_thread.join(timeout=5)
+
+    assert not execution_thread.is_alive()
+    assert not reconciliation_thread.is_alive()
+    assert result_holder[0].status == RealGatewayStatus.ADMITTED
+    assert len(reconcile_holder) == 1
+    assert ExecutionLedger(ledger_path).status("real-lock-race") is ExecutionLedgerStatus.ACCEPTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("real-lock-race").state is ExecutionLifecycleState.ACCEPTED
+
 def test_real_reconciliation_race_after_final_admission_check_never_dispatches(tmp_path: Path, monkeypatch):
     class CountingAdapter:
         def __init__(self):
