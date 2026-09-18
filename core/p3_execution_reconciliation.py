@@ -39,6 +39,17 @@ class ExecutionReconciliationCoordinator:
             raise ValueError("request_id inválido.")
         return self._ledger.external_id(request_id)
 
+    def bind_external_id(self, request_id: str, external_id: str) -> None:
+        """Durably bind a broker identity discovered by read-only recovery."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido.")
+        status = self._ledger.status(request_id)
+        if status is None:
+            raise ValueError("request_id não existe nas autoridades duráveis.")
+        self._ledger.bind_external_id(request_id, external_id.strip())
+
     @staticmethod
     def _target(status: ExternalOrderStatus) -> tuple[bool, ExecutionLedgerStatus, ExecutionLifecycleState] | None:
         if status is ExternalOrderStatus.EXECUTED:
