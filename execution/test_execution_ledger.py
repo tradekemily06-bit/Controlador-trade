@@ -219,7 +219,9 @@ def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
         assert "request-id" not in lock_files[0].name
         assert len(lock_files[0].name.split(".")) >= 4
 
-    # The lock file is temporary and may be removed when the context exits.
+    # The hashed lock inode remains stable after release so waiting
+    # processes cannot be split across different lock inodes.
+    assert len(list(tmp_path.glob(".*.execution.lock"))) == 1
     assert not (tmp_path.parent / "outside").exists()
 
 
