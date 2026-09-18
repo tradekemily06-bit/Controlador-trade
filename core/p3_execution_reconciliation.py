@@ -75,6 +75,28 @@ class ExecutionReconciliationCoordinator:
         if ledger_state is None:
             raise ValueError("ledger ausente; reconciliação segura não pode criar autorização REAL retroativa.")
 
+        # A RESERVED/UNKNOWN request can only be reconciled against the exact
+        # broker/exchange identity durably bound to that request. Without that
+        # binding there is no safe proof that an arbitrary external order is
+        # the order created by this request_id.
+        bound_external_id = self._ledger.external_id(request_id)
+        if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            if bound_external_id is None:
+                raise ValueError(
+                    "request_id incerto sem external_id durável; reconciliação externa segura indisponível."
+                )
+            if bound_external_id != result.external_id:
+                raise ValueError(
+                    "external_id informado difere da identidade externa durável do request_id."
+                )
+        elif bound_external_id is not None and bound_external_id != result.external_id:
+            # For already-terminal ledger records, the external identity is
+            # still authoritative when present. This prevents closing a
+            # lifecycle projection using evidence belonging to another order.
+            raise ValueError(
+                "external_id informado difere da identidade externa durável do request_id."
+            )
+
         compatible_ledger = {
             ExecutionLedgerStatus.RESERVED,
             ExecutionLedgerStatus.UNKNOWN,
