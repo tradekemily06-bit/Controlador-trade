@@ -43,8 +43,10 @@ class PersistentOperationalRecorder:
             return
         audit, kill_switch = self.safety_store.load()
         self.recorder.audit = audit
-        if kill_switch.state.enabled and not self.recorder.kill_switch.state.enabled:
+        if kill_switch.state.enabled:
             self.recorder.kill_switch.activate(kill_switch.state.reason or "estado persistido")
+        else:
+            self.recorder.kill_switch.deactivate()
 
     def _reload_memory(self) -> None:
         self.recorder.memory = self.store.load()
