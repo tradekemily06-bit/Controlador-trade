@@ -33,6 +33,29 @@ class RuntimeCheckpointStore:
             "updated_at": checkpoint.updated_at.isoformat(),
         }
         with locked_path(self.path):
+            # A stale runtime instance must never move the durable checkpoint
+            # backwards. This is observability/recovery metadata, not execution
+            # authority, but regressing it can make restart diagnostics lie.
+            if self.path.exists():
+                try:
+                    current = read_json(self.path, {})
+                    if isinstance(current, dict):
+                        current_checkpoint = RuntimeCheckpoint(
+                            session_id=current["session_id"],
+                            last_cycle=current["last_cycle"],
+                            last_request_id=current.get("last_request_id"),
+                            updated_at=datetime.fromisoformat(current["updated_at"]),
+                        )
+                        self._validate(current_checkpoint)
+                        same_session_regression = (
+                            current_checkpoint.session_id == checkpoint.session_id
+                            and checkpoint.last_cycle < current_checkpoint.last_cycle
+                        )
+                        older_snapshot = checkpoint.updated_at < current_checkpoint.updated_at
+                        if same_session_regression or older_snapshot:
+                            return
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                    raise ValueError("checkpoint de runtime inválido.") from exc
             atomic_write_json(self.path, payload)
 
     def load(self) -> RuntimeCheckpoint | None:
