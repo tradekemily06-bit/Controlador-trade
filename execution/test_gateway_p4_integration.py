@@ -186,3 +186,31 @@ def test_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path
     assert result.status is GatewayStatus.BLOCKED
     assert ledger.status("guarded-request") is ExecutionLedgerStatus.UNKNOWN
     assert ledger.status("racing-worker") is ExecutionLedgerStatus.RESERVED
+
+
+def test_gateway_lifecycle_admission_failure_persists_unknown_in_both_authorities(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    original_put = lifecycle.put
+
+    def fail_pending(record):
+        if record.state is ExecutionLifecycleState.PENDING:
+            raise OSError("pending lifecycle persistence failed")
+        return original_put(record)
+
+    monkeypatch.setattr(lifecycle, "put", fail_pending)
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("lifecycle-admission-failure", make_request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
