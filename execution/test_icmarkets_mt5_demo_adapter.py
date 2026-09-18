@@ -111,3 +111,27 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_missing_request_id_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, None)
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_invalid_duration_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 0, ExecutionMode.DEMO, "req-duration")
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_invalid_signal_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", object(), 0.01, 60, ExecutionMode.DEMO, "req-signal")
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.sent == []
