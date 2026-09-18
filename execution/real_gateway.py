@@ -164,7 +164,7 @@ class RealExecutionGateway:
                 # Pin the REAL adapter only after entering the same lock that
                 # protects reservation and dispatch. This removes the
                 # authorization-to-capability TOCTOU window.
-                capability = self._gateway.real_dispatch_capability(
+                capability = self._gateway._real_dispatch_capability(
                     broker,
                     expected_adapter_id=authorization.adapter_id,
                 )
@@ -228,7 +228,7 @@ class RealExecutionGateway:
             )
 
         try:
-            result = self._gateway.execute_real(
+            result = self._gateway._execute_real(
                 broker, request, capability=capability
             )
         except Exception as exc:
