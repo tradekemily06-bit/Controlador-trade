@@ -35,8 +35,8 @@ class ExternalExecutionReconciliationService:
         self,
         request_id: str,
     ) -> ReconciliationResult:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id inválido.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico.")
 
         external_id = self._coordinator.external_id_for(request_id)
         if external_id is None:
