@@ -84,8 +84,17 @@ class PersistentOperationalRecorder:
         try:
             if self.safety_store is not None:
                 self.safety_store.append_audit(recorded.audit)
+        except Exception:
+            self._reload_memory()
+            if self.safety_store is not None:
+                self._reload_safety()
+            raise
+        try:
             self.store.append(recorded.memory)
         except Exception:
+            # The audit may already be durable. Rebuild both views from disk;
+            # recovery/audit inspection must see the durable truth rather than
+            # the speculative in-memory operation.
             self._reload_memory()
             if self.safety_store is not None:
                 self._reload_safety()
