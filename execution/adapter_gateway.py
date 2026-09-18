@@ -102,6 +102,15 @@ class BrokerAdapterGateway:
         if type(capability) is not _RealDispatchCapability:
             return AdapterExecutionResult(False, "capacidade REAL inválida; dispatch bloqueado.")
         if (
+            type(broker) is not str
+            or not broker.strip()
+            or type(request_id) is not str
+            or not request_id.strip()
+            or type(authorization_id) is not str
+            or not authorization_id.strip()
+        ):
+            return AdapterExecutionResult(False, "contexto REAL inválido; dispatch bloqueado.")
+        if (
             capability.broker != broker.strip().lower()
             or capability.request_id != request_id
             or capability.authorization_id != authorization_id
@@ -110,13 +119,7 @@ class BrokerAdapterGateway:
         if _REAL_DISPATCH_CAPABILITIES.get(id(capability)) is not capability:
             return AdapterExecutionResult(False, "capacidade REAL não emitida pelo gateway; dispatch bloqueado.")
         if (
-            type(broker) is not str
-            or not broker.strip()
-            or type(request_id) is not str
-            or not request_id.strip()
-            or type(authorization_id) is not str
-            or not authorization_id.strip()
-            or type(request) is not ExecutionRequest
+            type(request) is not ExecutionRequest
             or request.mode is not ExecutionMode.REAL
             or request.request_id != request_id
         ):
