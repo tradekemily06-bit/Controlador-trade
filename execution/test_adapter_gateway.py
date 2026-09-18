@@ -72,7 +72,6 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 
     assert result.accepted is False
     assert result.execution is None
-    assert result.dispatch_attempted is False
     assert result.dispatch_attempted is True
 
 
@@ -84,3 +83,4 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+    assert result.dispatch_attempted is False
