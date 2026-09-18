@@ -345,3 +345,26 @@ def test_record_operation_does_not_duplicate_after_post_commit_reload_failure(tm
     recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
     assert recorded.memory in store.load().records()
     assert len(store.load().records()) == 1
+
+
+
+def test_save_rejects_divergent_snapshot_after_competing_append(tmp_path):
+    path = tmp_path / "memory.json"
+    first = OperationMemoryStore(path)
+    second = OperationMemoryStore(path)
+    now = datetime.now(timezone.utc)
+
+    base = OperationMemory()
+    base.append(OperationMemoryRecord(now, Signal.COMPRA, 80, "EXECUTAR", "base"))
+    first.save(base)
+
+    stale = second.load()
+    first.append(OperationMemoryRecord(now, Signal.VENDA, 81, "EXECUTAR", "first append"))
+    stale.append(OperationMemoryRecord(now, Signal.COMPRA, 82, "EXECUTAR", "stale append"))
+
+    with pytest.raises(ValueError, match="sobrescrita destrutiva recusada"):
+        second.save(stale)
+
+    restored = OperationMemoryStore(path).load().records()
+    assert len(restored) == 2
+    assert restored[-1].reason == "first append"
