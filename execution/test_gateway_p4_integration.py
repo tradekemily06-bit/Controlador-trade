@@ -214,3 +214,74 @@ def test_gateway_lifecycle_admission_failure_persists_unknown_in_both_authoritie
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_gateway_reconciliation_race_after_final_recovery_check_never_dispatches(tmp_path, monkeypatch):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    original_status = ledger.status
+    raced = {"done": False}
+
+    def status_with_reconciliation(request_id):
+        status = original_status(request_id)
+        if request_id == "reconciliation-race" and status is ExecutionLedgerStatus.RESERVED and not raced["done"]:
+            raced["done"] = True
+            ledger.bind_external_id(request_id, "EXT-RACE")
+            ledger.reconcile(request_id, executed=True)
+            lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message="reconciliado antes do executor",
+            )
+        return ledger.status(request_id)
+
+    monkeypatch.setattr(ledger, "status", status_with_reconciliation)
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(
+        executor,
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+    )
+
+    result = gateway.execute("reconciliation-race", make_request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert ledger.status("reconciliation-race") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("reconciliation-race").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_gateway_final_kill_switch_check_blocks_after_admission_race(tmp_path, monkeypatch):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    kill_switch = KillSwitch()
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        kill_switch,
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    original_window = kill_switch.execution_window
+
+    def activate_before_final_window():
+        kill_switch.activate("emergência antes do executor")
+        return original_window()
+
+    monkeypatch.setattr(kill_switch, "execution_window", activate_before_final_window)
+
+    result = gateway.execute("kill-race", make_request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert kill_switch.state.enabled is True
+    assert ledger.status("kill-race") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("kill-race").state is ExecutionLifecycleState.UNKNOWN
