@@ -17,6 +17,15 @@ except ImportError:  # pragma: no cover
     msvcrt = None
 
 
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("objeto JSON do ledger contém chave duplicada.")
+        result[key] = value
+    return result
+
+
 class ExecutionLedgerStatus(str, Enum):
     RESERVED = "RESERVED"
     ACCEPTED = "ACCEPTED"
@@ -57,7 +66,10 @@ class ExecutionLedger:
             self._states = {}
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(
+                self.path.read_text(encoding="utf-8"),
+                object_pairs_hook=_unique_json_object,
+            )
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states = self._decode(payload)
