@@ -148,7 +148,18 @@ def test_unknown_ledger_requires_explicit_reconciliation(tmp_path):
     with pytest.raises(ValueError, match="reconciliação explícita"):
         ledger.mark_rejected("req-unknown")
 
-    ledger.reconcile("req-unknown", executed=True)
+    from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
+    from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+    from execution.execution_lifecycle import ExecutionLifecycleStore
+
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    ledger.bind_external_id("req-unknown", "ext-unknown")
+    coordinator.reconcile(
+        "req-unknown",
+        "ext-unknown",
+        ExternalOrderObservation("ext-unknown", ExternalOrderStatus.EXECUTED, "broker-confirmed"),
+    )
     assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 def test_external_id_survives_restart_and_is_unique(tmp_path):
