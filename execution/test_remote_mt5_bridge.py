@@ -24,8 +24,9 @@ def request(mode: ExecutionMode = ExecutionMode.DEMO) -> ExecutionRequest:
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=0.01,
-        duration_seconds=0,
+        duration_seconds=60,
         mode=mode,
+        request_id="remote-1",
     )
 
 
@@ -71,3 +72,27 @@ def test_remote_bridge_rejects_malformed_execution_result():
     assert result.accepted is False
     assert "accepted inválido" in result.message
     assert bridge.calls == 1
+
+
+def test_remote_bridge_rejects_request_subclass_before_health():
+    from core.models import Signal
+
+    class RequestOverride(ExecutionRequest):
+        pass
+
+    bridge = FakeBridge(BridgeHealth(True, True, "ok"))
+    forged = RequestOverride("EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, "remote-1")
+    result = SafeRemoteMT5Executor(bridge).execute(forged)
+    assert result.accepted is False
+    assert bridge.calls == 0
+
+
+def test_remote_bridge_converts_health_exception_to_rejection():
+    class BrokenBridge(FakeBridge):
+        def health(self) -> BridgeHealth:
+            raise RuntimeError("health down")
+
+    bridge = BrokenBridge(BridgeHealth(True, True, "ok"))
+    result = SafeRemoteMT5Executor(bridge).execute(request())
+    assert result.accepted is False
+    assert bridge.calls == 0
