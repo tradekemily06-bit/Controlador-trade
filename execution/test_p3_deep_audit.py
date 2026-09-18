@@ -144,7 +144,7 @@ def test_real_accepted_request_cannot_be_replayed_after_restart(tmp_path: Path):
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
 
-    restarted = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    restarted = real_gateway(registry, ledger_path)
     replay = restarted.execute(
         broker="fake",
         request_id="req-real-terminal",
@@ -175,7 +175,7 @@ def test_real_rejected_request_cannot_be_replayed_after_restart(tmp_path: Path):
     ledger_path = tmp_path / "real-ledger.json"
     auth, admission, safety = real_contracts()
 
-    first = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    first = real_gateway(registry, ledger_path)
     result = first.execute(
         broker="fake",
         request_id="req-real-rejected",
@@ -187,7 +187,7 @@ def test_real_rejected_request_cannot_be_replayed_after_restart(tmp_path: Path):
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 1
 
-    restarted = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    restarted = real_gateway(registry, ledger_path)
     replay = restarted.execute(
         broker="fake",
         request_id="req-real-rejected",
@@ -218,7 +218,7 @@ def test_real_unknown_restart_never_reaches_adapter(tmp_path: Path):
     ledger_path = tmp_path / "real-ledger.json"
     auth, admission, safety = real_contracts()
 
-    first = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    first = real_gateway(registry, ledger_path)
     result = first.execute(
         broker="fake",
         request_id="req-real-unknown",
@@ -230,7 +230,7 @@ def test_real_unknown_restart_never_reaches_adapter(tmp_path: Path):
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 1
 
-    restarted = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    restarted = real_gateway(registry, ledger_path)
     retry = restarted.execute(
         broker="fake",
         request_id="req-real-unknown",
