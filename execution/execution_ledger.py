@@ -206,7 +206,13 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def record(self, request_id: str) -> None:
-        """Backward-compatible terminal record for existing DEMO infrastructure."""
+        """Legacy DEMO compatibility: finalize only an already-reserved request.
+
+        This method is deliberately not an admission primitive. A missing
+        request_id must never be manufactured directly as ACCEPTED, because that
+        would create a durable execution state without passing through the
+        execution gateway's reservation boundary.
+        """
         with self.request_execution_lock(request_id):
             self._record_locked(request_id)
 
@@ -214,8 +220,14 @@ class ExecutionLedger:
         self._validate_id(request_id)
 
         def mutation() -> None:
-            if request_id not in self._states:
-                self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            current = self._states.get(request_id)
+            if current is None:
+                raise ValueError("request_id não foi reservado; record() não pode criar autoridade terminal.")
+            if current is ExecutionLedgerStatus.UNKNOWN:
+                raise ValueError("estado UNKNOWN requer reconciliação explícita.")
+            if current is not ExecutionLedgerStatus.RESERVED:
+                raise ValueError(f"record() exige estado RESERVED, encontrado {current.value}.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
 
         self._mutate_locked(mutation)
 
