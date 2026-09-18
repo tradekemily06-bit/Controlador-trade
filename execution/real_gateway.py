@@ -175,6 +175,17 @@ class RealExecutionGateway:
                     self._ledger.mark_unknown(request_id)
                 except (OSError, ValueError):
                     pass
+                try:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            f"não foi possível preparar o lifecycle REAL; estado incerto: {exc}",
+                        )
+                    ) if self._lifecycle is not None else None
+                except (OSError, ValueError):
+                    pass
                 return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível preparar o lifecycle REAL; estado incerto bloqueado: {exc}")
 
         try:
