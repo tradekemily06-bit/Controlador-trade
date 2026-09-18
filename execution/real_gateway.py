@@ -315,6 +315,10 @@ class RealExecutionGateway:
         """
         if not isinstance(reconciliation_boundary, ExternalOrderReconciliationBoundary):
             raise ValueError("boundary de reconciliação inválida.")
+        if not isinstance(authorization, RealExecutionAuthorization):
+            raise ValueError("autorização REAL inválida.")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido para reconciliação.")
         if not authorization.active:
             raise ValueError("autorização REAL inativa.")
         if not isinstance(broker, str) or not broker.strip():
@@ -340,6 +344,10 @@ class RealExecutionGateway:
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+            lifecycle_status = self._lifecycle_state(request_id)
+            consistency = self._check_consistency(status, lifecycle_status, request_id)
+            if consistency is not None:
+                raise ValueError(consistency.message)
 
             external_id = self._ledger.external_id(request_id)
             if external_id is None:
@@ -389,12 +397,22 @@ class RealExecutionGateway:
             state = state_by_ledger.get(entry.status)
             if state is None:
                 raise ValueError("Ledger ainda não possui estado terminal reparável.")
-            self._lifecycle.reconcile(
-                request_id,
-                state,
+            record = ExecutionLifecycleRecord(
+                request_id=request_id,
+                state=state,
                 updated_at=datetime.now(timezone.utc),
                 message="projeção Lifecycle reparada a partir do Ledger autoritativo",
             )
+            current = self._lifecycle.get(request_id)
+            if current is None or current.state is state:
+                self._lifecycle.put(record)
+            else:
+                self._lifecycle.reconcile(
+                    request_id,
+                    state,
+                    updated_at=record.updated_at,
+                    message=record.message,
+                )
 
     def _lifecycle_state(self, request_id: str) -> ExecutionLifecycleState | None:
         if self._lifecycle is None:
