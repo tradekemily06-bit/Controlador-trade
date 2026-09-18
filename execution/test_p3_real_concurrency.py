@@ -1441,6 +1441,7 @@ def test_real_dispatch_and_reconciliation_share_request_lock_during_broker_call(
                 ExternalOrderObservation(
                     external_id="EXT-LOCK-RACE",
                     status=ExternalOrderStatus.EXECUTED,
+                    message="broker confirmed execution",
                 ),
             )
         )
