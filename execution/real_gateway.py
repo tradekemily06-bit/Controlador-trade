@@ -187,17 +187,6 @@ class RealExecutionGateway:
                 f"não foi possível reservar request_id com segurança: {exc}",
             )
 
-        capability = self._gateway.real_dispatch_capability(
-            broker,
-            expected_adapter_id=self._gateway.real_adapter_id(broker) or "",
-        )
-        if capability is None:
-            self._mark_unknown(request_id, "capacidade REAL do adapter não pôde ser fixada antes do dispatch.")
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                "capacidade REAL do adapter não pôde ser fixada antes do dispatch.",
-            )
-
         try:
             result = self._gateway.execute_real(
                 broker, request, capability=capability
