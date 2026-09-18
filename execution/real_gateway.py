@@ -54,6 +54,13 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
+        # Security-boundary inputs must be the concrete contract types.
+        if not isinstance(authorization, RealExecutionAuthorization):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inválida.")
+        if not isinstance(admission, RealAdmission):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL inválida.")
+        if not isinstance(safety, RealSafetyReport):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "relatório de segurança REAL inválido.")
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
@@ -66,8 +73,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
-        if broker.strip().lower() != authorization.broker_id.strip().lower():
+        normalized_broker = broker.strip().lower()
+        if normalized_broker != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        if normalized_broker != admission.broker_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
