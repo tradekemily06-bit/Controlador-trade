@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
@@ -19,6 +20,8 @@ class ExecutionLedgerStatus(str, Enum):
 
 
 class ExecutionLedger:
+    _request_lock_local = threading.local()
+
     """Persistent request state for restart-safe REAL execution idempotency."""
 
     def __init__(self, path: str | Path) -> None:
@@ -117,8 +120,20 @@ class ExecutionLedger:
         lock_path = self.path.with_name(
             f".{self.path.name}.{request_key}.execution.lock"
         )
-        with locked_path(lock_path):
+        held = getattr(self._request_lock_local, "held", set())
+        if lock_path in held:
             yield
+            return
+        with locked_path(lock_path):
+            held = set(held)
+            held.add(lock_path)
+            self._request_lock_local.held = held
+            try:
+                yield
+            finally:
+                held = set(getattr(self._request_lock_local, "held", set()))
+                held.discard(lock_path)
+                self._request_lock_local.held = held
 
     def external_id(self, request_id: str) -> str | None:
         self._validate_id(request_id)
