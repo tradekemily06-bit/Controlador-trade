@@ -286,5 +286,11 @@ class BrokerAdapterGateway:
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+        if type(result.accepted) is not bool:
+            return AdapterExecutionResult(False, "adapter retornou accepted inválido; dispatch bloqueado.")
+        if type(result.message) is not str or not result.message.strip():
+            return AdapterExecutionResult(False, "adapter retornou message inválida; dispatch bloqueado.")
+        if result.external_id is not None and (type(result.external_id) is not str or not result.external_id.strip()):
+            return AdapterExecutionResult(False, "adapter retornou external_id inválido; dispatch bloqueado.")
 
         return AdapterExecutionResult(result.accepted, result.message, result)
