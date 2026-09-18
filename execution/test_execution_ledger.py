@@ -221,3 +221,29 @@ def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
 
     # The lock file is temporary and may be removed when the context exits.
     assert not (tmp_path.parent / "outside").exists()
+
+
+def test_public_ledger_mutators_respect_request_execution_lock(tmp_path):
+    from threading import Event, Thread
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-lock")
+    entered = Event()
+    release = Event()
+    finished = Event()
+
+    def mutate():
+        entered.set()
+        ledger.mark_unknown("req-lock")
+        finished.set()
+
+    with ledger.request_execution_lock("req-lock"):
+        worker = Thread(target=mutate)
+        worker.start()
+        assert entered.wait(timeout=2)
+        assert not finished.wait(timeout=0.2)
+        release.set()
+
+    worker.join(timeout=2)
+    assert finished.is_set()
+    assert ledger.status("req-lock") is ExecutionLedgerStatus.UNKNOWN
