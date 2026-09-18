@@ -100,7 +100,24 @@ class OperationalSafetyStore:
         raw = payload.get("execution_audit", [])
         if not isinstance(raw, list):
             raise ValueError("auditoria de execução persistida inválida.")
-        return [cls._execution_audit_item(item) for item in raw]
+
+        normalized = [cls._execution_audit_item(item) for item in raw]
+        previous: datetime | None = None
+        for item in normalized:
+            current = datetime.fromisoformat(str(item["timestamp"]))
+            if previous is not None:
+                previous_aware = previous.tzinfo is not None and previous.utcoffset() is not None
+                current_aware = current.tzinfo is not None and current.utcoffset() is not None
+                if previous_aware != current_aware:
+                    raise ValueError(
+                        "timestamps da auditoria de execução persistida devem usar o mesmo regime de timezone."
+                    )
+                if current < previous:
+                    raise ValueError(
+                        "auditoria de execução persistida deve permanecer cronológica."
+                    )
+            previous = current
+        return normalized
 
     @staticmethod
     def _normalize_kill_switch(data: object) -> dict[str, object]:
