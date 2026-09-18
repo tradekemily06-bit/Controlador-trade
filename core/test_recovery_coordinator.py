@@ -355,4 +355,4 @@ def test_checkpoint_lifecycle_timezone_mismatch_fails_closed(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.INVALID
     assert result.can_resume is False
-    assert "timezone" in result.message
+    assert "checkpoint de runtime inválido" in result.message
