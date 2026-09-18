@@ -11,7 +11,7 @@ from core.p121_external_order_reconciliation import (
 )
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
+from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import (
     ExecutionLifecycleRecord,
@@ -179,9 +179,20 @@ class RealExecutionGateway:
                 f"não foi possível reservar request_id com segurança: {exc}",
             )
 
+        capability = self._gateway.real_dispatch_capability(
+            broker,
+            expected_adapter_id=self._gateway.real_adapter_id(broker) or "",
+        )
+        if capability is None:
+            self._mark_unknown(request_id, "capacidade REAL do adapter não pôde ser fixada antes do dispatch.")
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                "capacidade REAL do adapter não pôde ser fixada antes do dispatch.",
+            )
+
         try:
             result = self._gateway.execute_real(
-                broker, request, capability=_REAL_DISPATCH_CAPABILITY
+                broker, request, capability=capability
             )
         except Exception as exc:
             self._mark_unknown(
