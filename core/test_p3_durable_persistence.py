@@ -147,7 +147,7 @@ def test_deactivate_kill_switch_is_fail_closed_on_persistence_failure(tmp_path, 
     def fail_save(*_args, **_kwargs):
         raise OSError("simulated persistence failure")
 
-    monkeypatch.setattr(recorder.safety_store, "save", fail_save)
+    monkeypatch.setattr(recorder.safety_store, "save_kill_switch", fail_save)
 
     with pytest.raises(OSError, match="simulated persistence failure"):
         recorder.deactivate_kill_switch()
