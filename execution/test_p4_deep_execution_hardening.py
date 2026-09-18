@@ -10,7 +10,7 @@ import pytest
 from core.models import Signal
 from core.operation_memory import OperationMemory
 from core.p112_real_execution_contract import RealExecutionAuthorization
-from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
+from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport, RealSafetyState
 from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
@@ -966,6 +966,7 @@ def test_real_reconciliation_rejects_overridable_boundary_subclass(tmp_path):
         )
 
 
+
 class MaliciousAuthorization(RealExecutionAuthorization):
     @property
     def active(self):
@@ -986,14 +987,46 @@ class MaliciousSafetyReport(RealSafetyReport):
 
 def test_real_boundary_rejects_overridable_policy_context_subclasses(tmp_path):
     gw, _, _ = gateway(tmp_path, FakeAdapter())
-    real_admission = RealAdmission(
+
+    malicious_auth = MaliciousAuthorization("auth", "audit", "fake", "adapter", True, True)
+    malicious_admission = MaliciousAdmission(
         admission_id="adm",
         audit_id="audit",
         status=RealAdmissionStatus.BLOCKED,
         broker_id="fake",
         reasons=("blocked",),
     )
-    real_safety = RealSafetyReport(
-        state=real_admission.status,  # replaced below; construction guard is tested by type boundary
-        reasons=(),
+    malicious_safety = MaliciousSafetyReport(
+        state=RealSafetyState.BLOCKED,
+        reasons=("blocked",),
     )
+
+    result = gw.execute(
+        broker="fake",
+        request_id="sub-auth",
+        request=request("sub-auth"),
+        authorization=malicious_auth,
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+    result = gw.execute(
+        broker="fake",
+        request_id="sub-admission",
+        request=request("sub-admission"),
+        authorization=auth(),
+        admission=malicious_admission,
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+    result = gw.execute(
+        broker="fake",
+        request_id="sub-safety",
+        request=request("sub-safety"),
+        authorization=auth(),
+        admission=admission(),
+        safety=malicious_safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
