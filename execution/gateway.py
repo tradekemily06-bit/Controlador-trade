@@ -8,6 +8,7 @@ from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
@@ -44,6 +45,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        recovery: RecoveryCoordinator | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +56,9 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        if recovery is not None and not isinstance(recovery, RecoveryCoordinator):
+            raise ValueError("recovery inválido.")
+        self._recovery = recovery
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -76,6 +81,14 @@ class ExecutionGateway:
 
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
+
+        if self._recovery is not None:
+            recovery = self._recovery.assess()
+            if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada pelo estado de recovery: {recovery.state.value}; reconciliação necessária antes de novo envio.",
+                )
 
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
