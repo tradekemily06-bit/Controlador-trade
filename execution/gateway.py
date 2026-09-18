@@ -149,7 +149,7 @@ class ExecutionGateway:
                     GatewayStatus.EXECUTOR_ERROR,
                     f"autoridade de execução indisponível; executor não chamado e estado marcado como UNKNOWN: {exc}",
                 )
-            if admission_status is not None and admission_status is not self._ledger_status_reserved():
+            if admission_status is not self._ledger_status_reserved():
                 return GatewayResult(
                     GatewayStatus.BLOCKED,
                     f"execução bloqueada: autoridade durável mudou para {admission_status.value} antes do executor.",
