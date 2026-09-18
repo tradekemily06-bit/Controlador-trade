@@ -262,7 +262,7 @@ def test_recovery_repairs_orphaned_terminal_ledger_without_dispatch(tmp_path: Pa
         updated_at=datetime.now(timezone.utc),
     )
     assert repaired.state is ExecutionLifecycleState.ACCEPTED
-    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
+    assert coordinator.assess().state is RecoveryState.FRESH
 
 
 def test_recovery_repairs_lifecycle_unknown_when_ledger_is_terminal(tmp_path: Path):
