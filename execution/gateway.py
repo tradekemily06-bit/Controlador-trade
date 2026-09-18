@@ -103,7 +103,13 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+                # The ledger reservation already exists. Never leave the request
+                # looking executable after lifecycle persistence fails.
+                try:
+                    self._ledger.mark_unknown(request_id) if self._ledger is not None else None
+                except (OSError, ValueError):
+                    pass
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
 
         try:
             result = self._executor.execute(request)
