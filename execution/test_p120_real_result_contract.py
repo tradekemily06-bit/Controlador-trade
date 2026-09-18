@@ -251,4 +251,4 @@ def test_live_kill_switch_overrides_stale_ready_report_at_real_boundary(tmp_path
     )
     assert second.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
-    assert ledger.status("live-switch-2") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("live-switch-2") is ExecutionLedgerStatus.REJECTED
