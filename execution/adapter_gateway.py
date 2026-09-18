@@ -44,7 +44,7 @@ class BrokerAdapterGateway:
                 False,
                 "REAL exige RealExecutionGateway; dispatch direto bloqueado.",
             )
-        return self._dispatch(broker, request)
+        return self._dispatch(broker, request, require_real=False)
 
     def execute_real(
         self,
