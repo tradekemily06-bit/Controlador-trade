@@ -5,6 +5,9 @@ from core.models import Signal
 
 
 class FakeAdapter:
+    supports_real_execution = True
+    adapter_id = "fake-adapter"
+
     def __init__(self, available=True, result=None, error=False):
         self.available = available
         self.result = result or ExecutionResult(True, "ok", "FAKE-1")
@@ -85,3 +88,19 @@ def test_adapter_gateway_rejects_direct_real_dispatch():
     result = gateway_with(adapter).execute("fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL))
     assert result.accepted is False
     assert adapter.calls == 0
+
+
+def test_real_capability_is_pinned_to_adapter_instance():
+    first = FakeAdapter()
+    gateway = gateway_with(first)
+    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    assert capability is not None
+    second = FakeAdapter()
+    gateway._registry._adapters["fake"] = second
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=capability,
+    )
+    assert result.accepted is False
+    assert second.calls == 0
