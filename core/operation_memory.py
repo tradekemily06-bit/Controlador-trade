@@ -63,8 +63,14 @@ class OperationMemory:
     def append(self, record: OperationMemoryRecord) -> None:
         if not isinstance(record, OperationMemoryRecord):
             raise TypeError("record deve ser OperationMemoryRecord.")
-        if self._records and record.timestamp < self._records[-1].timestamp:
-            raise MemoryValidationError("registros de memória devem ser cronológicos.")
+        if self._records:
+            previous = self._records[-1].timestamp
+            previous_aware = previous.tzinfo is not None and previous.utcoffset() is not None
+            current_aware = record.timestamp.tzinfo is not None and record.timestamp.utcoffset() is not None
+            if previous_aware != current_aware:
+                raise MemoryValidationError("timestamps de memória devem usar o mesmo regime de timezone.")
+            if record.timestamp < previous:
+                raise MemoryValidationError("registros de memória devem ser cronológicos.")
         self._records.append(record)
 
     def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
