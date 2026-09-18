@@ -110,3 +110,40 @@ def test_equal_timestamp_checkpoint_conflict_cannot_overwrite_newer_snapshot(tmp
     store.save(conflicting)
 
     assert store.load() == newer
+
+
+def test_corrupted_checkpoint_cannot_be_overwritten_by_save(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text("[]", encoding="utf-8")
+    store = RuntimeCheckpointStore(path)
+    incoming = RuntimeCheckpoint(
+        "session",
+        1,
+        "req-1",
+        datetime(2026, 9, 18, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        store.save(incoming)
+
+    assert path.read_text(encoding="utf-8") == "[]"
+
+
+def test_corrupted_checkpoint_timestamp_cannot_be_overwritten_by_save(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text(
+        '{"session_id":"session","last_cycle":1,"last_request_id":"req-1","updated_at":"not-a-timestamp"}',
+        encoding="utf-8",
+    )
+    store = RuntimeCheckpointStore(path)
+    incoming = RuntimeCheckpoint(
+        "session",
+        2,
+        "req-2",
+        datetime(2026, 9, 18, 0, 1, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        store.save(incoming)
+
+    assert "not-a-timestamp" in path.read_text(encoding="utf-8")
