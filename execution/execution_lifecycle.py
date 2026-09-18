@@ -148,6 +148,12 @@ class ExecutionLifecycleStore:
                     raise ValueError("somente estados PENDING/UNKNOWN podem ser reconciliados.")
                 record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
                 self._validate(record)
+                previous_aware = current.updated_at.tzinfo is not None and current.updated_at.utcoffset() is not None
+                current_aware = record.updated_at.tzinfo is not None and record.updated_at.utcoffset() is not None
+                if previous_aware != current_aware:
+                    raise ValueError("timestamps de ciclo devem usar o mesmo regime de timezone.")
+                if record.updated_at < current.updated_at:
+                    raise ValueError("reconciliação obsoleta não pode regredir o timestamp persistido.")
                 self._records[request_id] = record
                 self._save_unlocked()
                 return record
