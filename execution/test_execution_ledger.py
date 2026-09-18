@@ -172,3 +172,36 @@ def test_duplicate_persisted_external_id_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError, match="external_id duplicado"):
         ExecutionLedger(path)
+
+
+
+def test_per_request_execution_lock_serializes_dispatch_and_reconciliation(tmp_path):
+    from threading import Event, Thread
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    entered = Event()
+    release = Event()
+    order = []
+
+    def holder():
+        with ledger.request_execution_lock("same-request"):
+            order.append("holder-entered")
+            entered.set()
+            release.wait(timeout=2)
+            order.append("holder-exited")
+
+    def waiter():
+        entered.wait(timeout=2)
+        with ledger.request_execution_lock("same-request"):
+            order.append("waiter-entered")
+
+    first = Thread(target=holder)
+    second = Thread(target=waiter)
+    first.start()
+    second.start()
+    assert entered.wait(timeout=2)
+    release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert order == ["holder-entered", "holder-exited", "waiter-entered"]
