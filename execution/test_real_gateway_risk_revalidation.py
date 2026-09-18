@@ -95,9 +95,13 @@ def authorization(request_id="risk-unchanged"):
 
 
 def admission(auth):
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=auth.active, safety_ready=True, broker_available=True,
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True, broker_available=True,
         broker_id="fake", adapter_id="adapter", request_id=auth.request_id, symbol=auth.symbol,
     )
 
