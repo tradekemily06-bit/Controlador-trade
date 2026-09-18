@@ -329,12 +329,39 @@ class RealExecutionGateway:
             raise ValueError("autorização REAL inválida.")
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido para reconciliação.")
-        if not authorization.active:
+        if (
+            authorization.explicitly_enabled is not True
+            or authorization.real_execution_allowed is not True
+        ):
             raise ValueError("autorização REAL inativa.")
+        for field_name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
+            field_value = getattr(authorization, field_name, None)
+            if not isinstance(field_value, str) or not field_value.strip():
+                raise ValueError(f"campo {field_name} da autorização REAL é inválido.")
         if not isinstance(broker, str) or not broker.strip():
             raise ValueError("broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             raise ValueError("broker da reconciliação difere da autorização.")
+        try:
+            lock_context = self._locks.acquire(request_id)
+            with lock_context:
+                return self._reconcile_unknown_locked(
+                    request_id=request_id,
+                    broker=broker,
+                    authorization=authorization,
+                    reconciliation_boundary=reconciliation_boundary,
+                )
+        except RealExecutionLockError as exc:
+            raise ValueError(f"REAL bloqueado: lock de reconciliação indisponível: {exc}") from exc
+
+    def _reconcile_unknown_locked(
+        self,
+        request_id: str,
+        *,
+        broker: str,
+        authorization: RealExecutionAuthorization,
+        reconciliation_boundary: ExternalOrderReconciliationBoundary,
+    ) -> None:
         with self._locks.acquire(request_id):
             # Resolve the query capability only after taking the same REAL
             # request lock used for the Ledger. This avoids carrying a stale
