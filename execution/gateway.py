@@ -116,6 +116,18 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar a execução; execução não enviada: {exc}")
 
+        # Recheck after durable reservation but before publishing lifecycle PENDING.
+        # A PENDING record for this very request is expected; checking after it
+        # would make every fresh execution self-block as REQUIRES_RECONCILIATION.
+        if self._recovery is not None:
+            final_recovery = self._recovery.assess()
+            if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                self._mark_unknown(request_id, event_time, f"recovery mudou antes do executor: {final_recovery.state.value}")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
+                )
+
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
@@ -127,15 +139,6 @@ class ExecutionGateway:
                 except (OSError, ValueError):
                     pass
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
-
-        if self._recovery is not None:
-            final_recovery = self._recovery.assess()
-            if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
-                self._mark_unknown(request_id, event_time, f"recovery mudou antes do executor: {final_recovery.state.value}")
-                return GatewayResult(
-                    GatewayStatus.BLOCKED,
-                    f"execução bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
-                )
 
         try:
             result = self._executor.execute(request)
