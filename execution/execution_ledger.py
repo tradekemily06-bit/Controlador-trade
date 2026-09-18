@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 
@@ -102,6 +103,17 @@ class ExecutionLedger:
             raise
         except OSError as exc:
             raise OSError("não foi possível persistir o ledger de execução.") from exc
+
+    @contextmanager
+    def request_execution_lock(self, request_id: str):
+        """Serialize dispatch/reconciliation for one request across processes."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        lock_path = self.path.with_name(
+            f".{self.path.name}.{request_id.strip()}.execution.lock"
+        )
+        with locked_path(lock_path):
+            yield
 
     def external_id(self, request_id: str) -> str | None:
         self._validate_id(request_id)
