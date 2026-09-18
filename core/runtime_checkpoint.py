@@ -52,7 +52,11 @@ class RuntimeCheckpointStore:
                             and checkpoint.last_cycle < current_checkpoint.last_cycle
                         )
                         older_snapshot = checkpoint.updated_at < current_checkpoint.updated_at
-                        if same_session_regression or older_snapshot:
+                        same_timestamp_conflict = (
+                            checkpoint.updated_at == current_checkpoint.updated_at
+                            and checkpoint != current_checkpoint
+                        )
+                        if same_session_regression or older_snapshot or same_timestamp_conflict:
                             return
                 except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                     raise ValueError("checkpoint de runtime inválido.") from exc
