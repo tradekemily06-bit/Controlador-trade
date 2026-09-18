@@ -137,7 +137,7 @@ class RealExecutionGateway:
 
         # Recheck after durable reservation but before publishing lifecycle PENDING.
         if self._recovery is not None:
-            final_recovery = self._recovery.assess()
+            final_recovery = self._recovery.assess(ignore_request_id=request_id)
             if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
                 try:
                     self._ledger.mark_unknown(request_id)
