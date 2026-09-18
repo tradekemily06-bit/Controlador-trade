@@ -297,7 +297,7 @@ def test_real_dispatch_rejects_non_boolean_adapter_availability(tmp_path):
     )
     assert capability is not None
     result = gateway._execute_real(
-        "fake", request("strict-availability"), capability=capability,
+        "fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="strict-availability"), capability=capability,
         request_id="strict-availability", authorization_id="auth"
     )
     assert result.accepted is False
