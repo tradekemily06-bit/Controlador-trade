@@ -69,6 +69,7 @@ class ExecutionLedger:
             payload = json.loads(
                 self.path.read_text(encoding="utf-8"),
                 object_pairs_hook=_unique_json_object,
+                parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"constante JSON não permitida: {value}")),
             )
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
@@ -91,8 +92,12 @@ class ExecutionLedger:
         states: dict[str, ExecutionLedgerEntry] = {}
         external_ids: dict[str, str] = {}
         for request_id, raw in payload.items():
-            if not isinstance(request_id, str) or not request_id.strip():
-                raise ValueError("ledger de execução inválido.")
+            if (
+                not isinstance(request_id, str)
+                or not request_id.strip()
+                or request_id != request_id.strip()
+            ):
+                raise ValueError("ledger de execução inválido: request_id não canônico.")
             if isinstance(raw, str):
                 try:
                     status = ExecutionLedgerStatus(raw)
@@ -360,8 +365,12 @@ class ExecutionLedger:
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        if (
+            not isinstance(request_id, str)
+            or not request_id.strip()
+            or request_id != request_id.strip()
+        ):
+            raise ValueError("request_id inválido ou não canônico.")
 
     def _transition(
         self,
