@@ -189,3 +189,9 @@ def test_reconcile_rejects_timezone_regime_mismatch(tmp_path):
     restored = ExecutionLifecycleStore(path).get("req-timezone")
     assert restored.state is ExecutionLifecycleState.UNKNOWN
     assert restored.updated_at == aware
+
+
+def test_naive_lifecycle_timestamp_is_rejected(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    with pytest.raises(ValueError, match="timezone"):
+        store.put(ExecutionLifecycleRecord("req-naive", ExecutionLifecycleState.PENDING, datetime(2026, 9, 18, 12, 0)))
