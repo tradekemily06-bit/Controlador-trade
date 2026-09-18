@@ -69,7 +69,10 @@ class PersistentOperationalRecorder:
             if self.safety_store is not None:
                 self.safety_store.append_audit(record)
         except Exception:
-            self._reload_safety()
+            try:
+                self._reload_safety()
+            except Exception:
+                pass
             raise
         return record
 
@@ -85,19 +88,32 @@ class PersistentOperationalRecorder:
             if self.safety_store is not None:
                 self.safety_store.append_audit(recorded.audit)
         except Exception:
-            self._reload_memory()
+            try:
+                self._reload_memory()
+            except Exception:
+                pass
             if self.safety_store is not None:
-                self._reload_safety()
+                try:
+                    self._reload_safety()
+                except Exception:
+                    pass
             raise
         try:
             self.store.append(recorded.memory)
         except Exception:
             # The audit may already be durable. Rebuild both views from disk;
             # recovery/audit inspection must see the durable truth rather than
-            # the speculative in-memory operation.
-            self._reload_memory()
+            # the speculative in-memory operation. Never mask the original
+            # persistence exception if a best-effort reload also fails.
+            try:
+                self._reload_memory()
+            except Exception:
+                pass
             if self.safety_store is not None:
-                self._reload_safety()
+                try:
+                    self._reload_safety()
+                except Exception:
+                    pass
             raise
         # The durable writes above are the commit point. A post-commit reload
         # must not turn a successful operation into an apparent failure.
