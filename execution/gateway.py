@@ -103,13 +103,26 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id, external_id=result.external_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"rejeição não pôde ser persistida; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"rejeição persistida no ledger, mas lifecycle falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                if not isinstance(result.external_id, str) or not result.external_id.strip():
+                    self._ledger.mark_unknown(request_id)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução DEMO aceita sem external_id; estado UNKNOWN.", result)
+                self._ledger.mark_accepted(request_id, external_id=result.external_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
