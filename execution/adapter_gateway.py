@@ -72,7 +72,12 @@ class BrokerAdapterGateway:
         current_id = getattr(current, "adapter_id", None)
         if not isinstance(current_id, str) or current_id.strip().lower() != capability.adapter_id.lower():
             return AdapterExecutionResult(False, "identidade do adapter REAL mudou após autorização; dispatch bloqueado.")
-        return self._dispatch(broker, request, require_real=True)
+        return self._dispatch(
+            broker,
+            request,
+            require_real=True,
+            expected_adapter=capability.adapter,
+        )
 
     def real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
         if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
@@ -124,11 +129,15 @@ class BrokerAdapterGateway:
         request: ExecutionRequest,
         *,
         require_real: bool,
+        expected_adapter: object | None = None,
     ) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, str(exc))
+
+        if expected_adapter is not None and adapter is not expected_adapter:
+            return AdapterExecutionResult(False, "adapter REAL mudou durante o dispatch; execução bloqueada antes do adapter.execute.")
 
         if require_real:
             if not bool(getattr(adapter, "supports_real_execution", False)):
