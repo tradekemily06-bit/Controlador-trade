@@ -197,3 +197,22 @@ def test_gateway_terminal_persistence_mismatch_blocks_recovery(tmp_path):
     ).assess()
     assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
     assert recovery.can_resume is False
+
+
+def test_gateway_reservation_error_with_unreadable_ledger_fails_closed(tmp_path, monkeypatch):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    def fail_reserve(_request_id):
+        raise OSError("reservation write failed")
+
+    def fail_contains(_request_id):
+        raise ValueError("ledger became unreadable")
+
+    monkeypatch.setattr(ledger, "reserve", fail_reserve)
+    monkeypatch.setattr(ledger, "contains", fail_contains)
+
+    result = gateway.execute("req-unreadable-ledger", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert "não foi enviada" in result.message
