@@ -76,8 +76,8 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL inválida.")
         if not isinstance(safety, RealSafetyReport):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "relatório de segurança REAL inválido.")
-        if not isinstance(request_id, str) or not request_id.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido ou não canônico.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
