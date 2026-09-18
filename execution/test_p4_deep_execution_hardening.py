@@ -933,3 +933,12 @@ def test_real_gateway_rejects_overridable_dependency_subclasses(tmp_path):
             ExecutionLedger(tmp_path / "ledger.json"),
             LifecycleOverride(tmp_path / "lifecycle-override.json"),
         )
+
+
+def test_adapter_gateway_rejects_overridable_registry_subclass():
+    class RegistryOverride(BrokerRegistry):
+        def get(self, name):
+            raise AssertionError("registry override must not cross REAL gateway boundary")
+
+    with pytest.raises(ValueError, match="registry inválido"):
+        BrokerAdapterGateway(RegistryOverride())
