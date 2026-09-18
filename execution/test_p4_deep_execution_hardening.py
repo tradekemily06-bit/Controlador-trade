@@ -1031,12 +1031,6 @@ def test_real_boundary_rejects_overridable_policy_context_subclasses(tmp_path):
     assert result.status == RealGatewayStatus.BLOCKED
 
 
-class ExplodingPendingLifecycle(ExecutionLifecycleStore):
-    def put(self, record):
-        if record.state is ExecutionLifecycleState.PENDING:
-            raise OSError("pending lifecycle write failed")
-        return super().put(record)
-
 
 def test_reservation_survives_pending_projection_failure_without_dispatch(tmp_path):
     registry = BrokerRegistry()
@@ -1093,7 +1087,11 @@ def test_reconciliation_keeps_ledger_terminal_when_lifecycle_projection_fails(tm
     ledger.reserve("reconcile-lifecycle-failure")
     ledger.attach_external_id("reconcile-lifecycle-failure", "broker-reconcile-failure")
     ledger.mark_unknown("reconcile-lifecycle-failure")
-    lifecycle = ExplodingReconcileLifecycle(tmp_path / "execution-lifecycle.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+    original_reconcile = lifecycle.reconcile
+    def fail_reconcile(*args, **kwargs):
+        raise OSError("lifecycle reconcile failed")
+    lifecycle.reconcile = fail_reconcile
     lifecycle.put(
         ExecutionLifecycleRecord(
             "reconcile-lifecycle-failure",
