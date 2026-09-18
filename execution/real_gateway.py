@@ -267,24 +267,30 @@ class RealExecutionGateway:
         executed: bool,
         external_id: str | None = None,
     ) -> None:
-        status = self._ledger.status(request_id)
-        if status not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
         with self._locks.acquire(request_id):
+            status = self._ledger.status(request_id)
+            if status not in (
+                ExecutionLedgerStatus.UNKNOWN,
+                ExecutionLedgerStatus.RESERVED,
+            ):
+                raise ValueError("request_id não está em estado incerto reconciliável.")
             self._ledger.reconcile(
                 request_id,
                 executed=executed,
                 external_id=external_id,
             )
-            state = (
-                ExecutionLifecycleState.ACCEPTED
-                if executed
-                else ExecutionLifecycleState.REJECTED
-            )
-            self._set_lifecycle(request_id, state, "reconciliação explícita")
+            if self._lifecycle is not None:
+                state = (
+                    ExecutionLifecycleState.ACCEPTED
+                    if executed
+                    else ExecutionLifecycleState.REJECTED
+                )
+                self._lifecycle.reconcile(
+                    request_id,
+                    state,
+                    updated_at=datetime.now(timezone.utc),
+                    message="reconciliação explícita",
+                )
 
     def _lifecycle_state(self, request_id: str) -> ExecutionLifecycleState | None:
         if self._lifecycle is None:
