@@ -263,6 +263,7 @@ def test_terminal_ledger_without_external_id_cannot_consume_foreign_external_fac
     ledger, lifecycle = build(tmp_path)
     request_id = "req-legacy-terminal"
     now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
     ledger.record(request_id)
 
     with pytest.raises(ValueError, match="external_id durável"):
