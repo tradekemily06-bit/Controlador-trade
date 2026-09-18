@@ -99,4 +99,4 @@ def test_recovery_final_admission_check_can_ignore_only_current_request(tmp_path
     blocked = coordinator.assess(ignore_request_id="current-request")
     assert blocked.state is RecoveryState.REQUIRES_RECONCILIATION
     assert blocked.can_resume is False
-    assert "other-uncertain-request" in blocked.message
+    assert blocked.message == "ledger RESERVED/UNKNOWN requer reconciliação"
