@@ -74,3 +74,20 @@ jobs:
 
           echo "Container health endpoint did not become ready."
           exit 1
+
+  windows-p3-lock:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Validate P3 durable persistence on Windows
+        run: python -m pytest -q core/test_p3_durable_persistence.py
