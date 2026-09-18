@@ -36,7 +36,10 @@ class CTraderDemoAdapter:
         self._transport = transport
 
     def is_available(self) -> bool:
-        return bool(self._transport.is_available())
+        available = self._transport.is_available()
+        if type(available) is not bool:
+            raise ValueError("transporte cTrader DEMO retornou disponibilidade inválida")
+        return available
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
