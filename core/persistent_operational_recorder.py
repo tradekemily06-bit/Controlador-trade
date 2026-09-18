@@ -90,8 +90,16 @@ class PersistentOperationalRecorder:
             if self.safety_store is not None:
                 self._reload_safety()
             raise
-        self._reload_memory()
-        self._reload_safety()
+        # The durable writes above are the commit point. A post-commit reload
+        # must not turn a successful operation into an apparent failure.
+        try:
+            self._reload_memory()
+            self._reload_safety()
+        except Exception:
+            # Keep the already-committed operation result available in memory;
+            # recovery/reload can be retried by the caller without duplicating
+            # the durable append.
+            pass
         return recorded
 
     def settle_operation(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
