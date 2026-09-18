@@ -95,9 +95,13 @@ class ExecutionGateway:
             try:
                 self._ledger.reserve(request_id)
             except (OSError, ValueError) as exc:
-                if self._ledger.contains(request_id):
+                try:
+                    already_present = self._ledger.contains(request_id)
+                except (OSError, ValueError):
+                    already_present = False
+                if already_present:
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar a execução: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar a execução; execução não enviada: {exc}")
 
         if self._lifecycle is not None:
             try:
