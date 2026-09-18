@@ -61,6 +61,42 @@ def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
         )
 
 
+class UnavailableAdapter:
+    def is_available(self):
+        return False
+
+    def execute(self, request):
+        raise AssertionError("adapter indisponível não pode ser chamado")
+
+
+def test_pre_dispatch_adapter_block_is_terminal_not_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnavailableAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(tmp_path, registry, ledger)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True,
+    )
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="pre-dispatch-block", request=request,
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert ledger.status("pre-dispatch-block") is ExecutionLedgerStatus.REJECTED
+    assert gateway._lifecycle.get("pre-dispatch-block").state.name == "REJECTED"
+
+
 class MissingExternalIdAdapter:
     def is_available(self):
         return True
