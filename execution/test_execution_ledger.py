@@ -142,3 +142,22 @@ def test_unknown_ledger_requires_explicit_reconciliation(tmp_path):
 
     ledger.reconcile("req-unknown", executed=True)
     assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+def test_external_id_survives_restart_and_is_unique(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-1")
+    ledger.bind_external_id("req-1", " ext-1 ")
+    assert ExecutionLedger(path).external_id("req-1") == "ext-1"
+
+    ExecutionLedger(path).reserve("req-2")
+    with pytest.raises(ValueError, match="outro request_id"):
+        ExecutionLedger(path).bind_external_id("req-2", "ext-1")
+
+
+def test_legacy_status_only_ledger_is_backward_compatible(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-legacy":"ACCEPTED"}', encoding="utf-8")
+    ledger = ExecutionLedger(path)
+    assert ledger.status("req-legacy") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req-legacy") is None
