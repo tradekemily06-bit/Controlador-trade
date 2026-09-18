@@ -100,14 +100,11 @@ class RealExecutionGateway:
         if normalized_broker != admission.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
 
-        if self._recovery is not None:
-            recovery = self._recovery.assess()
-            if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
-                return RealGatewayResult(
-                    RealGatewayStatus.BLOCKED,
-                    f"execução REAL bloqueada pelo estado de recovery: {recovery.state.value}; reconciliação necessária antes de novo envio.",
-                )
-
+        # Check this request's own durable authority before global recovery.
+        # After a restart, an UNKNOWN/RESERVED request must remain visibly
+        # UNKNOWN (reconciliation required), even when other durable state also
+        # makes the runtime globally non-resumable. Never let a global recovery
+        # block hide the request's own non-replayable uncertainty.
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -117,6 +114,14 @@ class RealExecutionGateway:
                     "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
                 )
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
+
+        if self._recovery is not None:
+            recovery = self._recovery.assess()
+            if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    f"execução REAL bloqueada pelo estado de recovery: {recovery.state.value}; reconciliação necessária antes de novo envio.",
+                )
 
         if self._lifecycle is not None:
             existing_lifecycle = self._lifecycle.get(request_id)
