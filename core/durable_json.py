@@ -12,6 +12,11 @@ try:
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - Unix fallback
+    msvcrt = None
+
 
 @contextmanager
 def locked_path(path: str | Path) -> Iterator[Path]:
@@ -22,11 +27,19 @@ def locked_path(path: str | Path) -> Iterator[Path]:
     with lock_path.open("a+", encoding="utf-8") as lock_file:
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        elif msvcrt is not None:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            raise OSError("nenhum mecanismo de lock de arquivo suportado neste sistema.")
         try:
             yield target
         finally:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            elif msvcrt is not None:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def read_json(path: str | Path, default: object) -> object:
