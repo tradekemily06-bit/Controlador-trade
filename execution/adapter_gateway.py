@@ -20,14 +20,21 @@ class _RealDispatchCapability:
 class _RealQueryCapability:
     """Broker query capability pinned to the authorized adapter instance."""
 
-    def __init__(self, adapter: object, adapter_id: str) -> None:
+    def __init__(self, registry: BrokerRegistry, broker: str, adapter: object, adapter_id: str) -> None:
+        self._registry = registry
+        self._broker = broker
         self._adapter = adapter
         self._adapter_id = adapter_id
 
     def _valid(self) -> bool:
+        try:
+            registered = self._registry.get(self._broker)
+        except BrokerRegistryError:
+            return False
         current_id = getattr(self._adapter, "adapter_id", None)
         return (
-            isinstance(current_id, str)
+            registered is self._adapter
+            and isinstance(current_id, str)
             and current_id.strip().lower() == self._adapter_id.strip().lower()
             and bool(getattr(self._adapter, "supports_real_execution", False))
             and callable(getattr(self._adapter, "query_order", None))
@@ -146,7 +153,7 @@ class BrokerAdapterGateway:
             return None
         if not isinstance(adapter, ExternalOrderQueryPort):
             return None
-        return _RealQueryCapability(adapter, adapter_id.strip())
+        return _RealQueryCapability(self._registry, broker, adapter, adapter_id.strip())
 
     def _dispatch(
         self,
