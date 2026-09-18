@@ -380,8 +380,16 @@ class RealExecutionGateway:
             raise ValueError("request_id não está em estado incerto reconciliável.")
         lifecycle_status = self._lifecycle_state(request_id)
         consistency = self._check_consistency(status, lifecycle_status, request_id)
+        # A failed UNKNOWN projection can leave Lifecycle=PENDING while the
+        # authoritative Ledger is already UNKNOWN. This is not permission to
+        # replay; it is precisely a reconciliation-repair case. Permit only
+        # this one-way mismatch so broker-side evidence can close both stores.
         if consistency is not None:
-            raise ValueError(consistency.message)
+            if not (
+                status is ExecutionLedgerStatus.UNKNOWN
+                and lifecycle_status in (None, ExecutionLifecycleState.PENDING)
+            ):
+                raise ValueError(consistency.message)
 
         external_id = self._ledger.external_id(request_id)
         if external_id is None:
