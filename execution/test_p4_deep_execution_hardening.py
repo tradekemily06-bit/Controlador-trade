@@ -1030,3 +1030,83 @@ def test_real_boundary_rejects_overridable_policy_context_subclasses(tmp_path):
         safety=malicious_safety,
     )
     assert result.status == RealGatewayStatus.BLOCKED
+
+
+class ExplodingPendingLifecycle(ExecutionLifecycleStore):
+    def put(self, record):
+        if record.state is ExecutionLifecycleState.PENDING:
+            raise OSError("pending lifecycle write failed")
+        return super().put(record)
+
+
+def test_reservation_survives_pending_projection_failure_without_dispatch(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+    lifecycle = ExplodingPendingLifecycle(tmp_path / "execution-lifecycle.json")
+    gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+
+    result = execute(gw, "pending-write-failure")
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("pending-write-failure") is ExecutionLedgerStatus.RESERVED
+
+
+def test_external_id_attached_before_acceptance_failure_remains_reconcilable(tmp_path):
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", "broker-attach-failure"))
+    )
+    original = ledger.mark_accepted
+
+    def fail_mark_accepted(request_id, external_id=None):
+        raise OSError("accepted state write failed")
+
+    ledger.mark_accepted = fail_mark_accepted
+    result = execute(gw, "attach-failure")
+    ledger.mark_accepted = original
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    entry = ledger.entry("attach-failure")
+    assert entry.status is ExecutionLedgerStatus.RESERVED
+    assert entry.external_id == "broker-attach-failure"
+    assert lifecycle.get("attach-failure").state is ExecutionLifecycleState.PENDING
+
+
+def test_reconciliation_keeps_ledger_terminal_when_lifecycle_projection_fails(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile-failure",
+            ExternalOrderStatus.EXECUTED,
+            "filled",
+        )
+    )
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+    ledger.reserve("reconcile-lifecycle-failure")
+    ledger.attach_external_id("reconcile-lifecycle-failure", "broker-reconcile-failure")
+    ledger.mark_unknown("reconcile-lifecycle-failure")
+    lifecycle = ExplodingReconcileLifecycle(tmp_path / "execution-lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reconcile-lifecycle-failure",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+    gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+
+    with pytest.raises(ValueError, match="Ledger reconciliado"):
+        gw.reconcile_unknown(
+            "reconcile-lifecycle-failure",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+
+    assert ledger.status("reconcile-lifecycle-failure") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.UNKNOWN
+    gw.repair_lifecycle_projection("reconcile-lifecycle-failure")
+    assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.ACCEPTED
