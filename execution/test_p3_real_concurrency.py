@@ -440,3 +440,122 @@ def test_reconcile_unknown_with_lifecycle_cannot_bypass_cross_store_authority(tm
 
     assert ExecutionLedger(ledger_path).status("reconcile-cross-store").value == "UNKNOWN"
     assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-cross-store").state is ExecutionLifecycleState.UNKNOWN
+
+
+
+def test_real_lifecycle_pending_before_ledger_reserve_failure_blocks_restart_without_dispatch(tmp_path, monkeypatch):
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", "EXT-SHOULD-NOT-HAPPEN")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    def fail_reserve(_request_id):
+        raise OSError("reserve persistence failed")
+
+    monkeypatch.setattr(ledger, "reserve", fail_reserve)
+    first = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle).execute(
+        broker="fake",
+        request_id="pending-before-reserve",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(ledger_path).status("pending-before-reserve") is None
+    assert ExecutionLifecycleStore(lifecycle_path).get("pending-before-reserve").state is ExecutionLifecycleState.PENDING
+
+    from core.operation_memory import OperationMemory
+    from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+    from core.runtime_checkpoint import RuntimeCheckpointStore
+
+    assessment = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    ).assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+
+    restarted = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    retry = restarted.execute(
+        broker="fake",
+        request_id="pending-before-reserve",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert retry.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_two_real_gateways_with_lifecycle_still_dispatch_once(tmp_path):
+    class CountingAdapter:
+        def __init__(self):
+            self.lock = Lock()
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            with self.lock:
+                self.calls += 1
+                call = self.calls
+            return ExecutionResult(True, "accepted", f"EXT-LIFE-{call}")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+    gateways = [
+        RealExecutionGateway(
+            BrokerAdapterGateway(registry),
+            ExecutionLedger(ledger_path),
+            ExecutionLifecycleStore(lifecycle_path),
+        )
+        for _ in range(2)
+    ]
+    results = []
+
+    def run(gateway):
+        results.append(gateway.execute(
+            broker="fake", request_id="same-real-lifecycle-id", request=_request(),
+            authorization=auth, admission=admission, safety=safety,
+        ))
+
+    threads = [Thread(target=run, args=(gateway,)) for gateway in gateways]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert adapter.calls == 1
+    assert len(results) == 2
+    assert any(result.status == RealGatewayStatus.ADMITTED for result in results)
+    assert ExecutionLedger(ledger_path).status("same-real-lifecycle-id").value == "ACCEPTED"
+    assert ExecutionLifecycleStore(lifecycle_path).get("same-real-lifecycle-id").state is ExecutionLifecycleState.ACCEPTED
