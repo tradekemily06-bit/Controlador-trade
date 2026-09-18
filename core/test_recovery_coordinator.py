@@ -75,3 +75,11 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+def test_orphaned_reserved_ledger_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reserved")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "RESERVED/UNKNOWN" in result.message
