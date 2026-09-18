@@ -663,6 +663,8 @@ def test_demo_only_adapter_cannot_receive_real_dispatch():
         "demo",
         request(),
         capability=_REAL_DISPATCH_CAPABILITY,
+        request_id=request().request_id,
+        authorization_id="test-auth",
     )
     assert result.accepted is False
     assert adapter.calls == 0
