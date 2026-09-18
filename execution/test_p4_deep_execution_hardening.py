@@ -827,3 +827,27 @@ def test_real_boundary_rejects_mutated_authorization_identity_fields(tmp_path):
     )
     assert result.status == RealGatewayStatus.REJECTED
     assert "broker_id" in result.message
+
+
+def test_real_capability_rejects_truthy_non_boolean_flag(tmp_path):
+    adapter = FakeAdapter()
+    adapter.supports_real_execution = "true"
+    gw, _, _ = gateway(tmp_path, adapter)
+    result = execute(gw, "truthy-capability")
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_authorization_rejects_truthy_non_boolean_flags(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    malformed = auth()
+    object.__setattr__(malformed, "real_execution_allowed", "false")
+    result = gw.execute(
+        broker="fake",
+        request_id="truthy-auth",
+        request=request("truthy-auth"),
+        authorization=malformed,
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
