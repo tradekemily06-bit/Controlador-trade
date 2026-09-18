@@ -58,7 +58,20 @@ class RecoveryCoordinator:
         self.memory = memory
         self.expected_session_id = expected_session_id.strip() if expected_session_id is not None else None
 
-    def assess(self) -> RecoveryAssessment:
+    def assess(self, *, ignore_request_id: str | None = None) -> RecoveryAssessment:
+        """Assess durable recovery, optionally excluding the request currently being admitted.
+
+        The excluded request is still governed by its own atomic ledger/lifecycle
+        admission checks. This narrow exception prevents a final pre-executor
+        recheck from treating the gateway's own RESERVED/PENDING admission as a
+        recovery fault, while all other uncertain cross-store state remains
+        blocking.
+        """
+        if ignore_request_id is not None and (
+            not isinstance(ignore_request_id, str) or not ignore_request_id.strip()
+        ):
+            raise ValueError("ignore_request_id inválido.")
+        ignored_id = ignore_request_id.strip() if ignore_request_id is not None else None
         # Recovery is a cross-store read. Each authority is individually locked,
         # but there is no filesystem-level transaction spanning checkpoint,
         # lifecycle and ledger. Take a stable snapshot instead of allowing a
@@ -96,6 +109,7 @@ class RecoveryCoordinator:
             request_id
             for request_id, status in ledger_statuses.items()
             if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+            and request_id != ignored_id
         }
 
         lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
@@ -120,13 +134,26 @@ class RecoveryCoordinator:
             if checkpoint.updated_at > now + self._MAX_CHECKPOINT_CLOCK_SKEW:
                 return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint está no futuro além da tolerância de relógio.")
 
-        pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        pending = tuple(
+            sorted(
+                r.request_id
+                for r in lifecycle
+                if r.state is ExecutionLifecycleState.PENDING and r.request_id != ignored_id
+            )
+        )
+        unknown = tuple(
+            sorted(
+                r.request_id
+                for r in lifecycle
+                if r.state is ExecutionLifecycleState.UNKNOWN and r.request_id != ignored_id
+            )
+        )
 
         inconsistent = [
             r.request_id
             for r in lifecycle
             if r.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED)
+            and r.request_id != ignored_id
             and (
                 r.request_id not in ledger_ids
                 or (
@@ -151,6 +178,7 @@ class RecoveryCoordinator:
                 ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
             )
             and request_id not in lifecycle_by_id
+            and request_id != ignored_id
         ]
         if unknown or pending or inconsistent or ledger_uncertain or orphaned_terminal_ledger:
             details = []
