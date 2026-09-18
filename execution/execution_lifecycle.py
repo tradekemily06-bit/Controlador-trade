@@ -69,7 +69,7 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
+        if not isinstance(record.request_id, str) or not record.request_id.strip() or record.request_id != record.request_id.strip():
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
@@ -105,7 +105,7 @@ class ExecutionLifecycleStore:
             raise OSError("não foi possível persistir o ciclo de execução.") from exc
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
         try:
             with locked_path(self.path):
