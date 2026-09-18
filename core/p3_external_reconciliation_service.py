@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
-    ExternalOrderQueryByRequestIdPort,
     ExternalOrderQueryPort,
     ReconciliationResult,
 )
@@ -26,7 +25,8 @@ class ExternalExecutionReconciliationService:
         if not isinstance(coordinator, ExecutionReconciliationCoordinator):
             raise ValueError("coordinator inválido.")
         if not hasattr(query_port, "query_order") or not callable(query_port.query_order):
-            raise ValueError("query_port inválido.")
+            if not hasattr(query_port, "query_order_by_request_id") or not callable(query_port.query_order_by_request_id):
+                raise ValueError("query_port inválido.")
         self._coordinator = coordinator
         self._query_port = query_port
 
