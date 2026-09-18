@@ -61,3 +61,14 @@ def test_terminal_lifecycle_state_cannot_be_changed_by_put(tmp_path):
         store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.REJECTED, now))
 
     assert store.get("req-terminal").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_duplicate_persisted_request_id_fails_closed(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"req-dup","state":"PENDING","updated_at":"2026-01-01T00:00:00+00:00"},'
+        '{"request_id":"req-dup","state":"ACCEPTED","updated_at":"2026-01-01T00:01:00+00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="request_id duplicado"):
+        ExecutionLifecycleStore(path)
