@@ -249,6 +249,20 @@ def test_legacy_status_only_terminal_records_are_quarantined(tmp_path):
     assert ledger.external_id("legacy-1") is None
 
 
+def test_structured_terminal_without_external_id_is_quarantined(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"a": {"status": "ACCEPTED"}, '
+        '"b": {"status": "RECONCILED_EXECUTED"}, '
+        '"c": {"status": "RECONCILED_NOT_EXECUTED"}}',
+        encoding="utf-8",
+    )
+    ledger = ExecutionLedger(path)
+    assert ledger.status("a") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("b") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("c") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_legacy_accepted_without_external_id_is_not_authoritative(tmp_path):
     path = tmp_path / "ledger.json"
     path.write_text(
