@@ -68,3 +68,19 @@ def test_persisted_invalid_execution_state_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError):
         ExecutionAuditLog(OperationalSafetyStore(path))
+
+
+def test_append_does_not_mutate_memory_when_durability_fails(tmp_path, monkeypatch):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    log = ExecutionAuditLog(store)
+
+    def fail_append(_event):
+        raise OSError("simulated persistence failure")
+
+    monkeypatch.setattr(store, "append_execution_audit", fail_append)
+
+    with pytest.raises(OSError, match="simulated persistence failure"):
+        log.append(event())
+
+    assert log.events() == ()
+    assert store.load_execution_audit() == ()
