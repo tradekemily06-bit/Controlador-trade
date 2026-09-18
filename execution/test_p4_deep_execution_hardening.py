@@ -329,3 +329,82 @@ def test_explicit_reconciliation_updates_ledger_and_lifecycle(tmp_path):
     assert ledger.status("reconcile-me") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ledger.external_id("reconcile-me") == "broker-reconcile"
     assert lifecycle.get("reconcile-me").state is ExecutionLifecycleState.ACCEPTED
+
+
+class DemoOnlyAdapter:
+    def __init__(self):
+        self.calls = 0
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "demo accepted", "demo-ext")
+
+
+class ExplodingReconcileLifecycle(ExecutionLifecycleStore):
+    def reconcile(self, *args, **kwargs):
+        raise OSError("lifecycle reconcile failed")
+
+
+def test_demo_only_adapter_cannot_receive_real_dispatch(tmp_path):
+    adapter = DemoOnlyAdapter()
+    registry = BrokerRegistry()
+    registry.register("demo", adapter)
+    gateway = BrokerAdapterGateway(registry)
+    result = gateway.execute_real(
+        "demo",
+        request(),
+        capability=__import__("execution.adapter_gateway", fromlist=["_REAL_DISPATCH_CAPABILITY"])._REAL_DISPATCH_CAPABILITY,
+    )
+    assert result.accepted is False
+    assert adapter.calls == 0
+    assert "capacidade REAL" in result.message
+
+
+def test_direct_real_gateway_dispatch_without_sanctioned_capability_is_blocked(tmp_path):
+    adapter = FakeAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    gateway = BrokerAdapterGateway(registry)
+    result = gateway.execute("fake", request())
+    assert result.accepted is False
+    assert adapter.calls == 0
+    assert "RealExecutionGateway" in result.message
+
+
+def test_reconciliation_ledger_commit_before_lifecycle_failure_is_repairable(tmp_path):
+    adapter = FakeAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExplodingReconcileLifecycle(lifecycle_path)
+    gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+
+    ledger.reserve("reconcile-crash")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reconcile-crash",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    with pytest.raises(OSError, match="lifecycle reconcile failed"):
+        gw.reconcile_unknown(
+            "reconcile-crash",
+            executed=True,
+            external_id="broker-reconciled",
+        )
+
+    assert ExecutionLedger(ledger_path).status("reconcile-crash") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert adapter.calls == 0
+
+    healthy_lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    repaired = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path), healthy_lifecycle)
+    repaired.repair_lifecycle_projection("reconcile-crash")
+    assert healthy_lifecycle.get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
+    assert adapter.calls == 0
