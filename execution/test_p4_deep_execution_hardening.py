@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from datetime import datetime, timezone
 from pathlib import Path
+from multiprocessing import Process, Queue
 
 import pytest
 
@@ -232,6 +233,31 @@ def test_ledger_requires_external_id_for_executed_reconciliation(tmp_path):
     ledger.reserve("reconcile")
     with pytest.raises(ValueError, match="external_id"):
         ledger.reconcile("reconcile", executed=True)
+
+
+def _reserve_in_process(path, request_id, queue):
+    try:
+        ExecutionLedger(path).reserve(request_id)
+    except Exception as exc:
+        queue.put(type(exc).__name__)
+    else:
+        queue.put("OK")
+
+
+def test_ledger_reservation_is_interprocess_single_winner(tmp_path):
+    path = tmp_path / "ledger.json"
+    queue = Queue()
+    processes = [
+        Process(target=_reserve_in_process, args=(path, "same-request", queue))
+        for _ in range(2)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=10)
+    results = sorted(queue.get(timeout=5) for _ in processes)
+    assert results == ["OK", "ValueError"]
+    assert ExecutionLedger(path).status("same-request") is ExecutionLedgerStatus.RESERVED
 
 
 def test_ledger_requires_external_id_for_not_executed_reconciliation(tmp_path):
