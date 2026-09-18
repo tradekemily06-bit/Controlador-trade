@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from datetime import datetime
+from typing import Iterator
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -23,7 +31,11 @@ class ExecutionLifecycleRecord:
 
 
 class ExecutionLifecycleStore:
-    """Durable execution state; UNKNOWN is terminal until explicitly reconciled."""
+    """Durable lifecycle projection; UNKNOWN is terminal until explicit reconciliation.
+
+    Reads refresh from disk so separate processes do not rely on constructor-time
+    snapshots. Writes use an inter-process lock and atomic replacement.
+    """
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -51,7 +63,14 @@ class ExecutionLifecycleStore:
                 )
                 self._validate(record)
                 self._records[record.request_id] = record
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        except (
+            OSError,
+            UnicodeDecodeError,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
     @staticmethod
@@ -67,11 +86,15 @@ class ExecutionLifecycleStore:
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        previous = self._records.get(record.request_id)
-        if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+        with self._mutation_lock():
+            self._load()
+            previous = self._records.get(record.request_id)
+            if previous is not None:
+                if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                self._validate_transition(previous.state, record.state)
+            self._records[record.request_id] = record
+            self._save_unlocked()
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
@@ -79,28 +102,91 @@ class ExecutionLifecycleStore:
         self._load()
         return self._records.get(request_id)
 
-    def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+    def reconcile(
+        self,
+        request_id: str,
+        state: ExecutionLifecycleState,
+        *,
+        updated_at: datetime,
+        message: str = "",
+    ) -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("execução não encontrada.")
-        record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
-        self._validate(record)
-        self._records[request_id] = record
-        self._save()
-        return record
+        with self._mutation_lock():
+            self._load()
+            current = self._records.get(request_id)
+            if current is None:
+                raise ValueError("execução não encontrada.")
+            if current.state not in (
+                ExecutionLifecycleState.UNKNOWN,
+                ExecutionLifecycleState.PENDING,
+            ):
+                raise ValueError("execução não está em estado reconciliável.")
+            record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+            self._validate(record)
+            self._records[request_id] = record
+            self._save_unlocked()
+            return record
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
-    def _save(self) -> None:
+    @staticmethod
+    def _validate_transition(
+        current: ExecutionLifecycleState,
+        target: ExecutionLifecycleState,
+    ) -> None:
+        allowed = {
+            ExecutionLifecycleState.PENDING: {
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.ACCEPTED,
+                ExecutionLifecycleState.REJECTED,
+                ExecutionLifecycleState.UNKNOWN,
+            },
+            ExecutionLifecycleState.UNKNOWN: {ExecutionLifecycleState.UNKNOWN},
+            ExecutionLifecycleState.ACCEPTED: {ExecutionLifecycleState.ACCEPTED},
+            ExecutionLifecycleState.REJECTED: {ExecutionLifecycleState.REJECTED},
+        }
+        if target not in allowed[current]:
+            raise ValueError(
+                f"transição Lifecycle inválida: {current.value} -> {target.value}."
+            )
+
+    @contextmanager
+    def _mutation_lock(self) -> Iterator[None]:
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _save_unlocked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
-            ], ensure_ascii=False, indent=2, sort_keys=True),
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(
+                [
+                    {
+                        "request_id": r.request_id,
+                        "state": r.state.value,
+                        "updated_at": r.updated_at.isoformat(),
+                        "message": r.message,
+                    }
+                    for r in self.records_snapshot()
+                ],
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ),
             encoding="utf-8",
         )
+        os.replace(temporary, self.path)
+
+    def records_snapshot(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        return tuple(self._records[key] for key in sorted(self._records))
