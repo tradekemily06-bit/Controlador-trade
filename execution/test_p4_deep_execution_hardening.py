@@ -233,6 +233,32 @@ def test_ledger_requires_external_id_for_executed_reconciliation(tmp_path):
         ledger.reconcile("reconcile", executed=True)
 
 
+def test_ledger_requires_external_id_for_not_executed_reconciliation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("reconcile-not-executed")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.reconcile("reconcile-not-executed", executed=False)
+
+
+def test_legacy_status_only_terminal_records_are_quarantined(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('["legacy-1"]', encoding="utf-8")
+    ledger = ExecutionLedger(path)
+    assert ledger.status("legacy-1") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id("legacy-1") is None
+
+
+def test_legacy_accepted_without_external_id_is_not_authoritative(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"legacy-2": "ACCEPTED", "legacy-3": "RECONCILED_EXECUTED"}',
+        encoding="utf-8",
+    )
+    ledger = ExecutionLedger(path)
+    assert ledger.status("legacy-2") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("legacy-3") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_lifecycle_second_instance_sees_new_writes(tmp_path):
     path = tmp_path / "lifecycle.json"
     first = ExecutionLifecycleStore(path)
