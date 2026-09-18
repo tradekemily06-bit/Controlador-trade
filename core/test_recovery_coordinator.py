@@ -376,3 +376,14 @@ def test_checkpoint_lifecycle_timezone_mismatch_fails_closed(tmp_path):
     assert result.state is RecoveryState.INVALID
     assert result.can_resume is False
     assert "checkpoint de runtime inválido" in result.message
+
+
+def test_recovery_ignore_request_id_rejects_noncanonical_identity(tmp_path):
+    recovery = RecoveryCoordinator(
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+    )
+    import pytest
+    with pytest.raises(ValueError, match="ignore_request_id"):
+        recovery.assess(ignore_request_id=" req ")
