@@ -234,3 +234,110 @@ def test_request_id_recovery_binds_identity_even_when_external_order_is_still_pe
     assert ledger.external_id("req-pending-recovery") == "EXT-PENDING"
     assert ledger.status("req-pending-recovery") is ExecutionLedgerStatus.RESERVED
     assert lifecycle.get("req-pending-recovery").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_concurrent_request_id_recovery_same_identity_is_idempotent(tmp_path: Path):
+    from threading import Barrier, Thread
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-concurrent-recovery")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-concurrent-recovery",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    barrier = Barrier(2)
+    calls = []
+
+    class Query:
+        def query_order_by_request_id(self, request_id):
+            assert request_id == "req-concurrent-recovery"
+            calls.append(request_id)
+            barrier.wait()
+            return ExternalOrderObservation("EXT-CONCURRENT", ExternalOrderStatus.EXECUTED, "filled")
+
+    service_a = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle),
+        query_port=Query(),
+    )
+    service_b = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ExecutionLedger(tmp_path / "ledger.json"), lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json")),
+        query_port=Query(),
+    )
+
+    errors = []
+    results = []
+
+    def run(service):
+        try:
+            results.append(service.reconcile_request_by_request_id("req-concurrent-recovery"))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=run, args=(service_a,)), Thread(target=run, args=(service_b,))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(results) == 2
+    assert ledger.external_id("req-concurrent-recovery") == "EXT-CONCURRENT"
+    assert ledger.status("req-concurrent-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("req-concurrent-recovery").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_concurrent_request_id_recovery_conflicting_external_identity_fails_closed(tmp_path: Path):
+    from threading import Barrier, Thread
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-conflicting-recovery")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-conflicting-recovery",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    barrier = Barrier(2)
+
+    class QueryA:
+        def query_order_by_request_id(self, request_id):
+            barrier.wait()
+            return ExternalOrderObservation("EXT-A", ExternalOrderStatus.EXECUTED, "filled")
+
+    class QueryB:
+        def query_order_by_request_id(self, request_id):
+            barrier.wait()
+            return ExternalOrderObservation("EXT-B", ExternalOrderStatus.EXECUTED, "filled")
+
+    service_a = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle),
+        query_port=QueryA(),
+    )
+    service_b = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ExecutionLedger(tmp_path / "ledger.json"), lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json")),
+        query_port=QueryB(),
+    )
+
+    errors = []
+    threads = [
+        Thread(target=lambda: service_a.reconcile_request_by_request_id("req-conflicting-recovery"),),
+        Thread(target=lambda: service_b.reconcile_request_by_request_id("req-conflicting-recovery"),),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    final_ledger = ExecutionLedger(tmp_path / "ledger.json")
+    assert final_ledger.external_id("req-conflicting-recovery") in {"EXT-A", "EXT-B"}
+    assert final_ledger.status("req-conflicting-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
