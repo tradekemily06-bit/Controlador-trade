@@ -243,7 +243,9 @@ class BrokerAdapterGateway:
                 )
 
         try:
-            available = bool(adapter.is_available())
+            available = adapter.is_available()
+            if type(available) is not bool:
+                return AdapterExecutionResult(False, "adapter retornou disponibilidade inválida; dispatch bloqueado.")
         except Exception as exc:
             return AdapterExecutionResult(False, f"disponibilidade do adapter falhou: {exc}")
 
