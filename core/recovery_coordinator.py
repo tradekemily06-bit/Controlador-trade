@@ -92,7 +92,12 @@ class RecoveryCoordinator:
         orphaned_terminal_ledger = [
             request_id
             for request_id, status in ledger_statuses.items()
-            if status in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.REJECTED)
+            if status in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            )
             and request_id not in lifecycle_by_id
         ]
         if unknown or pending or inconsistent or ledger_uncertain or orphaned_terminal_ledger:
