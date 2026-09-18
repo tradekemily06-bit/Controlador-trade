@@ -169,75 +169,79 @@ class ExecutionReconciliationCoordinator:
         # this request. Without this lock, a worker could read an external
         # observation and change RESERVED -> terminal between the gateway final
         # authority check and the broker call (a TOCTOU race).
-        with self._ledger.request_execution_lock(request_id):
-            ledger_state = self._ledger.status(request_id)
-            lifecycle_record = self._lifecycle.get(request_id)
-            lifecycle_state = lifecycle_record.state if lifecycle_record is not None else None
-            bound_external_id = self._ledger.external_id(request_id)
+        with self._ledger.real_execution_lock():
+            # Reconciliation is a global REAL recovery-state mutation. It shares
+            # the same barrier as the final broker boundary so a new UNKNOWN or
+            # terminal result cannot invalidate an execution admission mid-flight.
+            with self._ledger.request_execution_lock(request_id):
+                ledger_state = self._ledger.status(request_id)
+                lifecycle_record = self._lifecycle.get(request_id)
+                lifecycle_state = lifecycle_record.state if lifecycle_record is not None else None
+                bound_external_id = self._ledger.external_id(request_id)
 
-            # Re-evaluate the observation against the authoritative state after
-            # acquiring the same lock used by REAL dispatch. The pre-lock
-            # validation is only an admission snapshot: execution may have
-            # completed while reconciliation was waiting. A stale observation
-            # must never be reported as successfully applied to a terminal
-            # request, especially when it contradicts the terminal outcome.
-            if bound_external_id is not None and bound_external_id != result.external_id:
-                raise ValueError(
-                    "external_id durável divergiu durante a reconciliação concorrente."
-                )
-            if ledger_state in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
-            ):
-                if ledger_target is not ExecutionLedgerStatus.RECONCILED_EXECUTED:
+                # Re-evaluate the observation against the authoritative state after
+                # acquiring the same lock used by REAL dispatch. The pre-lock
+                # validation is only an admission snapshot: execution may have
+                # completed while reconciliation was waiting. A stale observation
+                # must never be reported as successfully applied to a terminal
+                # request, especially when it contradicts the terminal outcome.
+                if bound_external_id is not None and bound_external_id != result.external_id:
                     raise ValueError(
-                        "observação externa diverge do resultado terminal já confirmado no ledger."
+                        "external_id durável divergiu durante a reconciliação concorrente."
                     )
-            elif ledger_state in (
-                ExecutionLedgerStatus.REJECTED,
-                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
-            ):
-                if ledger_target is not ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
-                    raise ValueError(
-                        "observação externa diverge do resultado terminal já confirmado no ledger."
-                    )
-            elif ledger_state is None:
-                raise ValueError("ledger ausente durante a reconciliação concorrente.")
-
-            if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-                try:
-                    self._ledger.reconcile(request_id, executed=executed)
-                except ValueError:
-                    raced_state = self._ledger.status(request_id)
-                    if raced_state is not ledger_target:
-                        raise
-                    raced_external_id = self._ledger.external_id(request_id)
-                    if raced_external_id != result.external_id:
+                if ledger_state in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ):
+                    if ledger_target is not ExecutionLedgerStatus.RECONCILED_EXECUTED:
                         raise ValueError(
-                            "external_id durável mudou ou divergiu durante a reconciliação concorrente."
+                            "observação externa diverge do resultado terminal já confirmado no ledger."
                         )
+                elif ledger_state in (
+                    ExecutionLedgerStatus.REJECTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                ):
+                    if ledger_target is not ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+                        raise ValueError(
+                            "observação externa diverge do resultado terminal já confirmado no ledger."
+                        )
+                elif ledger_state is None:
+                    raise ValueError("ledger ausente durante a reconciliação concorrente.")
 
-            lifecycle_record = self._lifecycle.get(request_id)
-            if lifecycle_record is None:
-                self._lifecycle.put(
-                    ExecutionLifecycleRecord(
-                        request_id,
-                        lifecycle_target,
-                        timestamp,
-                        f"reconciliado externamente: {result.message}",
+                if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                    try:
+                        self._ledger.reconcile(request_id, executed=executed)
+                    except ValueError:
+                        raced_state = self._ledger.status(request_id)
+                        if raced_state is not ledger_target:
+                            raise
+                        raced_external_id = self._ledger.external_id(request_id)
+                        if raced_external_id != result.external_id:
+                            raise ValueError(
+                                "external_id durável mudou ou divergiu durante a reconciliação concorrente."
+                            )
+
+                lifecycle_record = self._lifecycle.get(request_id)
+                if lifecycle_record is None:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            lifecycle_target,
+                            timestamp,
+                            f"reconciliado externamente: {result.message}",
+                        )
                     )
-                )
-            elif lifecycle_record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
-                try:
-                    self._lifecycle.reconcile(
-                        request_id,
-                        lifecycle_target,
-                        updated_at=timestamp,
-                        message=f"reconciliado externamente: {result.message}",
-                    )
-                except ValueError:
-                    raced_lifecycle = self._lifecycle.get(request_id)
-                    if raced_lifecycle is None or raced_lifecycle.state is not lifecycle_target:
-                        raise
+                elif lifecycle_record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                    try:
+                        self._lifecycle.reconcile(
+                            request_id,
+                            lifecycle_target,
+                            updated_at=timestamp,
+                            message=f"reconciliado externamente: {result.message}",
+                        )
+                    except ValueError:
+                        raced_lifecycle = self._lifecycle.get(request_id)
+                        if raced_lifecycle is None or raced_lifecycle.state is not lifecycle_target:
+                            raise
 
         return result
