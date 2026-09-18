@@ -281,7 +281,7 @@ def test_record_operation_does_not_report_failure_after_durable_commit(tmp_path,
         tmp_path / "operations.json",
         safety_path=tmp_path / "safety.json",
     )
-    snapshot = make_snapshot()
+    snapshot = _snapshot(0)
     monkeypatch.setattr(recorder, "_reload_memory", lambda: (_ for _ in ()).throw(OSError("reload failed")))
     monkeypatch.setattr(recorder, "_reload_safety", lambda: (_ for _ in ()).throw(OSError("reload failed")))
 
@@ -294,7 +294,7 @@ def test_record_operation_does_not_report_failure_after_durable_commit(tmp_path,
 def test_settle_operation_durable_commit_is_not_rolled_back_by_reload_failure(tmp_path, monkeypatch):
     path = tmp_path / "operations.json"
     recorder = PersistentOperationalRecorder.from_path(path, safety_path=tmp_path / "safety.json")
-    snapshot = make_snapshot()
+    snapshot = _snapshot(0)
     recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
 
     monkeypatch.setattr(recorder, "_reload_memory", lambda: (_ for _ in ()).throw(OSError("reload failed")))
