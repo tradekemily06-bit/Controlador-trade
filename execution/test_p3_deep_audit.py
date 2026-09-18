@@ -6,7 +6,7 @@ from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
