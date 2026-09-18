@@ -14,6 +14,7 @@ from core.operational_safety_store import OperationalSafetyStore
 from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import (
     ExecutionLifecycleRecord,
     ExecutionLifecycleState,
