@@ -23,6 +23,7 @@ from execution.execution_lifecycle import (
 )
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_composition import build_real_execution_gateway
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
@@ -321,11 +322,11 @@ def test_explicit_reconciliation_updates_ledger_and_lifecycle(tmp_path):
             "reconcile-me", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
         )
     )
-    gw.reconcile_unknown(
-        "reconcile-me",
-        executed=True,
-        external_id="broker-reconcile",
+    reconciliation = ExternalOrderReconciliationBoundary().reconcile(
+        "broker-reconcile",
+        ExternalOrderObservation("broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"),
     )
+    gw.reconcile_unknown("reconcile-me", reconciliation=reconciliation)
     assert ledger.status("reconcile-me") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ledger.external_id("reconcile-me") == "broker-reconcile"
     assert lifecycle.get("reconcile-me").state is ExecutionLifecycleState.ACCEPTED
@@ -394,11 +395,11 @@ def test_reconciliation_ledger_commit_before_lifecycle_failure_is_repairable(tmp
     )
 
     with pytest.raises(OSError, match="lifecycle reconcile failed"):
-        gw.reconcile_unknown(
-            "reconcile-crash",
-            executed=True,
-            external_id="broker-reconciled",
+        reconciliation = ExternalOrderReconciliationBoundary().reconcile(
+            "broker-reconciled",
+            ExternalOrderObservation("broker-reconciled", ExternalOrderStatus.EXECUTED, "confirmed"),
         )
+        gw.reconcile_unknown("reconcile-crash", reconciliation=reconciliation)
 
     assert ExecutionLedger(ledger_path).status("reconcile-crash") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert adapter.calls == 0
