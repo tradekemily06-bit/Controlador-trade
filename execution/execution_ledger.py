@@ -92,6 +92,15 @@ class ExecutionLedger:
                 not isinstance(external_id, str) or not external_id.strip()
             ):
                 raise ValueError("external_id persistido inválido.")
+            # A hand-edited or old structured record must not manufacture
+            # terminal REAL authority merely by naming a terminal status.
+            # Evidence-bearing terminal states require a durable broker ID.
+            if status in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ) and external_id is None:
+                status = ExecutionLedgerStatus.UNKNOWN
             states[request_id] = ExecutionLedgerEntry(status, external_id)
         return states
 
