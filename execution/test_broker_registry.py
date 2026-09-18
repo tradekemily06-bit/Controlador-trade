@@ -68,3 +68,13 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_rejects_non_boolean_availability():
+    registry = BrokerRegistry()
+    registry.register("broken", FakeAdapter(available="yes"))
+
+    with pytest.raises(BrokerRegistryError, match="disponibilidade inválida"):
+        registry.is_available("broken")
+    with pytest.raises(BrokerRegistryError, match="disponibilidade inválida"):
+        registry.info()
