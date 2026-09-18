@@ -114,7 +114,7 @@ class BrokerAdapterGateway:
             or not request_id.strip()
             or not isinstance(authorization_id, str)
             or not authorization_id.strip()
-            or not isinstance(request, ExecutionRequest)
+            or type(request) is not ExecutionRequest
             or request.mode is not ExecutionMode.REAL
             or request.request_id != request_id
         ):
