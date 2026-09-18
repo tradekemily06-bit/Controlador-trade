@@ -382,9 +382,9 @@ def test_reconciliation_rejects_noncanonical_request_id_before_broker_query(tmp_
     )
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    ledger.reserve(" req ")
-    ledger.attach_external_id(" req ", "external-2")
-    ledger.mark_unknown(" req ")
+    ledger.reserve("req")
+    ledger.attach_external_id("req", "external-2")
+    ledger.mark_unknown("req")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     with pytest.raises(ValueError, match="não canônico"):
         gateway.reconcile_unknown(
