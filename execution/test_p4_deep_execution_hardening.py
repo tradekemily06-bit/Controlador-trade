@@ -1179,3 +1179,15 @@ def test_ledger_rejects_duplicate_json_keys(tmp_path):
     )
     with pytest.raises(ValueError, match="chave duplicada"):
         ExecutionLedger(path)
+
+
+
+def test_lifecycle_rejects_duplicate_json_keys(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id": "dup", "request_id": "other", "state": "UNKNOWN", '
+        '"updated_at": "2026-09-18T00:00:00+00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
