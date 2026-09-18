@@ -334,3 +334,24 @@ def test_checkpoint_older_than_associated_lifecycle_fails_closed(tmp_path):
     assert result.state is RecoveryState.INVALID
     assert result.can_resume is False
     assert "desatualizado" in result.message
+
+
+def test_checkpoint_lifecycle_timezone_mismatch_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint("session-1", 3, "req-timezone", datetime(2026, 9, 18, 10, 0))
+    )
+    coordinator.execution_ledger.reserve("req-timezone")
+    coordinator.execution_ledger.mark_accepted("req-timezone")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(
+            "req-timezone",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime(2026, 9, 18, 10, 1, tzinfo=timezone.utc),
+            "terminal",
+        )
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "timezone" in result.message
