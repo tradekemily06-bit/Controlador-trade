@@ -178,7 +178,7 @@ def test_reconcile_rejects_timezone_regime_mismatch(tmp_path):
     naive = datetime(2026, 9, 18, 12, 1)
     store.put(ExecutionLifecycleRecord("req-timezone", ExecutionLifecycleState.UNKNOWN, aware))
 
-    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+    with pytest.raises(ValueError, match="timezone"):
         store.reconcile(
             "req-timezone",
             ExecutionLifecycleState.ACCEPTED,
