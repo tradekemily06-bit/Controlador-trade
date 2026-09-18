@@ -108,7 +108,41 @@ class ExecutionLedger:
         except OSError as exc:
             raise OSError("não foi possível persistir o ledger de execução.") from exc
 
+    def request_execution_lock(self, request_id: str):
+        """Validate the request identity immediately, then return its lock context."""
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico.")
+        return self._request_execution_lock_context(request_id)
+
     @contextmanager
+    def _request_execution_lock_context(self, request_id: str):
+        # Never place the raw request_id in a filesystem path. Even though
+        # request IDs are normally generated internally, a public execution
+        # boundary must not turn an untrusted identifier into a path segment.
+        request_key = hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+        lock_path = self.path.with_name(
+            f".{self.path.name}.{request_key}.execution.lock"
+        )
+        held = getattr(self._request_lock_local, "held", set())
+        if lock_path in held:
+            yield
+            return
+        lock_path.touch(exist_ok=True)
+        try:
+            with locked_path(lock_path):
+                held.add(lock_path)
+                self._request_lock_local.held = held
+                try:
+                    yield
+                finally:
+                    held.discard(lock_path)
+                    self._request_lock_local.held = held
+        finally:
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
+
     def request_execution_lock(self, request_id: str):
         """Serialize dispatch/reconciliation for one request across processes."""
         if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
