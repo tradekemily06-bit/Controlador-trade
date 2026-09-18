@@ -323,7 +323,7 @@ class RealExecutionGateway:
         lookup and therefore remains UNKNOWN until a broker-neutral
         request-id/client-order-id query port exists.
         """
-        if not isinstance(reconciliation_boundary, ExternalOrderReconciliationBoundary):
+        if type(reconciliation_boundary) is not ExternalOrderReconciliationBoundary:
             raise ValueError("boundary de reconciliação inválida.")
         if not isinstance(authorization, RealExecutionAuthorization):
             raise ValueError("autorização REAL inválida.")
