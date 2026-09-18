@@ -57,6 +57,26 @@ def test_pending_requires_verification(tmp_path):
     assert result.pending_request_ids == ("req-1",)
 
 
+def test_terminal_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-pending-divergence")
+    coordinator.execution_ledger.mark_accepted("req-pending-divergence")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(
+            "req-pending-divergence",
+            ExecutionLifecycleState.PENDING,
+            now,
+            "stale pending projection",
+        )
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "inconsistente" in result.message
+
+
 def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
