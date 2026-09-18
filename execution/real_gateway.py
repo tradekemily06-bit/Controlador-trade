@@ -415,10 +415,9 @@ class RealExecutionGateway:
     ) -> None:
         """Explicitly reconcile uncertainty without ever resubmitting the order.
 
-        When a lifecycle store is configured, reconciliation must cross both
-        durable authorities and must carry the exact durable external identity.
-        The legacy ledger-only path remains available only when no lifecycle
-        authority was configured.
+        Reconciliation must cross durable authorities and carry externally
+        observed identity. A bare boolean cannot prove broker state, so the
+        old ledger-only reconciliation path is intentionally fail-closed.
         """
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
@@ -427,8 +426,10 @@ class RealExecutionGateway:
             raise ValueError("request_id não está em estado incerto reconciliável.")
 
         if self._lifecycle is None:
-            self._ledger.reconcile(request_id, executed=executed)
-            return
+            raise ValueError(
+                "reconciliação REAL exige lifecycle + observação externa; "
+                "um booleano local não é evidência do estado do broker."
+            )
 
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError(
