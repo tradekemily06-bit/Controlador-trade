@@ -194,3 +194,25 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability():
 
     assert result.accepted is False
     assert adapter.calls == 0
+
+
+def test_real_dispatch_rejects_overridable_capability_subclass():
+    from execution.adapter_gateway import _RealDispatchCapability
+
+    class CapabilityOverride(_RealDispatchCapability):
+        @property
+        def adapter(self):
+            raise AssertionError("capability override must never be trusted")
+
+    adapter = FakeAdapter()
+    gateway = gateway_with(adapter)
+    forged = object.__new__(CapabilityOverride)
+    object.__setattr__(forged, "_adapter", adapter)
+    object.__setattr__(forged, "_adapter_id", "fake-adapter")
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=forged,
+    )
+    assert result.accepted is False
+    assert adapter.calls == 0
