@@ -208,6 +208,10 @@ class OperationalSafetyStore:
                 if execution_audit:
                     last_timestamp = datetime.fromisoformat(str(execution_audit[-1]["timestamp"]))
                     event_timestamp = datetime.fromisoformat(str(normalized["timestamp"]))
+                    last_aware = last_timestamp.tzinfo is not None and last_timestamp.utcoffset() is not None
+                    event_aware = event_timestamp.tzinfo is not None and event_timestamp.utcoffset() is not None
+                    if last_aware != event_aware:
+                        raise ValueError("timestamps da auditoria de execução devem usar o mesmo regime de timezone.")
                     if event_timestamp < last_timestamp:
                         raise ValueError("auditoria de execução deve permanecer cronológica.")
                 if normalized not in execution_audit:
@@ -242,6 +246,10 @@ class OperationalSafetyStore:
                         if merged:
                             last_timestamp = datetime.fromisoformat(str(merged[-1]["timestamp"]))
                             event_timestamp = datetime.fromisoformat(str(event["timestamp"]))
+                            last_aware = last_timestamp.tzinfo is not None and last_timestamp.utcoffset() is not None
+                            event_aware = event_timestamp.tzinfo is not None and event_timestamp.utcoffset() is not None
+                            if last_aware != event_aware:
+                                raise ValueError("timestamps da auditoria de execução devem usar o mesmo regime de timezone.")
                             if event_timestamp < last_timestamp:
                                 raise ValueError("auditoria de execução deve permanecer cronológica.")
                         merged.append(event)
