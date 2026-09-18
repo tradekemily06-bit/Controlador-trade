@@ -7,6 +7,7 @@ from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
@@ -243,12 +244,34 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     try:
-        gateway.reconcile_unknown("unknown-2", executed=True)
+        gateway.reconcile_unknown("unknown-2", observation=ExternalOrderObservation("EXT-UNKNOWN", ExternalOrderStatus.EXECUTED, "test"))
     except ValueError as exc:
         assert "lifecycle" in str(exc)
     else:
         raise AssertionError("REAL reconciliation must require durable external evidence")
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_reconciliation_cannot_manufacture_external_evidence(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(tmp_path, registry, ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="synthetic", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    try:
+        gateway.reconcile_unknown("synthetic", observation="EXECUTED")
+    except ValueError as exc:
+        assert "observação externa" in str(exc)
+    else:
+        raise AssertionError("REAL reconciliation must require a broker observation object")
+    assert ledger.status("synthetic") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -265,7 +288,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     ExecutionLedger(path).bind_external_id("crashed", "EXT-CRASHED")
-    gateway.reconcile_unknown("crashed", executed=False, external_id="EXT-CRASHED")
+    gateway.reconcile_unknown("crashed", observation=ExternalOrderObservation("EXT-CRASHED", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed not executed"))
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
