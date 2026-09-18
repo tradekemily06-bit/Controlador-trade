@@ -8,6 +8,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -32,16 +33,19 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, recovery: RecoveryCoordinator | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle inválido.")
+        if recovery is not None and not isinstance(recovery, RecoveryCoordinator):
+            raise ValueError("recovery inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._recovery = recovery
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -92,6 +96,14 @@ class RealExecutionGateway:
         if normalized_broker != admission.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
 
+        if self._recovery is not None:
+            recovery = self._recovery.assess()
+            if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    f"execução REAL bloqueada pelo estado de recovery: {recovery.state.value}; reconciliação necessária antes de novo envio.",
+                )
+
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -133,6 +145,30 @@ class RealExecutionGateway:
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+
+        if self._recovery is not None:
+            final_recovery = self._recovery.assess()
+            if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError):
+                    pass
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                f"recovery mudou antes do executor REAL: {final_recovery.state.value}",
+                            )
+                        )
+                    except (OSError, ValueError):
+                        pass
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    f"execução REAL bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
+                )
 
         try:
             result = self._gateway.execute(broker, request)
