@@ -1367,3 +1367,68 @@ def test_real_gateway_lifecycle_admission_failure_persists_unknown_in_both_autho
     assert adapter.calls == 0
     assert ledger.status("real-lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("real-lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_reconciliation_race_after_final_admission_check_never_dispatches(tmp_path: Path, monkeypatch):
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", "EXT-SHOULD-NOT-HAPPEN")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    auth, admission, safety = _contracts()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+    )
+
+    original_status = ledger.status
+    calls = {"count": 0}
+
+    def status_with_reconciliation(request_id):
+        calls["count"] += 1
+        status = original_status(request_id)
+        if (
+            request_id == "real-reconciliation-race"
+            and status is ExecutionLedgerStatus.RESERVED
+            and calls["count"] >= 2
+        ):
+            ledger.bind_external_id(request_id, "EXT-RECONCILED")
+            ledger.reconcile(request_id, executed=True)
+            lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message="reconciliado antes do broker",
+            )
+            return ExecutionLedgerStatus.RECONCILED_EXECUTED
+        return status
+
+    monkeypatch.setattr(ledger, "status", status_with_reconciliation)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="real-reconciliation-race",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(ledger_path).status("real-reconciliation-race") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("real-reconciliation-race").state is ExecutionLifecycleState.ACCEPTED
