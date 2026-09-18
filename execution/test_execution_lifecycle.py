@@ -151,3 +151,20 @@ def test_stale_lifecycle_record_cannot_regress_durable_timestamp(tmp_path):
 
     assert store.get("req-stale").updated_at == newer
     assert store.get("req-stale").message == "newer"
+
+
+def test_reconcile_rejects_timestamp_regression(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    current = datetime(2026, 9, 18, 12, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 18, 11, 59, tzinfo=timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-time", ExecutionLifecycleState.UNKNOWN, current))
+    with pytest.raises(ValueError, match="timestamp persistido"):
+        store.reconcile(
+            "req-time",
+            ExecutionLifecycleState.ACCEPTED,
+            updated_at=older,
+            message="stale",
+        )
+    assert store.get("req-time").state is ExecutionLifecycleState.UNKNOWN
+    assert store.get("req-time").updated_at == current
