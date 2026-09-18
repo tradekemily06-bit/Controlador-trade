@@ -1151,7 +1151,7 @@ def test_real_gateway_blocks_before_dispatch_when_durable_recovery_is_uncertain(
     assert ExecutionLedger(ledger_path).status("new-real-request") is None
 
 
-def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path: Path, monkeypatch):
+def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation_without_dispatch(tmp_path: Path, monkeypatch):
     class CountingAdapter:
         def __init__(self):
             self.calls = 0
@@ -1205,7 +1205,7 @@ def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
-    assert ledger.status("guarded-real-request") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("guarded-real-request") is ExecutionLedgerStatus.REJECTED
     assert ledger.status("racing-real-worker") is ExecutionLedgerStatus.RESERVED
     assert calls["count"] >= 2
 
@@ -1417,7 +1417,7 @@ def test_recovery_worker_racing_reconciliation_worker_never_reopens_terminal_sta
     assert lifecycle.get("recovery-vs-reconciliation").state is ExecutionLifecycleState.ACCEPTED
 
 
-def test_real_gateway_lifecycle_admission_failure_persists_unknown_in_both_authorities(tmp_path: Path, monkeypatch):
+def test_real_gateway_lifecycle_admission_failure_persists_rejected_in_both_authorities(tmp_path: Path, monkeypatch):
     class CountingAdapter:
         def __init__(self):
             self.calls = 0
@@ -1462,8 +1462,8 @@ def test_real_gateway_lifecycle_admission_failure_persists_unknown_in_both_autho
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
-    assert ledger.status("real-lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("real-lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
+    assert ledger.status("real-lifecycle-admission-failure") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("real-lifecycle-admission-failure").state is ExecutionLifecycleState.REJECTED
 
 
 
