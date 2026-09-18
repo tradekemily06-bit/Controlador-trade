@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
+    ExternalOrderQueryByRequestIdPort,
     ExternalOrderQueryPort,
     ReconciliationResult,
 )
@@ -53,5 +54,47 @@ class ExternalExecutionReconciliationService:
         return self._coordinator.reconcile(
             request_id,
             external_id,
+            observation,
+        )
+
+
+    def reconcile_request_by_request_id(
+        self,
+        request_id: str,
+    ) -> ReconciliationResult:
+        """Recover a lost external_id through a broker's read-only request-id query.
+
+        This is intentionally opt-in: adapters that do not explicitly expose
+        query_order_by_request_id cannot use this path. No order submission is
+        ever attempted here.
+        """
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+
+        query = self._query_port
+        method = getattr(query, "query_order_by_request_id", None)
+        if not callable(method):
+            raise ValueError(
+                "o adapter não oferece consulta externa somente-leitura por request_id; "
+                "reconciliação automática não é segura neste cenário."
+            )
+
+        observation = method(request_id.strip())
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("consulta externa por request_id retornou observação inválida.")
+        if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+            raise ValueError("consulta externa por request_id não retornou external_id.")
+        durable_external_id = self._coordinator.external_id_for(request_id)
+        if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
+            raise ValueError(
+                "consulta por request_id retornou external_id diferente da identidade durável."
+            )
+
+        if durable_external_id is None:
+            self._coordinator.bind_external_id(request_id, observation.external_id.strip())
+
+        return self._coordinator.reconcile(
+            request_id,
+            observation.external_id.strip(),
             observation,
         )
