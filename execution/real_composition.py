@@ -19,7 +19,7 @@ def build_real_execution_gateway(
     No broker adapter is executed here. Construction only wires the already
     registered broker boundary to the single durable ledger/lifecycle stores.
     """
-    if not isinstance(registry, BrokerRegistry):
+    if type(registry) is not BrokerRegistry:
         raise ValueError("registry inválido.")
 
     root = Path(root)
