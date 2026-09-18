@@ -120,26 +120,6 @@ class RecoveryCoordinator:
                 "; ".join(details),
             )
 
-        has_terminal_execution = any(
-            status in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.REJECTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
-                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
-            )
-            for status in ledger_statuses.values()
-        )
-        # FRESH means there is no durable runtime/execution history at all.
-        # Once a terminal execution exists, a restart is a resume even when the
-        # runtime checkpoint is absent.
-        state = (
-            RecoveryState.FRESH
-            if checkpoint is None and not has_terminal_execution
-            else RecoveryState.SAFE_TO_RESUME
-        )
-        message = (
-            "nenhum estado pendente; retomada segura sem replay automático"
-            if state is RecoveryState.SAFE_TO_RESUME
-            else "nenhum checkpoint nem execução persistida; sessão pode iniciar com segurança"
-        )
+        state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
+        message = "nenhum estado pendente; retomada segura sem replay automático" if checkpoint else "nenhum checkpoint; sessão pode iniciar com segurança"
         return RecoveryAssessment(state, checkpoint, (), (), message)
