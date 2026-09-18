@@ -15,7 +15,9 @@ class ReadinessEvidenceRef:
 
     The reference identifies where the proof lives. It does not itself create
     authorization or imply that the referenced artifact is valid; callers must
-    supply the actual, current evidence.
+    supply the actual, current evidence. External evidence is deliberately not
+    fetched here: readiness remains a governance assessment, not an authorization
+    or deployment mechanism.
     """
 
     gate: str
