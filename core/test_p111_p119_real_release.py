@@ -25,6 +25,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 class FakeAdapter:
     supports_real_execution = True
+    adapter_id = "fake-adapter"
 
     def __init__(self, available=True):
         self.available = available
