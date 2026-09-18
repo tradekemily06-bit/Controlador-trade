@@ -94,11 +94,18 @@ def _safety(auth=None):
 
 
 def _admission(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter", auth=None, audit_id="a116"):
-    return RealAdmissionBoundary().admit(admission_id="adm", audit_id=audit_id, audit_verified=True,
-                                         authorization_active=True if auth is None else auth.active,
-                                         safety_ready=True, broker_available=True, broker_id=broker_id,
-                                         adapter_id=adapter_id, request_id=request_id, symbol=symbol)
-
+    admission_auth = auth if auth is not None and auth.active else _authorization(
+        request_id=request_id, symbol=symbol, broker_id=broker_id, adapter_id=adapter_id
+    )
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id=audit_id, pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    return RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id=audit_id, audit_verified=audit,
+        authorization_active=admission_auth, safety_ready=True, broker_available=True,
+        broker_id=broker_id, adapter_id=adapter_id, request_id=request_id, symbol=symbol,
+    )
 
 def _request(request_id="req-1", symbol="TEST", state=None):
     state = state or _risk_state()
