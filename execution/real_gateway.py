@@ -97,8 +97,8 @@ class RealExecutionGateway:
         admission: RealAdmission,
         safety: RealSafetyReport,
     ) -> RealGatewayResult:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido ou não canônico.")
         if type(authorization) is not RealExecutionAuthorization:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "autorização REAL inválida.")
         if type(admission) is not RealAdmission:
@@ -126,10 +126,10 @@ class RealExecutionGateway:
             )
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if request.request_id != request_id:
+        if request.request_id != request_id or request_id != request_id.strip():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
-                "request_id externo e request.request_id precisam coincidir no REAL.",
+                "request_id externo e request.request_id precisam coincidir exatamente e ser canônicos no REAL.",
             )
         if type(broker) is not str or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
@@ -363,6 +363,16 @@ class RealExecutionGateway:
         reconciliation_boundary: ExternalOrderReconciliationBoundary,
     ) -> None:
         # The caller already holds the global -> request REAL lock.
+        # Check the authoritative durable state before touching the broker.
+        # A reconciliation query is not an execution, but it is still an
+        # external side effect and must never be used to probe arbitrary IDs.
+        status = self._ledger.status(request_id)
+        if status not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
+            raise ValueError("request_id não está em estado incerto reconciliável.")
+
         query_port = self._gateway.real_query_port(
             broker,
             expected_adapter_id=authorization.adapter_id,
@@ -371,13 +381,6 @@ class RealExecutionGateway:
             raise ValueError(
                 "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
             )
-
-        status = self._ledger.status(request_id)
-        if status not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
         lifecycle_status = self._lifecycle_state(request_id)
         consistency = self._check_consistency(status, lifecycle_status, request_id)
         # A persistence failure can leave the authoritative Ledger in
