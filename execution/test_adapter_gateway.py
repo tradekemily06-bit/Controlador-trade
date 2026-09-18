@@ -37,18 +37,14 @@ def gateway_with(adapter):
 
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert adapter.calls == 0
 
 
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
@@ -57,9 +53,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
 
 def test_adapter_gateway_handles_adapter_exception_fail_closed():
     adapter = FakeAdapter(error=True)
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert result.execution is None
     assert adapter.calls == 1
@@ -67,9 +61,7 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
 
 def test_adapter_gateway_rejects_invalid_adapter_result():
     adapter = FakeAdapter(result="invalid")
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert result.execution is None
 
@@ -77,16 +69,17 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
-
     result = gateway.execute("missing", request())
-
     assert result.accepted is False
     assert result.execution is None
 
 
 def test_adapter_gateway_rejects_direct_real_dispatch():
     adapter = FakeAdapter()
-    result = gateway_with(adapter).execute("fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"))
+    result = gateway_with(adapter).execute(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
+    )
     assert result.accepted is False
     assert adapter.calls == 0
 
@@ -94,7 +87,9 @@ def test_adapter_gateway_rejects_direct_real_dispatch():
 def test_real_capability_is_pinned_to_adapter_instance():
     first = FakeAdapter()
     gateway = gateway_with(first)
-    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth")
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
     assert capability is not None
     second = FakeAdapter()
     gateway._registry._adapters["fake"] = second
@@ -109,20 +104,20 @@ def test_real_capability_is_pinned_to_adapter_instance():
     assert second.calls == 0
 
 
-
 def test_real_dispatch_rejects_overridable_registry_before_dispatch():
     class FlipRegistry(BrokerRegistry):
         pass
-
     with pytest.raises(ValueError, match="registry inválido"):
         BrokerAdapterGateway(FlipRegistry())
+
 
 def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth")
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
     assert capability is not None
-
     adapter.adapter_id = "different-adapter"
     result = gateway._execute_real(
         "fake",
@@ -131,10 +126,8 @@ def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
         request_id="real-test",
         authorization_id="auth",
     )
-
     assert result.accepted is False
     assert adapter.calls == 0
-
 
 
 def test_real_dispatch_rechecks_mutable_capability_after_availability_identity_type():
@@ -142,12 +135,12 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability_identity_t
         def is_available(self):
             self.adapter_id = 123
             return True
-
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth")
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
     assert capability is not None
-
     result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
@@ -155,7 +148,6 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability_identity_t
         request_id="real-test",
         authorization_id="auth",
     )
-
     assert result.accepted is False
     assert adapter.calls == 0
 
@@ -165,12 +157,12 @@ def test_real_dispatch_rechecks_mutable_supports_real_after_availability():
         def is_available(self):
             self.supports_real_execution = False
             return True
-
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth")
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
     assert capability is not None
-
     result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
@@ -178,7 +170,6 @@ def test_real_dispatch_rechecks_mutable_supports_real_after_availability():
         request_id="real-test",
         authorization_id="auth",
     )
-
     assert result.accepted is False
     assert adapter.calls == 0
 
@@ -188,12 +179,12 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability():
         def is_available(self):
             self.adapter_id = "changed-during-availability"
             return True
-
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth")
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
     assert capability is not None
-
     result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
@@ -201,19 +192,16 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability():
         request_id="real-test",
         authorization_id="auth",
     )
-
     assert result.accepted is False
     assert adapter.calls == 0
 
 
 def test_real_dispatch_rejects_overridable_capability_subclass():
     from execution.adapter_gateway import _RealDispatchCapability
-
     class CapabilityOverride(_RealDispatchCapability):
         @property
         def adapter(self):
             raise AssertionError("capability override must never be trusted")
-
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
     forged = object.__new__(CapabilityOverride)
@@ -232,7 +220,6 @@ def test_real_dispatch_rejects_overridable_capability_subclass():
 
 def test_real_dispatch_rejects_forged_exact_capability_instance():
     from execution.adapter_gateway import _RealDispatchCapability
-
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
     forged = _RealDispatchCapability(adapter, "fake-adapter", "fake", "real-test", "auth")
@@ -240,6 +227,8 @@ def test_real_dispatch_rejects_forged_exact_capability_instance():
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"),
         capability=forged,
+        request_id="real-test",
+        authorization_id="auth",
     )
     assert result.accepted is False
     assert "não emitida pelo gateway" in result.message
@@ -276,7 +265,6 @@ def test_real_dispatch_rejects_context_reuse_for_different_request():
 def test_real_dispatch_rejects_execution_request_subclass():
     class RequestOverride(ExecutionRequest):
         pass
-
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
     capability = gateway._real_dispatch_capability(
