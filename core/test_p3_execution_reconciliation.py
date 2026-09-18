@@ -256,3 +256,22 @@ def test_terminal_ledger_with_bound_external_id_rejects_foreign_external_fact(tm
     assert ledger.status(request_id) is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id(request_id) == "ext-terminal"
     assert lifecycle.get(request_id) is None
+
+
+def test_terminal_ledger_without_external_id_cannot_consume_foreign_external_fact(tmp_path):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-legacy-terminal"
+    now = datetime.now(timezone.utc)
+    ledger.record(request_id)
+
+    with pytest.raises(ValueError, match="external_id durável"):
+        ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
+            request_id,
+            "ext-unproven-terminal",
+            ExternalOrderObservation("ext-unproven-terminal", ExternalOrderStatus.EXECUTED, "filled"),
+            updated_at=now,
+        )
+
+    assert ledger.status(request_id) is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id(request_id) is None
+    assert lifecycle.get(request_id) is None
