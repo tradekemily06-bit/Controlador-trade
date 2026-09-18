@@ -82,6 +82,6 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
 def test_adapter_gateway_rejects_direct_real_dispatch():
     adapter = FakeAdapter()
-    result = gateway_with(adapter).execute("fake", request().__class__("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL))
+    result = gateway_with(adapter).execute("fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL))
     assert result.accepted is False
     assert adapter.calls == 0
