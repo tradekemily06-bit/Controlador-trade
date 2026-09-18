@@ -336,3 +336,76 @@ def test_real_gateway_rejected_persists_lifecycle_rejected(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.REJECTED
     assert ExecutionLifecycleStore(lifecycle_path).get("real-rejected-lifecycle").state is ExecutionLifecycleState.REJECTED
+
+
+def test_real_accepted_without_external_id_marks_both_authorities_unknown(tmp_path: Path):
+    class AcceptedWithoutIdentity:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            return ExecutionResult(True, "accepted but no broker identity", None)
+
+    registry = BrokerRegistry()
+    registry.register("fake", AcceptedWithoutIdentity())
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    ).execute(
+        broker="fake",
+        request_id="accepted-no-external-id",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ExecutionLedger(ledger_path).status("accepted-no-external-id").value == "UNKNOWN"
+    assert ExecutionLifecycleStore(lifecycle_path).get("accepted-no-external-id").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_accepted_terminal_persistence_failure_marks_lifecycle_unknown(tmp_path: Path, monkeypatch):
+    class AcceptedAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            return ExecutionResult(True, "accepted", "EXT-POST-ACCEPT")
+
+    registry = BrokerRegistry()
+    registry.register("fake", AcceptedAdapter())
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    def fail_terminal(_request_id):
+        raise OSError("terminal persistence failed")
+
+    monkeypatch.setattr(ledger, "mark_accepted", fail_terminal)
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+    ).execute(
+        broker="fake",
+        request_id="accepted-terminal-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    durable_ledger = ExecutionLedger(ledger_path)
+    assert durable_ledger.status("accepted-terminal-failure").value == "RESERVED"
+    assert durable_ledger.external_id("accepted-terminal-failure") == "EXT-POST-ACCEPT"
+    assert ExecutionLifecycleStore(lifecycle_path).get("accepted-terminal-failure").state is ExecutionLifecycleState.UNKNOWN
