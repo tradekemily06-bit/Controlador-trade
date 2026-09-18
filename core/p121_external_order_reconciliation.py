@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 class ExternalOrderStatus(str, Enum):
@@ -19,6 +19,7 @@ class ExternalOrderObservation:
     message: str
 
 
+@runtime_checkable
 class ExternalOrderQueryPort(Protocol):
     """Read-only broker query port used as the source of reconciliation evidence."""
 
@@ -49,7 +50,7 @@ class ExternalOrderReconciliationBoundary:
     ) -> ReconciliationResult:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido.")
-        if not callable(getattr(query_port, "query_order", None)):
+        if not isinstance(query_port, ExternalOrderQueryPort):
             raise ValueError("query_port de reconciliação inválido.")
 
         requested_id = external_id.strip()
