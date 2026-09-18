@@ -86,12 +86,16 @@ def _authorization(request_id: str = "REQ_PLACEHOLDER"):
 
 
 def _admission(auth=None):
+    auth = auth or _authorization()
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True, broker_available=True,
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True, broker_available=True,
         broker_id="fake", adapter_id="fake-adapter",
-        request_id=(auth.request_id if auth is not None else "REQ_PLACEHOLDER"),
-        symbol=(auth.symbol if auth is not None else "TEST"),
+        request_id=auth.request_id, symbol=auth.symbol,
     )
 
 
