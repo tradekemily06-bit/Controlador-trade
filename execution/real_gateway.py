@@ -258,6 +258,39 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if not result.execution.accepted:
+            # A negative flag is not sufficient to prove that no external
+            # order exists. Some broker APIs can return an external reference
+            # alongside a rejection/ambiguous response. In that contradictory
+            # case, persist identity + UNKNOWN and reconcile instead of
+            # manufacturing a definitive REJECTED terminal state.
+            if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
+                try:
+                    self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        f"resposta negativa com external_id, mas persistência da incerteza falhou: {exc}",
+                        result.execution,
+                    )
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                "resposta negativa com external_id; resultado externo requer reconciliação.",
+                            )
+                        )
+                    except (OSError, ValueError):
+                        pass
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    "resposta negativa com external_id; reconciliação explícita necessária.",
+                    result.execution,
+                )
+
             try:
                 self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
