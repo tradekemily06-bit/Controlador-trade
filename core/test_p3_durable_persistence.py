@@ -115,6 +115,27 @@ def test_checkpoint_uses_durable_atomic_writer(tmp_path, monkeypatch):
     assert store.load() == first
 
 
+def test_activate_kill_switch_does_not_open_a_restart_window_on_persistence_failure(tmp_path, monkeypatch):
+    from core.persistent_operational_recorder import PersistentOperationalRecorder
+
+    recorder = PersistentOperationalRecorder.from_path(tmp_path / "memory.json")
+
+    def fail_save(*_args, **_kwargs):
+        raise OSError("simulated persistence failure")
+
+    monkeypatch.setattr(recorder.safety_store, "save", fail_save)
+
+    with pytest.raises(OSError, match="simulated persistence failure"):
+        recorder.activate_kill_switch("safety stop")
+
+    assert recorder.kill_switch.state.enabled is False
+    restored = PersistentOperationalRecorder.from_path(
+        tmp_path / "memory.json",
+        safety_path=tmp_path / "memory.json.safety.json",
+    )
+    assert restored.kill_switch.state.enabled is False
+
+
 def test_deactivate_kill_switch_is_fail_closed_on_persistence_failure(tmp_path, monkeypatch):
     from core.persistent_operational_recorder import PersistentOperationalRecorder
 
