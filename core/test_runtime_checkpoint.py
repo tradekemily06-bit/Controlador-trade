@@ -103,3 +103,13 @@ def test_checkpoint_publication_failure_preserves_previous_durable_state(tmp_pat
     assert store.load() == old
     assert not path.with_name(".checkpoint.json.tmp").exists()
 
+
+
+
+def test_checkpoint_rejects_nonfinite_json_and_naive_timestamp(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    with pytest.raises(ValueError):
+        store.save(RuntimeCheckpoint("session", 1, None, datetime.now()))
+    store.path.write_text('{"session_id":"session","last_cycle":1,"last_request_id":null,"updated_at":NaN}', encoding="utf-8")
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        store.load()
