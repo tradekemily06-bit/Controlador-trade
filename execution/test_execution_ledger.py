@@ -161,3 +161,14 @@ def test_legacy_status_only_ledger_is_backward_compatible(tmp_path):
     ledger = ExecutionLedger(path)
     assert ledger.status("req-legacy") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id("req-legacy") is None
+
+
+def test_duplicate_persisted_external_id_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"req-1":{"status":"ACCEPTED","external_id":"ext-dup"},'
+        '"req-2":{"status":"ACCEPTED","external_id":"ext-dup"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="external_id duplicado"):
+        ExecutionLedger(path)
