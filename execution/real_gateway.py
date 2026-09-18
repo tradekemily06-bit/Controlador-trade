@@ -6,6 +6,8 @@ import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -198,11 +200,50 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        external_id: str | None = None,
+    ) -> None:
+        """Explicitly reconcile uncertainty without ever resubmitting the order.
+
+        When a lifecycle store is configured, reconciliation must cross both
+        durable authorities and must carry the exact durable external identity.
+        The legacy ledger-only path remains available only when no lifecycle
+        authority was configured.
+        """
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+
+        if self._lifecycle is None:
+            self._ledger.reconcile(request_id, executed=executed)
+            return
+
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError(
+                "reconciliação com lifecycle exige external_id durável; "
+                "use o serviço de reconciliação externa para consultar o broker."
+            )
+
+        observation = ExternalOrderObservation(
+            external_id=external_id.strip(),
+            status=(
+                ExternalOrderStatus.EXECUTED
+                if executed
+                else ExternalOrderStatus.NOT_EXECUTED
+            ),
+            message="reconciliação explícita solicitada pelo gateway",
+        )
+        ExecutionReconciliationCoordinator(
+            ledger=self._ledger,
+            lifecycle=self._lifecycle,
+        ).reconcile(
+            request_id,
+            external_id.strip(),
+            observation,
+        )
