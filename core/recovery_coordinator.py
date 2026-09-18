@@ -70,8 +70,30 @@ class RecoveryCoordinator:
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent or ledger_uncertain:
+        lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED)
+            and (
+                r.request_id not in ledger_ids
+                or (
+                    r.state is ExecutionLifecycleState.ACCEPTED
+                    and ledger_statuses.get(r.request_id) is not ExecutionLedgerStatus.ACCEPTED
+                )
+                or (
+                    r.state is ExecutionLifecycleState.REJECTED
+                    and ledger_statuses.get(r.request_id) is not ExecutionLedgerStatus.REJECTED
+                )
+            )
+        ]
+        orphaned_terminal_ledger = [
+            request_id
+            for request_id, status in ledger_statuses.items()
+            if status in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.REJECTED)
+            and request_id not in lifecycle_by_id
+        ]
+        if unknown or pending or inconsistent or ledger_uncertain or orphaned_terminal_ledger:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -81,6 +103,8 @@ class RecoveryCoordinator:
                 details.append("ACCEPTED sem ledger requer reconciliação")
             if ledger_uncertain:
                 details.append("ledger RESERVED/UNKNOWN requer reconciliação")
+            if orphaned_terminal_ledger:
+                details.append("ledger terminal sem lifecycle requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
