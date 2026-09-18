@@ -7,6 +7,9 @@ from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
+from core.p3_external_reconciliation_service import ExternalExecutionReconciliationService
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -834,3 +837,89 @@ def test_real_lifecycle_persistence_failure_after_ledger_terminal_blocks_restart
 
     assert retry.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
+
+
+def test_recovery_worker_racing_execution_worker_never_replays_uncertain_request(tmp_path: Path):
+    """A recovery query may resolve uncertainty while an execution worker races it; broker must not see a second dispatch."""
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("race-recovery-execution")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "race-recovery-execution",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    class QueryByRequestId:
+        def query_order_by_request_id(self, request_id):
+            return ExternalOrderObservation(
+                "EXT-RACE",
+                ExternalOrderStatus.EXECUTED,
+                f"recovered for {request_id}",
+            )
+
+    recovery = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle),
+        query_port=QueryByRequestId(),
+    )
+
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            raise AssertionError("uncertain request must never be replayed to broker")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    auth, admission, safety = _contracts()
+    results = []
+    errors = []
+
+    def run_recovery():
+        try:
+            results.append(recovery.reconcile_request_by_request_id("race-recovery-execution"))
+        except Exception as exc:
+            errors.append(exc)
+
+    def run_execution():
+        try:
+            results.append(
+                gateway.execute(
+                    broker="fake",
+                    request_id="race-recovery-execution",
+                    request=_request(),
+                    authorization=auth,
+                    admission=admission,
+                    safety=safety,
+                )
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=run_recovery), Thread(target=run_execution)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert adapter.calls == 0
+    assert ledger.external_id("race-recovery-execution") == "EXT-RACE"
+    assert ledger.status("race-recovery-execution") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("race-recovery-execution").state is ExecutionLifecycleState.ACCEPTED
