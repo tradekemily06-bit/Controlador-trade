@@ -624,6 +624,91 @@ def test_real_gateway_rejects_conflicting_payload_request_id(tmp_path):
     assert "difere" in result.message
 
 
+def test_real_process_interrupt_after_broker_acceptance_never_replays(tmp_path):
+    """A hard process interruption after broker side effect must fail closed."""
+    from execution.execution_ledger import ExecutionLedger
+    from execution.execution_lifecycle import ExecutionLifecycleStore
+    from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+    from core.runtime_checkpoint import RuntimeCheckpointStore
+    from core.operation_memory import OperationMemory
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    calls = {"count": 0}
+
+    class InterruptingAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            calls["count"] += 1
+            raise KeyboardInterrupt("simulated process interruption after broker-side effect")
+
+    registry = BrokerRegistry()
+    registry.register("test-broker", InterruptingAdapter())
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=10.0,
+        duration_seconds=60,
+        mode=ExecutionMode.REAL,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        gateway.execute(
+            broker="test-broker",
+            request_id="req-hard-interrupt",
+            request=request,
+            authorization=_authorization("test-broker"),
+            admission=_admission("test-broker"),
+            safety=_safety(),
+        )
+
+    assert calls["count"] == 1
+    assert ExecutionLedger(ledger_path).status("req-hard-interrupt") is ExecutionLedgerStatus.RESERVED
+    assert ExecutionLifecycleStore(lifecycle_path).get("req-hard-interrupt").state is ExecutionLifecycleState.PENDING
+
+    assessment = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    ).assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+
+    class FailingReplayAdapter:
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            calls["count"] += 1
+            raise AssertionError("replay must never reach broker")
+
+    registry2 = BrokerRegistry()
+    registry2.register("test-broker", FailingReplayAdapter())
+    restarted = RealExecutionGateway(
+        BrokerAdapterGateway(registry2),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    result = restarted.execute(
+        broker="test-broker",
+        request_id="req-hard-interrupt",
+        request=request,
+        authorization=_authorization("test-broker"),
+        admission=_admission("test-broker"),
+        safety=_safety(),
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert calls["count"] == 1
+
+
 def test_real_external_id_bind_failure_is_non_replayable_after_restart(tmp_path, monkeypatch):
     class AcceptedAdapter:
         def __init__(self):
