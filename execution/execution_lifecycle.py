@@ -75,6 +75,8 @@ class ExecutionLifecycleStore:
             raise ValueError("estado de execução inválido.")
         if not isinstance(record.updated_at, datetime):
             raise ValueError("timestamp inválido.")
+        if record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
+            raise ValueError("timestamp de ciclo deve usar timezone.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
