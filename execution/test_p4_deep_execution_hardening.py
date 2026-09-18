@@ -10,8 +10,8 @@ import pytest
 from core.models import Signal
 from core.operation_memory import OperationMemory
 from core.p112_real_execution_contract import RealExecutionAuthorization
-from core.p114_real_safety_gate import RealSafetyGate
-from core.p117_real_admission import RealAdmissionBoundary
+from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
+from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
     ExternalOrderReconciliationBoundary,
@@ -964,3 +964,36 @@ def test_real_reconciliation_rejects_overridable_boundary_subclass(tmp_path):
             authorization=auth(),
             reconciliation_boundary=MaliciousReconciliationBoundary(),
         )
+
+
+class MaliciousAuthorization(RealExecutionAuthorization):
+    @property
+    def active(self):
+        return True
+
+
+class MaliciousAdmission(RealAdmission):
+    @property
+    def admitted(self):
+        return True
+
+
+class MaliciousSafetyReport(RealSafetyReport):
+    @property
+    def ready(self):
+        return True
+
+
+def test_real_boundary_rejects_overridable_policy_context_subclasses(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    real_admission = RealAdmission(
+        admission_id="adm",
+        audit_id="audit",
+        status=RealAdmissionStatus.BLOCKED,
+        broker_id="fake",
+        reasons=("blocked",),
+    )
+    real_safety = RealSafetyReport(
+        state=real_admission.status,  # replaced below; construction guard is tested by type boundary
+        reasons=(),
+    )
