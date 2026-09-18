@@ -156,9 +156,8 @@ class ICMarketsMT5DemoAdapter:
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
-                return ExecutionResult(
-                    False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                raise MT5AdapterError(
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado DEMO incerto."
                 )
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
