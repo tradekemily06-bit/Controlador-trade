@@ -57,14 +57,12 @@ class RecoveryCoordinator:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
-            ledger_ids = set(self.execution_ledger.records())
+            ledger_statuses = self.execution_ledger.statuses()
+            ledger_ids = set(ledger_statuses)
             ledger_uncertain = {
                 request_id
-                for request_id in ledger_ids
-                if self.execution_ledger.status(request_id) in (
-                    ExecutionLedgerStatus.RESERVED,
-                    ExecutionLedgerStatus.UNKNOWN,
-                )
+                for request_id, status in ledger_statuses.items()
+                if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
             }
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
