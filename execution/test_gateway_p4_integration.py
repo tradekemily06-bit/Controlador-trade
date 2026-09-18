@@ -8,7 +8,7 @@ from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -168,7 +168,7 @@ def test_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path
     original_assess = recovery.assess
     calls = {"count": 0}
 
-    def assess_then_race():
+    def assess_then_race(*, ignore_request_id=None):
         calls["count"] += 1
         result = original_assess()
         if calls["count"] == 2:
