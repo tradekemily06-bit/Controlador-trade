@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import json
-import os
 from enum import Enum
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.durable_json import atomic_write_json, locked_path, read_json
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -30,14 +26,24 @@ class ExecutionLedger:
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._load()
 
-    def _load(self) -> None:
+    def _load_unlocked(self) -> None:
+        self._states = {}
         if not self.path.exists():
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = read_json(self.path, {})
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states = self._decode(payload)
+
+    def _load(self) -> None:
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError("ledger de execução inválido.") from exc
 
     @staticmethod
     def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
@@ -57,46 +63,21 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.") from exc
         return states
 
-    def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
+    def _write_unlocked(self) -> None:
         payload = {key: self._states[key].value for key in sorted(self._states)}
-        try:
-            with temporary.open("w", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=False, indent=2))
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
-            if hasattr(os, "O_DIRECTORY"):
-                try:
-                    directory_fd = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
-                except OSError:
-                    directory_fd = None
-                if directory_fd is not None:
-                    try:
-                        os.fsync(directory_fd)
-                    finally:
-                        os.close(directory_fd)
-        finally:
-            try:
-                temporary.unlink()
-            except FileNotFoundError:
-                pass
+        atomic_write_json(self.path, payload)
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
-        lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
                 mutation()
-                self._write()
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                self._write_unlocked()
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir o ledger de execução.") from exc
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
@@ -135,22 +116,18 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> None:
+    def reconcile(self, request_id: str, *, executed: bool) -> ExecutionLedgerStatus:
         self._validate_id(request_id)
+        target = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
         def mutation() -> None:
-            if self._states.get(request_id) not in (
-                ExecutionLedgerStatus.UNKNOWN,
-                ExecutionLedgerStatus.RESERVED,
-            ):
-                raise ValueError("request_id não está em estado incerto reconciliável.")
-            self._states[request_id] = (
-                ExecutionLedgerStatus.RECONCILED_EXECUTED
-                if executed
-                else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            )
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                raise ValueError("somente estados UNKNOWN/RESERVED podem ser reconciliados.")
+            self._states[request_id] = target
 
         self._mutate_locked(mutation)
+        return target
 
     def records(self) -> tuple[str, ...]:
         self._load()
