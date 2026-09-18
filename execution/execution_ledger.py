@@ -241,17 +241,3 @@ class ExecutionLedger:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
 
-    def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
-        self._validate_id(request_id)
-
-        def mutation() -> None:
-            current = self._states.get(request_id)
-            if current is None:
-                raise ValueError("request_id não foi reservado.")
-            if current is ExecutionLedgerStatus.UNKNOWN and status is not ExecutionLedgerStatus.UNKNOWN:
-                raise ValueError("estado UNKNOWN requer reconciliação explícita.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-                raise ValueError(f"transição inválida de {current.value} para {status.value}.")
-            self._states[request_id] = status
-
-        self._mutate_locked(mutation)
