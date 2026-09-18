@@ -13,6 +13,11 @@ try:
 except ImportError:  # pragma: no cover
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover
+    msvcrt = None
+
 
 @dataclass(frozen=True)
 class RuntimeCheckpoint:
@@ -90,13 +95,27 @@ class RuntimeCheckpointStore:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+b") as lock_file:
-            if fcntl is None:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            elif msvcrt is not None:  # pragma: no cover - Windows fallback
+                try:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                except OSError as exc:
+                    raise OSError("não foi possível adquirir lock do checkpoint.") from exc
+            else:
                 raise OSError("checkpoint exige lock interprocesso suportado pelo sistema.")
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:  # pragma: no cover - Windows fallback
+                    try:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
 
     def _save_unlocked(self, checkpoint: RuntimeCheckpoint) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
