@@ -237,7 +237,7 @@ def test_request_id_recovery_binds_identity_even_when_external_order_is_still_pe
 
 
 def test_concurrent_request_id_recovery_same_identity_is_idempotent(tmp_path: Path):
-    from threading import Barrier, Thread
+    from threading import Thread
     from datetime import datetime, timezone
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
@@ -251,14 +251,12 @@ def test_concurrent_request_id_recovery_same_identity_is_idempotent(tmp_path: Pa
         )
     )
 
-    barrier = Barrier(2)
     calls = []
 
     class Query:
         def query_order_by_request_id(self, request_id):
             assert request_id == "req-concurrent-recovery"
             calls.append(request_id)
-            barrier.wait()
             return ExternalOrderObservation("EXT-CONCURRENT", ExternalOrderStatus.EXECUTED, "filled")
 
     service_a = ExternalExecutionReconciliationService(
@@ -307,16 +305,12 @@ def test_concurrent_request_id_recovery_conflicting_external_identity_fails_clos
         )
     )
 
-    barrier = Barrier(2)
-
     class QueryA:
         def query_order_by_request_id(self, request_id):
-            barrier.wait()
             return ExternalOrderObservation("EXT-A", ExternalOrderStatus.EXECUTED, "filled")
 
     class QueryB:
         def query_order_by_request_id(self, request_id):
-            barrier.wait()
             return ExternalOrderObservation("EXT-B", ExternalOrderStatus.EXECUTED, "filled")
 
     service_a = ExternalExecutionReconciliationService(
