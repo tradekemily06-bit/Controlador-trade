@@ -71,6 +71,11 @@ class RecoveryCoordinator:
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
         lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
+        checkpoint_orphans = []
+        if checkpoint is not None and checkpoint.last_request_id is not None:
+            checkpoint_request_id = checkpoint.last_request_id
+            if checkpoint_request_id not in ledger_ids and checkpoint_request_id not in lifecycle_by_id:
+                checkpoint_orphans.append(checkpoint_request_id)
         inconsistent = [
             r.request_id
             for r in lifecycle
@@ -93,7 +98,7 @@ class RecoveryCoordinator:
             if status in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.REJECTED)
             and request_id not in lifecycle_by_id
         ]
-        if unknown or pending or inconsistent or ledger_uncertain or orphaned_terminal_ledger:
+        if unknown or pending or inconsistent or ledger_uncertain or orphaned_terminal_ledger or checkpoint_orphans:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -105,6 +110,8 @@ class RecoveryCoordinator:
                 details.append("ledger RESERVED/UNKNOWN requer reconciliação")
             if orphaned_terminal_ledger:
                 details.append("ledger terminal sem lifecycle requer reconciliação")
+            if checkpoint_orphans:
+                details.append("checkpoint aponta para execução ausente; requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
