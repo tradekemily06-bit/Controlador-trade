@@ -86,6 +86,12 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return ExecutionResult(False, "sinal inválido; ordem bloqueada.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id obrigatório para execução DEMO.")
+        if isinstance(request.duration_seconds, bool) or not isinstance(request.duration_seconds, int) or request.duration_seconds <= 0:
+            return ExecutionResult(False, "duration_seconds inválido; ordem bloqueada.")
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return ExecutionResult(False, "símbolo da requisição inválido; ordem bloqueada.")
         if not math.isfinite(request.amount) or request.amount <= 0:
