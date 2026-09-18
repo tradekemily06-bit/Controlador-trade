@@ -135,3 +135,31 @@ def test_invalid_signal_is_blocked_before_mt5():
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
     assert result.accepted is False
     assert fake.calls == []
+
+
+class MalformedOrderCheckMT5(FakeMT5):
+    def order_check(self, payload):
+        self.calls.append(("order_check", payload))
+        return SimpleNamespace()
+
+
+class InvalidExternalIdMT5(FakeMT5):
+    def order_send(self, payload):
+        self.calls.append(("order_send", payload))
+        return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=0, deal=0)
+
+
+def test_malformed_order_check_is_fail_closed_before_send():
+    fake = MalformedOrderCheckMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    assert result.accepted is False
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls
+    )
+
+
+def test_invalid_external_ticket_is_not_confirmed():
+    fake = InvalidExternalIdMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    assert result.accepted is False
+    assert "identificador externo" in result.message or result.message
