@@ -279,8 +279,14 @@ class BrokerAdapterGateway:
                     "capacidade REAL do adapter mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
                 )
 
+        # Capture the bound method only after the final REAL identity/capability
+        # checks. This closes the last intra-object TOCTOU window: a mutable
+        # adapter cannot swap its execute attribute between validation and call.
+        execute = getattr(adapter, "execute", None)
+        if not callable(execute):
+            return AdapterExecutionResult(False, "adapter.execute inválido; dispatch bloqueado.")
         try:
-            result = adapter.execute(request)
+            result = execute(request)
         except Exception as exc:
             return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
 
