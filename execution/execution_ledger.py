@@ -52,7 +52,7 @@ class ExecutionLedger:
     @staticmethod
     def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
         if isinstance(payload, list):
-            if any(not isinstance(item, str) or not item.strip() for item in payload):
+            if any(not isinstance(item, str) or not item.strip() or item != item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
             return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}
         if not isinstance(payload, dict):
@@ -60,7 +60,7 @@ class ExecutionLedger:
         states: dict[str, ExecutionLedgerStatus] = {}
         external_ids: dict[str, str] = {}
         for request_id, raw_status in payload.items():
-            if not isinstance(request_id, str) or not request_id.strip():
+            if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
                 raise ValueError("ledger de execução inválido.")
             external_id = None
             if isinstance(raw_status, dict):
