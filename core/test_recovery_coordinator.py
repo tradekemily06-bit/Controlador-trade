@@ -246,8 +246,8 @@ def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path, exe
     [
         (ExecutionLifecycleState.PENDING, "reserve", RecoveryState.REQUIRES_RECONCILIATION),
         (ExecutionLifecycleState.UNKNOWN, "unknown", RecoveryState.REQUIRES_RECONCILIATION),
-        (ExecutionLifecycleState.ACCEPTED, "accepted", RecoveryState.SAFE_TO_RESUME),
-        (ExecutionLifecycleState.REJECTED, "rejected", RecoveryState.SAFE_TO_RESUME),
+        (ExecutionLifecycleState.ACCEPTED, "accepted", RecoveryState.FRESH),
+        (ExecutionLifecycleState.REJECTED, "rejected", RecoveryState.FRESH),
     ],
 )
 def test_restart_assessment_after_each_execution_state(tmp_path, lifecycle_state, ledger_action, expected):
