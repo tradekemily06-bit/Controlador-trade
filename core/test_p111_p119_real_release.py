@@ -371,3 +371,26 @@ def test_reconciliation_never_queries_broker_for_terminal_request(tmp_path):
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
         )
     assert adapter.query_calls == 0
+
+
+def test_reconciliation_rejects_noncanonical_request_id_before_broker_query(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed"
+        )
+    )
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve(" req ")
+    ledger.attach_external_id(" req ", "external-2")
+    ledger.mark_unknown(" req ")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    with pytest.raises(ValueError, match="não canônico"):
+        gateway.reconcile_unknown(
+            " req ",
+            broker="fake",
+            authorization=_authorization(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert adapter.query_calls == 0
