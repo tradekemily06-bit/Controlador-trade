@@ -327,8 +327,8 @@ class RealExecutionGateway:
             raise ValueError("boundary de reconciliação inválida.")
         if type(authorization) is not RealExecutionAuthorization:
             raise ValueError("autorização REAL inválida.")
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id inválido para reconciliação.")
+        if type(request_id) is not str or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico para reconciliação.")
         if (
             authorization.explicitly_enabled is not True
             or authorization.real_execution_allowed is not True
