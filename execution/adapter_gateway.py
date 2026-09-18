@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.p121_external_order_reconciliation import ExternalOrderQueryPort
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -75,6 +76,25 @@ class BrokerAdapterGateway:
         if not isinstance(adapter_id, str) or not adapter_id.strip():
             return None
         return adapter_id.strip()
+
+    def real_query_port(self, broker: str, *, expected_adapter_id: str) -> ExternalOrderQueryPort | None:
+        """Return reconciliation capability only from the authorized REAL adapter."""
+        if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
+            return None
+        try:
+            adapter = self._registry.get(broker)
+        except BrokerRegistryError:
+            return None
+        if not bool(getattr(adapter, "supports_real_execution", False)):
+            return None
+        adapter_id = getattr(adapter, "adapter_id", None)
+        if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
+            return None
+        if not callable(getattr(adapter, "query_order", None)):
+            return None
+        if not isinstance(adapter, ExternalOrderQueryPort):
+            return None
+        return adapter
 
     def _dispatch(
         self,
