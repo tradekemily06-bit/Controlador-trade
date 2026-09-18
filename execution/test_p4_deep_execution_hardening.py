@@ -1162,3 +1162,10 @@ def test_ledger_refresh_clears_stale_snapshot_when_file_is_removed(tmp_path):
 
     assert ledger.status("stale-id") is None
     assert ledger.records() == ()
+
+
+def test_ledger_rejects_duplicate_request_ids_in_legacy_list(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('["dup", "dup"]', encoding="utf-8")
+    with pytest.raises(ValueError, match="request_id duplicado"):
+        ExecutionLedger(path)
