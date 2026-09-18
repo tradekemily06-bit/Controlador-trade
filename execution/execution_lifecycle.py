@@ -117,6 +117,8 @@ class ExecutionLifecycleStore:
                 current = self._records.get(request_id)
                 if current is None:
                     raise ValueError("execução não encontrada.")
+                if current.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("somente estados PENDING/UNKNOWN podem ser reconciliados.")
                 record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
                 self._validate(record)
                 self._records[request_id] = record
