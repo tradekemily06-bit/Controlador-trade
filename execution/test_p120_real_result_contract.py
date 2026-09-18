@@ -2,14 +2,35 @@ from core.kill_switch import KillSwitch
 from pathlib import Path
 
 from core.models import Signal
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator
+from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+
+
+def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None) -> RealExecutionGateway:
+    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "runtime-checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    return RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+        kill_switch=kill_switch or KillSwitch(),
+    )
 
 
 class MissingExternalIdAdapter:
@@ -24,7 +45,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ledger)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -59,7 +80,7 @@ def test_adapter_transport_failure_is_unknown_not_rejected(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", FailingAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ledger)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -94,7 +115,7 @@ def test_rejected_response_with_external_id_is_unknown_and_reconcilable(tmp_path
     registry = BrokerRegistry()
     registry.register("fake", RejectedWithExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ledger)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -138,7 +159,7 @@ def test_live_kill_switch_overrides_stale_ready_report_at_real_boundary(tmp_path
     registry = BrokerRegistry()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=kill_switch)
+    gateway = _gateway(tmp_path, registry, ledger, kill_switch=kill_switch)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
