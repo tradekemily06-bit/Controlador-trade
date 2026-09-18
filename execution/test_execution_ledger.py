@@ -23,11 +23,19 @@ def request() -> ExecutionRequest:
 def test_ledger_survives_restart(tmp_path: Path):
     path = tmp_path / "ledger.json"
     first = ExecutionLedger(path)
+    first.reserve("req-001")
     first.record("req-001")
 
     restored = ExecutionLedger(path)
     assert restored.contains("req-001") is True
     assert restored.records() == ("req-001",)
+
+
+def test_record_cannot_create_terminal_authority_without_reservation(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    with pytest.raises(ValueError, match="não foi reservado"):
+        ledger.record("unreserved")
+    assert ledger.status("unreserved") is None
 
 
 def test_gateway_rejects_duplicate_after_restart(tmp_path: Path):
