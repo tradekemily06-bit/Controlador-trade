@@ -65,6 +65,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        recovery=recovery,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
