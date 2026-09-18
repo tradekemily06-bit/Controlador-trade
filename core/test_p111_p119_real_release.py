@@ -182,7 +182,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
         authorization_active=False, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
     )
-    result = gateway.execute(broker="fake", request_id="blocked", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="crashed"), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="blocked", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="blocked"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
 
@@ -195,7 +195,7 @@ def test_real_unknown_without_external_id_cannot_be_locally_closed(tmp_path: Pat
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-1", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="unknown-1"), request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-id"), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="unknown-1", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="unknown-1"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     with pytest.raises(ValueError):
@@ -276,7 +276,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL, request_id="bad")
     result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
