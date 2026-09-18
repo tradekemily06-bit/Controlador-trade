@@ -275,3 +275,13 @@ def test_legacy_list_rejects_noncanonical_request_id(tmp_path):
     import pytest
     with pytest.raises(ValueError, match="ledger"):
         ExecutionLedger(path)
+
+
+def test_request_execution_lock_is_reentrant_for_public_mutators(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    with ledger.request_execution_lock("nested"):
+        ledger.reserve("nested")
+        ledger.bind_external_id("nested", "EXT-NESTED")
+        ledger.mark_accepted("nested")
+    assert ledger.status("nested") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("nested") == "EXT-NESTED"
