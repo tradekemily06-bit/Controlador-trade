@@ -79,3 +79,13 @@ def test_lifecycle_publication_failure_preserves_previous_durable_state(tmp_path
     assert ExecutionLifecycleStore(path).get("stable").state is ExecutionLifecycleState.PENDING
     assert not path.with_name(".lifecycle.json.tmp").exists()
 
+
+
+
+def test_lifecycle_rejects_noncanonical_request_id_and_nonfinite_json(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    with pytest.raises(ValueError, match="canônico"):
+        store.put(ExecutionLifecycleRecord(" req-1 ", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+    store.path.write_text('[{"request_id":"req-1","state":"PENDING","updated_at":NaN}]', encoding="utf-8")
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        store.records()
