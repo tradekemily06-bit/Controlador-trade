@@ -142,10 +142,24 @@ class RuntimeCheckpointStore:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-        with temporary.open("rb") as durable_file:
-            durable_file.flush()
-            os.fsync(durable_file.fileno())
-        os.replace(temporary, self.path)
+        try:
+            # Re-open read/write so fsync() is applied to an actual writable
+            # file descriptor, not a read-only stream. If publication fails,
+            # the old durable target remains authoritative.
+            with temporary.open("r+b") as durable_file:
+                durable_file.flush()
+                os.fsync(durable_file.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            # A crash can leave the temporary artifact behind. It is never
+            # consulted as authority, and cleanup must not mask the primary
+            # persistence error.
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
         if fcntl is not None:
             directory_fd = os.open(self.path.parent, os.O_RDONLY)
             try:
