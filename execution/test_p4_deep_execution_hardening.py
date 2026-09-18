@@ -597,7 +597,7 @@ def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
         )
     )
 
-    with pytest.raises(OSError, match="lifecycle reconcile failed"):
+    with pytest.raises(ValueError, match="Ledger reconciliado, mas projeção Lifecycle falhou"):
         gw.reconcile_unknown(
             "reconcile-crash",
             broker="fake",
@@ -1110,3 +1110,20 @@ def test_reconciliation_keeps_ledger_terminal_when_lifecycle_projection_fails(tm
     assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.UNKNOWN
     gw.repair_lifecycle_projection("reconcile-lifecycle-failure")
     assert lifecycle.get("reconcile-lifecycle-failure").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_execute_real_is_called_only_by_real_gateway_source():
+    root = Path(__file__).resolve().parents[1]
+    violations = []
+    for path in root.rglob("*.py"):
+        if path.name.startswith("test_") or path.name == "real_gateway.py":
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "execute_real"
+            ):
+                violations.append(f"{path.relative_to(root)}:{node.lineno}")
+    assert violations == []
