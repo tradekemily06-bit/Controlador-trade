@@ -300,7 +300,7 @@ class RealExecutionGateway:
                 # manufacturing a definitive REJECTED terminal state.
                 if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
                     try:
-                        self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                        self._ledger._bind_external_id_locked(request_id, result.execution.external_id.strip())
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError) as exc:
                         return RealGatewayResult(
@@ -359,7 +359,7 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
             try:
-                self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                self._ledger._bind_external_id_locked(request_id, result.execution.external_id.strip())
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 # The broker has already accepted the order. Any persistence
