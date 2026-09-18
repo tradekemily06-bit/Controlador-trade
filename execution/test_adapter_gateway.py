@@ -155,6 +155,48 @@ def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
 
 
 
+def test_real_dispatch_rechecks_mutable_capability_after_availability_identity_type():
+    class MutatingAdapter(FakeAdapter):
+        def is_available(self):
+            self.adapter_id = 123
+            return True
+
+    adapter = MutatingAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    assert capability is not None
+
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=capability,
+    )
+
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
+def test_real_dispatch_rechecks_mutable_supports_real_after_availability():
+    class MutatingAdapter(FakeAdapter):
+        def is_available(self):
+            self.supports_real_execution = False
+            return True
+
+    adapter = MutatingAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    assert capability is not None
+
+    result = gateway.execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+        capability=capability,
+    )
+
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
 def test_real_dispatch_rechecks_mutable_capability_after_availability():
     class MutatingAdapter(FakeAdapter):
         def is_available(self):
