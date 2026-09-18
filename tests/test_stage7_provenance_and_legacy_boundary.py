@@ -72,13 +72,13 @@ def _active_authorization():
 
 def _admitted():
     auth = _active_authorization()
+    audit = _verified_audit()
     return RealAdmissionBoundary().admit(
-        admission_id="admission", audit_id="audit", audit_verified=True,
-        authorization_active=auth.active, safety_ready=True,
+        admission_id="admission", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True,
         broker_available=True, broker_id="broker", adapter_id="adapter",
         request_id="req", symbol="TEST",
     )
-
 
 def _state():
     return OperationalState(
