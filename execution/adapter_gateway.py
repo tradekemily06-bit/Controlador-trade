@@ -15,6 +15,7 @@ class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
+    dispatch_attempted: bool = False
 
 
 class BrokerAdapterGateway:
@@ -27,15 +28,15 @@ class BrokerAdapterGateway:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
-            return AdapterExecutionResult(False, str(exc))
+            return AdapterExecutionResult(False, str(exc), dispatch_attempted=False)
 
         try:
             available = bool(adapter.is_available())
         except Exception as exc:
-            return AdapterExecutionResult(False, f"disponibilidade do adapter falhou: {exc}")
+            return AdapterExecutionResult(False, f"disponibilidade do adapter falhou: {exc}", dispatch_attempted=False)
 
         if not available:
-            return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
+            return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.", dispatch_attempted=False)
 
         try:
             result = adapter.execute(request)
@@ -46,6 +47,6 @@ class BrokerAdapterGateway:
             raise AdapterGatewayError(f"adapter falhou; execução não confirmada: {exc}") from exc
 
         if not isinstance(result, ExecutionResult):
-            return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+            return AdapterExecutionResult(False, "adapter retornou resultado inválido.", dispatch_attempted=True)
 
-        return AdapterExecutionResult(result.accepted, result.message, result)
+        return AdapterExecutionResult(result.accepted, result.message, result, dispatch_attempted=True)
