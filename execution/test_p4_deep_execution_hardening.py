@@ -148,6 +148,56 @@ def execute(gw, request_id="r1"):
     )
 
 
+def test_real_boundary_rejects_wrong_context_object_types(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    result = gw.execute(
+        broker="fake",
+        request_id="types",
+        request=request("types"),
+        authorization=object(),
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+    result = gw.execute(
+        broker="fake",
+        request_id="types-2",
+        request=request("types-2"),
+        authorization=auth(),
+        admission=object(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+    result = gw.execute(
+        broker="fake",
+        request_id="types-3",
+        request=request("types-3"),
+        authorization=auth(),
+        admission=admission(),
+        safety=object(),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+
+
+def test_real_gateway_blocks_aguardar_and_boolean_amount(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    aguardando = ExecutionRequest("TEST", Signal.AGUARDAR, 1.0, 60, ExecutionMode.REAL, request_id="wait")
+    result = gw.execute(
+        broker="fake", request_id="wait", request=aguardando,
+        authorization=auth(), admission=admission(), safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+    invalid_amount = ExecutionRequest("TEST", Signal.COMPRA, True, 60, ExecutionMode.REAL, request_id="bool")
+    result = gw.execute(
+        broker="fake", request_id="bool", request=invalid_amount,
+        authorization=auth(), admission=admission(), safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+
+
 def test_real_request_id_must_match_request_payload(tmp_path):
     gw, _, _ = gateway(tmp_path, FakeAdapter())
     result = gw.execute(
