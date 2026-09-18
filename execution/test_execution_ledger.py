@@ -109,3 +109,15 @@ def test_duplicate_external_id_in_persisted_ledger_fails_closed(tmp_path: Path):
 
     with pytest.raises(ValueError, match="external_id duplicado"):
         ExecutionLedger(path)
+
+
+def test_terminal_transition_cannot_reuse_external_id(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-001")
+    ledger.reserve("req-002")
+    ledger.mark_accepted("req-001", external_id="broker-001")
+
+    # req-002 cannot be given the same broker reference through the
+    # mark_rejected transition either.
+    with pytest.raises(ValueError, match="external_id já associado"):
+        ledger.mark_rejected("req-002", external_id="broker-001")
