@@ -275,34 +275,70 @@ class RealExecutionGateway:
                     except (OSError, ValueError):
                         pass
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
-        if result.execution is None:
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
-            if self._lifecycle is not None:
+            if result.execution is None:
                 try:
-                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), result.message))
+                    self._ledger.mark_unknown(request_id)
                 except (OSError, ValueError):
                     pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), result.message))
+                    except (OSError, ValueError):
+                        pass
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
-        if not result.execution.accepted:
-            # A negative flag is not sufficient to prove that no external
-            # order exists. Some broker APIs can return an external reference
-            # alongside a rejection/ambiguous response. In that contradictory
-            # case, persist identity + UNKNOWN and reconcile instead of
-            # manufacturing a definitive REJECTED terminal state.
-            if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
-                try:
-                    self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
-                    self._ledger.mark_unknown(request_id)
-                except (OSError, ValueError) as exc:
+            if not result.execution.accepted:
+                # A negative flag is not sufficient to prove that no external
+                # order exists. Some broker APIs can return an external reference
+                # alongside a rejection/ambiguous response. In that contradictory
+                # case, persist identity + UNKNOWN and reconcile instead of
+                # manufacturing a definitive REJECTED terminal state.
+                if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
+                    try:
+                        self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                        self._ledger.mark_unknown(request_id)
+                    except (OSError, ValueError) as exc:
+                        return RealGatewayResult(
+                            RealGatewayStatus.UNKNOWN,
+                            f"resposta negativa com external_id, mas persistência da incerteza falhou: {exc}",
+                            result.execution,
+                        )
+                    if self._lifecycle is not None:
+                        try:
+                            self._lifecycle.put(
+                                ExecutionLifecycleRecord(
+                                    request_id,
+                                    ExecutionLifecycleState.UNKNOWN,
+                                    datetime.now(timezone.utc),
+                                    "resposta negativa com external_id; resultado externo requer reconciliação.",
+                                )
+                            )
+                        except (OSError, ValueError):
+                            pass
                     return RealGatewayResult(
                         RealGatewayStatus.UNKNOWN,
-                        f"resposta negativa com external_id, mas persistência da incerteza falhou: {exc}",
+                        "resposta negativa com external_id; reconciliação explícita necessária.",
                         result.execution,
                     )
+
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), result.execution.message))
+                    except (OSError, ValueError) as exc:
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
+                return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
+
+            # An accepted REAL result without a durable broker/exchange reference is
+            # ambiguous: the external order may exist but cannot be safely reconciled.
+            if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
                 if self._lifecycle is not None:
                     try:
                         self._lifecycle.put(
@@ -310,101 +346,65 @@ class RealExecutionGateway:
                                 request_id,
                                 ExecutionLifecycleState.UNKNOWN,
                                 datetime.now(timezone.utc),
-                                "resposta negativa com external_id; resultado externo requer reconciliação.",
+                                "aceite REAL sem external_id; identidade externa não é reconciliável com segurança.",
                             )
                         )
                     except (OSError, ValueError):
                         pass
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    "resposta negativa com external_id; reconciliação explícita necessária.",
-                    result.execution,
-                )
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
             try:
-                self._ledger.mark_rejected(request_id)
+                self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+                # The broker has already accepted the order. Any persistence
+                # failure therefore remains uncertain; never leave the lifecycle
+                # claiming that the request is merely pre-broker PENDING.
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                f"ordem REAL aceita, mas persistência do ledger falhou: {exc}",
+                            )
+                        )
+                    except (OSError, ValueError):
+                        pass
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
             if self._lifecycle is not None:
                 try:
-                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), result.execution.message))
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.ACCEPTED,
+                            datetime.now(timezone.utc),
+                            result.execution.message,
+                        )
+                    )
                 except (OSError, ValueError) as exc:
-                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
-            return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
-
-        # An accepted REAL result without a durable broker/exchange reference is
-        # ambiguous: the external order may exist but cannot be safely reconciled.
-        if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
-            if self._lifecycle is not None:
-                try:
-                    self._lifecycle.put(
-                        ExecutionLifecycleRecord(
-                            request_id,
-                            ExecutionLifecycleState.UNKNOWN,
-                            datetime.now(timezone.utc),
-                            "aceite REAL sem external_id; identidade externa não é reconciliável com segurança.",
+                    # Ledger is already terminal and externally identified. The
+                    # lifecycle must never remain PENDING after broker acceptance:
+                    # persist UNKNOWN as the explicit cross-store uncertainty
+                    # marker, then let recovery repair/reconcile it later.
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
+                            )
                         )
+                    except (OSError, ValueError):
+                        pass
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
+                        result.execution,
                     )
-                except (OSError, ValueError):
-                    pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
-
-        try:
-            self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
-            self._ledger.mark_accepted(request_id)
-        except (OSError, ValueError) as exc:
-            # The broker has already accepted the order. Any persistence
-            # failure therefore remains uncertain; never leave the lifecycle
-            # claiming that the request is merely pre-broker PENDING.
-            if self._lifecycle is not None:
-                try:
-                    self._lifecycle.put(
-                        ExecutionLifecycleRecord(
-                            request_id,
-                            ExecutionLifecycleState.UNKNOWN,
-                            datetime.now(timezone.utc),
-                            f"ordem REAL aceita, mas persistência do ledger falhou: {exc}",
-                        )
-                    )
-                except (OSError, ValueError):
-                    pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
-        if self._lifecycle is not None:
-            try:
-                self._lifecycle.put(
-                    ExecutionLifecycleRecord(
-                        request_id,
-                        ExecutionLifecycleState.ACCEPTED,
-                        datetime.now(timezone.utc),
-                        result.execution.message,
-                    )
-                )
-            except (OSError, ValueError) as exc:
-                # Ledger is already terminal and externally identified. The
-                # lifecycle must never remain PENDING after broker acceptance:
-                # persist UNKNOWN as the explicit cross-store uncertainty
-                # marker, then let recovery repair/reconcile it later.
-                try:
-                    self._lifecycle.put(
-                        ExecutionLifecycleRecord(
-                            request_id,
-                            ExecutionLifecycleState.UNKNOWN,
-                            datetime.now(timezone.utc),
-                            f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
-                        )
-                    )
-                except (OSError, ValueError):
-                    pass
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    f"ordem REAL aceita no ledger, mas lifecycle não foi persistido: {exc}",
-                    result.execution,
-                )
-        return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+            return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(
         self,
