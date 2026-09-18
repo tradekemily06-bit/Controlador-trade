@@ -31,8 +31,30 @@ class SafeRemoteMT5Executor:
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
 
-        health = self._bridge.health()
+        try:
+            health = self._bridge.health()
+        except Exception as exc:
+            return ExecutionResult(False, f"ponte MT5 bloqueada: health falhou: {exc}")
+        if not isinstance(health, BridgeHealth):
+            return ExecutionResult(False, "ponte MT5 bloqueada: health inválido.")
+        if type(health.available) is not bool or type(health.demo_account) is not bool:
+            return ExecutionResult(False, "ponte MT5 bloqueada: flags de health inválidas.")
+        if type(health.message) is not str or not health.message.strip():
+            return ExecutionResult(False, "ponte MT5 bloqueada: mensagem de health inválida.")
         if not health.available or not health.demo_account:
             return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
-
-        return self._bridge.execute_demo(request)
+        try:
+            result = self._bridge.execute_demo(request)
+        except Exception as exc:
+            return ExecutionResult(False, f"ponte MT5 bloqueada: execução DEMO falhou: {exc}")
+        if not isinstance(result, ExecutionResult):
+            return ExecutionResult(False, "ponte MT5 retornou resultado inválido.")
+        if type(result.accepted) is not bool:
+            return ExecutionResult(False, "ponte MT5 retornou accepted inválido.")
+        if type(result.message) is not str or not result.message.strip():
+            return ExecutionResult(False, "ponte MT5 retornou message inválida.")
+        if result.external_id is not None and (
+            type(result.external_id) is not str or not result.external_id.strip()
+        ):
+            return ExecutionResult(False, "ponte MT5 retornou external_id inválido.")
+        return result
