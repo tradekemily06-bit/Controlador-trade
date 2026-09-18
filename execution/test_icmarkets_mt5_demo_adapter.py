@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -111,3 +111,58 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_missing_request_id_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, None)
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.calls == []
+
+
+def test_invalid_duration_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", Signal.COMPRA, 0.01, 0, ExecutionMode.DEMO, "req-duration")
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.calls == []
+
+
+def test_invalid_signal_is_blocked_before_mt5():
+    fake = FakeMT5()
+    bad = ExecutionRequest("EURUSD", object(), 0.01, 60, ExecutionMode.DEMO, "req-signal")
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(bad)
+    assert result.accepted is False
+    assert fake.calls == []
+
+
+class MalformedOrderCheckMT5(FakeMT5):
+    def order_check(self, payload):
+        self.calls.append(("order_check", payload))
+        return SimpleNamespace()
+
+
+class InvalidExternalIdMT5(FakeMT5):
+    def order_send(self, payload):
+        self.calls.append(("order_send", payload))
+        return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=0, deal=0)
+
+
+def test_malformed_order_check_is_fail_closed_before_send():
+    fake = MalformedOrderCheckMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    assert result.accepted is False
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in fake.calls
+    )
+
+
+def test_invalid_external_ticket_is_uncertain_and_not_confirmed():
+    fake = InvalidExternalIdMT5()
+    try:
+        ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    except MT5AdapterError as exc:
+        assert "identificador externo" in str(exc)
+    else:
+        raise AssertionError("invalid external ticket must remain uncertain")

@@ -45,3 +45,25 @@ def test_missing_identity_metadata_fails_closed():
 def test_invalid_external_id_fails_closed():
     with pytest.raises(ValueError):
         ExternalOrderReconciliationBoundary().reconcile(" ", observation("ext"))
+
+
+def test_reconciliation_binds_observation_to_expected_execution_identity():
+    boundary = ExternalOrderReconciliationBoundary()
+    with pytest.raises(ValueError):
+        boundary.reconcile("ext-1", observation(), expected_request_id="other-request")
+    with pytest.raises(ValueError):
+        boundary.reconcile("ext-1", observation(), expected_broker_id="other-broker")
+    with pytest.raises(ValueError):
+        boundary.reconcile("ext-1", observation(), expected_symbol="GBPUSD")
+
+
+def test_reconciliation_rejects_blank_message():
+    with pytest.raises(ValueError):
+        boundary = ExternalOrderReconciliationBoundary()
+        boundary.reconcile(
+            "ext-1",
+            ExternalOrderObservation(
+                "ext-1", ExternalOrderStatus.EXECUTED, " ",
+                request_id="req-1", evidence_source="broker", broker_id="broker", symbol="EURUSD"
+            ),
+        )

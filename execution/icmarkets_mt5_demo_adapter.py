@@ -65,7 +65,12 @@ class ICMarketsMT5DemoAdapter:
     @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
-        return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
+        trade_mode = getattr(account, "trade_mode", None)
+        if isinstance(demo_mode, bool) or not isinstance(demo_mode, int):
+            return False
+        if isinstance(trade_mode, bool) or not isinstance(trade_mode, int):
+            return False
+        return trade_mode == demo_mode
 
     @staticmethod
     def _valid_volume(amount: float, symbol_info: Any) -> bool:
@@ -86,6 +91,12 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return ExecutionResult(False, "sinal inválido; ordem bloqueada.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id obrigatório para execução DEMO.")
+        if isinstance(request.duration_seconds, bool) or not isinstance(request.duration_seconds, int) or request.duration_seconds <= 0:
+            return ExecutionResult(False, "duration_seconds inválido; ordem bloqueada.")
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return ExecutionResult(False, "símbolo da requisição inválido; ordem bloqueada.")
         if not math.isfinite(request.amount) or request.amount <= 0:
@@ -105,7 +116,8 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
-            if not mt5.symbol_select(symbol, True):
+            selected = mt5.symbol_select(symbol, True)
+            if not isinstance(selected, bool) or not selected:
                 return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
             symbol_info = mt5.symbol_info(symbol)
             if symbol_info is None or not self._valid_volume(request.amount, symbol_info):
@@ -130,8 +142,17 @@ class ICMarketsMT5DemoAdapter:
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
-            check = mt5.order_check(payload)
-            if check is None or getattr(check, "retcode", 0) != 0:
+            try:
+                check = mt5.order_check(payload)
+            except Exception as exc:
+                raise MT5AdapterError("MT5 order_check terminou sem confirmação determinística") from exc
+            check_retcode = getattr(check, "retcode", None) if check is not None else None
+            if (
+                check is None
+                or isinstance(check_retcode, bool)
+                or not isinstance(check_retcode, int)
+                or check_retcode != 0
+            ):
                 return ExecutionResult(False, "order_check bloqueou a ordem.")
             try:
                 result = mt5.order_send(payload)
@@ -151,8 +172,12 @@ class ICMarketsMT5DemoAdapter:
             if success_code is None or retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
-            if external_id is None:
-                raise MT5AdapterError("MT5 aceitou a ordem, mas não forneceu identificador externo")
+            if isinstance(external_id, bool) or not isinstance(external_id, (int, str)):
+                raise MT5AdapterError("MT5 aceitou a ordem, mas não forneceu identificador externo válido")
+            if isinstance(external_id, int) and external_id <= 0:
+                raise MT5AdapterError("MT5 aceitou a ordem, mas o identificador externo é inválido")
+            if isinstance(external_id, str) and not external_id.strip():
+                raise MT5AdapterError("MT5 aceitou a ordem, mas o identificador externo é vazio")
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
         finally:
             try:

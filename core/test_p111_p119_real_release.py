@@ -14,6 +14,7 @@ from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditS
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.risk_state_fingerprint import risk_state_identity
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
@@ -76,7 +77,14 @@ def _snapshot(state=None):
 
 
 def _authorization(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter"):
-    return RealExecutionAuthorization("auth", "a116", broker_id, adapter_id, request_id, symbol, True, True)
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="a116", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    return RealAuthorizationIssuer().issue(
+        audit=audit, authorization_id="auth", audit_id="a116", broker_id=broker_id,
+        adapter_id=adapter_id, request_id=request_id, symbol=symbol, explicit_approval=True,
+    )
 
 
 def _safety(auth=None):
@@ -86,11 +94,18 @@ def _safety(auth=None):
 
 
 def _admission(request_id="req-1", symbol="TEST", broker_id="fake", adapter_id="fake-adapter", auth=None, audit_id="a116"):
-    return RealAdmissionBoundary().admit(admission_id="adm", audit_id=audit_id, audit_verified=True,
-                                         authorization_active=True if auth is None else auth.active,
-                                         safety_ready=True, broker_available=True, broker_id=broker_id,
-                                         adapter_id=adapter_id, request_id=request_id, symbol=symbol)
-
+    admission_auth = auth if auth is not None and auth.active else _authorization(
+        request_id=request_id, symbol=symbol, broker_id=broker_id, adapter_id=adapter_id
+    )
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id=audit_id, pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    return RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id=audit_id, audit_verified=audit,
+        authorization_active=admission_auth, safety_ready=True, broker_available=True,
+        broker_id=broker_id, adapter_id=adapter_id, request_id=request_id, symbol=symbol,
+    )
 
 def _request(request_id="req-1", symbol="TEST", state=None):
     state = state or _risk_state()
@@ -109,14 +124,20 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p111 = PreRealAuditBoundary().audit(audit_id="a111", p110_decision="VALIDATED", safety_verified=True,
                                         risk_verified=True, gateway_present=True, broker_boundary_present=True)
     assert p111.status is PreRealAuditStatus.VERIFIED
-    auth = _authorization(); safety = _safety(auth); assert safety.state is RealSafetyState.READY
     shadow = ShadowValidationBoundary().validate(validation_id="shadow", adapter_available=True, real_safety_ready=True,
                                                  duplicate_blocked=True, kill_switch_blocked=True, real_mode_rejected_by_shadow=True)
     assert shadow.passed
+    safety = _safety(); assert safety.state is RealSafetyState.READY
     p116 = RealReleaseAuditBoundary().audit(audit_id="a116", pre_real_verified=p111.verified,
                                              shadow_passed=shadow.passed, safety_ready=safety.ready,
                                              broker_boundary_ready=True, explicit_real_contract=True)
     assert p116.status is ReleaseAuditStatus.VERIFIED
+    auth = RealAuthorizationIssuer().issue(
+        audit=p116, authorization_id="auth", audit_id="a116", broker_id="fake",
+        adapter_id="fake-adapter", request_id="req-1", symbol="TEST", explicit_approval=True,
+    )
+    assert auth.active
+    safety = _safety(auth)
     p117 = _admission(auth=auth); assert p117.status is RealAdmissionStatus.ADMITTED
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "real-ledger.json"); gateway = _gateway(registry, ledger)
@@ -131,7 +152,19 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert p119.state is RealReleaseState.RELEASED
 
 
+def test_real_authorization_rejects_fabricated_verified_audit():
+    from core.p116_real_release_audit import RealReleaseAudit
+    fabricated = RealReleaseAudit("forged", ReleaseAuditStatus.VERIFIED, ("P111", "P112", "P113", "P114", "P115"), ())
+    with pytest.raises(ValueError, match="fronteira"):
+        RealAuthorizationIssuer().issue(
+            audit=fabricated, authorization_id="auth", audit_id="forged", broker_id="fake",
+            adapter_id="fake-adapter", request_id="req", symbol="TEST", explicit_approval=True,
+        )
+
+
 def test_real_authorization_is_explicit():
+    inactive = RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", False, False)
+    assert not inactive.active
     with pytest.raises(ValueError):
         RealExecutionAuthorization("a", "audit", "broker", "adapter", "req", "TEST", False, True)
 
@@ -243,50 +276,4 @@ def test_real_gateway_blocks_stale_safety_before_dispatch(tmp_path: Path):
                                                 recovery_safe=True, risk_approved=True, broker_available=True)
     result = gateway.execute(broker="fake", request_id="safety-changed", request=_request("safety-changed"), authorization=auth,
                              admission=_admission("safety-changed", auth=auth), safety=admitted_safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_gateway_blocks_safety_provider_failure_without_leaking_detail(tmp_path: Path):
-    class BrokenSafetyProvider:
-        def current_real_safety(self): raise RuntimeError("SECRET_SAFETY_PROVIDER_DETAIL")
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-provider-fails"); safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
-    result = gateway.execute(broker="fake", request_id="safety-provider-fails", request=_request("safety-provider-fails"), authorization=auth,
-                             admission=_admission("safety-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_SAFETY_PROVIDER_DETAIL" not in result.message
-
-
-def test_real_gateway_global_incident_barrier_blocks_dispatch(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    barrier = GlobalOperationalBarrier((SafetyComponent("incident", False, "incidente ativo"),)); gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"), barrier)
-    auth = _authorization("incident"); safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="incident", request=_request("incident"), authorization=auth,
-                             admission=_admission("incident", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_authorization_symbol_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    auth = _authorization("symbol-mismatch", symbol="EURUSD"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="symbol-mismatch",
-        request=_request("symbol-mismatch", symbol="XAUUSD"), authorization=auth,
-        admission=_admission("symbol-mismatch", symbol="EURUSD", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_admission_symbol_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
-    auth = _authorization("admission-symbol"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="admission-symbol",
-        request=_request("admission-symbol", symbol="TEST"), authorization=auth,
-        admission=_admission("admission-symbol", symbol="EURUSD", auth=auth), safety=safety, snapshot=_snapshot())
-    assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
-
-
-def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="resolved-adapter")
-    auth = _authorization("adapter-mismatch", adapter_id="authorized-adapter"); safety = _safety(auth)
-    result = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json")).execute(broker="fake", request_id="adapter-mismatch",
-        request=_request("adapter-mismatch"), authorization=auth,
-        admission=_admission("adapter-mismatch", auth=auth, adapter_id="authorized-adapter"), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0

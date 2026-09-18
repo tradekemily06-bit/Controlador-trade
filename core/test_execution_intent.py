@@ -62,6 +62,8 @@ def test_invalid_values_fail_closed(field, value):
 def test_created_at_must_be_datetime():
     with pytest.raises(ValueError, match="created_at"):
         make_intent(created_at="2026-01-01T00:00:00+00:00")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        make_intent(created_at=datetime(2026, 1, 1))
 
 
 def test_conversion_only_builds_existing_dto_and_does_not_execute():

@@ -8,9 +8,10 @@ from pathlib import Path
 from core.decision_snapshot import DecisionSnapshot
 from core.models import Signal
 from core.operational_state import OperationalState
-from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport
 from core.p117_real_admission import RealAdmissionBoundary
+from core.p116_real_release_audit import RealReleaseAuditBoundary
+from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.risk_state_fingerprint import risk_state_identity
 from core.global_operational_barrier import GlobalOperationalBarrier
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
@@ -65,16 +66,9 @@ class SafetyProvider:
 
 def _risk_state() -> OperationalState:
     return OperationalState(
-        balance=1000.0,
-        equity=1000.0,
-        realized_pnl=0.0,
-        unrealized_pnl=0.0,
-        trades_today=0,
-        consecutive_losses=0,
-        open_positions=0,
-        net_position=0.0,
-        exposure=0.0,
-        market_open=True,
+        balance=1000.0, equity=1000.0, realized_pnl=0.0,
+        unrealized_pnl=0.0, trades_today=0, consecutive_losses=0,
+        open_positions=0, net_position=0.0, exposure=0.0, market_open=True,
     )
 
 
@@ -90,49 +84,64 @@ def _snapshot() -> DecisionSnapshot:
     )
 
 
-def _authorization(request_id: str = "REQ_PLACEHOLDER") -> RealExecutionAuthorization:
-    return RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", request_id, "TEST", True, True)
+def _authorization(request_id: str = "REQ_PLACEHOLDER") -> object:
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    return RealAuthorizationIssuer().issue(
+        audit=audit, authorization_id="auth", audit_id="audit",
+        broker_id="fake", adapter_id="fake-adapter", request_id=request_id,
+        symbol="TEST", explicit_approval=True,
+    )
 
 
 def _admission(auth=None) -> object:
+    if auth is None:
+        raise ValueError("auth is required for REAL admission tests")
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake", adapter_id="fake-adapter", request_id=(auth.request_id if auth is not None else "REQ_PLACEHOLDER"), symbol=(auth.symbol if auth is not None else "TEST"),
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True, broker_available=True,
+        broker_id="fake", adapter_id="fake-adapter",
+        request_id=auth.request_id, symbol=auth.symbol,
     )
 
 
 def _safety() -> RealSafetyReport:
     return RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
-        market_healthy=True, recovery_safe=True,
-        risk_approved=True, broker_available=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True,
     )
 
 
 def _request(request_id: str) -> ExecutionRequest:
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id, risk_state_fingerprint=risk_state_identity(_risk_state()))
+    return ExecutionRequest(
+        "TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id,
+        risk_state_fingerprint=risk_state_identity(_risk_state()),
+    )
 
 
 def _gateway(path: Path, adapter, verifier=None) -> RealExecutionGateway:
     registry = BrokerRegistry()
     registry.register("fake", adapter, adapter_id="fake-adapter")
     return RealExecutionGateway(
-        BrokerAdapterGateway(registry),
-        ExecutionLedger(path),
-        RiskProvider(),
-        SafetyProvider(_safety()),
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        BrokerAdapterGateway(registry), ExecutionLedger(path), RiskProvider(),
+        SafetyProvider(_safety()), operational_barrier_provider=lambda: GlobalOperationalBarrier(),
         reconciliation_evidence_verifier=verifier,
     )
 
 
 def _dispatch_worker(path: str, request_id: str, calls, queue) -> None:
     gateway = _gateway(Path(path), CountingAdapter(calls))
+    auth = _authorization(request_id)
     result = gateway.execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(request_id), admission=_admission(_authorization(request_id)),
-        safety=_safety(), snapshot=_snapshot(),
+        authorization=auth, admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
     queue.put(result.status)
 
@@ -151,10 +160,10 @@ def _reconcile_worker(path: str, request_id: str, queue) -> None:
 
 def _crash_worker(path: str, marker: str, request_id: str) -> None:
     gateway = _gateway(Path(path), CrashAfterAcceptanceAdapter(marker))
+    auth = _authorization(request_id)
     gateway.execute(
         broker="fake", request_id=request_id, request=_request(request_id),
-        authorization=_authorization(request_id), admission=_admission(_authorization(request_id)),
-        safety=_safety(), snapshot=_snapshot(),
+        authorization=auth, admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
 
 
@@ -185,13 +194,12 @@ def test_restart_after_reserved_never_dispatches(tmp_path: Path):
     ExecutionLedger(path).reserve_real("reserved-before-restart", broker_id="fake", symbol="TEST")
     calls = multiprocessing.Value("i", 0)
     gateway = _gateway(path, CountingAdapter(calls))
-
+    auth = _authorization("reserved-before-restart")
     result = gateway.execute(
         broker="fake", request_id="reserved-before-restart",
-        request=_request("reserved-before-restart"), authorization=_authorization("reserved-before-restart"),
-        admission=_admission(_authorization("reserved-before-restart")), safety=_safety(), snapshot=_snapshot(),
+        request=_request("reserved-before-restart"), authorization=auth,
+        admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
-
     assert result.status is RealGatewayStatus.UNKNOWN
     assert calls.value == 0
     assert ExecutionLedger(path).status("reserved-before-restart") is ExecutionLedgerStatus.RESERVED
@@ -215,12 +223,12 @@ def test_crash_immediately_after_broker_acceptance_leaves_reserved_and_blocks_re
     )})()
     authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
     restored = _gateway(path, CountingAdapter(calls), authority)
+    auth = _authorization("crash-after-accept")
     result = restored.execute(
         broker="fake", request_id="crash-after-accept",
-        request=_request("crash-after-accept"), authorization=_authorization("crash-after-accept"),
-        admission=_admission(_authorization("crash-after-accept")), safety=_safety(), snapshot=_snapshot(),
+        request=_request("crash-after-accept"), authorization=auth,
+        admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
-
     assert result.status is RealGatewayStatus.UNKNOWN
     assert calls.value == 0
 
@@ -232,13 +240,16 @@ def test_unknown_after_restart_stays_unknown_until_explicit_reconciliation(tmp_p
     ledger.mark_unknown("unknown-restart")
 
     calls = multiprocessing.Value("i", 0)
-    query = type("Query", (), {"query_order": lambda self, external_id: ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, "authoritative", request_id="unknown-restart", evidence_source="broker", broker_id="fake", symbol="TEST")})()
+    query = type("Query", (), {"query_order": lambda self, external_id: ExternalOrderObservation(
+        external_id, ExternalOrderStatus.NOT_EXECUTED, "authoritative", request_id="unknown-restart",
+        evidence_source="broker", broker_id="fake", symbol="TEST"
+    )})()
     authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
     restored = _gateway(path, CountingAdapter(calls), authority)
+    auth = _authorization("unknown-restart")
     result = restored.execute(
-        broker="fake", request_id="unknown-restart",
-        request=_request("unknown-restart"), authorization=_authorization("unknown-restart"),
-        admission=_admission(_authorization("unknown-restart")), safety=_safety(), snapshot=_snapshot(),
+        broker="fake", request_id="unknown-restart", request=_request("unknown-restart"),
+        authorization=auth, admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
     assert result.status is RealGatewayStatus.UNKNOWN
     assert calls.value == 0
@@ -278,7 +289,8 @@ def test_reconciled_persisted_state_cannot_be_reused_for_new_send(tmp_path: Path
     ledger.reserve_real("reconciled", broker_id="fake", symbol="TEST")
     ledger.mark_unknown("reconciled")
     query = type("Query", (), {"query_order": lambda self, external_id: ExternalOrderObservation(
-        external_id, ExternalOrderStatus.NOT_EXECUTED, "authoritative", request_id="reconciled", evidence_source="broker", broker_id="fake", symbol="TEST"
+        external_id, ExternalOrderStatus.NOT_EXECUTED, "authoritative", request_id="reconciled",
+        evidence_source="broker", broker_id="fake", symbol="TEST"
     )})()
     authority = BrokerReconciliationEvidenceAuthority(query, evidence_source="broker")
     gateway = _gateway(path, CountingAdapter(multiprocessing.Value("i", 0)), authority)
@@ -286,12 +298,11 @@ def test_reconciled_persisted_state_cannot_be_reused_for_new_send(tmp_path: Path
 
     calls = multiprocessing.Value("i", 0)
     restored = _gateway(path, CountingAdapter(calls))
+    auth = _authorization("reconciled")
     result = restored.execute(
-        broker="fake", request_id="reconciled",
-        request=_request("reconciled"), authorization=_authorization(),
-        admission=_admission(), safety=_safety(), snapshot=_snapshot(),
+        broker="fake", request_id="reconciled", request=_request("reconciled"),
+        authorization=auth, admission=_admission(auth), safety=_safety(), snapshot=_snapshot(),
     )
-
     assert result.status is RealGatewayStatus.BLOCKED
     assert calls.value == 0
 
