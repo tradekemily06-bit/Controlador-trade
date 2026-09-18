@@ -71,8 +71,8 @@ def _authorized_context(request_id="req-1", symbol="TEST", broker_id="fake", ada
         adapter_id=adapter_id, request_id=request_id, symbol=symbol, explicit_approval=True,
     )
     admission = RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=authorization.active, safety_ready=True,
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=authorization, safety_ready=True,
         broker_available=True, broker_id=broker_id, adapter_id=adapter_id,
         request_id=request_id, symbol=symbol,
     )
