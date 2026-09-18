@@ -338,8 +338,9 @@ def test_checkpoint_older_than_associated_lifecycle_fails_closed(tmp_path):
 
 def test_checkpoint_lifecycle_timezone_mismatch_fails_closed(tmp_path):
     coordinator = make_coordinator(tmp_path)
-    coordinator.checkpoint_store.save(
-        RuntimeCheckpoint("session-1", 3, "req-timezone", datetime(2026, 9, 18, 10, 0))
+    (tmp_path / "checkpoint.json").write_text(
+        '{"session_id":"session-1","last_cycle":3,"last_request_id":"req-timezone","updated_at":"2026-09-18T10:00:00"}',
+        encoding="utf-8",
     )
     coordinator.execution_ledger.reserve("req-timezone")
     coordinator.execution_ledger.mark_accepted("req-timezone")
