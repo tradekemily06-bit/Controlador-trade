@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 from core.operation_memory import OperationMemory
@@ -33,6 +33,8 @@ class RecoveryAssessment:
 class RecoveryCoordinator:
     """Assesses restart state without replaying or executing any order."""
 
+    _MAX_CHECKPOINT_CLOCK_SKEW = timedelta(minutes=5)
+
     def __init__(
         self,
         *,
@@ -40,6 +42,7 @@ class RecoveryCoordinator:
         lifecycle_store: ExecutionLifecycleStore,
         execution_ledger: ExecutionLedger,
         memory: OperationMemory,
+        expected_session_id: str | None = None,
     ) -> None:
         if not isinstance(checkpoint_store, RuntimeCheckpointStore):
             raise ValueError("checkpoint_store inválido.")
@@ -53,6 +56,7 @@ class RecoveryCoordinator:
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
         self.memory = memory
+        self.expected_session_id = expected_session_id.strip() if expected_session_id is not None else None
 
     def assess(self) -> RecoveryAssessment:
         try:
@@ -68,10 +72,26 @@ class RecoveryCoordinator:
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
+        lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
+
+        if checkpoint is not None:
+            if self.expected_session_id is not None and checkpoint.session_id != self.expected_session_id:
+                return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint pertence a outra sessão; retomada recusada.")
+
+            if checkpoint.last_request_id is not None:
+                if checkpoint.last_request_id not in ledger_ids and checkpoint.last_request_id not in lifecycle_by_id:
+                    return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint referencia request_id inexistente nas autoridades duráveis.")
+                associated_lifecycle = next((record for record in lifecycle if record.request_id == checkpoint.last_request_id), None)
+                if associated_lifecycle is not None and checkpoint.updated_at < associated_lifecycle.updated_at:
+                    return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint está desatualizado em relação ao lifecycle durável.")
+
+            now = datetime.now(checkpoint.updated_at.tzinfo) if checkpoint.updated_at.tzinfo is not None else datetime.now()
+            if checkpoint.updated_at > now + self._MAX_CHECKPOINT_CLOCK_SKEW:
+                return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint está no futuro além da tolerância de relógio.")
+
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
         inconsistent = [
             r.request_id
             for r in lifecycle
