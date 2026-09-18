@@ -778,3 +778,36 @@ def test_repair_lifecycle_projection_can_recreate_missing_projection(tmp_path):
     gw.repair_lifecycle_projection("repair-missing")
     assert ExecutionLifecycleStore(lifecycle_path).get("repair-missing").state is ExecutionLifecycleState.ACCEPTED
     assert ledger.status("repair-missing") is ExecutionLedgerStatus.ACCEPTED
+
+
+# REAL lock acquisition must fail closed at the domain boundary rather than
+# leaking a raw OSError out of the execution orchestration layer.
+def test_real_lock_converts_fcntl_acquisition_failure_to_domain_error(tmp_path, monkeypatch):
+    import execution.real_execution_locks as lock_module
+    from execution.real_execution_locks import RealExecutionLockError, RealExecutionLocks
+
+    class BrokenFcntl:
+        LOCK_EX = 1
+        LOCK_UN = 2
+
+        @staticmethod
+        def flock(_fd, operation):
+            if operation == BrokenFcntl.LOCK_EX:
+                raise OSError("simulated flock failure")
+
+    monkeypatch.setattr(lock_module, "fcntl", BrokenFcntl)
+    monkeypatch.setattr(lock_module, "msvcrt", None)
+    with pytest.raises(RealExecutionLockError, match="simulated flock failure"):
+        with RealExecutionLocks(tmp_path / "ledger.json").acquire("lock-failure"):
+            pass
+
+
+def test_real_lock_still_rejects_when_no_interprocess_lock_exists(tmp_path, monkeypatch):
+    import execution.real_execution_locks as lock_module
+    from execution.real_execution_locks import RealExecutionLockError, RealExecutionLocks
+
+    monkeypatch.setattr(lock_module, "fcntl", None)
+    monkeypatch.setattr(lock_module, "msvcrt", None)
+    with pytest.raises(RealExecutionLockError, match="lock interprocesso"):
+        with RealExecutionLocks(tmp_path / "ledger.json").acquire("no-lock"):
+            pass
