@@ -1186,3 +1186,132 @@ def test_real_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp
     assert ledger.status("guarded-real-request") is ExecutionLedgerStatus.UNKNOWN
     assert ledger.status("racing-real-worker") is ExecutionLedgerStatus.RESERVED
     assert calls["count"] >= 2
+
+
+def test_two_reconciliation_workers_converge_without_cross_store_corruption(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("two-recon-workers")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "two-recon-workers",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    class QueryByRequestId:
+        def __init__(self):
+            self.lock = Lock()
+            self.calls = 0
+
+        def query_order_by_request_id(self, request_id):
+            with self.lock:
+                self.calls += 1
+            return ExternalOrderObservation(
+                "EXT-TWO-RECON",
+                ExternalOrderStatus.EXECUTED,
+                f"confirmed for {request_id}",
+            )
+
+    query = QueryByRequestId()
+    results = []
+    errors = []
+    services = [
+        ExternalExecutionReconciliationService(
+            coordinator=ExecutionReconciliationCoordinator(
+                ledger=ExecutionLedger(ledger_path),
+                lifecycle=ExecutionLifecycleStore(lifecycle_path),
+            ),
+            query_port=query,
+        )
+        for _ in range(2)
+    ]
+
+    def run(service):
+        try:
+            results.append(service.reconcile_request_by_request_id("two-recon-workers"))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=run, args=(service,)) for service in services]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(results) == 2
+    assert query.calls == 2
+    assert ExecutionLedger(ledger_path).external_id("two-recon-workers") == "EXT-TWO-RECON"
+    assert ExecutionLedger(ledger_path).status("two-recon-workers") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("two-recon-workers").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_recovery_worker_racing_reconciliation_worker_never_reopens_terminal_state(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    checkpoint_path = tmp_path / "checkpoint.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("recovery-vs-reconciliation")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "recovery-vs-reconciliation",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(checkpoint_path),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+
+    class QueryByRequestId:
+        def query_order_by_request_id(self, request_id):
+            return ExternalOrderObservation(
+                "EXT-RECOVERY-RACE",
+                ExternalOrderStatus.EXECUTED,
+                f"confirmed for {request_id}",
+            )
+
+    service = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(
+            ledger=ExecutionLedger(ledger_path),
+            lifecycle=ExecutionLifecycleStore(lifecycle_path),
+        ),
+        query_port=QueryByRequestId(),
+    )
+    results = []
+    errors = []
+
+    def run_recovery():
+        try:
+            results.append(recovery.assess())
+        except Exception as exc:
+            errors.append(exc)
+
+    def run_reconciliation():
+        try:
+            results.append(service.reconcile_request_by_request_id("recovery-vs-reconciliation"))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=run_recovery), Thread(target=run_reconciliation)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(results) == 2
+    assert ledger.external_id("recovery-vs-reconciliation") == "EXT-RECOVERY-RACE"
+    assert ledger.status("recovery-vs-reconciliation") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("recovery-vs-reconciliation").state is ExecutionLifecycleState.ACCEPTED
