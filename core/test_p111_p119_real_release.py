@@ -2,6 +2,9 @@ from core.kill_switch import KillSwitch
 from pathlib import Path
 
 from core.models import Signal
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator
+from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
@@ -13,6 +16,7 @@ from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseSta
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -70,6 +74,23 @@ def _request():
     return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
 
 
+def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None) -> RealExecutionGateway:
+    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "runtime-checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    return RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+        kill_switch=kill_switch or KillSwitch(),
+    )
+
+
 def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     p111 = PreRealAuditBoundary().audit(
         audit_id="a111", p110_decision="VALIDATED", safety_verified=True,
@@ -97,7 +118,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ledger)
     result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
@@ -132,7 +153,7 @@ def test_real_gateway_blocks_admission_bound_to_different_broker(tmp_path: Path)
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ExecutionLedger(tmp_path / "ledger.json"))
     auth = _authorization()
     mismatched = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -236,7 +257,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path), kill_switch=KillSwitch())
+    gateway = _gateway(tmp_path, registry, ExecutionLedger(path))
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
