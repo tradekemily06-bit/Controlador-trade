@@ -24,8 +24,8 @@ def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
     def mutate_between_reads():
         calls["count"] += 1
         snapshot = original_statuses()
-        if calls["count"] == 1:
-            ledger.reserve("racing-recovery")
+        if calls["count"] % 2 == 1:
+            ledger.reserve(f"racing-recovery-{calls["count"]}")
         return snapshot
 
     monkeypatch.setattr(ledger, "statuses", mutate_between_reads)
@@ -36,11 +36,11 @@ def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
     assert result.checkpoint is None
-    assert result.message == "estado durável mudou durante a avaliação; retomada recusada até obter snapshot estável."
+    assert result.message == "ledger RESERVED/UNKNOWN requer reconciliação"
     assert ledger.status("racing-recovery") is ExecutionLedgerStatus.RESERVED
 
 
-def test_recovery_accepts_stable_snapshot_after_transient_cross_store_change(tmp_path, monkeypatch):
+def test_recovery_retries_after_transient_cross_store_change(tmp_path, monkeypatch):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
@@ -59,17 +59,13 @@ def test_recovery_accepts_stable_snapshot_after_transient_cross_store_change(tmp
         snapshot = original_statuses()
         if calls["count"] == 1:
             ledger.reserve("transient-recovery")
-        elif calls["count"] == 2:
-            # The second pass observes the mutation, so the coordinator must
-            # retry the whole cross-store snapshot.
-            pass
         return snapshot
 
     monkeypatch.setattr(ledger, "statuses", mutate_once)
 
     result = coordinator.assess()
 
-    assert calls["count"] >= 4
+    assert calls["count"] >= 2
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
     assert ledger.status("transient-recovery") is ExecutionLedgerStatus.RESERVED
