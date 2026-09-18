@@ -182,9 +182,21 @@ def test_admission_broker_mismatch_is_blocked_before_dispatch(tmp_path: Path):
         def execute(self, request): raise AssertionError("mismatched REAL admission must never reach the broker adapter")
     registry = BrokerRegistry(); registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter"); registry.register("other", MustNotExecuteAdapter(), adapter_id="other-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json"); provider = RiskProvider(); authorization, _, safety = _authorized_context()
-    mismatched_admission = RealAdmissionBoundary().admit(admission_id="adm-other", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True, broker_available=True, broker_id="other", adapter_id="other-adapter",
-        request_id="admission-broker-mismatch", symbol="TEST")
+    other_audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit-other", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    other_auth = RealAuthorizationIssuer().issue(
+        audit=other_audit, authorization_id="auth-other", audit_id="audit-other",
+        broker_id="other", adapter_id="other-adapter", request_id="admission-broker-mismatch",
+        symbol="TEST", explicit_approval=True,
+    )
+    mismatched_admission = RealAdmissionBoundary().admit(
+        admission_id="adm-other", audit_id="audit-other", audit_verified=other_audit,
+        authorization_active=other_auth, safety_ready=True, broker_available=True,
+        broker_id="other", adapter_id="other-adapter",
+        request_id="admission-broker-mismatch", symbol="TEST",
+    )
     gateway = _gateway(registry, ledger, provider, safety); request = _request("admission-broker-mismatch", risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(broker="fake", request_id="admission-broker-mismatch", request=request,
         authorization=_authorized_context("admission-broker-mismatch")[0], admission=mismatched_admission,
@@ -200,9 +212,21 @@ def test_admission_audit_mismatch_is_blocked_before_dispatch(tmp_path: Path):
         def execute(self, request): raise AssertionError("mismatched REAL audit context must never reach the broker adapter")
     registry = BrokerRegistry(); registry.register("fake", MustNotExecuteAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json"); provider = RiskProvider(); authorization, _, safety = _authorized_context()
-    mismatched_admission = RealAdmissionBoundary().admit(admission_id="adm-mismatch", audit_id="different-audit", audit_verified=True,
-        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake", adapter_id="fake-adapter",
-        request_id="admission-audit-mismatch", symbol="TEST")
+    other_audit = RealReleaseAuditBoundary().audit(
+        audit_id="different-audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
+    other_auth = RealAuthorizationIssuer().issue(
+        audit=other_audit, authorization_id="auth-different", audit_id="different-audit",
+        broker_id="fake", adapter_id="fake-adapter", request_id="admission-audit-mismatch",
+        symbol="TEST", explicit_approval=True,
+    )
+    mismatched_admission = RealAdmissionBoundary().admit(
+        admission_id="adm-mismatch", audit_id="different-audit", audit_verified=other_audit,
+        authorization_active=other_auth, safety_ready=True, broker_available=True,
+        broker_id="fake", adapter_id="fake-adapter",
+        request_id="admission-audit-mismatch", symbol="TEST",
+    )
     gateway = _gateway(registry, ledger, provider, safety); request = _request("admission-audit-mismatch", risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(broker="fake", request_id="admission-audit-mismatch", request=request,
         authorization=_authorized_context("admission-audit-mismatch")[0], admission=mismatched_admission,
