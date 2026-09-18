@@ -1,4 +1,5 @@
 from core.kill_switch import KillSwitch
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -13,13 +14,13 @@ from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
-def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None) -> RealExecutionGateway:
-    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
+def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None, lifecycle: ExecutionLifecycleStore | None = None) -> RealExecutionGateway:
+    lifecycle = lifecycle or ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
     recovery = RecoveryCoordinator(
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "runtime-checkpoint.json"),
         lifecycle_store=lifecycle,
@@ -62,10 +63,14 @@ def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
 
 
 class UnavailableAdapter:
+    def __init__(self):
+        self.calls = 0
+
     def is_available(self):
         return False
 
     def execute(self, request):
+        self.calls += 1
         raise AssertionError("adapter indisponível não pode ser chamado")
 
 
@@ -86,6 +91,8 @@ def test_final_boundary_blocks_reconciled_not_executed(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="terminal-not-executed", request=_request(), authorization=authorization, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
+
+
 def test_pre_dispatch_adapter_block_is_terminal_not_unknown(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", UnavailableAdapter())
