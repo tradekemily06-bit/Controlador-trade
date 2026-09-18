@@ -659,7 +659,7 @@ def test_demo_only_adapter_cannot_receive_real_dispatch():
     adapter = DemoOnlyAdapter()
     registry = BrokerRegistry()
     registry.register("demo", adapter)
-    result = BrokerAdapterGateway(registry).execute_real(
+    result = BrokerAdapterGateway(registry)._execute_real(
         "demo",
         request(),
         capability=_REAL_DISPATCH_CAPABILITY,
@@ -1127,7 +1127,7 @@ def test_execute_real_is_called_only_by_real_gateway_source():
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "execute_real"
+                and node.func.attr in {"execute_real", "_execute_real"}
             ):
                 violations.append(f"{path.relative_to(root)}:{node.lineno}")
     assert violations == []
