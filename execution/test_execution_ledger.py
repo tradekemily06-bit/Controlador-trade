@@ -259,6 +259,31 @@ def test_public_ledger_mutators_respect_request_execution_lock(tmp_path):
     assert ledger.status("req-lock") is ExecutionLedgerStatus.UNKNOWN
 
 
+def test_global_real_lock_serializes_new_reservations(tmp_path):
+    from threading import Event, Thread
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    entered = Event()
+    release = Event()
+    finished = Event()
+
+    def reserve_worker():
+        entered.set()
+        ledger.reserve("blocked-by-real-window")
+        finished.set()
+
+    with ledger.real_execution_lock():
+        worker = Thread(target=reserve_worker)
+        worker.start()
+        assert entered.wait(timeout=2)
+        assert not finished.wait(timeout=0.2)
+        release.set()
+
+    worker.join(timeout=2)
+    assert finished.is_set()
+    assert ledger.status("blocked-by-real-window") is ExecutionLedgerStatus.RESERVED
+
+
 def test_request_id_with_outer_whitespace_is_rejected(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     for operation in (
@@ -289,8 +314,8 @@ def test_legacy_list_rejects_noncanonical_request_id(tmp_path):
 
 def test_request_execution_lock_is_reentrant_for_public_mutators(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("nested")
     with ledger.request_execution_lock("nested"):
-        ledger.reserve("nested")
         ledger.bind_external_id("nested", "EXT-NESTED")
         ledger.mark_accepted("nested")
     assert ledger.status("nested") is ExecutionLedgerStatus.ACCEPTED
