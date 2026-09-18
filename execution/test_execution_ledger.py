@@ -67,3 +67,62 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+from threading import Lock, Thread
+from execution.ports import ExecutionResult
+
+
+def test_gateway_reserves_before_concurrent_executors(tmp_path):
+    class CountingExecutor:
+        def __init__(self):
+            self._lock = Lock()
+            self.calls = 0
+
+        def execute(self, _request):
+            with self._lock:
+                self.calls += 1
+            return ExecutionResult(accepted=True, message="accepted", external_id="EXT-1")
+
+    path = tmp_path / "ledger.json"
+    executor = CountingExecutor()
+    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    second = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+
+    # The first gateway establishes the normal persisted path.
+    assert first.execute("req-concurrent", request()).status is GatewayStatus.ACCEPTED
+    assert second.execute("req-concurrent", request()).status is GatewayStatus.DUPLICATE
+    assert executor.calls == 0
+
+
+def test_two_gateways_share_ledger_without_double_dispatch(tmp_path):
+    class BlockingExecutor:
+        def __init__(self):
+            self._lock = Lock()
+            self.calls = 0
+
+        def execute(self, _request):
+            with self._lock:
+                self.calls += 1
+            return ExecutionResult(accepted=True, message="accepted", external_id=f"EXT-{self.calls}")
+
+    path = tmp_path / "ledger-race.json"
+    executor = BlockingExecutor()
+    gateways = [
+        ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path)),
+        ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path)),
+    ]
+    results = []
+
+    def run(gateway):
+        results.append(gateway.execute("req-race", request()).status)
+
+    threads = [Thread(target=run, args=(gateway,)) for gateway in gateways]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results, key=lambda status: status.value) == sorted(
+        [GatewayStatus.ACCEPTED, GatewayStatus.DUPLICATE], key=lambda status: status.value
+    )
+    assert executor.calls == 1
