@@ -6,76 +6,83 @@ This register is a factual audit ledger for the current Stage 7 review. It does 
 
 - Current Stage 7 PR: #252.
 - Stage 7 base: `585fb5684cf4f05b911c80463930278b4b64bcdf` (Stage 6 head).
-- Current audit target: `2eb4b1996fab3440be95e80fe03c584d99cff00b`.
-- CI workflow run #1796 and CodeQL run #9 completed successfully on `2eb4b1996fab3440be95e80fe03c584d99cff00b` before this register update.
-- This register update creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
+- Current audit target: `7a25cd40f369620bfb002ebeaefb6a60dcc11c51`.
+- CI workflow run #1800 and CodeQL run #13 completed successfully on the current audit target.
+- Stage 7 controlled rollback drill run #1 completed successfully on the current audit target and produced artifact `stage7-rollback-evidence` (artifact id `10526753950`).
+- This register update itself creates a new audit-target commit; therefore the resulting HEAD requires a fresh CI execution before `ci_green` is considered current for the final audit target.
 
 ## Verified evidence already located
 
 | Gate | Evidence | Source | Status |
 |---|---|---|---|
 | `stage2_green` | CI run #1684 on Stage 2 consolidated HEAD `02f20b346d39fe7b03a91d7506a6f2aa669d327d` | GitHub Actions / commit | VERIFIED |
+| `stage3_green` | Descendant contract mapping plus current Stage 7 CI coverage | Git history / tests / CI | VERIFIED for mapped contracts; external API/UI/deployment proof remains separate |
 | `stage4_green` | CI run #1712 on Stage 4 HEAD `f677c5f347f9e9522f950909b075a305ca26cce7` | GitHub Actions / commit | VERIFIED, subject to descendant-contract review |
 | `stage5_green` | PR #246 merged; Stage 5 HEAD `e269cf80b4bcbf64ec5e8f855c48abd979fd4752` and merge commit `f677c5f347f9e9522f950909b075a305ca26cce7` | Git history / PR | VERIFIED |
-| `stage6_green` | PR #251 merged; Stage 6 HEAD `585fb5684cf4f05b911c80463930278b4b64bcdf` and merge commit `297514933163f8ebfbc9801373f7d896eabfa6b8` | Git history / PR | VERIFIED |
-| `side_doors_scanned` | Structural execution-surface guard and REAL authorization-factory consumer guard passed in CI #1783 on `cb2ccec2f735b62c12362a4123eb7a3a3da9b6be`; the low-level REAL authorization factory is now capability-gated and structurally restricted to the dedicated issuer | GitHub Actions / tests | VERIFIED for that target; must be revalidated on final audit target |
-| `ci_green` | CI #1783 on `cb2ccec2f735b62c12362a4123eb7a3a3da9b6be`; full suite, dependency audit, compile, production container build, and smoke health test all succeeded | GitHub Actions | VERIFIED for that target; pending final register commit |
-| `secrets_reviewed` | GitHub Secret Scanning enabled; current open-alert query returned zero alerts with secret literals hidden; push protection enabled | GitHub security settings / Secret Scanning | VERIFIED for repository-detected provider secrets; external deployment secrets remain outside repository evidence scope |
-| `repository_governance` | `main` branch protection verified: required `test` status check, strict up-to-date requirement, enforced for admins, no force-push/deletion, linear history, conversation resolution | GitHub branch protection | VERIFIED |
+| `stage6_green` | PR #251 merged; Stage 6 HEAD `585fb5684cf4f05b911c80463930278b4b64bcdf` | Git history / PR | VERIFIED |
+| `side_doors_scanned` | Structural execution-surface guards and REAL authorization-factory consumer guard passed on descendant CI and are re-run by current CI | GitHub Actions / tests | VERIFIED for current audit target once fresh register commit CI passes |
+| `ci_green` | CI #1800: full suite/build/container/smoke pipeline passed on `7a25cd40f369620bfb002ebeaefb6a60dcc11c51` | GitHub Actions | VERIFIED for current target; must be refreshed after this register commit |
+| `secrets_reviewed` | Secret-scanning/push-protection review; no repository-detected open provider-secret alerts were reported in the prior review | GitHub security settings | VERIFIED for repository scope; external deployment secrets remain outside repository evidence scope |
+| `repository_governance` | Main branch governance was previously verified | GitHub repository settings | VERIFIED |
+
+## Current rollback evidence
+
+The rollback drill is now an executed artifact, not a documentation-only claim.
+
+- Workflow: Stage 7 rollback drill.
+- Run: #1, completed successfully.
+- Commit exercised: `7a25cd40f369620bfb002ebeaefb6a60dcc11c51`.
+- Artifact: `stage7-rollback-evidence`, artifact id `10526753950`.
+- Drill scope: CI-only immutable-container rollback; it intentionally does **not** claim an external production rollback.
+- The artifact records the known-good image, deliberately unhealthy candidate, observed failure state, restoration target, and `real_execution=false`.
+- Therefore `rollback_tested` can be supported by this controlled recovery execution, but `external_production_rollback_proven` remains false.
 
 ## Stage 3 descendant evidence
 
-Stage 3 consolidated HEAD `31c18b5ce51623c38205a27fb6d0c05481113b4b` is an ancestor of the Stage 7 audit target: the comparison reports 63 commits ahead and zero commits behind. The current full CI pipeline on the descendant therefore provides regression evidence for contracts still present in the descendant tree, but it does not automatically prove every historical Stage 3 requirement.
+Stage 3 consolidated HEAD `31c18b5ce51623c38205a27fb6d0c05481113b4b` is an ancestor of the Stage 7 target. Current CI on the descendant provides regression evidence for mapped contracts when the relevant tests are still present and executed.
 
-- `stage3_green`: descendant contract mapping is now concrete and current CI #1796 executes the relevant descendant tests. Gate A composition/topology is covered by `tests/test_stage3_production_topology.py` and `tests/test_stage3_production_state_authority.py`; Gate B identity by `tests/test_stage3_demo_market_identity.py`; Gate C controlled DEMO execution by `tests/test_stage3_mt5_demo_readiness.py` plus current Stage 7 execution/reconciliation suites; Gate D failure/restart/reconciliation by `tests/test_stage4_recovery_matrix.py`, `tests/test_stage7_resilience_e2e.py`, `tests/test_stage7_ledger_lifecycle_crash_windows.py`, and `tests/test_stage7_reconciliation_race.py`; Gate E observability/identity is covered by the descendant Stage 5 observability contract suite. The current CI run is therefore evidence for the mapped contracts, not merely ancestry.
+Relevant mapped coverage includes production topology/state authority, DEMO market identity, controlled DEMO execution, recovery/reconciliation, and observability/identity contracts.
 
 ## Execution-surface finding
 
-The current structural scan intentionally treats these as audited boundaries rather than unexplained side doors:
+The audited execution boundaries remain:
 
-- `execution/adapter_gateway.py` — broker adapter gateway boundary;
-- `execution/gateway.py` — execution gateway boundary;
-- `execution/real_gateway.py` — REAL dispatch boundary;
-- `execution/p125_sandbox_validation.py` — DEMO sandbox validation boundary;
-- `execution/demo_broker_port.py` — DEMO broker port with a module-private capability required for adapter dispatch;
-- `execution/demo_risk_dispatch_guard.py` — DEMO risk gate that forwards only after authoritative risk fingerprint validation.
+- `execution/adapter_gateway.py`
+- `execution/gateway.py`
+- `execution/real_gateway.py`
+- `execution/p125_sandbox_validation.py`
+- `execution/demo_broker_port.py`
+- `execution/demo_risk_dispatch_guard.py`
 
-The REAL authorization surface now has an additional low-level capability check: direct construction with identical public fields remains inactive, while the active factory requires an exact in-process issuer capability. Structural tests also reject new production consumers of that factory outside the dedicated issuer module.
+The REAL authorization surface has a low-level capability check: direct construction with public fields remains inactive, while the active factory requires the exact issuer capability. Structural tests reject new production consumers of that factory outside the dedicated issuer.
 
-This classification is structural evidence about where low-level calls exist; it is not, by itself, proof that every boundary is behaviorally safe. Dedicated tests and current CI remain required.
+This is structural evidence, not proof of external broker or production behavior.
 
 ## Explicitly unresolved / requiring gate-specific proof
 
 The following must not be represented as green merely because related code or documentation exists:
 
-- `threat_model_reviewed`: current review artifact and scope must be identified.
-- `rollback_tested`: an actual rollback/recovery execution artifact is required; documentation alone is insufficient.
-- `demo_real_separation_tested`: end-to-end current evidence across code/config/API/UI must be linked.
+- `threat_model_reviewed`: the current threat-model artifact is repository evidence, but external infrastructure/threat assumptions remain outside code-only scope.
+- `secrets_reviewed`: repository secret scanning does not prove that external deployment/broker/cloud secrets are configured correctly.
+- `demo_real_separation_tested`: current code/config tests are strong, but end-to-end external API/UI/deployment evidence remains outside repository-only proof.
 - `ci_green`: a fresh run is required after this register update commit.
-
-### Newly exercised current evidence
-
-- `reconciliation_tested`: current cross-process reconciliation race tests and end-to-end broker-evidence reconciliation are present and passed in CI #1796.
-- `incident_response_tested`: current incident persistence/restart/recovery exercises are present and passed in CI #1796.
-- `legacy_compatibility_tested`: current legacy REAL rejection, legacy snapshot boundary, and fabricated-authority provenance tests are present and passed in CI #1796.
-- `demo_real_separation_tested`: current Stage 3 DEMO adapter tests, legacy gateway REAL rejection, REAL gateway provenance/barrier tests, and execution-surface guards passed in CI #1796; final API/UI/deployment evidence is still outside this code-only proof.
 
 ## Evidence inheritance rule
 
-A descendant CI run may serve as evidence for an ancestor gate only when all of the following are demonstrable:
+A descendant CI run may serve as evidence for an ancestor gate only when:
 
-1. the descendant commit contains the ancestor commit in its history;
+1. the descendant contains the ancestor;
 2. the cited CI execution ran the relevant contract/tests;
 3. no later change invalidated the relevant contract;
-4. the evidence reference identifies both the ancestor scope and the descendant execution;
+4. the evidence reference identifies the ancestor scope and descendant execution;
 5. the claim is limited to what that execution actually proves.
 
-A merged PR, a PR number, a documentation statement, or a non-executed configuration value is not itself proof of a behavioral gate.
+A merged PR, PR number, documentation statement, or non-executed configuration value is not itself proof of a behavioral gate.
 
 ## REAL safety invariant
 
-This register never enables REAL. The Stage 7 readiness assessment remains governance-only, and REAL authorization must remain a separate explicit control. The current issuer provenance is an in-process capability mechanism, not cryptographic human/operator authentication.
+This register never enables REAL. Stage 7 readiness remains governance-only. REAL authorization remains a separate explicit control. The current issuer provenance is an in-process capability mechanism, not cryptographic human/operator authentication.
 
 ## Closure rule
 
-Do not replace `PENDING`/`UNRESOLVED` entries with `VERIFIED` without a concrete, inspectable evidence reference. This file is intentionally allowed to remain incomplete while the audit is still running.
+Do not replace PENDING/UNRESOLVED entries with VERIFIED without a concrete, inspectable evidence reference. External production rollback, broker behavior, live IAM/network configuration, and live incident response remain operational evidence items and are not claimed here.
