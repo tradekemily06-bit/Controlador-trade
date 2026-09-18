@@ -137,11 +137,9 @@ class ExecutionLedger:
                 finally:
                     held.discard(lock_path)
                     self._request_lock_local.held = held
-        finally:
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
+        # Keep the hashed lock inode stable. Removing it here would allow a
+        # second process still waiting on the old inode to overlap with a third
+        # process that creates a new inode at the same path.
 
 
     def external_id(self, request_id: str) -> str | None:
