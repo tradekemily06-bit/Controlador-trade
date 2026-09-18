@@ -292,6 +292,35 @@ class RealExecutionGateway:
                     message="reconciliação explícita",
                 )
 
+    def repair_lifecycle_projection(self, request_id: str) -> None:
+        """Repair only the Lifecycle projection from the authoritative Ledger.
+
+        This path never calls the broker and never changes Ledger authority. It
+        exists for the crash window where Ledger persistence succeeds but the
+        Lifecycle projection write fails.
+        """
+        with self._locks.acquire(request_id):
+            entry = self._ledger.entry(request_id)
+            if entry is None:
+                raise ValueError("request_id não existe no Ledger.")
+            if self._lifecycle is None:
+                return
+            state_by_ledger = {
+                ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
+            }
+            state = state_by_ledger.get(entry.status)
+            if state is None:
+                raise ValueError("Ledger ainda não possui estado terminal reparável.")
+            self._lifecycle.reconcile(
+                request_id,
+                state,
+                updated_at=datetime.now(timezone.utc),
+                message="projeção Lifecycle reparada a partir do Ledger autoritativo",
+            )
+
     def _lifecycle_state(self, request_id: str) -> ExecutionLifecycleState | None:
         if self._lifecycle is None:
             return None
