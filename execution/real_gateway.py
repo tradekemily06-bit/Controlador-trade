@@ -201,6 +201,17 @@ class RealExecutionGateway:
             # another request becoming UNKNOWN/RESERVED during this final window
             # cannot invalidate the recovery snapshot while this broker call is in
             # flight. Reconciliation/repair workers use the same lock.
+            #
+            # The recovery check must itself be inside this global barrier. Checking
+            # it immediately before acquiring the barrier would still permit another
+            # worker to make the runtime unsafe in the gap before the broker call.
+            if self._recovery is not None:
+                final_recovery = self._recovery.assess(ignore_request_id=request_id)
+                if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                    message = f"execução REAL bloqueada no limite final pelo estado de recovery: {final_recovery.state.value}."
+                    if self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
             with self._ledger.request_execution_lock(request_id):
                 # Final durable-authority check immediately before the broker side effect.
                 # A reconciliation worker may have completed this request after the
