@@ -127,6 +127,53 @@ def test_real_safety_fails_closed():
     assert report.state is RealSafetyState.BLOCKED
 
 
+def test_real_gateway_blocks_admission_bound_to_different_broker(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    mismatched = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="other-broker",
+    )
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="broker-mismatch", request=_request(),
+        authorization=auth, admission=mismatched, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("broker-mismatch") is None
+
+
+def test_real_gateway_rejects_duck_typed_security_inputs(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+
+    class FakeAuthorization:
+        active = True
+        broker_id = "fake"
+
+    class FakeAdmission:
+        admitted = True
+        broker_id = "fake"
+
+    class FakeSafety:
+        ready = True
+
+    result = gateway.execute(
+        broker="fake", request_id="duck-typed", request=_request(),
+        authorization=FakeAuthorization(), admission=FakeAdmission(), safety=FakeSafety(),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("duck-typed") is None
+
+
 def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()

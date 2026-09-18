@@ -34,3 +34,116 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def test_checkpoint_atomic_failure_preserves_previous_checkpoint(tmp_path, monkeypatch):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    first = RuntimeCheckpoint("session", 1, "req-1", datetime(2026, 9, 18, tzinfo=timezone.utc))
+    second = RuntimeCheckpoint("session", 2, "req-2", datetime(2026, 9, 18, 0, 1, tzinfo=timezone.utc))
+    store.save(first)
+    original = path.read_text(encoding="utf-8")
+
+    def fail_replace(_source, _target):
+        raise OSError("commit failed")
+
+    monkeypatch.setattr("core.durable_json.os.replace", fail_replace)
+
+    with pytest.raises(OSError):
+        store.save(second)
+
+    assert path.read_text(encoding="utf-8") == original
+    assert store.load() == first
+
+
+def test_stale_checkpoint_cannot_overwrite_newer_checkpoint(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    newer = RuntimeCheckpoint(
+        "session",
+        10,
+        "req-10",
+        datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+    )
+    older = RuntimeCheckpoint(
+        "session",
+        5,
+        "req-5",
+        datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc),
+    )
+
+    store.save(newer)
+    store.save(older)
+
+    assert store.load() == newer
+
+
+def test_older_checkpoint_from_other_session_cannot_overwrite_newer_checkpoint(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    newer = RuntimeCheckpoint(
+        "session-new",
+        2,
+        "req-new",
+        datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+    )
+    older = RuntimeCheckpoint(
+        "session-old",
+        99,
+        "req-old",
+        datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc),
+    )
+
+    store.save(newer)
+    store.save(older)
+
+    assert store.load() == newer
+
+def test_equal_timestamp_checkpoint_conflict_cannot_overwrite_newer_snapshot(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    timestamp = datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc)
+    newer = RuntimeCheckpoint("session-new", 7, "req-new", timestamp)
+    conflicting = RuntimeCheckpoint("session-old", 1, "req-old", timestamp)
+
+    store.save(newer)
+    store.save(conflicting)
+
+    assert store.load() == newer
+
+
+def test_corrupted_checkpoint_cannot_be_overwritten_by_save(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text("[]", encoding="utf-8")
+    store = RuntimeCheckpointStore(path)
+    incoming = RuntimeCheckpoint(
+        "session",
+        1,
+        "req-1",
+        datetime(2026, 9, 18, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        store.save(incoming)
+
+    assert path.read_text(encoding="utf-8") == "[]"
+
+
+def test_corrupted_checkpoint_timestamp_cannot_be_overwritten_by_save(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text(
+        '{"session_id":"session","last_cycle":1,"last_request_id":"req-1","updated_at":"not-a-timestamp"}',
+        encoding="utf-8",
+    )
+    store = RuntimeCheckpointStore(path)
+    incoming = RuntimeCheckpoint(
+        "session",
+        2,
+        "req-2",
+        datetime(2026, 9, 18, 0, 1, tzinfo=timezone.utc),
+    )
+
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        store.save(incoming)
+
+    assert "not-a-timestamp" in path.read_text(encoding="utf-8")

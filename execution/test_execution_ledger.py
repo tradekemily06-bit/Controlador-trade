@@ -4,7 +4,7 @@ import pytest
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -67,3 +67,108 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+from threading import Lock, Thread
+from execution.ports import ExecutionResult
+
+
+def test_gateway_reserves_before_concurrent_executors(tmp_path):
+    class CountingExecutor:
+        def __init__(self):
+            self._lock = Lock()
+            self.calls = 0
+
+        def execute(self, _request):
+            with self._lock:
+                self.calls += 1
+            return ExecutionResult(accepted=True, message="accepted", external_id="EXT-1")
+
+    path = tmp_path / "ledger.json"
+    executor = CountingExecutor()
+    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    second = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+
+    # The first gateway establishes the normal persisted path.
+    assert first.execute("req-concurrent", request()).status is GatewayStatus.ACCEPTED
+    assert second.execute("req-concurrent", request()).status is GatewayStatus.DUPLICATE
+    assert executor.calls == 0
+
+
+def test_two_gateways_share_ledger_without_double_dispatch(tmp_path):
+    class BlockingExecutor:
+        def __init__(self):
+            self._lock = Lock()
+            self.calls = 0
+
+        def execute(self, _request):
+            with self._lock:
+                self.calls += 1
+            return ExecutionResult(accepted=True, message="accepted", external_id=f"EXT-{self.calls}")
+
+    path = tmp_path / "ledger-race.json"
+    executor = BlockingExecutor()
+    gateways = [
+        ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path)),
+        ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path)),
+    ]
+    results = []
+
+    def run(gateway):
+        results.append(gateway.execute("req-race", request()).status)
+
+    threads = [Thread(target=run, args=(gateway,)) for gateway in gateways]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(results, key=lambda status: status.value) == sorted(
+        [GatewayStatus.ACCEPTED, GatewayStatus.DUPLICATE], key=lambda status: status.value
+    )
+    assert executor.calls == 1
+
+
+def test_unknown_ledger_requires_explicit_reconciliation(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+
+    with pytest.raises(ValueError, match="reconciliação explícita"):
+        ledger.mark_accepted("req-unknown")
+
+    with pytest.raises(ValueError, match="reconciliação explícita"):
+        ledger.mark_rejected("req-unknown")
+
+    ledger.reconcile("req-unknown", executed=True)
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+def test_external_id_survives_restart_and_is_unique(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-1")
+    ledger.bind_external_id("req-1", " ext-1 ")
+    assert ExecutionLedger(path).external_id("req-1") == "ext-1"
+
+    ExecutionLedger(path).reserve("req-2")
+    with pytest.raises(ValueError, match="outro request_id"):
+        ExecutionLedger(path).bind_external_id("req-2", "ext-1")
+
+
+def test_legacy_status_only_ledger_is_backward_compatible(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-legacy":"ACCEPTED"}', encoding="utf-8")
+    ledger = ExecutionLedger(path)
+    assert ledger.status("req-legacy") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req-legacy") is None
+
+
+def test_duplicate_persisted_external_id_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"req-1":{"status":"ACCEPTED","external_id":"ext-dup"},'
+        '"req-2":{"status":"ACCEPTED","external_id":"ext-dup"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="external_id duplicado"):
+        ExecutionLedger(path)
