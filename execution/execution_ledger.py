@@ -276,10 +276,6 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> ExecutionLedgerStatus:
-        with self.request_execution_lock(request_id):
-            return self._reconcile_locked(request_id, executed=executed)
-
     def _reconcile_locked(self, request_id: str, *, executed: bool) -> ExecutionLedgerStatus:
         self._validate_id(request_id)
         target = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
