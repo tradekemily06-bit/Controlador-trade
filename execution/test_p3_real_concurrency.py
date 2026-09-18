@@ -505,7 +505,7 @@ def test_reconcile_unknown_with_lifecycle_cannot_bypass_cross_store_authority(tm
     )
 
     with pytest.raises(ValueError, match="external_id durável"):
-        gateway.reconcile_unknown("reconcile-cross-store", executed=True)
+        gateway.reconcile_unknown("reconcile-cross-store", observation=ExternalOrderObservation("", ExternalOrderStatus.EXECUTED, "missing identity"))
 
     assert ExecutionLedger(ledger_path).status("reconcile-cross-store").value == "UNKNOWN"
     assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-cross-store").state is ExecutionLifecycleState.UNKNOWN
@@ -1282,7 +1282,7 @@ def test_reconciliation_rejects_stale_observation_after_concurrent_terminalizati
         with ledger.request_execution_lock("stale-reconciliation"):
             holder_ready.set()
             assert worker_started.wait(timeout=5)
-            ledger.reconcile("stale-reconciliation", executed=True)
+            ledger._reconcile_locked("stale-reconciliation", executed=True)
             lifecycle.reconcile(
                 "stale-reconciliation",
                 ExecutionLifecycleState.ACCEPTED,
@@ -1628,7 +1628,7 @@ def test_real_reconciliation_race_after_final_admission_check_never_dispatches(t
             and calls["count"] >= 2
         ):
             ledger.bind_external_id(request_id, "EXT-RECONCILED")
-            ledger.reconcile(request_id, executed=True)
+            ledger._reconcile_locked(request_id, executed=True)
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.ACCEPTED,
