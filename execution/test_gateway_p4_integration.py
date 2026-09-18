@@ -4,6 +4,11 @@ from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator
+from core.runtime_checkpoint import RuntimeCheckpointStore
+from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -98,3 +103,53 @@ def test_invalid_request_is_not_audit_event():
     assert result.status is GatewayStatus.INVALID_REQUEST
     assert len(recorder.audit.records()) == 0
     assert len(recorder.memory.records()) == 0
+
+
+def test_gateway_rechecks_durable_recovery_before_dispatch(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    ledger.reserve("already-uncertain")
+
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(
+        executor,
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+    )
+
+    result = gateway.execute("new-request", make_request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert ledger.status("new-request") is None
+
+
+def test_gateway_allows_first_dispatch_when_recovery_is_fresh(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+    )
+
+    result = gateway.execute("first-request", make_request())
+
+    assert result.status is GatewayStatus.ACCEPTED
