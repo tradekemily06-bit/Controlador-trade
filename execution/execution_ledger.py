@@ -380,6 +380,12 @@ class ExecutionLedger:
                 raise ValueError(
                     f"transição inválida de {current.status.value} para {status.value}."
                 )
+            if external_id is not None:
+                owner = self._external_id_owner(external_id, excluding=request_id)
+                if owner is not None:
+                    raise ValueError(
+                        "external_id já associado a outro request_id: " + owner + "."
+                    )
             self._states[request_id] = ExecutionLedgerEntry(status, external_id)
 
         self._mutate_locked(mutation)
