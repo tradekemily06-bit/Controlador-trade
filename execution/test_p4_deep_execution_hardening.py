@@ -244,6 +244,24 @@ def _reserve_in_process(path, request_id, queue):
         queue.put("OK")
 
 
+def test_ledger_reservation_allows_distinct_interprocess_requests(tmp_path):
+    path = tmp_path / "ledger-distinct.json"
+    queue = Queue()
+    processes = [
+        Process(target=_reserve_in_process, args=(path, f"request-{i}", queue))
+        for i in range(2)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=10)
+    results = sorted(queue.get(timeout=5) for _ in processes)
+    assert results == ["OK", "OK"]
+    ledger = ExecutionLedger(path)
+    assert ledger.status("request-0") is ExecutionLedgerStatus.RESERVED
+    assert ledger.status("request-1") is ExecutionLedgerStatus.RESERVED
+
+
 def test_ledger_reservation_is_interprocess_single_winner(tmp_path):
     path = tmp_path / "ledger.json"
     queue = Queue()
