@@ -30,9 +30,11 @@ class ExecutionLedgerEntry:
 class ExecutionLedger:
     """Authoritative durable REAL request state and broker reference.
 
-    Legacy status-only JSON is accepted for backward compatibility. New
-    accepted results persist external_id together with the terminal state so
-    a crash after broker acceptance cannot erase the reconciliation handle.
+    Legacy status-only JSON is parsed conservatively. Terminal states that
+    require broker evidence but lack a durable external_id are quarantined as
+    UNKNOWN rather than being trusted as new terminal authority. New accepted
+    results persist external_id together with the terminal state so a crash
+    after broker acceptance cannot erase the reconciliation handle.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -57,7 +59,7 @@ class ExecutionLedger:
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
             return {
-                item: ExecutionLedgerEntry(ExecutionLedgerStatus.ACCEPTED)
+                item: ExecutionLedgerEntry(ExecutionLedgerStatus.UNKNOWN)
                 for item in payload
             }
         if not isinstance(payload, dict):
@@ -69,9 +71,15 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.")
             if isinstance(raw, str):
                 try:
-                    states[request_id] = ExecutionLedgerEntry(ExecutionLedgerStatus(raw))
+                    status = ExecutionLedgerStatus(raw)
                 except ValueError as exc:
                     raise ValueError("ledger de execução inválido.") from exc
+                if status in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ):
+                    status = ExecutionLedgerStatus.UNKNOWN
+                states[request_id] = ExecutionLedgerEntry(status)
                 continue
             if not isinstance(raw, dict):
                 raise ValueError("ledger de execução inválido.")
@@ -221,8 +229,10 @@ class ExecutionLedger:
             not isinstance(external_id, str) or not external_id.strip()
         ):
             raise ValueError("external_id inválido.")
-        if executed and (not isinstance(external_id, str) or not external_id.strip()):
-            raise ValueError("external_id é obrigatório para reconciliação como EXECUTED.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError(
+                "external_id é obrigatório para qualquer reconciliação terminal."
+            )
 
         def mutation() -> None:
             current = self._states.get(request_id)
@@ -238,13 +248,15 @@ class ExecutionLedger:
             ):
                 raise ValueError("external_id conflitante na reconciliação.")
             resolved_external_id = external_id or current.external_id
-            if executed and not resolved_external_id:
-                raise ValueError("external_id é obrigatório para reconciliação como EXECUTED.")
+            if not resolved_external_id:
+                raise ValueError(
+                    "external_id é obrigatório para qualquer reconciliação terminal."
+                )
             self._states[request_id] = ExecutionLedgerEntry(
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
                 else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
-                resolved_external_id if executed else current.external_id,
+                resolved_external_id,
             )
 
         self._mutate_locked(mutation)
