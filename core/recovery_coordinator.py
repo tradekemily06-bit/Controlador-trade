@@ -79,11 +79,13 @@ class RecoveryCoordinator:
                 r.request_id not in ledger_ids
                 or (
                     r.state is ExecutionLifecycleState.ACCEPTED
-                    and ledger_statuses.get(r.request_id) is not ExecutionLedgerStatus.ACCEPTED
+                    and ledger_statuses.get(r.request_id)
+                    not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED)
                 )
                 or (
                     r.state is ExecutionLifecycleState.REJECTED
-                    and ledger_statuses.get(r.request_id) is not ExecutionLedgerStatus.REJECTED
+                    and ledger_statuses.get(r.request_id)
+                    not in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED)
                 )
             )
         ]
