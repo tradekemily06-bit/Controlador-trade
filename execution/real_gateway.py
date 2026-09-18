@@ -111,18 +111,18 @@ class RealExecutionGateway:
                 RealGatewayStatus.REJECTED,
                 "request_id externo e request.request_id precisam coincidir no REAL.",
             )
+        if not isinstance(broker, str) or not broker.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if not isinstance(admission.broker_id, str) or admission.broker_id.strip().lower() != broker.strip().lower():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
                 "broker da admissão difere do broker da execução REAL.",
             )
-        if admission.audit_id.strip().lower() != authorization.audit_id.strip().lower():
+        if not isinstance(admission.audit_id, str) or admission.audit_id.strip().lower() != authorization.audit_id.strip().lower():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
                 "auditoria da admissão difere da autorização REAL.",
             )
-        if not isinstance(broker, str) or not broker.strip():
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(
                 RealGatewayStatus.REJECTED,
