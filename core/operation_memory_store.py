@@ -16,6 +16,7 @@ class OperationMemoryStore:
         if path is None:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
+        self._last_loaded_records: tuple[OperationMemoryRecord, ...] | None = None
 
     @staticmethod
     def _serialize(record: OperationMemoryRecord) -> dict[str, object]:
@@ -97,8 +98,11 @@ class OperationMemoryStore:
             durable = self._load_unlocked()
             durable_records = durable.records()
             incoming = memory.records()
+            if self._last_loaded_records is not None and durable_records != self._last_loaded_records:
+                raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
             if not durable_records:
                 self._write_unlocked(memory)
+                self._last_loaded_records = incoming
                 return
 
             # Preserve the legacy full-snapshot API while making stale writes
@@ -129,6 +133,7 @@ class OperationMemoryStore:
             for record in merged:
                 rebuilt.append(record)
             self._write_unlocked(rebuilt)
+            self._last_loaded_records = rebuilt.records()
 
     def append(self, record: OperationMemoryRecord) -> OperationMemoryRecord:
         """Atomically append to the latest durable snapshot, avoiding stale-snapshot loss."""
@@ -138,6 +143,7 @@ class OperationMemoryStore:
             memory = self._load_unlocked()
             memory.append(record)
             self._write_unlocked(memory)
+            self._last_loaded_records = memory.records()
         return record
 
     def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
@@ -148,12 +154,15 @@ class OperationMemoryStore:
             memory = self._load_unlocked()
             updated = memory.settle(record, result)
             self._write_unlocked(memory)
+            self._last_loaded_records = memory.records()
         return updated
 
     def load(self) -> OperationMemory:
         try:
             with locked_path(self.path):
-                return self._load_unlocked()
+                memory = self._load_unlocked()
+                self._last_loaded_records = memory.records()
+                return memory
         except ValueError:
             raise
         except OSError as exc:
