@@ -63,7 +63,12 @@ def test_real_dispatch_revalidates_mutable_adapter_before_execute(tmp_path):
         authorization=_auth(), admission=_admission(), safety=_safety(),
     )
 
-    assert result.status is RealGatewayStatus.BLOCKED
+    # The adapter was rejected before its irreversible execute() call.
+    # UNKNOWN is intentional: the gateway cannot infer execution semantics
+    # merely from the adapter-side failure, and the conservative state is
+    # therefore preserved as non-replayable until reconciliation.
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert "adapter REAL mudou" in result.message
     assert adapter.calls == 0
 
 
