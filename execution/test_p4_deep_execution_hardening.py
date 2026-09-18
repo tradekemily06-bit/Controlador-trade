@@ -625,7 +625,7 @@ def test_real_dispatch_requires_explicit_adapter_identity(tmp_path):
     result = gateway.execute(
         broker="fake",
         request_id="identity-missing",
-        request=request(),
+        request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="identity-missing"),
         authorization=auth(),
         admission=admission(),
         safety=safety(),
