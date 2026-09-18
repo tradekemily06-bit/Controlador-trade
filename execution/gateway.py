@@ -137,11 +137,40 @@ class ExecutionGateway:
                 self._mark_unknown(request_id, event_time, f"não foi possível persistir o início da execução; estado incerto: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
 
-        try:
-            result = self._executor.execute(request)
-        except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
+        # Final durable-authority check immediately before the side effect.
+        # Reconciliation may have completed this request after the earlier
+        # recovery snapshot; never dispatch when the ledger is no longer RESERVED.
+        if self._ledger is not None:
+            try:
+                admission_status = self._ledger.status(request_id)
+            except (OSError, ValueError) as exc:
+                self._mark_unknown(request_id, event_time, f"não foi possível confirmar a autoridade de execução antes do executor: {exc}")
+                return GatewayResult(
+                    GatewayStatus.EXECUTOR_ERROR,
+                    f"autoridade de execução indisponível; executor não chamado e estado marcado como UNKNOWN: {exc}",
+                )
+            if admission_status is not None and admission_status is not self._ledger_status_reserved():
+                self._mark_unknown(request_id, event_time, f"autoridade de execução mudou para {admission_status.value} antes do executor")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada: autoridade durável mudou para {admission_status.value} antes do executor.",
+                )
+
+        # Serialize the final kill-switch check with the executor call in this
+        # process. Activation racing this window cannot interleave between the
+        # check and the side effect.
+        with self._kill_switch.execution_window():
+            if not self._kill_switch.allows_execution():
+                self._mark_unknown(request_id, event_time, f"kill switch ativado antes do executor: {self._kill_switch.state.reason}")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada imediatamente antes do executor pelo kill switch: {self._kill_switch.state.reason}.",
+                )
+            try:
+                result = self._executor.execute(request)
+            except Exception as exc:
+                self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
@@ -181,6 +210,11 @@ class ExecutionGateway:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+
+    @staticmethod
+    def _ledger_status_reserved():
+        from execution.execution_ledger import ExecutionLedgerStatus
+        return ExecutionLedgerStatus.RESERVED
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         # UNKNOWN is a cross-authority fail-closed state. Persist it independently
