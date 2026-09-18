@@ -188,6 +188,11 @@ class OperationalSafetyStore:
                 audit = self._audit_from_payload(payload)
                 kill_switch = self._normalize_kill_switch(payload.get("kill_switch", {}))
                 execution_audit = self._normalize_execution_audit(payload)
+                if execution_audit:
+                    last_timestamp = datetime.fromisoformat(str(execution_audit[-1]["timestamp"]))
+                    event_timestamp = datetime.fromisoformat(str(normalized["timestamp"]))
+                    if event_timestamp < last_timestamp:
+                        raise ValueError("auditoria de execução deve permanecer cronológica.")
                 if normalized not in execution_audit:
                     execution_audit.append(normalized)
                 atomic_write_json(
