@@ -223,7 +223,7 @@ class ExecutionReconciliationCoordinator:
 
                 lifecycle_record = self._lifecycle.get(request_id)
                 if lifecycle_record is None:
-                    self._lifecycle.put(
+                    self._lifecycle.repair_terminal(
                         ExecutionLifecycleRecord(
                             request_id,
                             lifecycle_target,
