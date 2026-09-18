@@ -51,13 +51,15 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
     assert adapter.calls == 1
 
 
-def test_adapter_gateway_handles_adapter_exception_fail_closed():
+def test_adapter_gateway_propagates_adapter_exception_as_uncertain():
+    import pytest
+    from execution.adapter_gateway import AdapterGatewayError
+
     adapter = FakeAdapter(error=True)
 
-    result = gateway_with(adapter).execute("fake", request())
+    with pytest.raises(AdapterGatewayError, match="execução não confirmada"):
+        gateway_with(adapter).execute("fake", request())
 
-    assert result.accepted is False
-    assert result.execution is None
     assert adapter.calls == 1
 
 
