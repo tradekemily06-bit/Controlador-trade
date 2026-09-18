@@ -131,6 +131,7 @@ class RealExecutionGateway:
                     broker=broker,
                     request_id=request_id,
                     request=request,
+                    capability=capability,
                 )
         except RealExecutionLockError as exc:
             return RealGatewayResult(
