@@ -105,7 +105,10 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "admissão REAL inválida.")
         if not isinstance(safety, RealSafetyReport):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL inválida.")
-        if not authorization.active:
+        if (
+            authorization.explicitly_enabled is not True
+            or authorization.real_execution_allowed is not True
+        ):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         for field_name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
             field_value = getattr(authorization, field_name, None)
