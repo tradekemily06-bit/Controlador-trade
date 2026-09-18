@@ -11,6 +11,7 @@ from core.operation_memory import OperationMemory, OperationMemoryRecord
 from core.operation_memory_store import OperationMemoryStore
 from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
+from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_lifecycle import (
     ExecutionLifecycleRecord,
