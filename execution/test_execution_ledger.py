@@ -68,3 +68,22 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_ledger_publication_failure_preserves_previous_durable_state(tmp_path, monkeypatch):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("stable")
+    original_fsync = __import__("execution.execution_ledger", fromlist=["os"]).os.fsync
+
+    def fail_fsync(fd):
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr("execution.execution_ledger.os.fsync", fail_fsync)
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        ledger.mark_unknown("stable")
+
+    assert ExecutionLedger(path).status("stable").value == "RESERVED"
+    assert not path.with_name(".ledger.json.tmp").exists()
+    monkeypatch.setattr("execution.execution_ledger.os.fsync", original_fsync)
+
