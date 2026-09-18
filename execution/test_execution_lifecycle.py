@@ -106,3 +106,34 @@ def test_lifecycle_atomic_failure_does_not_publish_partial_state(tmp_path, monke
     restored = ExecutionLifecycleStore(path)
     assert restored.get("req-1").state is ExecutionLifecycleState.REJECTED
     assert restored.get("req-2") is None
+
+
+def test_two_lifecycle_instances_preserve_both_concurrent_records(tmp_path):
+    from threading import Thread
+
+    path = tmp_path / "lifecycle-race.json"
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+    now = datetime.now(timezone.utc)
+
+    errors = []
+
+    def put(store, request_id):
+        try:
+            store.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, now, request_id))
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [
+        Thread(target=put, args=(first, "req-a")),
+        Thread(target=put, args=(second, "req-b")),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    restored = ExecutionLifecycleStore(path)
+    assert restored.get("req-a") is not None
+    assert restored.get("req-b") is not None
