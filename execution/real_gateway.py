@@ -11,7 +11,7 @@ from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.kill_switch import KillSwitch
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.adapter_gateway import BrokerAdapterGateway
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -253,7 +253,7 @@ class RealExecutionGateway:
                                 if self._mark_not_dispatched(request_id, message):
                                     return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
                                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
-                            result = self._gateway.execute(broker, request)
+                            result = self._gateway.execute_real(broker, request, capability=_REAL_DISPATCH_CAPABILITY)
                     except Exception as exc:
                         try:
                             self._ledger.mark_unknown(request_id)
