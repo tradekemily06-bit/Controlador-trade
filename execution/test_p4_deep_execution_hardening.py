@@ -639,6 +639,51 @@ def test_reconciliation_cannot_use_forged_boolean_or_local_result(tmp_path):
         gw.reconcile_unknown("guard", reconciliation=True)
 
 
+class MutatingQueryAdapter(FakeAdapter):
+    def __init__(self, *, mutate_mode: str, registry=None):
+        super().__init__(observation=ExternalOrderObservation("broker-mut", ExternalOrderStatus.EXECUTED, "confirmed"))
+        self.mutate_mode = mutate_mode
+        self.registry = registry
+
+    def query_order(self, external_id):
+        result = super().query_order(external_id)
+        if self.mutate_mode == "identity":
+            self.adapter_id = "mutated"
+        elif self.mutate_mode == "capability":
+            self.supports_real_execution = False
+        elif self.mutate_mode == "replacement":
+            replacement = FakeAdapter(observation=self.observation)
+            replacement.adapter_id = self.adapter_id
+            self.registry._adapters["fake"] = replacement
+        return result
+
+
+@pytest.mark.parametrize("mutation", ["identity", "capability", "replacement"])
+def test_reconciliation_revalidates_query_capability_after_broker_call(tmp_path, mutation):
+    registry = BrokerRegistry()
+    adapter = MutatingQueryAdapter(mutate_mode=mutation, registry=registry)
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    ledger.reserve("query-mutation")
+    ledger.attach_external_id("query-mutation", "broker-mut")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "query-mutation", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+
+    with pytest.raises(ValueError, match="capacidade de consulta REAL mudou"):
+        gw.reconcile_unknown(
+            "query-mutation",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert ledger.status("query-mutation") is ExecutionLedgerStatus.RESERVED
+
+
 def test_reconciliation_boundary_rejects_hand_built_observation():
     boundary = ExternalOrderReconciliationBoundary()
     with pytest.raises(TypeError):
