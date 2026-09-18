@@ -37,6 +37,7 @@ def test_adapter_gateway_checks_availability_before_execution():
     result = gateway_with(adapter).execute("fake", request())
 
     assert result.accepted is False
+    assert result.dispatch_attempted is False
     assert adapter.calls == 0
 
 
@@ -48,6 +49,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
+    assert result.dispatch_attempted is True
     assert adapter.calls == 1
 
 
@@ -70,6 +72,8 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 
     assert result.accepted is False
     assert result.execution is None
+    assert result.dispatch_attempted is False
+    assert result.dispatch_attempted is True
 
 
 def test_adapter_gateway_unknown_broker_does_not_execute():
