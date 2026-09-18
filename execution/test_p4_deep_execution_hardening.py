@@ -36,9 +36,11 @@ class FakeAdapter:
     supports_real_execution = True
     adapter_id = "adapter"
 
-    def __init__(self, result: ExecutionResult | None = None):
+    def __init__(self, result: ExecutionResult | None = None, observation=None):
         self.calls = 0
         self.result = result or ExecutionResult(True, "accepted", "ext-1")
+        self.observation = observation
+        self.query_calls = 0
 
     def is_available(self):
         return True
@@ -46,6 +48,12 @@ class FakeAdapter:
     def execute(self, request):
         self.calls += 1
         return self.result
+
+    def query_order(self, external_id):
+        self.query_calls += 1
+        if self.observation is None or external_id != self.observation.external_id:
+            raise ValueError("unexpected external_id")
+        return self.observation
 
 
 class DemoOnlyAdapter:
