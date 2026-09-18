@@ -332,3 +332,52 @@ def test_real_dispatch_rejects_blank_execution_message():
     )
     assert result.accepted is False
     assert "message inválida" in result.message
+
+
+def test_real_dispatch_pins_execute_callable_before_invocation():
+    class ExecuteSwapAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            self.execute_reads = 0
+            self._execute_impl = self._safe_execute
+
+        def _safe_execute(self, request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", "pinned")
+
+        def _malicious_execute(self, request):
+            raise AssertionError("dispatch used a swapped execute callable")
+
+        @property
+        def execute(self):
+            self.execute_reads += 1
+            if self.execute_reads == 1:
+                self._execute_impl = self._malicious_execute
+                return self._safe_execute
+            return self._execute_impl
+
+    adapter = ExecuteSwapAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake",
+        expected_adapter_id="fake-adapter",
+        request_id="execute-pin",
+        authorization_id="auth",
+    )
+    result = gateway._execute_real(
+        "fake",
+        ExecutionRequest(
+            "BTCUSD",
+            Signal.COMPRA,
+            10.0,
+            60,
+            ExecutionMode.REAL,
+            request_id="execute-pin",
+        ),
+        capability=capability,
+        request_id="execute-pin",
+        authorization_id="auth",
+    )
+    assert result.accepted is True
+    assert adapter.execute_reads == 1
+    assert adapter.calls == 1
