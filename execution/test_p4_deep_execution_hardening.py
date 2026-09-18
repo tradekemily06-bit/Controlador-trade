@@ -811,3 +811,19 @@ def test_real_lock_still_rejects_when_no_interprocess_lock_exists(tmp_path, monk
     with pytest.raises(RealExecutionLockError, match="lock interprocesso"):
         with RealExecutionLocks(tmp_path / "ledger.json").acquire("no-lock"):
             pass
+
+
+def test_real_boundary_rejects_mutated_authorization_identity_fields(tmp_path):
+    gw, _, _ = gateway(tmp_path, FakeAdapter())
+    malformed = auth()
+    object.__setattr__(malformed, "broker_id", None)
+    result = gw.execute(
+        broker="fake",
+        request_id="malformed-auth",
+        request=request("malformed-auth"),
+        authorization=malformed,
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+    assert "broker_id" in result.message
