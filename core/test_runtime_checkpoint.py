@@ -72,3 +72,15 @@ def test_checkpoint_concurrent_writes_never_publish_partial_json(tmp_path):
     assert checkpoint is not None
     assert checkpoint.session_id.startswith("session-")
     assert checkpoint.last_cycle in range(4)
+
+
+
+def test_duplicate_json_keys_in_checkpoint_fail_closed(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_text(
+        '{"session_id": "s1", "session_id": "s2", "last_cycle": 1, '
+        '"last_request_id": null, "updated_at": "2026-09-18T00:00:00+00:00"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+        RuntimeCheckpointStore(path).load()
