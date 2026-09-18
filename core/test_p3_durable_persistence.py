@@ -273,3 +273,32 @@ def test_kill_switch_update_preserves_audit_from_another_recorder(tmp_path):
     assert len(restored.records()) == 2
     assert kill_switch.state.enabled is True
     assert kill_switch.state.reason == "concurrent safety stop"
+
+
+def test_record_operation_does_not_report_failure_after_durable_commit(tmp_path, monkeypatch):
+    recorder = PersistentOperationalRecorder.from_path(
+        tmp_path / "operations.json",
+        safety_path=tmp_path / "safety.json",
+    )
+    snapshot = make_snapshot()
+    monkeypatch.setattr(recorder, "_reload_memory", lambda: (_ for _ in ()).throw(OSError("reload failed")))
+    monkeypatch.setattr(recorder, "_reload_safety", lambda: (_ for _ in ()).throw(OSError("reload failed")))
+
+    recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
+
+    assert recorded.memory in OperationMemoryStore(tmp_path / "operations.json").load().records()
+    assert recorder.audit.records()
+
+
+def test_settle_operation_durable_commit_is_not_rolled_back_by_reload_failure(tmp_path, monkeypatch):
+    path = tmp_path / "operations.json"
+    recorder = PersistentOperationalRecorder.from_path(path, safety_path=tmp_path / "safety.json")
+    snapshot = make_snapshot()
+    recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
+
+    monkeypatch.setattr(recorder, "_reload_memory", lambda: (_ for _ in ()).throw(OSError("reload failed")))
+
+    updated = recorder.settle_operation(recorded.memory, "WIN")
+
+    assert OperationMemoryStore(path).load().records()[0].result == "WIN"
+    assert updated.result == "WIN"
