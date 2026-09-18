@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from core.durable_json import atomic_write_json, locked_path, read_json
+
 
 @dataclass(frozen=True)
 class RuntimeCheckpoint:
@@ -24,27 +26,21 @@ class RuntimeCheckpointStore:
 
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        payload = {
+            "session_id": checkpoint.session_id,
+            "last_cycle": checkpoint.last_cycle,
+            "last_request_id": checkpoint.last_request_id,
+            "updated_at": checkpoint.updated_at.isoformat(),
+        }
+        with locked_path(self.path):
+            atomic_write_json(self.path, payload)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
             return None
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            with locked_path(self.path):
+                data = read_json(self.path, {})
             if not isinstance(data, dict):
                 raise ValueError
             checkpoint = RuntimeCheckpoint(
