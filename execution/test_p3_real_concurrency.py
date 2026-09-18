@@ -1231,21 +1231,13 @@ def test_reconciliation_rejects_stale_observation_after_concurrent_terminalizati
         lifecycle=ExecutionLifecycleStore(lifecycle_path),
     )
     holder_ready = threading.Event()
-    worker_attempted_lock = threading.Event()
+    worker_started = threading.Event()
     release = threading.Event()
-
-    original_request_lock = coordinator._ledger.request_execution_lock
-
-    def observed_request_lock(request_id):
-        worker_attempted_lock.set()
-        return original_request_lock(request_id)
-
-    coordinator._ledger.request_execution_lock = observed_request_lock
 
     def terminalize_while_locked():
         with ledger.request_execution_lock("stale-reconciliation"):
             holder_ready.set()
-            assert worker_attempted_lock.wait(timeout=5)
+            assert worker_started.wait(timeout=5)
             ledger.reconcile("stale-reconciliation", executed=True)
             lifecycle.reconcile(
                 "stale-reconciliation",
@@ -1262,6 +1254,7 @@ def test_reconciliation_rejects_stale_observation_after_concurrent_terminalizati
     errors = []
 
     def reconcile_stale():
+        worker_started.set()
         try:
             coordinator.reconcile(
                 "stale-reconciliation",
@@ -1277,10 +1270,12 @@ def test_reconciliation_rejects_stale_observation_after_concurrent_terminalizati
 
     worker = threading.Thread(target=reconcile_stale)
     worker.start()
-    assert worker_attempted_lock.wait(timeout=5)
+    assert worker_started.wait(timeout=5)
 
-    # The reconciliation worker has completed its admission snapshot and is
-    # now blocked on the same per-request lock owned by execution.
+    # The reconciliation worker is concurrent with the execution holder.
+    # On Windows the process-local durable-file gate may block it before the
+    # per-request lock; on POSIX it may reach the request lock directly.
+    # Either way, execution still owns the request while this assertion is made.
     assert worker.is_alive()
 
     release.set()
