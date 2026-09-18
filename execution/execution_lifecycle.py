@@ -89,6 +89,8 @@ class ExecutionLifecycleStore:
                         raise ValueError("execução UNKNOWN requer reconciliação explícita.")
                     if previous.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED) and record.state is not previous.state:
                         raise ValueError("estado terminal não pode ser alterado sem reconciliação explícita.")
+                    if record.updated_at < previous.updated_at:
+                        raise ValueError("registro de ciclo obsoleto não pode regredir o timestamp persistido.")
                 self._records[record.request_id] = record
                 self._save_unlocked()
         except ValueError:
