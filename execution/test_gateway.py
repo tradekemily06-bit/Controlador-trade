@@ -3,6 +3,11 @@ from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
 
 
 def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
@@ -129,3 +134,66 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_lifecycle_failure_after_ledger_reservation_blocks_recovery(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+
+    def fail_pending(_record):
+        raise OSError("simulated lifecycle persistence failure")
+
+    lifecycle.put = fail_pending
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-pending-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-pending-failure") is ExecutionLedgerStatus.UNKNOWN
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
+
+
+def test_gateway_terminal_persistence_mismatch_blocks_recovery(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    original_put = lifecycle.put
+
+    def fail_accepted(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("simulated terminal lifecycle failure")
+        original_put(record)
+
+    lifecycle.put = fail_accepted
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-terminal-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-terminal-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("req-terminal-failure").state is ExecutionLifecycleState.UNKNOWN
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
