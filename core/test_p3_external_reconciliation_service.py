@@ -236,6 +236,57 @@ def test_request_id_recovery_binds_identity_even_when_external_order_is_still_pe
     assert lifecycle.get("req-pending-recovery").state is ExecutionLifecycleState.UNKNOWN
 
 
+def test_request_id_recovery_waits_for_dispatch_lock_before_binding_identity(tmp_path: Path):
+    from threading import Event, Thread
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-lock-recovery")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-lock-recovery",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "awaiting reconciliation",
+        )
+    )
+
+    query_started = Event()
+    release_query = Event()
+
+    class Query:
+        def query_order_by_request_id(self, request_id):
+            query_started.set()
+            release_query.wait(timeout=5)
+            return ExternalOrderObservation("EXT-LOCK", ExternalOrderStatus.EXECUTED, "filled")
+
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    service = ExternalExecutionReconciliationService(coordinator=coordinator, query_port=Query())
+    result_holder = []
+    errors = []
+
+    def run():
+        try:
+            result_holder.append(service.reconcile_request_by_request_id("req-lock-recovery"))
+        except Exception as exc:
+            errors.append(exc)
+
+    with coordinator.request_execution_lock("req-lock-recovery"):
+        thread = Thread(target=run)
+        thread.start()
+        assert query_started.wait(timeout=0.5) is False
+        assert thread.is_alive()
+
+    assert query_started.wait(timeout=5) is True
+    release_query.set()
+    thread.join(timeout=5)
+
+    assert errors == []
+    assert len(result_holder) == 1
+    assert ledger.external_id("req-lock-recovery") == "EXT-LOCK"
+    assert ledger.status("req-lock-recovery") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
 def test_concurrent_request_id_recovery_same_identity_is_idempotent(tmp_path: Path):
     from threading import Thread
     from datetime import datetime, timezone
