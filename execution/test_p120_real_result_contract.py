@@ -52,7 +52,7 @@ def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
         )
 
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    with __import__("pytest").raises(ValueError, match="recovery"):
+    with pytest.raises(ValueError, match="recovery"):
         RealExecutionGateway(
             BrokerAdapterGateway(registry),
             ledger,
