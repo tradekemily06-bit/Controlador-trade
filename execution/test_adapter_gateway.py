@@ -271,3 +271,24 @@ def test_real_dispatch_rejects_context_reuse_for_different_request():
     assert result.accepted is False
     assert "contexto autorizado" in result.message
     assert adapter.calls == 0
+
+
+def test_real_dispatch_rejects_execution_request_subclass():
+    class RequestOverride(ExecutionRequest):
+        pass
+
+    adapter = FakeAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
+    assert capability is not None
+    forged_request = RequestOverride(
+        "BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="real-test"
+    )
+    result = gateway._execute_real(
+        "fake", forged_request, capability=capability,
+        request_id="real-test", authorization_id="auth"
+    )
+    assert result.accepted is False
+    assert adapter.calls == 0
