@@ -179,6 +179,31 @@ class OperationalSafetyStore:
         except OSError as exc:
             raise OSError("não foi possível persistir o estado do kill switch.") from exc
 
+    def append_execution_audit(self, event: dict[str, object]) -> dict[str, object]:
+        """Append one execution-audit event to the latest durable snapshot."""
+        normalized = self._execution_audit_item(event)
+        try:
+            with locked_path(self.path):
+                payload = self._read_payload_unlocked()
+                audit = self._audit_from_payload(payload)
+                kill_switch = self._normalize_kill_switch(payload.get("kill_switch", {}))
+                execution_audit = self._normalize_execution_audit(payload)
+                if normalized not in execution_audit:
+                    execution_audit.append(normalized)
+                atomic_write_json(
+                    self.path,
+                    {
+                        "audit": [self._audit_dict(record) for record in audit.records()],
+                        "kill_switch": kill_switch,
+                        "execution_audit": execution_audit,
+                    },
+                )
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir a auditoria de execução.") from exc
+        return normalized
+
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
