@@ -210,7 +210,7 @@ class ExecutionReconciliationCoordinator:
 
                 if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                     try:
-                        self._ledger.reconcile(request_id, executed=executed)
+                        self._ledger._reconcile_locked(request_id, executed=executed)
                     except ValueError:
                         raced_state = self._ledger.status(request_id)
                         if raced_state is not ledger_target:
