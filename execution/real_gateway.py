@@ -56,7 +56,6 @@ class RealExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._locks = RealExecutionLocks(ledger.path)
-        self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -145,7 +144,6 @@ class RealExecutionGateway:
             return consistency
 
         if current_status is not None:
-            self._processed_request_ids.add(request_id)
             if current_status in (
                 ExecutionLedgerStatus.UNKNOWN,
                 ExecutionLedgerStatus.RESERVED,
@@ -166,7 +164,6 @@ class RealExecutionGateway:
                 ExecutionLifecycleState.PENDING,
                 "REAL reservado antes do dispatch",
             )
-            self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(
                 RealGatewayStatus.BLOCKED,
