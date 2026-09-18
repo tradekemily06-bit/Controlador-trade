@@ -100,3 +100,42 @@ def test_recovery_final_admission_check_can_ignore_only_current_request(tmp_path
     assert blocked.state is RecoveryState.REQUIRES_RECONCILIATION
     assert blocked.can_resume is False
     assert blocked.message == "ledger RESERVED/UNKNOWN requer reconciliação"
+
+
+def test_terminal_lifecycle_repair_waits_for_request_lock(tmp_path):
+    from threading import Event, Thread
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    ledger.reserve("repair-race")
+    ledger.mark_accepted("repair-race")
+
+    started = Event()
+    finished = Event()
+    result = {}
+
+    def repair():
+        started.set()
+        result["record"] = coordinator.reconcile_terminal_lifecycle(
+            "repair-race",
+            updated_at=datetime.now(timezone.utc),
+            message="repair",
+        )
+        finished.set()
+
+    with ledger.request_execution_lock("repair-race"):
+        worker = Thread(target=repair)
+        worker.start()
+        assert started.wait(timeout=2)
+        assert not finished.wait(timeout=0.2)
+
+    worker.join(timeout=2)
+    assert finished.is_set()
+    assert result["record"].state is ExecutionLifecycleState.ACCEPTED
+    assert lifecycle.get("repair-race").state is ExecutionLifecycleState.ACCEPTED
