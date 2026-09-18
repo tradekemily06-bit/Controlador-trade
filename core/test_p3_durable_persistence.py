@@ -39,6 +39,22 @@ def test_atomic_json_write_keeps_previous_state_if_fsync_fails(tmp_path, monkeyp
     assert not list(tmp_path.glob(".state.json.*.tmp"))
 
 
+def test_atomic_json_write_keeps_previous_state_if_replace_fails(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    atomic_write_json(path, {"version": 1})
+
+    def fail_replace(_source, _target):
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr("core.durable_json.os.replace", fail_replace)
+
+    with pytest.raises(OSError, match="simulated replace failure"):
+        atomic_write_json(path, {"version": 2})
+
+    assert '"version": 1' in path.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+
+
 def test_lifecycle_concurrent_writers_do_not_lose_records(tmp_path):
     path = tmp_path / "lifecycle.json"
     first = ExecutionLifecycleStore(path)
