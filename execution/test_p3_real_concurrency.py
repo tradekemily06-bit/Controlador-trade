@@ -483,7 +483,8 @@ def test_real_lifecycle_pending_before_ledger_reserve_failure_blocks_restart_wit
     assert first.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
     assert ExecutionLedger(ledger_path).status("pending-before-reserve") is None
-    assert ExecutionLifecycleStore(lifecycle_path).get("pending-before-reserve").state is ExecutionLifecycleState.PENDING
+    # Reserve failed before lifecycle publication, so no phantom PENDING state is created.
+    assert ExecutionLifecycleStore(lifecycle_path).get("pending-before-reserve") is None
 
     from core.operation_memory import OperationMemory
     from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
@@ -495,7 +496,7 @@ def test_real_lifecycle_pending_before_ledger_reserve_failure_blocks_restart_wit
         execution_ledger=ExecutionLedger(ledger_path),
         memory=OperationMemory(),
     ).assess()
-    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.state is RecoveryState.FRESH
 
     restarted = RealExecutionGateway(
         BrokerAdapterGateway(registry),
