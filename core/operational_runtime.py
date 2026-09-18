@@ -8,6 +8,7 @@ from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
 from core.p21_observability import RuntimeHealthMonitor
+from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
@@ -22,6 +23,7 @@ class OperationalRuntime:
     """Single authoritative DEMO runtime state shared by execution and observability."""
 
     kill_switch: KillSwitch
+    operational_recorder: PersistentOperationalRecorder
     execution_ledger: ExecutionLedger
     execution_lifecycle: ExecutionLifecycleStore
     checkpoint_store: RuntimeCheckpointStore
@@ -34,7 +36,8 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
-    kill_switch = KillSwitch()
+    recorder = PersistentOperationalRecorder.from_path(root / "operations.json", kill_switch=KillSwitch(), safety_path=root / "operational-safety.json")
+    kill_switch = recorder.kill_switch
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
@@ -60,6 +63,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
         kill_switch=kill_switch,
+        operational_recorder=recorder,
         execution_ledger=ledger,
         execution_lifecycle=lifecycle,
         checkpoint_store=checkpoint,
