@@ -21,6 +21,7 @@ def make_handoff():
         request_id="req-45", symbol="EURUSD", signal=Signal.COMPRA,
         amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO,
         created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+        cycle_id="cycle-45",
     )
     return AutomationIntentHandoffBoundary().handoff(admission, intent=intent)
 
