@@ -34,40 +34,49 @@ class RuntimeCheckpointStore:
         }
         with locked_path(self.path):
             # A stale runtime instance must never move the durable checkpoint
-            # backwards. This is observability/recovery metadata, not execution
-            # authority, but regressing it can make restart diagnostics lie.
+            # backwards. Corrupt durable state must fail closed rather than
+            # being silently replaced by a fresh checkpoint.
             if self.path.exists():
                 try:
                     current = read_json(self.path, {})
                     if not isinstance(current, dict):
                         raise ValueError("checkpoint de runtime inválido.")
-                    try:
-                        current_checkpoint = RuntimeCheckpoint(
-                            session_id=current["session_id"],
-                            last_cycle=current["last_cycle"],
-                            last_request_id=current.get("last_request_id"),
-                            updated_at=datetime.fromisoformat(current["updated_at"]),
-                        )
-                        self._validate(current_checkpoint)
-                        current_aware = current_checkpoint.updated_at.tzinfo is not None and current_checkpoint.updated_at.utcoffset() is not None
-                        incoming_aware = checkpoint.updated_at.tzinfo is not None and checkpoint.updated_at.utcoffset() is not None
-                        if current_aware != incoming_aware:
-                            raise ValueError("timestamps de checkpoint devem usar o mesmo regime de timezone.")
-                        same_session_regression = (
-                            current_checkpoint.session_id == checkpoint.session_id
-                            and checkpoint.last_cycle < current_checkpoint.last_cycle
-                        )
-                        older_snapshot = checkpoint.updated_at < current_checkpoint.updated_at
-                        same_timestamp_conflict = (
-                            checkpoint.updated_at == current_checkpoint.updated_at
-                            and checkpoint != current_checkpoint
-                        )
-                        if same_session_regression or older_snapshot or same_timestamp_conflict:
-                            return
-                    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-                        raise ValueError("checkpoint de runtime inválido.") from exc
-                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                    current_checkpoint = RuntimeCheckpoint(
+                        session_id=current["session_id"],
+                        last_cycle=current["last_cycle"],
+                        last_request_id=current.get("last_request_id"),
+                        updated_at=datetime.fromisoformat(current["updated_at"]),
+                    )
+                    self._validate(current_checkpoint)
+                except ValueError as exc:
+                    if str(exc) == "checkpoint de runtime inválido.":
+                        raise
                     raise ValueError("checkpoint de runtime inválido.") from exc
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+                    raise ValueError("checkpoint de runtime inválido.") from exc
+
+                current_aware = (
+                    current_checkpoint.updated_at.tzinfo is not None
+                    and current_checkpoint.updated_at.utcoffset() is not None
+                )
+                incoming_aware = (
+                    checkpoint.updated_at.tzinfo is not None
+                    and checkpoint.updated_at.utcoffset() is not None
+                )
+                if current_aware != incoming_aware:
+                    raise ValueError("timestamps de checkpoint devem usar o mesmo regime de timezone.")
+
+                same_session_regression = (
+                    current_checkpoint.session_id == checkpoint.session_id
+                    and checkpoint.last_cycle < current_checkpoint.last_cycle
+                )
+                older_snapshot = checkpoint.updated_at < current_checkpoint.updated_at
+                same_timestamp_conflict = (
+                    checkpoint.updated_at == current_checkpoint.updated_at
+                    and checkpoint != current_checkpoint
+                )
+                if same_session_regression or older_snapshot or same_timestamp_conflict:
+                    return
             atomic_write_json(self.path, payload)
 
     def load(self) -> RuntimeCheckpoint | None:
