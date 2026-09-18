@@ -82,8 +82,13 @@ class RecoveryCoordinator:
                 if checkpoint.last_request_id not in ledger_ids and checkpoint.last_request_id not in lifecycle_by_id:
                     return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint referencia request_id inexistente nas autoridades duráveis.")
                 associated_lifecycle = next((record for record in lifecycle if record.request_id == checkpoint.last_request_id), None)
-                if associated_lifecycle is not None and checkpoint.updated_at < associated_lifecycle.updated_at:
-                    return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint está desatualizado em relação ao lifecycle durável.")
+                if associated_lifecycle is not None:
+                    checkpoint_aware = (checkpoint.updated_at.tzinfo is not None and checkpoint.updated_at.utcoffset() is not None)
+                    lifecycle_aware = (associated_lifecycle.updated_at.tzinfo is not None and associated_lifecycle.updated_at.utcoffset() is not None)
+                    if checkpoint_aware != lifecycle_aware:
+                        return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint e lifecycle usam regimes de timezone diferentes.")
+                    if checkpoint.updated_at < associated_lifecycle.updated_at:
+                        return RecoveryAssessment(RecoveryState.INVALID, checkpoint, (), (), "checkpoint está desatualizado em relação ao lifecycle durável associado.")
 
             now = datetime.now(checkpoint.updated_at.tzinfo) if checkpoint.updated_at.tzinfo is not None else datetime.now()
             if checkpoint.updated_at > now + self._MAX_CHECKPOINT_CLOCK_SKEW:
