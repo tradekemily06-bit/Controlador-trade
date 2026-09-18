@@ -100,7 +100,7 @@ class ExecutionReconciliationCoordinator:
             # durable binding we cannot prove that this broker observation
             # belongs to this request.
             raise ValueError(
-                "estado terminal sem external_id durável; reconciliação externa recusada."
+                "estado terminal sem external_id durável; observação externa não é compatível com uma reconciliação segura."
             )
         elif bound_external_id != result.external_id:
             # For already-terminal ledger records, the external identity is
