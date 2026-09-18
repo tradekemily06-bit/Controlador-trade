@@ -56,7 +56,13 @@ class RecoveryCoordinator:
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
         self.memory = memory
-        self.expected_session_id = expected_session_id.strip() if expected_session_id is not None else None
+        if expected_session_id is not None and (
+            not isinstance(expected_session_id, str)
+            or not expected_session_id.strip()
+            or expected_session_id != expected_session_id.strip()
+        ):
+            raise ValueError("expected_session_id inválido ou não canônico.")
+        self.expected_session_id = expected_session_id
 
     def assess(self, *, ignore_request_id: str | None = None) -> RecoveryAssessment:
         """Assess durable recovery, optionally excluding the request currently being admitted.
