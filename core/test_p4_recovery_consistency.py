@@ -36,7 +36,7 @@ def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
     assert result.checkpoint is None
-    assert result.message == "ledger RESERVED/UNKNOWN requer reconciliação"
+    assert result.message == "estado durável mudou durante a avaliação; retomada recusada até obter snapshot estável."
     assert ledger.status("racing-recovery") is ExecutionLedgerStatus.RESERVED
 
 
