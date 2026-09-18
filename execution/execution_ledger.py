@@ -108,8 +108,8 @@ class ExecutionLedger:
     @contextmanager
     def request_execution_lock(self, request_id: str):
         """Serialize dispatch/reconciliation for one request across processes."""
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id inválido.")
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico.")
         # Never place the raw request_id in a filesystem path. Even though
         # request IDs are normally generated internally, a public execution
         # boundary must not turn an untrusted identifier into a path segment.
