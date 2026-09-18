@@ -80,20 +80,27 @@ class ExternalExecutionReconciliationService:
                 "reconciliação automática não é segura neste cenário."
             )
 
-        observation = method(request_id.strip())
-        if not isinstance(observation, ExternalOrderObservation):
-            raise ValueError("consulta externa por request_id retornou observação inválida.")
-        if not isinstance(observation.external_id, str) or not observation.external_id.strip():
-            raise ValueError("consulta externa por request_id não retornou external_id.")
-        durable_external_id = self._coordinator.external_id_for(request_id)
-        if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
-            raise ValueError(
-                "consulta por request_id retornou external_id diferente da identidade durável."
-            )
+        # Identity discovery must be serialized with REAL dispatch. Otherwise a
+        # recovery worker could bind an external identity while a live execution
+        # is still between the final authority check and the broker response.
+        with self._coordinator.request_execution_lock(request_id):
+            observation = method(request_id.strip())
+            if not isinstance(observation, ExternalOrderObservation):
+                raise ValueError("consulta externa por request_id retornou observação inválida.")
+            if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+                raise ValueError("consulta externa por request_id não retornou external_id.")
+            durable_external_id = self._coordinator.external_id_for(request_id)
+            if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
+                raise ValueError(
+                    "consulta por request_id retornou external_id diferente da identidade durável."
+                )
 
-        if durable_external_id is None:
-            self._coordinator.bind_external_id(request_id, observation.external_id.strip())
+            if durable_external_id is None:
+                self._coordinator.bind_external_id(request_id, observation.external_id.strip())
 
+        # Reconciliation acquires the same lock again and revalidates the
+        # observation against the authoritative post-query state, preventing a
+        # stale observation from finalizing a concurrently changed request.
         return self._coordinator.reconcile(
             request_id,
             observation.external_id.strip(),
