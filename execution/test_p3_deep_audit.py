@@ -48,6 +48,26 @@ def real_contracts():
     return auth, admission, safety
 
 
+def real_gateway(registry, ledger_path: Path):
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle_path = ledger_path.with_name("lifecycle.json")
+    checkpoint_path = ledger_path.with_name("checkpoint.json")
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(checkpoint_path),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    return RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+        kill_switch=KillSwitch(),
+    )
+
+
 def test_demo_executor_failure_persists_unknown_in_both_authorities_and_blocks_restart(tmp_path: Path):
     class BrokenExecutor:
         def execute(self, _request):
@@ -112,7 +132,7 @@ def test_real_accepted_request_cannot_be_replayed_after_restart(tmp_path: Path):
     ledger_path = tmp_path / "real-ledger.json"
     auth, admission, safety = real_contracts()
 
-    first = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    first = real_gateway(registry, ledger_path)
     result = first.execute(
         broker="fake",
         request_id="req-real-terminal",
