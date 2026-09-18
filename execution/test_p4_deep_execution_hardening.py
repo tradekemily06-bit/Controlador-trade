@@ -324,21 +324,22 @@ def test_sanctioned_composition_is_production_constructor(tmp_path):
 
 
 def test_no_direct_adapter_execute_call_outside_adapter_gateway():
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[1]
     violations = []
-    for path in root.glob("*.py"):
+    for path in root.rglob("*.py"):
         if path.name == "adapter_gateway.py" or path.name.startswith("test_"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if (
+            if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr == "execute"
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "adapter"
             ):
-                violations.append(f"{path.name}:{node.lineno}")
+                continue
+            target = ast.unparse(node.func.value).lower()
+            if "adapter" in target:
+                violations.append(f"{path.relative_to(root)}:{node.lineno}")
     assert violations == []
 
 
