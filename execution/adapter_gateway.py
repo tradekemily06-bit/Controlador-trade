@@ -11,11 +11,13 @@ class AdapterGatewayError(RuntimeError):
     """Raised when an adapter cannot safely receive an execution request."""
 
 
+@dataclass(frozen=True)
 class _RealDispatchCapability:
-    pass
+    adapter: object
+    adapter_id: str
 
 
-_REAL_DISPATCH_CAPABILITY = _RealDispatchCapability()
+_REAL_DISPATCH_CAPABILITY = None
 
 
 @dataclass(frozen=True)
@@ -54,17 +56,37 @@ class BrokerAdapterGateway:
         *,
         capability: _RealDispatchCapability,
     ) -> AdapterExecutionResult:
-        if capability is not _REAL_DISPATCH_CAPABILITY:
-            return AdapterExecutionResult(
-                False,
-                "capacidade REAL inválida; dispatch bloqueado.",
-            )
+        if not isinstance(capability, _RealDispatchCapability):
+            return AdapterExecutionResult(False, "capacidade REAL inválida; dispatch bloqueado.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(
                 False,
                 "execute_real aceita somente ExecutionMode.REAL.",
             )
+        try:
+            current = self._registry.get(broker)
+        except BrokerRegistryError as exc:
+            return AdapterExecutionResult(False, str(exc))
+        if current is not capability.adapter:
+            return AdapterExecutionResult(False, "adapter REAL mudou após autorização; dispatch bloqueado.")
+        current_id = getattr(current, "adapter_id", None)
+        if not isinstance(current_id, str) or current_id.strip().lower() != capability.adapter_id.lower():
+            return AdapterExecutionResult(False, "identidade do adapter REAL mudou após autorização; dispatch bloqueado.")
         return self._dispatch(broker, request, require_real=True)
+
+    def real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
+        if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
+            return None
+        try:
+            adapter = self._registry.get(broker)
+        except BrokerRegistryError:
+            return None
+        if not bool(getattr(adapter, "supports_real_execution", False)):
+            return None
+        adapter_id = getattr(adapter, "adapter_id", None)
+        if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
+            return None
+        return _RealDispatchCapability(adapter, adapter_id.strip())
 
     def real_adapter_id(self, broker: str) -> str | None:
         """Return the explicit identity bound to a REAL-capable adapter."""
