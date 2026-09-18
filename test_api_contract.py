@@ -128,6 +128,36 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(updated["decision_id"], decision["decision_id"])
         self.assertEqual(updated["outcome"], "WIN")
 
+    def test_learning_source_validation_and_admission_preserve_gate_inputs(self):
+        source_id = "api-contract-learning-source"
+        status, _, screened = self.request(
+            "/api/learning/sources/screen",
+            method="POST",
+            payload={"source_id": source_id, "source_type": "LINK", "uri": "https://example.com/learning"},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(screened["source"]["status"], "QUARANTINED")
+
+        status, _, validated = self.request(
+            "/api/learning/sources/validate",
+            method="POST",
+            payload={"source_id": source_id, "content_verified": True, "security_checked": True},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(validated["source"]["status"], "VALIDATED")
+        self.assertTrue(validated["source"]["content_verified"])
+        self.assertTrue(validated["source"]["security_checked"])
+        self.assertFalse(validated["source"]["operation_eligible"])
+
+        status, _, admitted = self.request(
+            "/api/learning/sources/admit",
+            method="POST",
+            payload={"source_id": source_id, "knowledge_validated": True},
+        )
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(admitted["source"]["knowledge_validated"])
+        self.assertFalse(admitted["source"]["operation_eligible"])
+
     def test_invalid_replay_payload_fails_closed(self):
         status, _, payload = self.request("/api/replay", method="POST", payload={"cases": "invalid"})
         self.assertEqual(status, "400 Bad Request")
