@@ -7,8 +7,9 @@ from core.decision_audit import DecisionAudit, DecisionAuditRecord
 from core.decision_snapshot import DecisionSnapshot
 from core.durable_json import atomic_write_json
 from core.kill_switch import KillSwitch
-from core.operation_memory import OperationMemory
+from core.operation_memory import OperationMemory, OperationMemoryRecord
 from core.operation_memory_store import OperationMemoryStore
+from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_lifecycle import (
@@ -181,11 +182,9 @@ def test_operation_memory_concurrent_appends_use_latest_durable_snapshot(tmp_pat
     first = OperationMemoryStore(path)
     second = OperationMemoryStore(path)
     now = datetime.now(timezone.utc)
-    from core.operation_memory import OperationMemoryRecord
-
     records = [
-        OperationMemoryRecord(now, signal=__import__("core.models", fromlist=["Signal"]).Signal.COMPRA, score=80, decision="EXECUTAR", reason="a"),
-        OperationMemoryRecord(now, signal=__import__("core.models", fromlist=["Signal"]).Signal.VENDA, score=81, decision="EXECUTAR", reason="b"),
+        OperationMemoryRecord(now, signal=Signal.COMPRA, score=80, decision="EXECUTAR", reason="a"),
+        OperationMemoryRecord(now, signal=Signal.VENDA, score=81, decision="EXECUTAR", reason="b"),
     ]
     errors = []
 
@@ -212,8 +211,8 @@ def test_safety_audit_concurrent_appends_use_latest_durable_snapshot(tmp_path):
     path = tmp_path / "safety.json"
     first = OperationalSafetyStore(path)
     second = OperationalSafetyStore(path)
-    timestamps = [datetime(2026, 1, 1, 0, i, tzinfo=timezone.utc) for i in (1, 2)]
-    records = [DecisionAuditRecord(timestamps[i], _snapshot(i)) for i in range(2)]
+    timestamp = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    records = [DecisionAuditRecord(timestamp, _snapshot(i)) for i in range(2)]
     errors = []
 
     def append(store, record):
