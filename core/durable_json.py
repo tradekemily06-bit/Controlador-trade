@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -18,6 +19,12 @@ except ImportError:  # pragma: no cover - Unix fallback
     msvcrt = None
 
 
+# msvcrt byte-range locks are process-safe, but concurrent threads in the same
+# Windows process can still contend on the same lock byte. Keep a process-local
+# gate as well so read/modify/write operations remain serialized on Windows.
+_WINDOWS_LOCK = threading.RLock()
+
+
 @contextmanager
 def locked_path(path: str | Path) -> Iterator[Path]:
     """Serialize durable read/modify/write operations for one JSON state file."""
@@ -25,26 +32,32 @@ def locked_path(path: str | Path) -> Iterator[Path]:
     target.parent.mkdir(parents=True, exist_ok=True)
     lock_path = target.with_name(f".{target.name}.lock")
     lock_path.touch(exist_ok=True)
-    with lock_path.open("r+", encoding="utf-8") as lock_file:
-        if lock_file.seek(0, 2) == 0:
-            lock_file.write("0")
-            lock_file.flush()
-        lock_file.seek(0)
-        if fcntl is not None:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        elif msvcrt is not None:
+    process_lock = _WINDOWS_LOCK if msvcrt is not None and fcntl is None else None
+    if process_lock is not None:
+        process_lock.acquire()
+    try:
+        with lock_path.open("r+", encoding="utf-8") as lock_file:
+            if lock_file.seek(0, 2) == 0:
+                lock_file.write("0")
+                lock_file.flush()
             lock_file.seek(0)
-            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            raise OSError("nenhum mecanismo de lock de arquivo suportado neste sistema.")
-        try:
-            yield target
-        finally:
             if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             elif msvcrt is not None:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                raise OSError("nenhum mecanismo de lock de arquivo suportado neste sistema.")
+            try:
+                yield target
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    finally:
+        if process_lock is not None:
+            process_lock.release()
 
 
 def read_json(path: str | Path, default: object) -> object:
