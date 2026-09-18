@@ -1,5 +1,7 @@
 from threading import Lock, Thread
 from pathlib import Path
+from datetime import datetime, timezone
+import pytest
 
 from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -8,7 +10,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger
-from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -419,10 +421,10 @@ def test_reconcile_unknown_with_lifecycle_cannot_bypass_cross_store_authority(tm
     ledger.reserve("reconcile-cross-store")
     ledger.mark_unknown("reconcile-cross-store")
     lifecycle.put(
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+        ExecutionLifecycleRecord(
             "reconcile-cross-store",
             ExecutionLifecycleState.UNKNOWN,
-            __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            datetime.now(timezone.utc),
             "uncertain",
         )
     )
@@ -433,7 +435,6 @@ def test_reconcile_unknown_with_lifecycle_cannot_bypass_cross_store_authority(tm
         lifecycle,
     )
 
-    import pytest
     with pytest.raises(ValueError, match="external_id durável"):
         gateway.reconcile_unknown("reconcile-cross-store", executed=True)
 
