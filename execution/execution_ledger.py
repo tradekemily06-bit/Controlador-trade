@@ -192,8 +192,13 @@ class ExecutionLedger:
         return self.status(request_id) is not None
 
     def reserve(self, request_id: str) -> None:
-        with self.request_execution_lock(request_id):
-            self._reserve_locked(request_id)
+        # Reservation itself changes global REAL recovery admissibility. Keep the
+        # global barrier first, then the per-request identity lock, so a new
+        # RESERVED request cannot appear while another REAL broker call owns the
+        # global execution window.
+        with self.real_execution_lock():
+            with self.request_execution_lock(request_id):
+                self._reserve_locked(request_id)
 
     def _reserve_locked(self, request_id: str) -> None:
         self._validate_id(request_id)
