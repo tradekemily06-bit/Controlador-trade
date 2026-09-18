@@ -215,4 +215,4 @@ def test_gateway_reservation_error_with_unreadable_ledger_fails_closed(tmp_path,
     result = gateway.execute("req-unreadable-ledger", request())
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
-    assert "não foi enviada" in result.message
+    assert "não enviada" in result.message
