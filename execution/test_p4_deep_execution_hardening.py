@@ -1169,3 +1169,13 @@ def test_ledger_rejects_duplicate_request_ids_in_legacy_list(tmp_path):
     path.write_text('["dup", "dup"]', encoding="utf-8")
     with pytest.raises(ValueError, match="request_id duplicado"):
         ExecutionLedger(path)
+
+
+def test_ledger_rejects_duplicate_json_keys(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"dup": {"status": "RESERVED"}, "dup": {"status": "UNKNOWN"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ledger de execução inválido"):
+        ExecutionLedger(path)
