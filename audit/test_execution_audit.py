@@ -86,6 +86,31 @@ def test_append_does_not_mutate_memory_when_durability_fails(tmp_path, monkeypat
     assert store.load_execution_audit() == ()
 
 
+def test_stale_audit_instance_appends_against_latest_durable_snapshot(tmp_path):
+    first = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    second = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+
+    first_event = ExecutionAuditEvent(
+        "req-first", ExecutionLifecycleState.PENDING,
+        datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), "first",
+    )
+    second_event = ExecutionAuditEvent(
+        "req-second", ExecutionLifecycleState.ACCEPTED,
+        datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc), "second",
+    )
+    third_event = ExecutionAuditEvent(
+        "req-third", ExecutionLifecycleState.REJECTED,
+        datetime(2026, 1, 1, 0, 2, tzinfo=timezone.utc), "third",
+    )
+
+    first.append(first_event)
+    second.append(second_event)
+    first.append(third_event)
+
+    restored = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    assert restored.events() == (first_event, second_event, third_event)
+
+
 def test_concurrent_audit_log_cannot_append_out_of_order_timestamp(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     first = ExecutionAuditLog(store)
