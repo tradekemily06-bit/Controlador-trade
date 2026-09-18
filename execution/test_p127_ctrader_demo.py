@@ -73,3 +73,15 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+def test_demo_adapter_rejects_non_boolean_transport_availability():
+    transport = FakeDemoTransport(available="yes")
+    adapter = CTraderDemoAdapter(transport)
+    try:
+        adapter.execute(request())
+    except ValueError as exc:
+        assert "disponibilidade inválida" in str(exc)
+    else:
+        raise AssertionError("disponibilidade não booleana deveria bloquear")
+    assert transport.orders == []
