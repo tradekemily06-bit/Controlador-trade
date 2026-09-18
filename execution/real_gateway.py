@@ -157,12 +157,39 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            "aceite REAL sem external_id; identidade externa não é reconciliável com segurança.",
+                        )
+                    )
+                except (OSError, ValueError):
+                    pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
             self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
             self._ledger.mark_accepted(request_id)
         except (OSError, ValueError) as exc:
+            # The broker has already accepted the order. Any persistence
+            # failure therefore remains uncertain; never leave the lifecycle
+            # claiming that the request is merely pre-broker PENDING.
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            f"ordem REAL aceita, mas persistência do ledger falhou: {exc}",
+                        )
+                    )
+                except (OSError, ValueError):
+                    pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         if self._lifecycle is not None:
             try:
