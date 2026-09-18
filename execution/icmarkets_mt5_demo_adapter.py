@@ -22,6 +22,7 @@ class ICMarketsMT5DemoConfig:
 
 
 class ICMarketsMT5DemoAdapter:
+    supports_real_execution = False
     """IC Markets MT5 DEMO boundary.
 
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
