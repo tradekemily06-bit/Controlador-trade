@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p121_external_order_reconciliation import ExternalOrderStatus, ReconciliationResult
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
@@ -261,9 +262,19 @@ class RealExecutionGateway:
         self,
         request_id: str,
         *,
-        executed: bool,
-        external_id: str | None = None,
+        reconciliation: ReconciliationResult,
     ) -> None:
+        """Apply only a validated external reconciliation result."""
+        if not isinstance(reconciliation, ReconciliationResult):
+            raise ValueError("resultado de reconciliação externa obrigatório.")
+        if not reconciliation.reconciled:
+            raise ValueError("observação externa ainda não é reconciliável.")
+        if reconciliation.status not in (
+            ExternalOrderStatus.EXECUTED,
+            ExternalOrderStatus.NOT_EXECUTED,
+        ):
+            raise ValueError("status externo não permite fechamento da reconciliação.")
+
         with self._locks.acquire(request_id):
             status = self._ledger.status(request_id)
             if status not in (
@@ -271,10 +282,16 @@ class RealExecutionGateway:
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+
+            existing_external_id = self._ledger.external_id(request_id)
+            if existing_external_id is not None and existing_external_id.strip() != reconciliation.external_id.strip():
+                raise ValueError("external_id da reconciliação difere do Ledger.")
+
+            executed = reconciliation.status is ExternalOrderStatus.EXECUTED
             self._ledger.reconcile(
                 request_id,
                 executed=executed,
-                external_id=external_id,
+                external_id=reconciliation.external_id,
             )
             if self._lifecycle is not None:
                 state = (
@@ -286,7 +303,7 @@ class RealExecutionGateway:
                     request_id,
                     state,
                     updated_at=datetime.now(timezone.utc),
-                    message="reconciliação explícita",
+                    message="reconciliação externa validada",
                 )
 
     def repair_lifecycle_projection(self, request_id: str) -> None:
