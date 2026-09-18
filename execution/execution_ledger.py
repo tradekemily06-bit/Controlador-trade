@@ -157,6 +157,10 @@ class ExecutionLedger:
         return self.status(request_id) is not None
 
     def reserve(self, request_id: str) -> None:
+        with self.request_execution_lock(request_id):
+            self._reserve_locked(request_id)
+
+    def _reserve_locked(self, request_id: str) -> None:
         self._validate_id(request_id)
 
         def mutation() -> None:
@@ -168,6 +172,10 @@ class ExecutionLedger:
 
     def record(self, request_id: str) -> None:
         """Backward-compatible terminal record for existing DEMO infrastructure."""
+        with self.request_execution_lock(request_id):
+            self._record_locked(request_id)
+
+    def _record_locked(self, request_id: str) -> None:
         self._validate_id(request_id)
 
         def mutation() -> None:
@@ -177,15 +185,37 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+        with self.request_execution_lock(request_id):
+            self._transition_locked(request_id, ExecutionLedgerStatus.ACCEPTED)
 
     def mark_rejected(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.REJECTED)
+        with self.request_execution_lock(request_id):
+            self._transition_locked(request_id, ExecutionLedgerStatus.REJECTED)
 
     def mark_unknown(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+        with self.request_execution_lock(request_id):
+            self._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
+
+    def _transition_locked(self, request_id: str, status: ExecutionLedgerStatus) -> None:
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current is None:
+                raise ValueError("request_id não foi reservado.")
+            if current is ExecutionLedgerStatus.UNKNOWN and status is not ExecutionLedgerStatus.UNKNOWN:
+                raise ValueError("estado UNKNOWN requer reconciliação explícita.")
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError(f"transição inválida de {current.value} para {status.value}.")
+            self._states[request_id] = status
+
+        self._mutate_locked(mutation)
 
     def reconcile(self, request_id: str, *, executed: bool) -> ExecutionLedgerStatus:
+        with self.request_execution_lock(request_id):
+            return self._reconcile_locked(request_id, executed=executed)
+
+    def _reconcile_locked(self, request_id: str, *, executed: bool) -> ExecutionLedgerStatus:
         self._validate_id(request_id)
         target = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
@@ -196,7 +226,6 @@ class ExecutionLedger:
             self._states[request_id] = target
 
         self._mutate_locked(mutation)
-        return target
 
     def records(self) -> tuple[str, ...]:
         self._load()
