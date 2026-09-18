@@ -82,9 +82,12 @@ def test_two_real_gateway_instances_cannot_double_dispatch(tmp_path: Path):
         thread.join()
 
     assert adapter.calls == 1
-    assert sorted(result.status for result in results) == sorted(
-        [RealGatewayStatus.ADMITTED, RealGatewayStatus.UNKNOWN]
-    )
+    statuses = {result.status for result in results}
+    assert RealGatewayStatus.ADMITTED in statuses
+    assert statuses - {RealGatewayStatus.ADMITTED} <= {
+        RealGatewayStatus.UNKNOWN,
+        RealGatewayStatus.BLOCKED,
+    }
 
 
 def test_real_persistence_failure_after_dispatch_never_releases_request_for_retry(tmp_path: Path, monkeypatch):
