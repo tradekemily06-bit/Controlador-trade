@@ -36,7 +36,7 @@ class _RealQueryCapability:
             registered is self._adapter
             and isinstance(current_id, str)
             and current_id.strip().lower() == self._adapter_id.strip().lower()
-            and bool(getattr(self._adapter, "supports_real_execution", False))
+            and getattr(self._adapter, "supports_real_execution", False) is True
             and callable(getattr(self._adapter, "query_order", None))
         )
 
@@ -119,7 +119,7 @@ class BrokerAdapterGateway:
             adapter = self._registry.get(broker)
         except BrokerRegistryError:
             return None
-        if not getattr(adapter, "supports_real_execution", False) is True:
+        if getattr(adapter, "supports_real_execution", False) is not True:
             return None
         adapter_id = getattr(adapter, "adapter_id", None)
         if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
@@ -145,7 +145,7 @@ class BrokerAdapterGateway:
             adapter = self._registry.get(broker)
         except BrokerRegistryError:
             return None
-        if not getattr(adapter, "supports_real_execution", False) is True:
+        if getattr(adapter, "supports_real_execution", False) is not True:
             return None
         adapter_id = getattr(adapter, "adapter_id", None)
         if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
@@ -174,7 +174,7 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, "adapter REAL mudou durante o dispatch; execução bloqueada antes do adapter.execute.")
 
         if require_real:
-            if not getattr(adapter, "supports_real_execution", False) is True:
+            if getattr(adapter, "supports_real_execution", False) is not True:
                 return AdapterExecutionResult(
                     False,
                     "adapter não declara capacidade REAL; dispatch bloqueado antes do adapter.execute.",
@@ -215,7 +215,7 @@ class BrokerAdapterGateway:
                     False,
                     "identidade do adapter REAL mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
                 )
-            if not getattr(adapter, "supports_real_execution", False) is True:
+            if getattr(adapter, "supports_real_execution", False) is not True:
                 return AdapterExecutionResult(
                     False,
                     "capacidade REAL do adapter mudou durante a checagem de disponibilidade; execução bloqueada antes do adapter.execute.",
