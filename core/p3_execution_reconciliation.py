@@ -143,9 +143,23 @@ class ExecutionReconciliationCoordinator:
         if lifecycle_state not in compatible_lifecycle:
             raise ValueError("observação externa não é compatível com o estado terminal do lifecycle.")
 
-        # Apply only idempotent, explicitly reconciled transitions.
+        # Apply only idempotent, explicitly reconciled transitions. Two
+        # recovery workers may race on the same request: if another worker
+        # wins the ledger transition first, re-read and accept the already
+        # proven target terminal state instead of turning a safe race into a
+        # false reconciliation failure.
         if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-            self._ledger.reconcile(request_id, executed=executed)
+            try:
+                self._ledger.reconcile(request_id, executed=executed)
+            except ValueError:
+                raced_state = self._ledger.status(request_id)
+                if raced_state is not ledger_target:
+                    raise
+                raced_external_id = self._ledger.external_id(request_id)
+                if raced_external_id != result.external_id:
+                    raise ValueError(
+                        "external_id durável mudou ou divergiu durante a reconciliação concorrente."
+                    )
 
         lifecycle_record = self._lifecycle.get(request_id)
         if lifecycle_record is None:
