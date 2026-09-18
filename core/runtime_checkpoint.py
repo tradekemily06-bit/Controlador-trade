@@ -36,10 +36,10 @@ class RuntimeCheckpointStore:
             atomic_write_json(self.path, payload)
 
     def load(self) -> RuntimeCheckpoint | None:
-        if not self.path.exists():
-            return None
         try:
             with locked_path(self.path):
+                if not self.path.exists():
+                    return None
                 data = read_json(self.path, {})
             if not isinstance(data, dict):
                 raise ValueError
