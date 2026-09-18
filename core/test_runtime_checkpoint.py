@@ -147,3 +147,9 @@ def test_corrupted_checkpoint_timestamp_cannot_be_overwritten_by_save(tmp_path):
         store.save(incoming)
 
     assert "not-a-timestamp" in path.read_text(encoding="utf-8")
+
+
+def test_naive_checkpoint_timestamp_is_rejected(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    with pytest.raises(ValueError, match="timezone"):
+        store.save(RuntimeCheckpoint("session", 1, None, datetime(2026, 9, 18, 12, 0)))
