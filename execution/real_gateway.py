@@ -9,6 +9,7 @@ from core.p117_real_admission import RealAdmission
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.kill_switch import KillSwitch
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -33,7 +34,7 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, recovery: RecoveryCoordinator | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, recovery: RecoveryCoordinator | None = None, kill_switch: KillSwitch | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -42,10 +43,13 @@ class RealExecutionGateway:
             raise ValueError("lifecycle inválido.")
         if recovery is not None and not isinstance(recovery, RecoveryCoordinator):
             raise ValueError("recovery inválido.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._recovery = recovery
+        self._kill_switch = kill_switch
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -233,7 +237,33 @@ class RealExecutionGateway:
                 )
 
             try:
-                result = self._gateway.execute(broker, request)
+                # The live kill switch is the final mutable safety authority.
+                # Hold its execution window across the external side effect so
+                # an activation racing this boundary cannot interleave between
+                # the last check and the broker call.
+                with self._kill_switch.execution_window():
+                    if not self._kill_switch.allows_execution():
+                        try:
+                            self._ledger.mark_unknown(request_id)
+                        except (OSError, ValueError):
+                            pass
+                        if self._lifecycle is not None:
+                            try:
+                                self._lifecycle.put(
+                                    ExecutionLifecycleRecord(
+                                        request_id,
+                                        ExecutionLifecycleState.UNKNOWN,
+                                        datetime.now(timezone.utc),
+                                        "kill switch ativado antes da fronteira final do broker.",
+                                    )
+                                )
+                            except (OSError, ValueError):
+                                pass
+                        return RealGatewayResult(
+                            RealGatewayStatus.BLOCKED,
+                            "execução REAL bloqueada pelo kill switch antes do broker.",
+                        )
+                    result = self._gateway.execute(broker, request)
             except Exception as exc:
                 try:
                     self._ledger.mark_unknown(request_id)
