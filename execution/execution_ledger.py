@@ -143,31 +143,6 @@ class ExecutionLedger:
             except FileNotFoundError:
                 pass
 
-    def request_execution_lock(self, request_id: str):
-        """Serialize dispatch/reconciliation for one request across processes."""
-        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
-            raise ValueError("request_id inválido ou não canônico.")
-        # Never place the raw request_id in a filesystem path. Even though
-        # request IDs are normally generated internally, a public execution
-        # boundary must not turn an untrusted identifier into a path segment.
-        request_key = hashlib.sha256(request_id.strip().encode("utf-8")).hexdigest()
-        lock_path = self.path.with_name(
-            f".{self.path.name}.{request_key}.execution.lock"
-        )
-        held = getattr(self._request_lock_local, "held", set())
-        if lock_path in held:
-            yield
-            return
-        with locked_path(lock_path):
-            held = set(held)
-            held.add(lock_path)
-            self._request_lock_local.held = held
-            try:
-                yield
-            finally:
-                held = set(getattr(self._request_lock_local, "held", set()))
-                held.discard(lock_path)
-                self._request_lock_local.held = held
 
     def external_id(self, request_id: str) -> str | None:
         self._validate_id(request_id)
