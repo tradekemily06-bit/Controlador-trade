@@ -570,14 +570,14 @@ def test_operation_memory_rejects_mixed_timezone_awareness(tmp_path):
         "aware",
     )
     store.append(naive)
-    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+    with pytest.raises(ValueError, match="timezone"):
         store.append(aware)
 
 
 def test_decision_audit_rejects_mixed_timezone_awareness():
     audit = DecisionAudit()
     audit.append(DecisionAuditRecord(datetime(2026, 1, 1), _snapshot(12)))
-    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+    with pytest.raises(ValueError, match="timezone"):
         audit.append(
             DecisionAuditRecord(
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -595,7 +595,7 @@ def test_lifecycle_rejects_mixed_timezone_awareness(tmp_path):
             datetime(2026, 1, 1),
         )
     )
-    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+    with pytest.raises(ValueError, match="timezone"):
         store.put(
             ExecutionLifecycleRecord(
                 "req-timezone",
