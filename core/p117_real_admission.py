@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 import weakref
 
+from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p116_real_release_audit import RealReleaseAudit, _is_boundary_verified_audit
+
 
 class RealAdmissionStatus(str, Enum):
     ADMITTED = "ADMITTED"
@@ -16,7 +19,7 @@ class _AdmissionProvenanceToken:
 
 @dataclass(frozen=True)
 class RealAdmission:
-    """Immutable admission bound to the exact operation and adapter."""
+    """Immutable admission bound to the exact operation, audit and authorization."""
 
     admission_id: str
     audit_id: str
@@ -27,6 +30,9 @@ class RealAdmission:
     symbol: str
     reasons: tuple[str, ...]
     _provenance_token: _AdmissionProvenanceToken | None = field(default=None, repr=False, compare=False)
+    _authorization_ref: weakref.ReferenceType[RealExecutionAuthorization] | None = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         for name in ("admission_id", "audit_id", "broker_id", "adapter_id", "request_id", "symbol"):
@@ -39,6 +45,10 @@ class RealAdmission:
             raise TypeError("reasons da admissão REAL deve ser uma tupla de strings.")
         if self._provenance_token is not None and not isinstance(self._provenance_token, _AdmissionProvenanceToken):
             raise TypeError("proveniência da admissão REAL inválida.")
+        if self._authorization_ref is not None and not isinstance(
+            self._authorization_ref, weakref.ReferenceType
+        ):
+            raise TypeError("referência da autorização REAL inválida.")
 
     @property
     def admitted(self) -> bool:
@@ -48,13 +58,13 @@ class RealAdmission:
         if token is None:
             return False
         reference = _ADMITTED_PROVENANCE.get(id(token))
-        return reference is not None and reference() is token
+        if reference is None or reference() is not token:
+            return False
+        authorization_ref = self._authorization_ref
+        authorization = authorization_ref() if authorization_ref is not None else None
+        return authorization is not None and authorization.active
 
 
-# Admission is a gate, not merely a data shape. The execution gateway must
-# distinguish a boundary-issued admission from a field-identical fabricated
-# dataclass. The private token is held by the exact object and separately
-# registered by identity, without retaining admissions forever.
 _ADMITTED_PROVENANCE: dict[int, weakref.ReferenceType[_AdmissionProvenanceToken]] = {}
 
 
@@ -69,10 +79,20 @@ def _is_boundary_admitted(admission: object) -> bool:
 
 
 class RealAdmissionBoundary:
-    def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
-              authorization_active: bool, safety_ready: bool,
-              broker_available: bool, broker_id: str, adapter_id: str,
-              request_id: str, symbol: str) -> RealAdmission:
+    def admit(
+        self,
+        *,
+        admission_id: str,
+        audit_id: str,
+        audit_verified: RealReleaseAudit,
+        authorization_active: RealExecutionAuthorization,
+        safety_ready: bool,
+        broker_available: bool,
+        broker_id: str,
+        adapter_id: str,
+        request_id: str,
+        symbol: str,
+    ) -> RealAdmission:
         for name, value in (
             ("admission_id", admission_id), ("audit_id", audit_id),
             ("broker_id", broker_id), ("adapter_id", adapter_id),
@@ -81,29 +101,38 @@ class RealAdmissionBoundary:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} é obrigatório.")
 
-        for name, value in (
-            ("audit_verified", audit_verified),
-            ("authorization_active", authorization_active),
-            ("safety_ready", safety_ready),
-            ("broker_available", broker_available),
-        ):
+        if not isinstance(audit_verified, RealReleaseAudit) or not _is_boundary_verified_audit(audit_verified):
+            raise ValueError("auditoria P116 VERIFIED emitida pela fronteira é obrigatória para admissão REAL.")
+        if audit_verified.audit_id != audit_id:
+            raise ValueError("audit_id não corresponde à auditoria P116.")
+        if not isinstance(authorization_active, RealExecutionAuthorization) or not authorization_active.active:
+            raise ValueError("autorização REAL ativa emitida pela fronteira é obrigatória para admissão REAL.")
+        if authorization_active.audit_id != audit_id:
+            raise ValueError("auditoria da autorização REAL difere da admissão.")
+        if authorization_active.broker_id.strip().lower() != broker_id.strip().lower():
+            raise ValueError("broker da autorização REAL difere da admissão.")
+        if authorization_active.adapter_id.strip() != adapter_id.strip():
+            raise ValueError("adapter_id da autorização REAL difere da admissão.")
+        if authorization_active.request_id.strip() != request_id.strip():
+            raise ValueError("request_id da autorização REAL difere da admissão.")
+        if authorization_active.symbol.strip().upper() != symbol.strip().upper():
+            raise ValueError("símbolo da autorização REAL difere da admissão.")
+
+        for name, value in (("safety_ready", safety_ready), ("broker_available", broker_available)):
             if not isinstance(value, bool):
                 raise TypeError(f"{name} deve ser booleano.")
 
         reasons = []
-        for ok, label in (
-            (audit_verified, "auditoria P116 não verificada"),
-            (authorization_active, "autorização REAL não ativa"),
-            (safety_ready, "segurança REAL não pronta"),
-            (broker_available, "corretora indisponível"),
-        ):
-            if not ok:
-                reasons.append(label)
+        if not safety_ready:
+            reasons.append("segurança REAL não pronta")
+        if not broker_available:
+            reasons.append("corretora indisponível")
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
         token = _AdmissionProvenanceToken() if status is RealAdmissionStatus.ADMITTED else None
+        authorization_ref = weakref.ref(authorization_active) if token is not None else None
         admission = RealAdmission(
             admission_id, audit_id, status, broker_id, adapter_id,
-            request_id, symbol, tuple(reasons), token,
+            request_id, symbol, tuple(reasons), token, authorization_ref,
         )
         if token is not None:
             key = id(token)
