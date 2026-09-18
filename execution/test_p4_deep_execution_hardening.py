@@ -449,26 +449,23 @@ def test_reconciliation_requires_broker_query_and_durable_external_id(tmp_path):
     with pytest.raises(ValueError, match="external_id durável"):
         gw.reconcile_unknown(
             "reconcile-me",
+            broker="fake",
+            authorization=auth(),
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-            query_port=QueryPort(
-                ExternalOrderObservation(
-                    "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
-                )
-            ),
         )
 
     ledger.attach_external_id("reconcile-me", "broker-reconcile")
-    query = QueryPort(
-        ExternalOrderObservation(
-            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
-        )
+    adapter = gw._gateway._registry.get("fake")
+    adapter.observation = ExternalOrderObservation(
+        "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
     )
     gw.reconcile_unknown(
         "reconcile-me",
+        broker="fake",
+        authorization=auth(),
         reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-        query_port=query,
     )
-    assert query.calls == 1
+    assert adapter.query_calls == 1
     assert ledger.status("reconcile-me") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("reconcile-me").state is ExecutionLifecycleState.ACCEPTED
 
@@ -482,16 +479,16 @@ def test_pending_broker_observation_does_not_close_request(tmp_path):
             "pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
         )
     )
-    query = QueryPort(
-        ExternalOrderObservation(
-            "broker-pending", ExternalOrderStatus.PENDING, "still open"
-        )
+    adapter = gw._gateway._registry.get("fake")
+    adapter.observation = ExternalOrderObservation(
+        "broker-pending", ExternalOrderStatus.PENDING, "still open"
     )
     with pytest.raises(ValueError, match="ainda"):
         gw.reconcile_unknown(
             "pending",
+            broker="fake",
+            authorization=auth(),
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
-            query_port=query,
         )
     assert ledger.status("pending") is ExecutionLedgerStatus.RESERVED
 
