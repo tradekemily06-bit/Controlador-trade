@@ -1131,3 +1131,20 @@ def test_execute_real_is_called_only_by_real_gateway_source():
             ):
                 violations.append(f"{path.relative_to(root)}:{node.lineno}")
     assert violations == []
+
+
+def test_ledger_normalizes_external_id_and_rejects_non_boolean_reconciliation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("normalize")
+    ledger.attach_external_id("normalize", "  broker-123  ")
+    assert ledger.external_id("normalize") == "broker-123"
+    ledger.mark_unknown("normalize")
+    ledger.reconcile("normalize", executed=False, external_id="  broker-123  ")
+    assert ledger.external_id("normalize") == "broker-123"
+    assert ledger.status("normalize") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+    ledger.reserve("strict-bool")
+    ledger.attach_external_id("strict-bool", "broker-456")
+    ledger.mark_unknown("strict-bool")
+    with pytest.raises(ValueError, match="executed precisa ser booleano"):
+        ledger.reconcile("strict-bool", executed="false", external_id="broker-456")
