@@ -55,6 +55,30 @@ def test_atomic_json_write_keeps_previous_state_if_replace_fails(tmp_path, monke
     assert not list(tmp_path.glob(".state.json.*.tmp"))
 
 
+def test_atomic_json_write_directory_fsync_failure_leaves_committed_state_for_recovery(tmp_path, monkeypatch):
+    path = tmp_path / "state.json"
+    atomic_write_json(path, {"version": 1})
+    original_fsync = __import__("os").fsync
+    calls = {"count": 0}
+
+    def fail_directory_fsync(fd):
+        calls["count"] += 1
+        if calls["count"] == 2:
+            raise OSError("simulated directory durability failure")
+        return original_fsync(fd)
+
+    monkeypatch.setattr("core.durable_json.os.fsync", fail_directory_fsync)
+
+    with pytest.raises(OSError, match="simulated directory durability failure"):
+        atomic_write_json(path, {"version": 2})
+
+    # os.replace already committed the new file before directory fsync.
+    # Recovery/retry must therefore inspect durable state instead of assuming
+    # the failed call rolled back to the previous version.
+    assert '"version": 2' in path.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+
+
 def test_lifecycle_concurrent_writers_do_not_lose_records(tmp_path):
     path = tmp_path / "lifecycle.json"
     first = ExecutionLifecycleStore(path)
