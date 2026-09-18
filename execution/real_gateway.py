@@ -405,46 +405,36 @@ class RealExecutionGateway:
         self,
         request_id: str,
         *,
-        executed: bool,
-        external_id: str | None = None,
+        observation: ExternalOrderObservation,
     ) -> None:
-        """Explicitly reconcile uncertainty without ever resubmitting the order.
-    
-        Reconciliation must cross durable authorities and carry externally
-        observed identity. A bare boolean cannot prove broker state, so the
-        old ledger-only reconciliation path is intentionally fail-closed.
+        """Apply broker-observed evidence; never manufacture broker state locally.
+
+        The caller must provide an observation obtained from a read-only broker
+        reconciliation path. A bare executed boolean plus an arbitrary
+        external_id is intentionally rejected because that combination would be
+        a durable-state side door: local code could otherwise manufacture
+        ACCEPTED/REJECTED REAL authority without broker evidence.
         """
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("reconciliação REAL exige observação externa verificável.")
+
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-    
-        # lifecycle and recovery are mandatory REAL authorities; this branch
-        # is retained as a defensive assertion for future refactors.
+
         if self._lifecycle is None:
             raise ValueError("reconciliação REAL exige lifecycle durável.")
-    
-        if not isinstance(external_id, str) or not external_id.strip():
-            raise ValueError(
-                "reconciliação com lifecycle exige external_id durável; "
-                "use o serviço de reconciliação externa para consultar o broker."
-            )
-    
-        observation = ExternalOrderObservation(
-            external_id=external_id.strip(),
-            status=(
-                ExternalOrderStatus.EXECUTED
-                if executed
-                else ExternalOrderStatus.NOT_EXECUTED
-            ),
-            message="reconciliação explícita solicitada pelo gateway",
-        )
+
+        if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+            raise ValueError("observação externa sem external_id não é reconciliável com segurança.")
+
         ExecutionReconciliationCoordinator(
             ledger=self._ledger,
             lifecycle=self._lifecycle,
         ).reconcile(
             request_id,
-            external_id.strip(),
+            observation.external_id.strip(),
             observation,
         )
