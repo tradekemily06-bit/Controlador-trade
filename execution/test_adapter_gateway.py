@@ -252,3 +252,22 @@ def test_real_dispatch_control_surface_is_not_public():
     gateway = BrokerAdapterGateway(registry)
     assert not hasattr(gateway, "execute_real")
     assert not hasattr(gateway, "real_dispatch_capability")
+
+
+def test_real_dispatch_rejects_context_reuse_for_different_request():
+    adapter = FakeAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="real-test", authorization_id="auth"
+    )
+    assert capability is not None
+    result = gateway._execute_real(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="other-request"),
+        capability=capability,
+        request_id="other-request",
+        authorization_id="auth",
+    )
+    assert result.accepted is False
+    assert "contexto autorizado" in result.message
+    assert adapter.calls == 0
