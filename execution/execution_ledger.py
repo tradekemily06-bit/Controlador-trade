@@ -75,7 +75,10 @@ class ExecutionLedger:
             except (ValueError, TypeError) as exc:
                 raise ValueError("ledger de execução inválido.") from exc
             if external_id is not None:
-                external_ids[request_id] = external_id.strip()
+                normalized_external_id = external_id.strip()
+                if normalized_external_id in external_ids.values():
+                    raise ValueError("ledger de execução inválido; external_id duplicado.")
+                external_ids[request_id] = normalized_external_id
         return states, external_ids
 
     def _write_unlocked(self) -> None:
