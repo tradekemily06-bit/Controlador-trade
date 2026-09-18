@@ -33,6 +33,7 @@ class ExecutionLifecycleStore:
         self._load()
 
     def _load(self) -> None:
+        self._records = {}
         if not self.path.exists():
             return
         try:
@@ -75,6 +76,7 @@ class ExecutionLifecycleStore:
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        self._load()
         return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
@@ -90,6 +92,7 @@ class ExecutionLifecycleStore:
         return record
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
