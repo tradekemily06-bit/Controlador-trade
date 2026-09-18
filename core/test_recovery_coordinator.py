@@ -136,3 +136,63 @@ def test_reconciled_not_executed_with_rejected_lifecycle_is_safe(tmp_path):
 
     assert result.state is RecoveryState.FRESH
     assert result.can_resume is True
+
+
+@pytest.mark.parametrize(
+    ("lifecycle_state", "ledger_state"),
+    [
+        (ExecutionLifecycleState.ACCEPTED, "REJECTED"),
+        (ExecutionLifecycleState.REJECTED, "ACCEPTED"),
+        (ExecutionLifecycleState.PENDING, "ACCEPTED"),
+        (ExecutionLifecycleState.PENDING, "REJECTED"),
+        (ExecutionLifecycleState.UNKNOWN, "ACCEPTED"),
+        (ExecutionLifecycleState.UNKNOWN, "REJECTED"),
+    ],
+)
+def test_any_lifecycle_terminal_or_uncertain_mismatch_blocks_resume(tmp_path, lifecycle_state, ledger_state):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-cross-mismatch")
+    if ledger_state == "ACCEPTED":
+        coordinator.execution_ledger.mark_accepted("req-cross-mismatch")
+    else:
+        coordinator.execution_ledger.mark_rejected("req-cross-mismatch")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-cross-mismatch", lifecycle_state, now, "cross-store mismatch")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_corrupt_lifecycle_blocks_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    (tmp_path / "lifecycle.json").write_text('{"not": "a list"}', encoding="utf-8")
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+
+
+def test_corrupt_ledger_blocks_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    (tmp_path / "ledger.json").write_text('{"req-1": "NOT_A_REAL_STATE"}', encoding="utf-8")
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+
+
+def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reconciled-orphan")
+    coordinator.execution_ledger.reconcile("req-reconciled-orphan", executed=True)
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
