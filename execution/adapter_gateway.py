@@ -40,7 +40,10 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            # A transport/adapter exception is not a definitive rejection.
+            # The request may have reached the broker before the exception, so
+            # REAL execution must enter UNKNOWN rather than REJECTED.
+            raise AdapterGatewayError(f"adapter falhou; execução não confirmada: {exc}") from exc
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
