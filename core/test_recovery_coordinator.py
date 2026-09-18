@@ -105,3 +105,21 @@ def test_mismatched_terminal_states_require_reconciliation(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
+
+
+def test_checkpoint_referencing_missing_execution_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint(
+            session_id="session-1",
+            last_cycle=4,
+            last_request_id="req-missing",
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "checkpoint aponta para execução ausente" in result.message
