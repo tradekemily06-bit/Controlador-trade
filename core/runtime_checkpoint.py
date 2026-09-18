@@ -62,7 +62,7 @@ class RuntimeCheckpointStore:
                         )
                         if same_session_regression or older_snapshot or same_timestamp_conflict:
                             return
-                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
                     raise ValueError("checkpoint de runtime inválido.") from exc
             atomic_write_json(self.path, payload)
 
