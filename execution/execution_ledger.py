@@ -21,6 +21,7 @@ class ExecutionLedgerStatus(str, Enum):
 
 class ExecutionLedger:
     _request_lock_local = threading.local()
+    _real_lock_local = threading.local()
 
     """Persistent request state for restart-safe REAL execution idempotency."""
 
@@ -118,9 +119,19 @@ class ExecutionLedger:
         can mutate uncertain execution state.
         """
         lock_path = self.path.with_name(f".{self.path.name}.real-execution.lock")
+        held = getattr(self._real_lock_local, "held", set())
+        if lock_path in held:
+            yield
+            return
         lock_path.touch(exist_ok=True)
         with locked_path(lock_path):
-            yield
+            held.add(lock_path)
+            self._real_lock_local.held = held
+            try:
+                yield
+            finally:
+                held.discard(lock_path)
+                self._real_lock_local.held = held
 
     def request_execution_lock(self, request_id: str):
         """Validate the request identity immediately, then return its lock context."""
