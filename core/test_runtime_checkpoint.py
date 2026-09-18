@@ -54,3 +54,47 @@ def test_checkpoint_atomic_failure_preserves_previous_checkpoint(tmp_path, monke
 
     assert path.read_text(encoding="utf-8") == original
     assert store.load() == first
+
+
+def test_stale_checkpoint_cannot_overwrite_newer_checkpoint(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    newer = RuntimeCheckpoint(
+        "session",
+        10,
+        "req-10",
+        datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+    )
+    older = RuntimeCheckpoint(
+        "session",
+        5,
+        "req-5",
+        datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc),
+    )
+
+    store.save(newer)
+    store.save(older)
+
+    assert store.load() == newer
+
+
+def test_older_checkpoint_from_other_session_cannot_overwrite_newer_checkpoint(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    newer = RuntimeCheckpoint(
+        "session-new",
+        2,
+        "req-new",
+        datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+    )
+    older = RuntimeCheckpoint(
+        "session-old",
+        99,
+        "req-old",
+        datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc),
+    )
+
+    store.save(newer)
+    store.save(older)
+
+    assert store.load() == newer
