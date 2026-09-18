@@ -114,6 +114,17 @@ class RealExecutionGateway:
                 RealGatewayStatus.REJECTED,
                 "broker da requisição difere da autorização.",
             )
+        adapter_id = self._gateway.real_adapter_id(broker)
+        if adapter_id is None:
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "adapter REAL sem identidade explícita; execução bloqueada.",
+            )
+        if adapter_id.strip().lower() != authorization.adapter_id.strip().lower():
+            return RealGatewayResult(
+                RealGatewayStatus.REJECTED,
+                "adapter da execução difere da autorização REAL.",
+            )
 
         try:
             with self._locks.acquire(request_id):
