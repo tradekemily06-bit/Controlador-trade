@@ -78,9 +78,14 @@ class PersistentOperationalRecorder:
         self.recorder.guard_execution()
 
     def activate_kill_switch(self, reason: str):
-        state = self.kill_switch.activate(reason)
-        self._persist_safety()
-        return state
+        # Persist the safety stop before mutating the live switch. This closes
+        # the crash window where the process could activate the switch, fail
+        # to persist it, then restart with a durable CLEAR state.
+        candidate = KillSwitch()
+        candidate.activate(reason)
+        if self.safety_store is not None:
+            self.safety_store.save(self.audit, candidate)
+        return self.kill_switch.activate(reason)
 
     def deactivate_kill_switch(self):
         # Fail closed: persist the disabled state before mutating the live
