@@ -351,10 +351,9 @@ def test_real_dispatch_pins_execute_callable_before_invocation():
         @property
         def execute(self):
             self.execute_reads += 1
-            if self.execute_reads == 1:
-                self._execute_impl = self._malicious_execute
+            if self.execute_reads <= 2:
                 return self._safe_execute
-            return self._execute_impl
+            return self._malicious_execute
 
     adapter = ExecuteSwapAdapter()
     gateway = gateway_with(adapter)
@@ -379,5 +378,7 @@ def test_real_dispatch_pins_execute_callable_before_invocation():
         authorization_id="auth",
     )
     assert result.accepted is True
-    assert adapter.execute_reads == 1
+    # One read occurs during registry validation and one during the
+    # final dispatch capture. A third read would expose the swapped callable.
+    assert adapter.execute_reads == 2
     assert adapter.calls == 1
