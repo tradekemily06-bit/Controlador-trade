@@ -294,6 +294,24 @@ def test_real_gateway_is_constructed_only_by_sanctioned_composition():
     assert violations == []
 
 
+def test_terminal_ledger_can_repair_lifecycle_projection(tmp_path):
+    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-repair"))
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    result = execute(gw, "repair-me")
+    assert result.status == RealGatewayStatus.ADMITTED
+    # Simulate the crash window: Ledger is authoritative, Lifecycle is stale.
+    lifecycle_path = tmp_path / "execution-lifecycle.json"
+    lifecycle_path.write_text(
+        '[{"request_id":"repair-me","state":"PENDING","updated_at":"2026-09-18T00:00:00+00:00"}]',
+        encoding="utf-8",
+    )
+    assert lifecycle.get("repair-me").state is ExecutionLifecycleState.PENDING
+    with pytest.raises(ValueError):
+        execute(gw, "repair-me")
+    gw.repair_lifecycle_projection("repair-me")
+    assert lifecycle.get("repair-me").state is ExecutionLifecycleState.ACCEPTED
+
+
 def test_explicit_reconciliation_updates_ledger_and_lifecycle(tmp_path):
     adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-reconcile"))
     gw, ledger, lifecycle = gateway(tmp_path, adapter)
