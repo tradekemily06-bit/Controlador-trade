@@ -110,9 +110,11 @@ class BrokerAdapterGateway:
         if _REAL_DISPATCH_CAPABILITIES.get(id(capability)) is not capability:
             return AdapterExecutionResult(False, "capacidade REAL não emitida pelo gateway; dispatch bloqueado.")
         if (
-            not isinstance(request_id, str)
+            type(broker) is not str
+            or not broker.strip()
+            or type(request_id) is not str
             or not request_id.strip()
-            or not isinstance(authorization_id, str)
+            or type(authorization_id) is not str
             or not authorization_id.strip()
             or type(request) is not ExecutionRequest
             or request.mode is not ExecutionMode.REAL
@@ -148,11 +150,13 @@ class BrokerAdapterGateway:
         authorization_id: str,
     ) -> _RealDispatchCapability | None:
         if (
-            not isinstance(expected_adapter_id, str)
+            type(broker) is not str
+            or not broker.strip()
+            or type(expected_adapter_id) is not str
             or not expected_adapter_id.strip()
-            or not isinstance(request_id, str)
+            or type(request_id) is not str
             or not request_id.strip()
-            or not isinstance(authorization_id, str)
+            or type(authorization_id) is not str
             or not authorization_id.strip()
         ):
             return None
