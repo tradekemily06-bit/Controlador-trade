@@ -256,3 +256,22 @@ def test_real_gateway_is_constructed_only_by_sanctioned_composition():
         if "RealExecutionGateway(" in text:
             violations.append(path.name)
     assert violations == []
+
+
+def test_explicit_reconciliation_updates_ledger_and_lifecycle(tmp_path):
+    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-reconcile"))
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("reconcile-me")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reconcile-me", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+    gw.reconcile_unknown(
+        "reconcile-me",
+        executed=True,
+        external_id="broker-reconcile",
+    )
+    assert ledger.status("reconcile-me") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("reconcile-me") == "broker-reconcile"
+    assert lifecycle.get("reconcile-me").state is ExecutionLifecycleState.ACCEPTED
