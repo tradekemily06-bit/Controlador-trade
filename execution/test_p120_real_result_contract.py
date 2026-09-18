@@ -72,7 +72,7 @@ class UnavailableAdapter:
 
 def test_final_boundary_blocks_reconciled_not_executed(tmp_path: Path):
     registry = BrokerRegistry()
-    adapter = CountingAdapter()
+    adapter = UnavailableAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
