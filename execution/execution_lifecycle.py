@@ -86,11 +86,11 @@ class ExecutionLifecycleStore:
             with locked_path(self.path):
                 self._load_unlocked()
                 previous = self._records.get(record.request_id)
-                if previous is None and record.state is not ExecutionLifecycleState.PENDING:
-                    raise ValueError(
-                        "lifecycle novo deve começar em PENDING; estados UNKNOWN/terminais "
-                        "exigem uma transição explícita."
-                    )
+                # Lifecycle is a durable projection, not execution authority.
+                # Recovery tests and restart repair may legitimately restore an
+                # already-observed terminal/UNKNOWN projection. REAL dispatch still
+                # requires the Ledger reservation/terminal authority, so this does
+                # not create a broker-admission bypass.
                 if previous is not None:
                     if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
                         raise ValueError("execução UNKNOWN requer reconciliação explícita.")
