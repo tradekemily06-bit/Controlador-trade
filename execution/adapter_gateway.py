@@ -63,13 +63,25 @@ class BrokerAdapterGateway:
                 False,
                 "execute_real aceita somente ExecutionMode.REAL.",
             )
-        return self._dispatch(broker, request)
+        return self._dispatch(broker, request, require_real=True)
 
-    def _dispatch(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+    def _dispatch(
+        self,
+        broker: str,
+        request: ExecutionRequest,
+        *,
+        require_real: bool,
+    ) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, str(exc))
+
+        if require_real and not bool(getattr(adapter, "supports_real_execution", False)):
+            return AdapterExecutionResult(
+                False,
+                "adapter não declara capacidade REAL; dispatch bloqueado antes do adapter.execute.",
+            )
 
         try:
             available = bool(adapter.is_available())
