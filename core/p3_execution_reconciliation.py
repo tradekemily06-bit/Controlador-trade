@@ -102,12 +102,28 @@ class ExecutionReconciliationCoordinator:
                 "external_id informado difere da identidade externa durável do request_id."
             )
 
+        # A terminal ledger state is already durable proof. When the
+        # lifecycle projection is missing, external evidence may only complete
+        # the projection if it agrees with that terminal outcome. It must never
+        # be allowed to reverse an accepted/rejected execution.
         compatible_ledger = {
             ExecutionLedgerStatus.RESERVED,
             ExecutionLedgerStatus.UNKNOWN,
             ledger_target,
         }
-        if ledger_state not in compatible_ledger:
+        if ledger_state in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ):
+            if ledger_target is not ExecutionLedgerStatus.RECONCILED_EXECUTED:
+                raise ValueError("observação externa não é compatível com o estado terminal do ledger.")
+        elif ledger_state in (
+            ExecutionLedgerStatus.REJECTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            if ledger_target is not ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+                raise ValueError("observação externa não é compatível com o estado terminal do ledger.")
+        elif ledger_state not in compatible_ledger:
             raise ValueError("observação externa não é compatível com o estado terminal do ledger.")
 
         compatible_lifecycle = {
