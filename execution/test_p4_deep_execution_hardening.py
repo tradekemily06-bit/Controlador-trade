@@ -468,6 +468,46 @@ def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
 
 
+def test_real_dispatch_requires_explicit_adapter_identity():
+    adapter = FakeAdapter()
+    adapter.adapter_id = ""
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(Path("/tmp/nonexistent-ledger-for-test.json"))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    result = gateway.execute(
+        broker="fake",
+        request_id="identity-missing",
+        request=request(),
+        authorization=auth(),
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_authorization_cannot_select_different_adapter_identity(tmp_path):
+    adapter = FakeAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    mismatched = RealExecutionAuthorization(
+        "auth", "audit", "fake", "another-adapter", True, True
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="identity-mismatch",
+        request=request(),
+        authorization=mismatched,
+        admission=admission(),
+        safety=safety(),
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
 def test_demo_only_adapter_cannot_receive_real_dispatch():
     adapter = DemoOnlyAdapter()
     registry = BrokerRegistry()
