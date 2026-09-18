@@ -108,6 +108,20 @@ class ExecutionLedger:
         except OSError as exc:
             raise OSError("não foi possível persistir o ledger de execução.") from exc
 
+    @contextmanager
+    def real_execution_lock(self):
+        """Serialize global REAL dispatch with recovery/reconciliation state changes.
+
+        This is intentionally distinct from the per-request lock: a global recovery
+        barrier can become unsafe because of another request. The final REAL broker
+        boundary must therefore share one process/host durable lock with workers that
+        can mutate uncertain execution state.
+        """
+        lock_path = self.path.with_name(f".{self.path.name}.real-execution.lock")
+        lock_path.touch(exist_ok=True)
+        with locked_path(lock_path):
+            yield
+
     def request_execution_lock(self, request_id: str):
         """Validate the request identity immediately, then return its lock context."""
         if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
