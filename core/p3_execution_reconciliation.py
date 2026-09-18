@@ -34,6 +34,11 @@ class ExecutionReconciliationCoordinator:
         self._lifecycle = lifecycle
         self._boundary = ExternalOrderReconciliationBoundary()
 
+    def external_id_for(self, request_id: str) -> str | None:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        return self._ledger.external_id(request_id)
+
     @staticmethod
     def _target(status: ExternalOrderStatus) -> tuple[bool, ExecutionLedgerStatus, ExecutionLifecycleState] | None:
         if status is ExternalOrderStatus.EXECUTED:
