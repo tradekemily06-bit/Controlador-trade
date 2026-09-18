@@ -46,6 +46,26 @@ def test_execution_audit_is_restored_from_existing_safety_store(tmp_path):
     assert restored.for_request("req-30")[0].state is ExecutionLifecycleState.ACCEPTED
 
 
+def test_stale_generic_save_cannot_clear_durable_kill_switch(tmp_path):
+    path = tmp_path / "safety.json"
+    fresh = OperationalSafetyStore(path)
+    stale = OperationalSafetyStore(path)
+
+    from core.decision_audit import DecisionAudit
+    from core.kill_switch import KillSwitch
+
+    fresh_switch = KillSwitch()
+    fresh_switch.activate("durable emergency")
+    fresh.save(DecisionAudit(), fresh_switch)
+
+    stale_switch = KillSwitch()
+    stale.save(DecisionAudit(), stale_switch)
+
+    _, restored_switch = OperationalSafetyStore(path).load()
+    assert restored_switch.allows_execution() is False
+    assert restored_switch.state.reason == "durable emergency"
+
+
 def test_operational_safety_save_preserves_execution_audit(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     log = ExecutionAuditLog(store)
@@ -68,3 +88,78 @@ def test_persisted_invalid_execution_state_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError):
         ExecutionAuditLog(OperationalSafetyStore(path))
+
+
+def test_append_does_not_mutate_memory_when_durability_fails(tmp_path, monkeypatch):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    log = ExecutionAuditLog(store)
+
+    def fail_append(_event):
+        raise OSError("simulated persistence failure")
+
+    monkeypatch.setattr(store, "append_execution_audit", fail_append)
+
+    with pytest.raises(OSError, match="simulated persistence failure"):
+        log.append(event())
+
+    assert log.events() == ()
+    assert store.load_execution_audit() == ()
+
+
+def test_stale_audit_instance_appends_against_latest_durable_snapshot(tmp_path):
+    first = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    second = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+
+    first_event = ExecutionAuditEvent(
+        "req-first", ExecutionLifecycleState.PENDING,
+        datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc), "first",
+    )
+    second_event = ExecutionAuditEvent(
+        "req-second", ExecutionLifecycleState.ACCEPTED,
+        datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc), "second",
+    )
+    third_event = ExecutionAuditEvent(
+        "req-third", ExecutionLifecycleState.REJECTED,
+        datetime(2026, 1, 1, 0, 2, tzinfo=timezone.utc), "third",
+    )
+
+    first.append(first_event)
+    second.append(second_event)
+    first.append(third_event)
+
+    restored = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    assert restored.events() == (first_event, second_event, third_event)
+
+
+def test_concurrent_audit_log_cannot_append_out_of_order_timestamp(tmp_path):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    first = ExecutionAuditLog(store)
+    second = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+
+    first_event = ExecutionAuditEvent(
+        "req-first",
+        ExecutionLifecycleState.PENDING,
+        datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc),
+        "first",
+    )
+    second_event = ExecutionAuditEvent(
+        "req-second",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime(2026, 1, 1, 0, 2, tzinfo=timezone.utc),
+        "second",
+    )
+    stale_event = ExecutionAuditEvent(
+        "req-stale",
+        ExecutionLifecycleState.UNKNOWN,
+        datetime(2026, 1, 1, 0, 1, tzinfo=timezone.utc),
+        "stale",
+    )
+
+    first.append(first_event)
+    second.append(second_event)
+
+    with pytest.raises(ValueError, match="cronológica"):
+        first.append(stale_event)
+
+    restored = ExecutionAuditLog(OperationalSafetyStore(tmp_path / "safety.json"))
+    assert restored.events() == (first_event, second_event)

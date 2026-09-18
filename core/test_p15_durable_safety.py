@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 
 from core.decision_snapshot import DecisionSnapshot
 from core.operational_safety_store import OperationalSafetyStore
 from core.persistent_operational_recorder import PersistentOperationalRecorder
+from core.decision_audit import DecisionAudit
+from core.kill_switch import KillSwitch
 
 
 def snapshot() -> DecisionSnapshot:
@@ -71,3 +74,27 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+def test_safety_store_atomic_failure_preserves_existing_durable_state(tmp_path, monkeypatch):
+    path = tmp_path / "safety.json"
+    store = OperationalSafetyStore(path)
+    kill_switch = KillSwitch()
+    kill_switch.activate("durable block")
+    store.save(DecisionAudit(), kill_switch)
+    original = path.read_text(encoding="utf-8")
+
+    def fail_replace(_source, _target):
+        raise OSError("commit failed")
+
+    monkeypatch.setattr("core.durable_json.os.replace", fail_replace)
+
+    with pytest.raises(OSError, match="não foi possível persistir o estado de segurança"):
+        store.save(DecisionAudit(), KillSwitch())
+
+    assert path.read_text(encoding="utf-8") == original
+    restored_audit, restored_kill = store.load()
+    assert restored_audit.records() == ()
+    assert restored_kill.state.enabled is True
+    assert restored_kill.state.reason == "durable block"
+    assert json.loads(original)["kill_switch"]["enabled"] is True

@@ -38,6 +38,25 @@ def test_memory_store_round_trip(tmp_path):
     assert restored.records() == memory.records()
 
 
+def test_memory_store_stale_save_cannot_erase_newer_record(tmp_path):
+    path = tmp_path / "memory.json"
+    first = OperationMemoryStore(path)
+    stale = OperationMemoryStore(path)
+    first_memory = OperationMemory()
+    first_memory.append(make_record(1, "WIN"))
+    first.save(first_memory)
+
+    newer = OperationMemory()
+    newer.append(make_record(1, "WIN"))
+    newer.append(make_record(2, "LOSS"))
+    first.save(newer)
+
+    with pytest.raises(ValueError, match="sobrescrita destrutiva"):
+        stale.save(first_memory)
+
+    assert first.load().records() == newer.records()
+
+
 def test_memory_store_missing_file_is_empty(tmp_path):
     assert OperationMemoryStore(tmp_path / "missing.json").load().records() == ()
 

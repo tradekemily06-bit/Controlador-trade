@@ -69,6 +69,46 @@ def test_persistence_is_updated_after_each_operation_change(tmp_path):
     assert OperationMemoryStore(path).load().records() == (updated,)
 
 
+def test_record_operation_preserves_original_safety_persistence_error_when_reload_fails(tmp_path, monkeypatch):
+    path = tmp_path / "operations.json"
+    recorder = PersistentOperationalRecorder.from_path(path)
+    original = OSError("original safety persistence failure")
+
+    def fail_audit(_record):
+        raise original
+
+    def fail_reload_memory():
+        raise OSError("reload failure that must not mask original")
+
+    monkeypatch.setattr(recorder.safety_store, "append_audit", fail_audit)
+    monkeypatch.setattr(recorder, "_reload_memory", fail_reload_memory)
+
+    with pytest.raises(OSError) as exc:
+        recorder.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 2, tzinfo=timezone.utc))
+
+    assert exc.value is original
+
+
+def test_record_decision_preserves_original_safety_persistence_error_when_reload_fails(tmp_path, monkeypatch):
+    path = tmp_path / "operations.json"
+    recorder = PersistentOperationalRecorder.from_path(path)
+    original = OSError("original decision persistence failure")
+
+    def fail_audit(_record):
+        raise original
+
+    def fail_reload_safety():
+        raise OSError("reload failure that must not mask original")
+
+    monkeypatch.setattr(recorder.safety_store, "append_audit", fail_audit)
+    monkeypatch.setattr(recorder, "_reload_safety", fail_reload_safety)
+
+    with pytest.raises(OSError) as exc:
+        recorder.record_decision(snapshot(), timestamp=datetime(2026, 9, 9, 1, 3, tzinfo=timezone.utc))
+
+    assert exc.value is original
+
+
 def test_invalid_persisted_state_fails_closed(tmp_path):
     path = tmp_path / "operations.json"
     path.write_text("{invalid", encoding="utf-8")
