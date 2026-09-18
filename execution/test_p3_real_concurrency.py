@@ -622,3 +622,129 @@ def test_real_gateway_rejects_conflicting_payload_request_id(tmp_path):
 
     assert result.status == RealGatewayStatus.REJECTED
     assert "difere" in result.message
+
+
+def test_real_external_id_bind_failure_is_non_replayable_after_restart(tmp_path, monkeypatch):
+    class AcceptedAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", "EXT-BIND-FAIL")
+
+    adapter = AcceptedAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    def fail_bind(_request_id, _external_id):
+        raise OSError("external identity persistence failed")
+
+    monkeypatch.setattr(ledger, "bind_external_id", fail_bind)
+    first = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle
+    ).execute(
+        broker="fake",
+        request_id="bind-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    durable_ledger = ExecutionLedger(ledger_path)
+    assert durable_ledger.status("bind-failure") is ExecutionLedgerStatus.RESERVED
+    assert durable_ledger.external_id("bind-failure") is None
+    assert ExecutionLifecycleStore(lifecycle_path).get("bind-failure").state is ExecutionLifecycleState.UNKNOWN
+
+    restarted = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        durable_ledger,
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    retry = restarted.execute(
+        broker="fake",
+        request_id="bind-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert retry.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+
+
+def test_real_lifecycle_persistence_failure_after_ledger_terminal_blocks_restart(tmp_path, monkeypatch):
+    class AcceptedAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", "EXT-LIFECYCLE-FAIL")
+
+    adapter = AcceptedAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    auth, admission, safety = _contracts()
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+
+    original_put = lifecycle.put
+
+    def fail_accepted(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("lifecycle terminal persistence failed")
+        return original_put(record)
+
+    monkeypatch.setattr(lifecycle, "put", fail_accepted)
+    first = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle
+    ).execute(
+        broker="fake",
+        request_id="lifecycle-terminal-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    durable_ledger = ExecutionLedger(ledger_path)
+    assert durable_ledger.status("lifecycle-terminal-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert durable_ledger.external_id("lifecycle-terminal-failure") == "EXT-LIFECYCLE-FAIL"
+    assert ExecutionLifecycleStore(lifecycle_path).get("lifecycle-terminal-failure").state is ExecutionLifecycleState.UNKNOWN
+
+    restarted = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        durable_ledger,
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    retry = restarted.execute(
+        broker="fake",
+        request_id="lifecycle-terminal-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert retry.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 1
