@@ -51,11 +51,11 @@ class RealExecutionGateway:
         ledger: ExecutionLedger,
         lifecycle: ExecutionLifecycleStore | None = None,
     ) -> None:
-        if not isinstance(adapter_gateway, BrokerAdapterGateway):
+        if type(adapter_gateway) is not BrokerAdapterGateway:
             raise ValueError("adapter_gateway inválido.")
-        if not isinstance(ledger, ExecutionLedger):
+        if type(ledger) is not ExecutionLedger:
             raise ValueError("ledger é obrigatório para execução REAL.")
-        if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
+        if lifecycle is not None and type(lifecycle) is not ExecutionLifecycleStore:
             raise ValueError("lifecycle inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
