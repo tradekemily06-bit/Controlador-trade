@@ -148,16 +148,6 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def record(self, request_id: str) -> None:
-        """Legacy DEMO-only compatibility; REAL paths never call this."""
-        self._validate_id(request_id)
-
-        def mutation() -> None:
-            if request_id not in self._states:
-                self._states[request_id] = ExecutionLedgerEntry(ExecutionLedgerStatus.ACCEPTED)
-
-        self._mutate_locked(mutation)
-
     def mark_accepted(self, request_id: str, external_id: str | None = None) -> None:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id é obrigatório para ACCEPTED.")
