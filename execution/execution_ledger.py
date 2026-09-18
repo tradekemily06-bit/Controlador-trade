@@ -50,7 +50,11 @@ class ExecutionLedger:
         self._load()
 
     def _load(self) -> None:
+        # A long-lived Ledger object must reflect the current durable file.
+        # If the file was removed/replaced after construction, retaining the
+        # old in-memory map would create a stale authority snapshot.
         if not self.path.exists():
+            self._states = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
