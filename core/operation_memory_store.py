@@ -82,11 +82,10 @@ class OperationMemoryStore:
             durable = self._load_unlocked()
             durable_records = durable.records()
             incoming = memory.records()
-            # save() is a compatibility API, not a destructive snapshot API:
-            # an old instance must never erase records written by a newer one.
-            if durable_records and incoming[:len(durable_records)] != durable_records:
-                raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
-            if len(incoming) < len(durable_records):
+            # save() accepts only an exact durable snapshot. A longer incoming
+            # snapshot may be based on an older process state and can otherwise
+            # overwrite a competing append with a different record.
+            if durable_records and incoming != durable_records:
                 raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
             self._write_unlocked(memory)
 
