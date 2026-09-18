@@ -27,6 +27,8 @@ class AutomationAdmission:
         reasons: list[str] = []
         if not isinstance(request, AutomationCycleRequest):
             reasons.append("automation cycle request is invalid")
+        elif request.mode != "DEMO":
+            reasons.append("only DEMO cycle requests can be admitted")
         if not isinstance(readiness, DemoReadinessReport):
             reasons.append("demo readiness report is invalid")
         elif not readiness.ready:
