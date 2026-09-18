@@ -303,3 +303,32 @@ def test_real_dispatch_rejects_non_boolean_adapter_availability(tmp_path):
     assert result.accepted is False
     assert "disponibilidade inválida" in result.message
     assert adapter.calls == 0
+
+
+
+def test_real_dispatch_rejects_malformed_execution_result_fields():
+    adapter = FakeAdapter(result=ExecutionResult("yes", "accepted", "ext-1"))
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="malformed-result", authorization_id="auth"
+    )
+    result = gateway._execute_real(
+        "fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="malformed-result"),
+        capability=capability, request_id="malformed-result", authorization_id="auth"
+    )
+    assert result.accepted is False
+    assert "accepted inválido" in result.message
+
+
+def test_real_dispatch_rejects_blank_execution_message():
+    adapter = FakeAdapter(result=ExecutionResult(True, "   ", "ext-1"))
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id="fake-adapter", request_id="blank-message", authorization_id="auth"
+    )
+    result = gateway._execute_real(
+        "fake", ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="blank-message"),
+        capability=capability, request_id="blank-message", authorization_id="auth"
+    )
+    assert result.accepted is False
+    assert "message inválida" in result.message
