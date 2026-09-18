@@ -187,10 +187,12 @@ def test_corrupt_ledger_blocks_resume(tmp_path):
     assert result.can_resume is False
 
 
-def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path):
+@pytest.mark.parametrize("executed", [True, False])
+def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path, executed):
     coordinator = make_coordinator(tmp_path)
-    coordinator.execution_ledger.reserve("req-reconciled-orphan")
-    coordinator.execution_ledger.reconcile("req-reconciled-orphan", executed=True)
+    request_id = "req-reconciled-orphan"
+    coordinator.execution_ledger.reserve(request_id)
+    coordinator.execution_ledger.reconcile(request_id, executed=executed)
 
     result = coordinator.assess()
 
