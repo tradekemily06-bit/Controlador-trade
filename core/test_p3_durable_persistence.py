@@ -13,6 +13,7 @@ from core.models import Signal
 from core.operational_safety_store import OperationalSafetyStore
 from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from execution.execution_lifecycle import (
     ExecutionLifecycleRecord,
     ExecutionLifecycleState,
@@ -538,3 +539,23 @@ def test_checkpoint_rejects_mixed_timezone_awareness(tmp_path):
                 datetime(2026, 1, 1, tzinfo=timezone.utc),
             )
         )
+
+def test_recovery_blocks_orphaned_terminal_ledger(tmp_path):
+    checkpoint_store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    lifecycle_store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    memory = OperationMemory()
+
+    ledger.reserve("req-orphan")
+    ledger.mark_accepted("req-orphan")
+
+    assessment = RecoveryCoordinator(
+        checkpoint_store=checkpoint_store,
+        lifecycle_store=lifecycle_store,
+        execution_ledger=ledger,
+        memory=memory,
+    ).assess()
+
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.can_resume is False
+    assert "ledger terminal sem lifecycle" in assessment.message
