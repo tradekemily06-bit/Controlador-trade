@@ -243,7 +243,7 @@ def test_real_reserved_after_restart_without_external_id_stays_unresolved(tmp_pa
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="crashed", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="crashed"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     with pytest.raises(ValueError):
@@ -290,6 +290,6 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="missing-id", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-id"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
