@@ -162,6 +162,36 @@ class ExecutionReconciliationCoordinator:
             ledger_state = self._ledger.status(request_id)
             lifecycle_record = self._lifecycle.get(request_id)
             lifecycle_state = lifecycle_record.state if lifecycle_record is not None else None
+            bound_external_id = self._ledger.external_id(request_id)
+
+            # Re-evaluate the observation against the authoritative state after
+            # acquiring the same lock used by REAL dispatch. The pre-lock
+            # validation is only an admission snapshot: execution may have
+            # completed while reconciliation was waiting. A stale observation
+            # must never be reported as successfully applied to a terminal
+            # request, especially when it contradicts the terminal outcome.
+            if bound_external_id is not None and bound_external_id != result.external_id:
+                raise ValueError(
+                    "external_id durável divergiu durante a reconciliação concorrente."
+                )
+            if ledger_state in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ):
+                if ledger_target is not ExecutionLedgerStatus.RECONCILED_EXECUTED:
+                    raise ValueError(
+                        "observação externa diverge do resultado terminal já confirmado no ledger."
+                    )
+            elif ledger_state in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                if ledger_target is not ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+                    raise ValueError(
+                        "observação externa diverge do resultado terminal já confirmado no ledger."
+                    )
+            elif ledger_state is None:
+                raise ValueError("ledger ausente durante a reconciliação concorrente.")
 
             if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 try:
