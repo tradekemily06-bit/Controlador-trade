@@ -74,8 +74,8 @@ def _real_context(request_id: str):
         symbol="TEST", explicit_approval=True,
     )
     admission = RealAdmissionBoundary().admit(
-        admission_id=f"adm-{request_id}", audit_id="audit-shared", audit_verified=True,
-        authorization_active=authorization.active, safety_ready=True, broker_available=True,
+        admission_id=f"adm-{request_id}", audit_id="audit-shared", audit_verified=audit,
+        authorization_active=authorization, safety_ready=True, broker_available=True,
         broker_id="fake", adapter_id="fake-adapter", request_id=request_id, symbol="TEST",
     )
     safety = RealSafetyGate().evaluate(
