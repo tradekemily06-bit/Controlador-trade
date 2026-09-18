@@ -85,3 +85,24 @@ def test_terminal_lifecycle_state_cannot_be_overwritten_by_reconciliation(tmp_pa
         store.reconcile("req-terminal", ExecutionLifecycleState.REJECTED, updated_at=now)
 
     assert store.get("req-terminal").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_lifecycle_atomic_failure_does_not_publish_partial_state(tmp_path, monkeypatch):
+    path = tmp_path / "lifecycle.json"
+    now = datetime(2026, 9, 18, tzinfo=timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now, "rejected"))
+    original = path.read_text(encoding="utf-8")
+
+    def fail_replace(_source, _target):
+        raise OSError("commit failed")
+
+    monkeypatch.setattr("core.durable_json.os.replace", fail_replace)
+
+    with pytest.raises(OSError, match="não foi possível persistir o ciclo de execução"):
+        store.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.PENDING, now, "pending"))
+
+    assert path.read_text(encoding="utf-8") == original
+    restored = ExecutionLifecycleStore(path)
+    assert restored.get("req-1").state is ExecutionLifecycleState.REJECTED
+    assert restored.get("req-2") is None
