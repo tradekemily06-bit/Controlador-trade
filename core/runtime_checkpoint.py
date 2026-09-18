@@ -39,7 +39,9 @@ class RuntimeCheckpointStore:
             if self.path.exists():
                 try:
                     current = read_json(self.path, {})
-                    if isinstance(current, dict):
+                    if not isinstance(current, dict):
+                        raise ValueError("checkpoint de runtime inválido.")
+                    try:
                         current_checkpoint = RuntimeCheckpoint(
                             session_id=current["session_id"],
                             last_cycle=current["last_cycle"],
@@ -62,7 +64,9 @@ class RuntimeCheckpointStore:
                         )
                         if same_session_regression or older_snapshot or same_timestamp_conflict:
                             return
-                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
+                    except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                        raise ValueError("checkpoint de runtime inválido.") from exc
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
                     raise ValueError("checkpoint de runtime inválido.") from exc
             atomic_write_json(self.path, payload)
 
