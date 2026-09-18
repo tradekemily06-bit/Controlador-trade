@@ -67,10 +67,13 @@ class RealExecutionGateway:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
         if (
             not isinstance(request.amount, (int, float))
+            or isinstance(request.amount, bool)
             or not math.isfinite(request.amount)
             or request.amount <= 0
         ):
@@ -95,6 +98,12 @@ class RealExecutionGateway:
     ) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(authorization, RealExecutionAuthorization):
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "autorização REAL inválida.")
+        if not isinstance(admission, RealAdmission):
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "admissão REAL inválida.")
+        if not isinstance(safety, RealSafetyReport):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL inválida.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
