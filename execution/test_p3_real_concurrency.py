@@ -56,7 +56,7 @@ def _real_gateway(adapter_gateway, ledger, lifecycle=None, recovery=None, *, kil
         memory=OperationMemory(),
     )
     from core.kill_switch import KillSwitch
-    return _real_gateway(
+    return RealExecutionGateway(
         adapter_gateway,
         ledger,
         lifecycle=lifecycle,
