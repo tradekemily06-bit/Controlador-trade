@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -9,7 +11,11 @@ from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditS
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
-from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
+from core.p121_external_order_reconciliation import (
+    ExternalOrderObservation,
+    ExternalOrderReconciliationBoundary,
+    ExternalOrderStatus,
+)
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -19,6 +25,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 class FakeAdapter:
     supports_real_execution = True
+
     def __init__(self, available=True):
         self.available = available
         self.calls = 0
@@ -33,6 +40,7 @@ class FakeAdapter:
 
 class NoExternalIdAdapter:
     supports_real_execution = True
+
     def is_available(self):
         return True
 
@@ -42,11 +50,24 @@ class NoExternalIdAdapter:
 
 class UnknownAdapter:
     supports_real_execution = True
+
     def is_available(self):
         return True
 
     def execute(self, request):
         raise TimeoutError("timeout after dispatch")
+
+
+class QueryPort:
+    def __init__(self, observation):
+        self.observation = observation
+        self.calls = 0
+
+    def query_order(self, external_id):
+        self.calls += 1
+        if external_id != self.observation.external_id:
+            raise ValueError("unexpected external_id")
+        return self.observation
 
 
 def _authorization():
@@ -150,24 +171,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     assert adapter.calls == 0
 
 
-def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
-    registry = BrokerRegistry()
-    adapter = UnknownAdapter()
-    registry.register("fake", adapter)
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
-    auth = _authorization()
-    admission = _admission(auth)
-    safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
-    assert first.status == RealGatewayStatus.UNKNOWN
-    assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
-    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
-    second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
-    assert second.status == RealGatewayStatus.UNKNOWN
-
-
-def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_path: Path):
+def test_real_unknown_without_external_id_cannot_be_locally_closed(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", UnknownAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
@@ -175,14 +179,44 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    observation = ExternalOrderReconciliationBoundary().reconcile("reconciled-broker-id", ExternalOrderObservation("reconciled-broker-id", ExternalOrderStatus.EXECUTED, "broker confirmed"))
-    gateway.reconcile_unknown("unknown-2", reconciliation=observation)
+    assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
+    with pytest.raises(ValueError):
+        gateway.reconcile_unknown(
+            "unknown-1",
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+            query_port=QueryPort(
+                ExternalOrderObservation("external-1", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent")
+            ),
+        )
+
+
+def test_real_unknown_with_durable_external_id_can_be_reconciled_from_broker_query(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+
+    ledger.reserve("unknown-2")
+    ledger.attach_external_id("unknown-2", "external-2")
+    ledger.mark_unknown("unknown-2")
+
+    auth = _authorization()
+    query = QueryPort(
+        ExternalOrderObservation("external-2", ExternalOrderStatus.EXECUTED, "broker confirmed")
+    )
+    gateway.reconcile_unknown(
+        "unknown-2",
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        query_port=query,
+    )
+    assert query.calls == 1
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
-def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
+def test_real_reserved_after_restart_without_external_id_stays_unresolved(tmp_path: Path):
     path = tmp_path / "ledger.json"
     ExecutionLedger(path).reserve("crashed")
     registry = BrokerRegistry()
@@ -195,9 +229,14 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    observation = ExternalOrderReconciliationBoundary().reconcile("crashed-broker-id", ExternalOrderObservation("crashed-broker-id", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent"))
-    gateway.reconcile_unknown("crashed", reconciliation=observation)
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    with pytest.raises(ValueError):
+        gateway.reconcile_unknown(
+            "crashed",
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+            query_port=QueryPort(
+                ExternalOrderObservation("crashed-broker-id", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent")
+            ),
+        )
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
