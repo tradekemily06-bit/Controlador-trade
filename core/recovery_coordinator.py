@@ -59,18 +59,44 @@ class RecoveryCoordinator:
         self.expected_session_id = expected_session_id.strip() if expected_session_id is not None else None
 
     def assess(self) -> RecoveryAssessment:
-        try:
-            checkpoint = self.checkpoint_store.load()
-            lifecycle = self.lifecycle_store.records()
-            ledger_statuses = self.execution_ledger.statuses()
-            ledger_ids = set(ledger_statuses)
-            ledger_uncertain = {
-                request_id
-                for request_id, status in ledger_statuses.items()
-                if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
-            }
-        except ValueError as exc:
-            return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
+        # Recovery is a cross-store read. Each authority is individually locked,
+        # but there is no filesystem-level transaction spanning checkpoint,
+        # lifecycle and ledger. Take a stable snapshot instead of allowing a
+        # concurrent writer to produce a mixed-time view that could look safe.
+        snapshot = None
+        for _ in range(3):
+            try:
+                first = (
+                    self.checkpoint_store.load(),
+                    self.lifecycle_store.records(),
+                    self.execution_ledger.statuses(),
+                )
+                second = (
+                    self.checkpoint_store.load(),
+                    self.lifecycle_store.records(),
+                    self.execution_ledger.statuses(),
+                )
+            except ValueError as exc:
+                return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
+            if first == second:
+                snapshot = first
+                break
+        if snapshot is None:
+            return RecoveryAssessment(
+                RecoveryState.REQUIRES_RECONCILIATION,
+                None,
+                (),
+                (),
+                "estado durável mudou durante a avaliação; retomada recusada até obter snapshot estável.",
+            )
+
+        checkpoint, lifecycle, ledger_statuses = snapshot
+        ledger_ids = set(ledger_statuses)
+        ledger_uncertain = {
+            request_id
+            for request_id, status in ledger_statuses.items()
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+        }
 
         lifecycle_by_id = {record.request_id: record.state for record in lifecycle}
 
