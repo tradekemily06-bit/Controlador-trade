@@ -57,6 +57,7 @@ class ExecutionLifecycleStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            seen_request_ids: set[str] = set()
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -67,6 +68,9 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
+                if record.request_id in seen_request_ids:
+                    raise ValueError("request_id duplicado no lifecycle persistido.")
+                seen_request_ids.add(record.request_id)
                 self._records[record.request_id] = record
         except (
             OSError,
