@@ -94,11 +94,11 @@ def test_adapter_gateway_rejects_direct_real_dispatch():
 def test_real_capability_is_pinned_to_adapter_instance():
     first = FakeAdapter()
     gateway = gateway_with(first)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
     assert capability is not None
     second = FakeAdapter()
     gateway._registry._adapters["fake"] = second
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=capability,
@@ -118,11 +118,11 @@ def test_real_dispatch_rejects_overridable_registry_before_dispatch():
 def test_real_dispatch_blocks_adapter_identity_mutation_after_capture():
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
     assert capability is not None
 
     adapter.adapter_id = "different-adapter"
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=capability,
@@ -141,10 +141,10 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability_identity_t
 
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
     assert capability is not None
 
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=capability,
@@ -162,10 +162,10 @@ def test_real_dispatch_rechecks_mutable_supports_real_after_availability():
 
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
     assert capability is not None
 
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=capability,
@@ -183,10 +183,10 @@ def test_real_dispatch_rechecks_mutable_capability_after_availability():
 
     adapter = MutatingAdapter()
     gateway = gateway_with(adapter)
-    capability = gateway.real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
+    capability = gateway._real_dispatch_capability("fake", expected_adapter_id="fake-adapter")
     assert capability is not None
 
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=capability,
@@ -209,7 +209,7 @@ def test_real_dispatch_rejects_overridable_capability_subclass():
     forged = object.__new__(CapabilityOverride)
     object.__setattr__(forged, "_adapter", adapter)
     object.__setattr__(forged, "_adapter_id", "fake-adapter")
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=forged,
@@ -224,7 +224,7 @@ def test_real_dispatch_rejects_forged_exact_capability_instance():
     adapter = FakeAdapter()
     gateway = gateway_with(adapter)
     forged = _RealDispatchCapability(adapter, "fake-adapter")
-    result = gateway.execute_real(
+    result = gateway._execute_real(
         "fake",
         ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
         capability=forged,
