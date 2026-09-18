@@ -409,3 +409,33 @@ def test_real_accepted_terminal_persistence_failure_marks_lifecycle_unknown(tmp_
     assert durable_ledger.status("accepted-terminal-failure").value == "RESERVED"
     assert durable_ledger.external_id("accepted-terminal-failure") == "EXT-POST-ACCEPT"
     assert ExecutionLifecycleStore(lifecycle_path).get("accepted-terminal-failure").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_reconcile_unknown_with_lifecycle_cannot_bypass_cross_store_authority(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("reconcile-cross-store")
+    ledger.mark_unknown("reconcile-cross-store")
+    lifecycle.put(
+        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+            "reconcile-cross-store",
+            ExecutionLifecycleState.UNKNOWN,
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            "uncertain",
+        )
+    )
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+    )
+
+    import pytest
+    with pytest.raises(ValueError, match="external_id durável"):
+        gateway.reconcile_unknown("reconcile-cross-store", executed=True)
+
+    assert ExecutionLedger(ledger_path).status("reconcile-cross-store").value == "UNKNOWN"
+    assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-cross-store").state is ExecutionLifecycleState.UNKNOWN
