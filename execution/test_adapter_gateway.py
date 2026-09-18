@@ -22,13 +22,24 @@ class FakeAdapter:
 
 
 def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO)
 
 
 def gateway_with(adapter):
     registry = BrokerRegistry()
     registry.register("fake", adapter)
     return BrokerAdapterGateway(registry)
+
+
+def test_public_adapter_gateway_blocks_direct_real_dispatch():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+    )
+    assert result.accepted is False
+    assert result.dispatch_attempted is False
+    assert adapter.calls == 0
 
 
 def test_adapter_gateway_checks_availability_before_execution():
