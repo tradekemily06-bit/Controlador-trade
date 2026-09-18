@@ -153,3 +153,36 @@ def test_gateway_allows_first_dispatch_when_recovery_is_fresh(tmp_path):
     result = gateway.execute("first-request", make_request())
 
     assert result.status is GatewayStatus.ACCEPTED
+
+
+def test_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path, monkeypatch):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    original_assess = recovery.assess
+    calls = {"count": 0}
+
+    def assess_then_race():
+        calls["count"] += 1
+        result = original_assess()
+        if calls["count"] == 2:
+            ledger.reserve("racing-worker")
+        return result if calls["count"] == 1 else original_assess()
+
+    monkeypatch.setattr(recovery, "assess", assess_then_race)
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(
+        executor, KillSwitch(), ledger=ledger, lifecycle=lifecycle, recovery=recovery
+    )
+
+    result = gateway.execute("guarded-request", make_request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert ledger.status("guarded-request") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("racing-worker") is ExecutionLedgerStatus.RESERVED
