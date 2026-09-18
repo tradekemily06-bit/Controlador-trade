@@ -47,6 +47,10 @@ class RuntimeCheckpointStore:
                             updated_at=datetime.fromisoformat(current["updated_at"]),
                         )
                         self._validate(current_checkpoint)
+                        current_aware = current_checkpoint.updated_at.tzinfo is not None and current_checkpoint.updated_at.utcoffset() is not None
+                        incoming_aware = checkpoint.updated_at.tzinfo is not None and checkpoint.updated_at.utcoffset() is not None
+                        if current_aware != incoming_aware:
+                            raise ValueError("timestamps de checkpoint devem usar o mesmo regime de timezone.")
                         same_session_regression = (
                             current_checkpoint.session_id == checkpoint.session_id
                             and checkpoint.last_cycle < current_checkpoint.last_cycle
