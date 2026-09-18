@@ -138,6 +138,26 @@ def execute(gw, request_id="r1"):
     )
 
 
+def test_unknown_persistence_failure_is_explicitly_reported(tmp_path):
+    adapter = FakeAdapter()
+    def fail_execute(request):
+        adapter.calls += 1
+        raise RuntimeError("transport timeout after send")
+    adapter.execute = fail_execute
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+
+    def fail_mark_unknown(request_id):
+        raise OSError("ledger unavailable")
+    ledger.mark_unknown = fail_mark_unknown
+
+    result = execute(gw, "unknown-persistence")
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert "persistência de estado incerto também falhou" in result.message
+    assert "Ledger: ledger unavailable" in result.message
+    assert adapter.calls == 1
+
+
 def test_real_boundary_rejects_wrong_context_object_types(tmp_path):
     gw, _, _ = gateway(tmp_path, FakeAdapter())
     result = gw.execute(
