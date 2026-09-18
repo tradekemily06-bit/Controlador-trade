@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -158,8 +158,11 @@ def test_malformed_order_check_is_fail_closed_before_send():
     )
 
 
-def test_invalid_external_ticket_is_not_confirmed():
+def test_invalid_external_ticket_is_uncertain_and_not_confirmed():
     fake = InvalidExternalIdMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
-    assert result.accepted is False
-    assert "identificador externo" in result.message
+    try:
+        ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    except MT5AdapterError as exc:
+        assert "identificador externo" in str(exc)
+    else:
+        raise AssertionError("invalid external ticket must remain uncertain")
