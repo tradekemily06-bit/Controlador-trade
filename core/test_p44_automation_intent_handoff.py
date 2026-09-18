@@ -62,9 +62,12 @@ def test_missing_or_invalid_intent_fails_closed() -> None:
 
 
 def test_real_cycle_cannot_enter_handoff() -> None:
-    result = AutomationIntentHandoffBoundary().handoff(
-        make_admission(mode="REAL"), intent=make_intent()
-    )
+    request = object.__new__(AutomationCycleRequest)
+    object.__setattr__(request, "cycle_id", "cycle-44")
+    object.__setattr__(request, "requested_at", datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc))
+    object.__setattr__(request, "mode", "REAL")
+    admission = AutomationAdmissionResult(True, request, ())
+    result = AutomationIntentHandoffBoundary().handoff(admission, intent=make_intent())
     assert result.handed_off is False
     assert "only DEMO cycle requests can enter automation handoff" in result.reasons
 
