@@ -55,6 +55,7 @@ def test_atomic_json_write_keeps_previous_state_if_replace_fails(tmp_path, monke
     assert not list(tmp_path.glob(".state.json.*.tmp"))
 
 
+@pytest.mark.skipif(not hasattr(os, "O_DIRECTORY"), reason="directory fsync is not available on this platform")
 def test_atomic_json_write_directory_fsync_failure_leaves_committed_state_for_recovery(tmp_path, monkeypatch):
     path = tmp_path / "state.json"
     atomic_write_json(path, {"version": 1})
