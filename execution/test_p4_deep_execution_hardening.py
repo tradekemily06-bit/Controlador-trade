@@ -409,3 +409,26 @@ def test_reconciliation_ledger_commit_before_lifecycle_failure_is_repairable(tmp
     repaired.repair_lifecycle_projection("reconcile-crash")
     assert healthy_lifecycle.get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
     assert adapter.calls == 0
+
+
+def test_reconciliation_rejects_unvalidated_boolean_and_pending_observation(tmp_path):
+    adapter = FakeAdapter()
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("reconcile-guard")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "reconcile-guard",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+    with pytest.raises(ValueError, match="resultado de reconciliação"):
+        gw.reconcile_unknown("reconcile-guard", reconciliation=True)
+    pending = ExternalOrderReconciliationBoundary().reconcile(
+        "broker-pending",
+        ExternalOrderObservation("broker-pending", ExternalOrderStatus.PENDING, "still open"),
+    )
+    with pytest.raises(ValueError, match="ainda não"):
+        gw.reconcile_unknown("reconcile-guard", reconciliation=pending)
+    assert ledger.status("reconcile-guard") is ExecutionLedgerStatus.RESERVED
+    assert adapter.calls == 0
