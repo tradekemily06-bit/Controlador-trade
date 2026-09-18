@@ -138,7 +138,7 @@ def test_reconciled_executed_with_accepted_lifecycle_is_safe(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
     coordinator.execution_ledger.reserve("req-reconciled")
-    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+    coordinator.execution_ledger._reconcile_locked("req-reconciled", executed=True)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, now, "reconciled")
     )
@@ -162,7 +162,7 @@ def test_reconciled_terminal_mismatch_blocks_resume(tmp_path, lifecycle_state, l
     now = datetime.now(timezone.utc)
 
     coordinator.execution_ledger.reserve(request_id)
-    coordinator.execution_ledger.reconcile(request_id, executed=ledger_reconcile_executed)
+    coordinator.execution_ledger._reconcile_locked(request_id, executed=ledger_reconcile_executed)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord(request_id, lifecycle_state, now, "reconciled mismatch")
     )
@@ -179,7 +179,7 @@ def test_reconciled_executed_requires_matching_accepted_lifecycle(tmp_path):
     now = datetime.now(timezone.utc)
 
     coordinator.execution_ledger.reserve(request_id)
-    coordinator.execution_ledger.reconcile(request_id, executed=True)
+    coordinator.execution_ledger._reconcile_locked(request_id, executed=True)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, now, "matched")
     )
@@ -194,7 +194,7 @@ def test_reconciled_not_executed_with_rejected_lifecycle_is_safe(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
     coordinator.execution_ledger.reserve("req-reconciled")
-    coordinator.execution_ledger.reconcile("req-reconciled", executed=False)
+    coordinator.execution_ledger._reconcile_locked("req-reconciled", executed=False)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.REJECTED, now, "reconciled")
     )
@@ -259,7 +259,7 @@ def test_reconciled_terminal_without_lifecycle_still_blocks_resume(tmp_path, exe
     coordinator = make_coordinator(tmp_path)
     request_id = "req-reconciled-orphan"
     coordinator.execution_ledger.reserve(request_id)
-    coordinator.execution_ledger.reconcile(request_id, executed=executed)
+    coordinator.execution_ledger._reconcile_locked(request_id, executed=executed)
 
     result = coordinator.assess()
 
