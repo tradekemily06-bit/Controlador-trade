@@ -68,10 +68,10 @@ class RecoveryCoordinator:
         blocking.
         """
         if ignore_request_id is not None and (
-            not isinstance(ignore_request_id, str) or not ignore_request_id.strip()
+            not isinstance(ignore_request_id, str) or not ignore_request_id.strip() or ignore_request_id != ignore_request_id.strip()
         ):
             raise ValueError("ignore_request_id inválido.")
-        ignored_id = ignore_request_id.strip() if ignore_request_id is not None else None
+        ignored_id = ignore_request_id if ignore_request_id is not None else None
         # Recovery is a cross-store read. Each authority is individually locked,
         # but there is no filesystem-level transaction spanning checkpoint,
         # lifecycle and ledger. Take a stable snapshot instead of allowing a
