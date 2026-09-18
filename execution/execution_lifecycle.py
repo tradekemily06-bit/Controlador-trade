@@ -82,8 +82,11 @@ class ExecutionLifecycleStore:
             with locked_path(self.path):
                 self._load_unlocked()
                 previous = self._records.get(record.request_id)
-                if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                if previous is not None:
+                    if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                        raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                    if previous.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED) and record.state is not previous.state:
+                        raise ValueError("estado terminal não pode ser alterado sem reconciliação explícita.")
                 self._records[record.request_id] = record
                 self._save_unlocked()
         except ValueError:
