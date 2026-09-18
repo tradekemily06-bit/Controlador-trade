@@ -125,7 +125,7 @@ def test_activate_kill_switch_does_not_open_a_restart_window_on_persistence_fail
     def fail_save(*_args, **_kwargs):
         raise OSError("simulated persistence failure")
 
-    monkeypatch.setattr(recorder.safety_store, "save", fail_save)
+    monkeypatch.setattr(recorder.safety_store, "save_kill_switch", fail_save)
 
     with pytest.raises(OSError, match="simulated persistence failure"):
         recorder.activate_kill_switch("safety stop")
