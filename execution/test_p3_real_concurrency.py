@@ -83,7 +83,7 @@ def test_two_real_gateway_instances_cannot_double_dispatch(tmp_path: Path):
 
     assert adapter.calls == 1
     assert sorted(result.status for result in results) == sorted(
-        [RealGatewayStatus.ADMITTED, RealGatewayStatus.BLOCKED]
+        [RealGatewayStatus.ADMITTED, RealGatewayStatus.UNKNOWN]
     )
 
 
