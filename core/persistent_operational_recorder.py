@@ -104,7 +104,12 @@ class PersistentOperationalRecorder:
 
     def settle_operation(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
         updated = self.store.settle(record, result)
-        self._reload_memory()
+        try:
+            self._reload_memory()
+        except Exception:
+            # Settlement is already durable; do not turn a post-commit
+            # refresh failure into a false negative for the caller.
+            pass
         return updated
 
     def can_execute(self) -> bool:
