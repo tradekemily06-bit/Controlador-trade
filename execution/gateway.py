@@ -161,6 +161,14 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        # UNKNOWN is a cross-authority fail-closed state. Persist it independently
+        # in every available execution authority; a failure in one store must not
+        # prevent the other store from recording the uncertainty.
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:
