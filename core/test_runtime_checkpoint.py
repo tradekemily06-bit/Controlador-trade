@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from multiprocessing import Process, Queue
 
 import pytest
 
@@ -34,3 +35,40 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def _save_checkpoint_in_process(path, cycle, queue):
+    try:
+        RuntimeCheckpointStore(path).save(
+            RuntimeCheckpoint(
+                f"session-{cycle}",
+                cycle,
+                f"request-{cycle}",
+                datetime.now(timezone.utc),
+            )
+        )
+    except Exception as exc:
+        queue.put(type(exc).__name__)
+    else:
+        queue.put("OK")
+
+
+def test_checkpoint_concurrent_writes_never_publish_partial_json(tmp_path):
+    path = tmp_path / "checkpoint-concurrent.json"
+    queue = Queue()
+    processes = [
+        Process(target=_save_checkpoint_in_process, args=(path, cycle, queue))
+        for cycle in range(4)
+    ]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=10)
+
+    results = [queue.get(timeout=5) for _ in processes]
+    assert results == ["OK"] * len(processes)
+
+    checkpoint = RuntimeCheckpointStore(path).load()
+    assert checkpoint is not None
+    assert checkpoint.session_id.startswith("session-")
+    assert checkpoint.last_cycle in range(4)
