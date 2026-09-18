@@ -32,6 +32,12 @@ class OperationalRuntime:
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
 
+    def activate_kill_switch(self, reason: str):
+        return self.operational_recorder.activate_kill_switch(reason)
+
+    def deactivate_kill_switch(self):
+        return self.operational_recorder.deactivate_kill_switch()
+
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
