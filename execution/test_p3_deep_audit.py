@@ -238,3 +238,62 @@ def test_recovery_blocks_orphaned_terminal_ledger_after_restart(tmp_path: Path):
 
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.can_resume is False
+
+
+def test_recovery_repairs_orphaned_terminal_ledger_without_dispatch(tmp_path: Path):
+    from datetime import datetime, timezone
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    ledger.reserve("orphan-repair")
+    ledger.mark_accepted("orphan-repair")
+
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    )
+    assert coordinator.assess().state is RecoveryState.REQUIRES_RECONCILIATION
+
+    repaired = coordinator.reconcile_terminal_lifecycle(
+        "orphan-repair",
+        updated_at=datetime.now(timezone.utc),
+    )
+    assert repaired.state is ExecutionLifecycleState.ACCEPTED
+    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
+
+
+def test_recovery_repairs_lifecycle_unknown_when_ledger_is_terminal(tmp_path: Path):
+    from datetime import datetime, timezone
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    ledger.reserve("diverged")
+    ledger.mark_accepted("diverged")
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "diverged",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "simulated lifecycle persistence divergence",
+        )
+    )
+
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    )
+    assert coordinator.assess().state is RecoveryState.REQUIRES_RECONCILIATION
+
+    repaired = coordinator.reconcile_terminal_lifecycle(
+        "diverged",
+        updated_at=datetime.now(timezone.utc),
+    )
+    assert repaired.state is ExecutionLifecycleState.ACCEPTED
+    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
