@@ -233,6 +233,45 @@ def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
     assert not (tmp_path.parent / "outside").exists()
 
 
+def test_two_processes_cannot_both_reserve_same_request(tmp_path):
+    import subprocess
+    import sys
+
+    path = tmp_path / "ledger-process.json"
+    script = (
+        "from execution.execution_ledger import ExecutionLedger\n"
+        "import sys\n"
+        "ledger = ExecutionLedger(sys.argv[1])\n"
+        "try:\n"
+        "    ledger.reserve('cross-process')\n"
+        "    print('RESERVED')\n"
+        "except Exception as exc:\n"
+        "    print(type(exc).__name__)\n"
+    )
+    first = subprocess.Popen(
+        [sys.executable, "-c", script, str(path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    second = subprocess.Popen(
+        [sys.executable, "-c", script, str(path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    first_out, first_err = first.communicate(timeout=10)
+    second_out, second_err = second.communicate(timeout=10)
+
+    outputs = [first_out.strip(), second_out.strip()]
+    assert outputs.count("RESERVED") == 1
+    assert first.returncode == 0
+    assert second.returncode == 0
+    assert first_err == ""
+    assert second_err == ""
+    assert ExecutionLedger(path).status("cross-process") is ExecutionLedgerStatus.RESERVED
+
+
 def test_public_ledger_mutators_respect_request_execution_lock(tmp_path):
     from threading import Event, Thread
 
