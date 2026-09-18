@@ -48,3 +48,16 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_terminal_lifecycle_state_cannot_be_changed_by_put(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.ACCEPTED, now))
+
+    with pytest.raises(ValueError, match="estado terminal"):
+        store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.REJECTED, now))
+
+    assert store.get("req-terminal").state is ExecutionLifecycleState.ACCEPTED
