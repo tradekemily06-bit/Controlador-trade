@@ -1,3 +1,4 @@
+import pytest
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -129,3 +130,18 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+@pytest.mark.parametrize("result", [
+    ExecutionResult(accepted=1, message="accepted", external_id="x"),
+    ExecutionResult(accepted=True, message="", external_id="x"),
+    ExecutionResult(accepted=True, message="accepted", external_id=1),
+])
+def test_gateway_rejects_malformed_execution_result_fields(result):
+    class MalformedExecutor:
+        def execute(self, _request):
+            return result
+
+    gateway = ExecutionGateway(MalformedExecutor(), KillSwitch())
+    outcome = gateway.execute("malformed", request())
+
+    assert outcome.status is GatewayStatus.EXECUTOR_ERROR
