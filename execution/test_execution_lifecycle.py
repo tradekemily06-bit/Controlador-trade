@@ -195,3 +195,10 @@ def test_naive_lifecycle_timestamp_is_rejected(tmp_path):
     store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     with pytest.raises(ValueError, match="timezone"):
         store.put(ExecutionLifecycleRecord("req-naive", ExecutionLifecycleState.PENDING, datetime(2026, 9, 18, 12, 0)))
+
+
+def test_lifecycle_rejects_noncanonical_request_identity(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    import pytest
+    with pytest.raises(ValueError, match="request_id"):
+        store.put(ExecutionLifecycleRecord(" req ", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
