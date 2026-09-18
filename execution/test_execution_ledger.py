@@ -126,3 +126,19 @@ def test_two_gateways_share_ledger_without_double_dispatch(tmp_path):
         [GatewayStatus.ACCEPTED, GatewayStatus.DUPLICATE], key=lambda status: status.value
     )
     assert executor.calls == 1
+
+
+def test_unknown_ledger_requires_explicit_reconciliation(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+
+    with pytest.raises(ValueError, match="reconciliação explícita"):
+        ledger.mark_accepted("req-unknown")
+
+    with pytest.raises(ValueError, match="reconciliação explícita"):
+        ledger.mark_rejected("req-unknown")
+
+    ledger.reconcile("req-unknown", executed=True)
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
