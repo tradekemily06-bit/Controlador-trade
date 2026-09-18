@@ -114,6 +114,27 @@ class ExecutionLifecycleStore:
         except OSError as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
+    def repair_terminal(self, record: ExecutionLifecycleRecord) -> ExecutionLifecycleRecord:
+        """Create a missing lifecycle projection from an already terminal authority."""
+        self._validate(record)
+        if record.state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reparo terminal exige ACCEPTED ou REJECTED.")
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                current = self._records.get(record.request_id)
+                if current is not None:
+                    if current.state is record.state:
+                        return current
+                    raise ValueError("lifecycle terminal diverge do estado solicitado.")
+                self._records[record.request_id] = record
+                self._save_unlocked()
+                return record
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir o reparo terminal.") from exc
+
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
