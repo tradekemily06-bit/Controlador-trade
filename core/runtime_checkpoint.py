@@ -61,6 +61,7 @@ class RuntimeCheckpointStore:
             data = json.loads(
                 self.path.read_text(encoding="utf-8"),
                 object_pairs_hook=self._unique_json_object,
+                parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"constante JSON não permitida: {value}")),
             )
             if not isinstance(data, dict):
                 raise ValueError
@@ -97,10 +98,15 @@ class RuntimeCheckpointStore:
         if checkpoint.last_request_id is not None and (
             not isinstance(checkpoint.last_request_id, str)
             or not checkpoint.last_request_id.strip()
+            or checkpoint.last_request_id != checkpoint.last_request_id.strip()
         ):
             raise ValueError("request_id do checkpoint inválido.")
-        if not isinstance(checkpoint.updated_at, datetime):
-            raise ValueError("checkpoint inválido.")
+        if (
+            not isinstance(checkpoint.updated_at, datetime)
+            or checkpoint.updated_at.tzinfo is None
+            or checkpoint.updated_at.utcoffset() is None
+        ):
+            raise ValueError("checkpoint timestamp deve ser timezone-aware.")
 
     @contextmanager
     def _mutation_lock(self) -> Iterator[None]:
