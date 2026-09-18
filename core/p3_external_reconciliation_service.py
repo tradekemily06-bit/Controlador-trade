@@ -88,7 +88,7 @@ class ExternalExecutionReconciliationService:
         # global REAL barrier -> request identity lock -> durable mutation.
         # Otherwise a worker could bind an external order while another process
         # is between its final admission check and the broker side effect.
-        with self._coordinator.ledger.real_execution_lock():
+        with self._coordinator.execution_ledger.real_execution_lock():
             with self._coordinator.request_execution_lock(request_id):
                 observation = method(request_id)
                 if not isinstance(observation, ExternalOrderObservation):
