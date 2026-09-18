@@ -1,4 +1,7 @@
-from __future__ import annotationsfrom dataclasses import dataclass
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
@@ -143,6 +146,3 @@ class ExecutionLifecycleStore:
 
     def records_unlocked(self) -> tuple[ExecutionLifecycleRecord, ...]:
         return tuple(self._records[key] for key in sorted(self._records))
-
-
-import json
