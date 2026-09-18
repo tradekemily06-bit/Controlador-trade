@@ -410,12 +410,20 @@ class RealExecutionGateway:
                 if executed
                 else ExecutionLifecycleState.REJECTED
             )
-            self._lifecycle.reconcile(
-                request_id,
-                state,
-                updated_at=datetime.now(timezone.utc),
-                message="reconciliação externa consultada no broker",
-            )
+            try:
+                self._lifecycle.reconcile(
+                    request_id,
+                    state,
+                    updated_at=datetime.now(timezone.utc),
+                    message="reconciliação externa consultada no broker",
+                )
+            except (OSError, ValueError) as exc:
+                # Ledger is authoritative. If the projection write fails after
+                # durable reconciliation, never reopen or replay the order;
+                # surface a repairable projection failure instead.
+                raise ValueError(
+                    f"Ledger reconciliado, mas projeção Lifecycle falhou: {exc}"
+                ) from exc
 
     def repair_lifecycle_projection(self, request_id: str) -> None:
         with self._locks.acquire(request_id):
