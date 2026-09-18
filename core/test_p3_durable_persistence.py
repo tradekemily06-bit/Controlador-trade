@@ -67,6 +67,62 @@ def test_lifecycle_concurrent_writers_do_not_lose_records(tmp_path):
     assert {record.request_id for record in restored.records()} == {"req-a", "req-b"}
 
 
+def test_safety_store_rejects_corrupted_execution_audit_order(tmp_path):
+    path = tmp_path / "safety.json"
+    atomic_write_json(
+        path,
+        {
+            "audit": [],
+            "kill_switch": {},
+            "execution_audit": [
+                {
+                    "request_id": "req-newer",
+                    "state": "UNKNOWN",
+                    "timestamp": "2026-01-01T00:00:02+00:00",
+                    "message": "newer",
+                },
+                {
+                    "request_id": "req-older",
+                    "state": "UNKNOWN",
+                    "timestamp": "2026-01-01T00:00:01+00:00",
+                    "message": "older",
+                },
+            ],
+        },
+    )
+
+    with pytest.raises(ValueError, match="cronológica"):
+        OperationalSafetyStore(path).load_execution_audit()
+
+
+def test_safety_store_rejects_corrupted_execution_audit_timezone_regime(tmp_path):
+    path = tmp_path / "safety.json"
+    atomic_write_json(
+        path,
+        {
+            "audit": [],
+            "kill_switch": {},
+            "execution_audit": [
+                {
+                    "request_id": "req-aware",
+                    "state": "UNKNOWN",
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "message": "aware",
+                },
+                {
+                    "request_id": "req-naive",
+                    "state": "UNKNOWN",
+                    "timestamp": "2026-01-01T00:00:01",
+                    "message": "naive",
+                },
+            ],
+        },
+    )
+
+    with pytest.raises(ValueError, match="timezone"):
+        OperationalSafetyStore(path).load_execution_audit()
+
+
 def test_safety_store_concurrent_updates_preserve_execution_audit(tmp_path):
     path = tmp_path / "safety.json"
     store = OperationalSafetyStore(path)
