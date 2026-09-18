@@ -39,10 +39,10 @@ class RealExecutionGateway:
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
-        if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
-            raise ValueError("lifecycle inválido.")
-        if recovery is not None and not isinstance(recovery, RecoveryCoordinator):
-            raise ValueError("recovery inválido.")
+        if not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle é obrigatório para execução REAL.")
+        if not isinstance(recovery, RecoveryCoordinator):
+            raise ValueError("recovery é obrigatório para execução REAL.")
         if not isinstance(kill_switch, KillSwitch):
             raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
@@ -425,11 +425,10 @@ class RealExecutionGateway:
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
 
+        # lifecycle and recovery are mandatory REAL authorities; this branch
+        # is retained as a defensive assertion for future refactors.
         if self._lifecycle is None:
-            raise ValueError(
-                "reconciliação REAL exige lifecycle + observação externa; "
-                "um booleano local não é evidência do estado do broker."
-            )
+            raise ValueError("reconciliação REAL exige lifecycle durável.")
 
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError(
