@@ -468,12 +468,12 @@ def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
 
 
-def test_real_dispatch_requires_explicit_adapter_identity():
+def test_real_dispatch_requires_explicit_adapter_identity(tmp_path):
     adapter = FakeAdapter()
     adapter.adapter_id = ""
     registry = BrokerRegistry()
     registry.register("fake", adapter)
-    ledger = ExecutionLedger(Path("/tmp/nonexistent-ledger-for-test.json"))
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     result = gateway.execute(
         broker="fake",
