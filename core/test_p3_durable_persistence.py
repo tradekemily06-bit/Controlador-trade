@@ -322,7 +322,7 @@ def test_record_operation_audit_commit_then_memory_failure_reloads_durable_truth
     restored_safety = OperationalSafetyStore(tmp_path / "safety.json")
     audit, _ = restored_safety.load()
     assert len(audit) == 1
-    assert store.load().records == ()
+    assert store.load().records() == ()
 
 
 def test_record_operation_does_not_duplicate_after_post_commit_reload_failure(tmp_path, monkeypatch):
@@ -343,5 +343,5 @@ def test_record_operation_does_not_duplicate_after_post_commit_reload_failure(tm
     monkeypatch.setattr(recorder, "_reload_memory", flaky_reload)
 
     recorded = recorder.record_operation(snapshot, timestamp=datetime.now(timezone.utc))
-    assert recorded.memory.request_id
-    assert len(store.load().records) == 1
+    assert recorded.memory in store.load().records()
+    assert len(store.load().records()) == 1
