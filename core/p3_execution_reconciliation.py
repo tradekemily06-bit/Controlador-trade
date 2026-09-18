@@ -34,6 +34,11 @@ class ExecutionReconciliationCoordinator:
         self._lifecycle = lifecycle
         self._boundary = ExternalOrderReconciliationBoundary()
 
+    @property
+    def execution_ledger(self) -> ExecutionLedger:
+        """Expose the durable ledger dependency for coordinated recovery workers."""
+        return self._ledger
+
     def request_execution_lock(self, request_id: str):
         """Serialize identity discovery with REAL dispatch for one request."""
         if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
