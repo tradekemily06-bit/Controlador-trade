@@ -209,7 +209,11 @@ def test_real_unknown_without_external_id_cannot_be_locally_closed(tmp_path: Pat
 
 def test_real_unknown_with_durable_external_id_can_be_reconciled_from_broker_query(tmp_path: Path):
     registry = BrokerRegistry()
-    adapter = FakeAdapter()
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed"
+        )
+    )
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
