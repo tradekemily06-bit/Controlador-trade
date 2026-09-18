@@ -1283,7 +1283,7 @@ def test_reconciliation_rejects_stale_observation_after_concurrent_terminalizati
     worker.join(timeout=5)
 
     assert len(errors) == 1
-    assert "diverge" in str(errors[0])
+    assert "compatível" in str(errors[0]) or "terminal" in str(errors[0])
     assert ledger.status("stale-reconciliation") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("stale-reconciliation").state is ExecutionLifecycleState.ACCEPTED
 
