@@ -216,7 +216,8 @@ def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
         assert not (tmp_path.parent / "outside").exists()
         lock_files = list(tmp_path.glob(".*.execution.lock.lock"))
         assert len(lock_files) == 1
-        assert ".." not in lock_files[0].name
+        assert "request-id" not in lock_files[0].name
+        assert len(lock_files[0].name.split(".")) >= 4
 
     # The lock file is temporary and may be removed when the context exits.
     assert not (tmp_path.parent / "outside").exists()
