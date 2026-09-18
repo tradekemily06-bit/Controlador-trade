@@ -6,11 +6,12 @@ from pathlib import Path
 
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
+from .durable_json import atomic_write_json, locked_path, read_json
 from .kill_switch import KillSwitch, KillSwitchState
 
 
 class OperationalSafetyStore:
-    """Persists the validated operational audit, execution audit and kill-switch state."""
+    """Persists validated operational audit, execution audit and kill-switch state."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -73,11 +74,11 @@ class OperationalSafetyStore:
             raise ValueError("message da auditoria de execução é obrigatório.")
         return {"request_id": request_id, "state": state, "timestamp": timestamp, "message": message}
 
-    def _read_payload(self) -> dict[str, object]:
+    def _read_payload_unlocked(self) -> dict[str, object]:
         if not self.path.exists():
             return {"audit": [], "kill_switch": {}, "execution_audit": []}
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = read_json(self.path, {})
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
         if not isinstance(payload, dict):
@@ -90,63 +91,82 @@ class OperationalSafetyStore:
         if not isinstance(kill_switch, KillSwitch):
             raise TypeError("kill_switch deve ser KillSwitch.")
         state = kill_switch.state
-        payload = self._read_payload()
-        execution_audit = payload.get("execution_audit", [])
-        if not isinstance(execution_audit, list):
-            raise ValueError("auditoria de execução persistida inválida.")
-        execution_audit = [self._execution_audit_item(item) for item in execution_audit]
-        payload = {
-            "audit": [self._audit_dict(record) for record in audit.records()],
-            "kill_switch": {"enabled": state.enabled, "reason": state.reason},
-            "execution_audit": execution_audit,
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        try:
+            with locked_path(self.path):
+                payload = self._read_payload_unlocked()
+                execution_audit = payload.get("execution_audit", [])
+                if not isinstance(execution_audit, list):
+                    raise ValueError("auditoria de execução persistida inválida.")
+                execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+                payload = {
+                    "audit": [self._audit_dict(record) for record in audit.records()],
+                    "kill_switch": {"enabled": state.enabled, "reason": state.reason},
+                    "execution_audit": execution_audit,
+                }
+                atomic_write_json(self.path, payload)
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir o estado de segurança.") from exc
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
         normalized = [self._execution_audit_item(item) for item in events]
-        payload = self._read_payload()
-        audit = payload.get("audit", [])
-        kill_switch = payload.get("kill_switch", {})
-        if not isinstance(audit, list) or not isinstance(kill_switch, dict):
-            raise ValueError("estado de segurança inválido.")
-        payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        try:
+            with locked_path(self.path):
+                payload = self._read_payload_unlocked()
+                audit = payload.get("audit", [])
+                kill_switch = payload.get("kill_switch", {})
+                if not isinstance(audit, list) or not isinstance(kill_switch, dict):
+                    raise ValueError("estado de segurança inválido.")
+                payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
+                atomic_write_json(self.path, payload)
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir a auditoria de execução.") from exc
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
-        payload = self._read_payload()
-        raw = payload.get("execution_audit", [])
-        if not isinstance(raw, list):
-            raise ValueError("auditoria de execução persistida inválida.")
-        return tuple(self._execution_audit_item(item) for item in raw)
+        try:
+            with locked_path(self.path):
+                payload = self._read_payload_unlocked()
+                raw = payload.get("execution_audit", [])
+                if not isinstance(raw, list):
+                    raise ValueError("auditoria de execução persistida inválida.")
+                return tuple(self._execution_audit_item(item) for item in raw)
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError("estado de segurança inválido.") from exc
 
     def load(self) -> tuple[DecisionAudit, KillSwitch]:
         audit, kill_switch = DecisionAudit(), KillSwitch()
-        if not self.path.exists():
-            return audit, kill_switch
-        payload = self._read_payload()
         try:
-            audit_payload = payload.get("audit", [])
-            if not isinstance(audit_payload, list):
-                raise ValueError("auditoria persistida inválida.")
-            for item in audit_payload:
-                audit.append(self._audit_record(item))
-            raw_state = payload.get("kill_switch", {})
-            if not isinstance(raw_state, dict):
-                raise ValueError("estado do kill switch inválido.")
-            state = KillSwitchState(enabled=raw_state.get("enabled", False), reason=raw_state.get("reason"))
-            if state.enabled:
-                kill_switch.activate(state.reason or "estado persistido")
-            else:
-                kill_switch.deactivate()
-            raw_execution_audit = payload.get("execution_audit", [])
-            if not isinstance(raw_execution_audit, list):
-                raise ValueError("auditoria de execução persistida inválida.")
-            for item in raw_execution_audit:
-                self._execution_audit_item(item)
+            with locked_path(self.path):
+                if not self.path.exists():
+                    return audit, kill_switch
+                payload = self._read_payload_unlocked()
+                audit_payload = payload.get("audit", [])
+                if not isinstance(audit_payload, list):
+                    raise ValueError("auditoria persistida inválida.")
+                for item in audit_payload:
+                    audit.append(self._audit_record(item))
+                raw_state = payload.get("kill_switch", {})
+                if not isinstance(raw_state, dict):
+                    raise ValueError("estado do kill switch inválido.")
+                state = KillSwitchState(enabled=raw_state.get("enabled", False), reason=raw_state.get("reason"))
+                if state.enabled:
+                    kill_switch.activate(state.reason or "estado persistido")
+                else:
+                    kill_switch.deactivate()
+                raw_execution_audit = payload.get("execution_audit", [])
+                if not isinstance(raw_execution_audit, list):
+                    raise ValueError("auditoria de execução persistida inválida.")
+                for item in raw_execution_audit:
+                    self._execution_audit_item(item)
         except (AttributeError, TypeError, ValueError) as exc:
+            raise ValueError("estado de segurança inválido.") from exc
+        except OSError as exc:
             raise ValueError("estado de segurança inválido.") from exc
         return audit, kill_switch
