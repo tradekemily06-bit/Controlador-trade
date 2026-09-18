@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from contextlib import contextmanager
 from enum import Enum
@@ -109,8 +110,12 @@ class ExecutionLedger:
         """Serialize dispatch/reconciliation for one request across processes."""
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
+        # Never place the raw request_id in a filesystem path. Even though
+        # request IDs are normally generated internally, a public execution
+        # boundary must not turn an untrusted identifier into a path segment.
+        request_key = hashlib.sha256(request_id.strip().encode("utf-8")).hexdigest()
         lock_path = self.path.with_name(
-            f".{self.path.name}.{request_id.strip()}.execution.lock"
+            f".{self.path.name}.{request_key}.execution.lock"
         )
         with locked_path(lock_path):
             yield
