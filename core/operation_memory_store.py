@@ -98,6 +98,8 @@ class OperationMemoryStore:
             durable = self._load_unlocked()
             durable_records = durable.records()
             incoming = memory.records()
+            if self._last_loaded_records is None and durable_records:
+                raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
             if self._last_loaded_records is not None and durable_records != self._last_loaded_records:
                 raise ValueError("snapshot de memória obsoleto; sobrescrita destrutiva recusada.")
             if not durable_records:
