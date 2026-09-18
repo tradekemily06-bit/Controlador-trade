@@ -35,7 +35,7 @@ class GatewayResult:
 
 
 class ExecutionGateway:
-    """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
+    """Broker-agnostic safety gateway. This gateway permits only DEMO execution."""
 
     def __init__(
         self,
@@ -119,6 +119,15 @@ class ExecutionGateway:
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
+        if type(result.accepted) is not bool:
+            self._mark_unknown(request_id, event_time, "executor retornou accepted inválido")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou accepted inválido; execução marcada como UNKNOWN.")
+        if type(result.message) is not str or not result.message.strip():
+            self._mark_unknown(request_id, event_time, "executor retornou message inválida")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou message inválida; execução marcada como UNKNOWN.")
+        if result.external_id is not None and (type(result.external_id) is not str or not result.external_id.strip()):
+            self._mark_unknown(request_id, event_time, "executor retornou external_id inválido")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou external_id inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
             if self._ledger is not None:
@@ -138,8 +147,8 @@ class ExecutionGateway:
         if self._ledger is not None:
             try:
                 if not isinstance(result.external_id, str) or not result.external_id.strip():
-                    self._ledger.mark_unknown(request_id)
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução DEMO aceita sem external_id; estado UNKNOWN.", result)
+                    self._mark_unknown(request_id, event_time, "execução DEMO aceita sem external_id")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução DEMO aceita sem external_id; execução marcada como UNKNOWN.", result)
                 self._ledger.mark_accepted(request_id, external_id=result.external_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
@@ -181,7 +190,7 @@ class ExecutionGateway:
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
         if request.mode is not ExecutionMode.DEMO:
-            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
+            return "esta etapa aceita somente execução DEMO."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
         if not request.symbol.strip():
