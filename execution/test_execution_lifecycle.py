@@ -48,3 +48,16 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_lifecycle_rejects_duplicate_request_ids_in_persisted_list(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        """[
+          {"request_id": "dup", "state": "PENDING", "updated_at": "2026-09-18T12:00:00+00:00"},
+          {"request_id": "dup", "state": "PENDING", "updated_at": "2026-09-18T12:01:00+00:00"}
+        ]""",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
