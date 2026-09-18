@@ -88,7 +88,7 @@ class BrokerAdapterGateway:
         *,
         capability: _RealDispatchCapability,
     ) -> AdapterExecutionResult:
-        if not isinstance(capability, _RealDispatchCapability):
+        if type(capability) is not _RealDispatchCapability:
             return AdapterExecutionResult(False, "capacidade REAL inválida; dispatch bloqueado.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(
