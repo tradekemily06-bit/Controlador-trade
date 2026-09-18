@@ -280,3 +280,26 @@ def test_real_dispatch_rejects_execution_request_subclass():
     )
     assert result.accepted is False
     assert adapter.calls == 0
+
+
+
+def test_real_dispatch_rejects_non_boolean_adapter_availability(tmp_path):
+    class TruthyAvailability(FakeAdapter):
+        def is_available(self):
+            return "yes"
+
+    adapter = TruthyAvailability()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    gateway = BrokerAdapterGateway(registry)
+    capability = gateway._real_dispatch_capability(
+        "fake", expected_adapter_id=adapter.adapter_id, request_id="strict-availability", authorization_id="auth"
+    )
+    assert capability is not None
+    result = gateway._execute_real(
+        "fake", request("strict-availability"), capability=capability,
+        request_id="strict-availability", authorization_id="auth"
+    )
+    assert result.accepted is False
+    assert "disponibilidade inválida" in result.message
+    assert adapter.calls == 0
