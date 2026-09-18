@@ -97,6 +97,8 @@ class ExecutionLedger:
                 not isinstance(external_id, str) or not external_id.strip()
             ):
                 raise ValueError("external_id persistido inválido.")
+            if isinstance(external_id, str):
+                external_id = external_id.strip()
             # A hand-edited or old structured record must not manufacture
             # terminal REAL authority merely by naming a terminal status.
             # Evidence-bearing terminal states require a durable broker ID.
@@ -199,13 +201,14 @@ class ExecutionLedger:
         self._transition(
             request_id,
             ExecutionLedgerStatus.ACCEPTED,
-            external_id=external_id,
+            external_id=external_id.strip(),
         )
 
     def attach_external_id(self, request_id: str, external_id: str) -> None:
         self._validate_id(request_id)
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido.")
+        external_id = external_id.strip()
 
         def mutation() -> None:
             current = self._states.get(request_id)
@@ -231,7 +234,7 @@ class ExecutionLedger:
         self._transition(
             request_id,
             ExecutionLedgerStatus.REJECTED,
-            external_id=external_id,
+            external_id=external_id.strip() if isinstance(external_id, str) else None,
         )
 
     def mark_unknown(self, request_id: str) -> None:
@@ -262,6 +265,8 @@ class ExecutionLedger:
         external_id: str | None = None,
     ) -> None:
         self._validate_id(request_id)
+        if type(executed) is not bool:
+            raise ValueError("executed precisa ser booleano.")
         if external_id is not None and (
             not isinstance(external_id, str) or not external_id.strip()
         ):
@@ -270,6 +275,7 @@ class ExecutionLedger:
             raise ValueError(
                 "external_id é obrigatório para qualquer reconciliação terminal."
             )
+        external_id = external_id.strip()
 
         def mutation() -> None:
             current = self._states.get(request_id)
