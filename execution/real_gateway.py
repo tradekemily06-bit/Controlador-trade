@@ -208,7 +208,7 @@ class RealExecutionGateway:
                 final_status = self._ledger.status(request_id)
             except (OSError, ValueError) as exc:
                 try:
-                    self._ledger.mark_unknown(request_id)
+                    self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                 except (OSError, ValueError):
                     pass
                 if self._lifecycle is not None:
@@ -249,7 +249,7 @@ class RealExecutionGateway:
                 with self._kill_switch.execution_window():
                     if not self._kill_switch.allows_execution():
                         try:
-                            self._ledger.mark_unknown(request_id)
+                            self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                         except (OSError, ValueError):
                             pass
                         if self._lifecycle is not None:
@@ -271,7 +271,7 @@ class RealExecutionGateway:
                     result = self._gateway.execute(broker, request)
             except Exception as exc:
                 try:
-                    self._ledger.mark_unknown(request_id)
+                    self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                 except (OSError, ValueError):
                     pass
                 if self._lifecycle is not None:
@@ -282,7 +282,7 @@ class RealExecutionGateway:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
             if result.execution is None:
                 try:
-                    self._ledger.mark_unknown(request_id)
+                    self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                 except (OSError, ValueError):
                     pass
                 if self._lifecycle is not None:
@@ -301,7 +301,7 @@ class RealExecutionGateway:
                 if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
                     try:
                         self._ledger._bind_external_id_locked(request_id, result.execution.external_id.strip())
-                        self._ledger.mark_unknown(request_id)
+                        self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                     except (OSError, ValueError) as exc:
                         return RealGatewayResult(
                             RealGatewayStatus.UNKNOWN,
@@ -327,7 +327,7 @@ class RealExecutionGateway:
                     )
 
                 try:
-                    self._ledger.mark_rejected(request_id)
+                    self._ledger._transition_locked(request_id, ExecutionLedgerStatus.REJECTED)
                 except (OSError, ValueError) as exc:
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
                 if self._lifecycle is not None:
@@ -341,7 +341,7 @@ class RealExecutionGateway:
             # ambiguous: the external order may exist but cannot be safely reconciled.
             if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
                 try:
-                    self._ledger.mark_unknown(request_id)
+                    self._ledger._transition_locked(request_id, ExecutionLedgerStatus.UNKNOWN)
                 except (OSError, ValueError) as exc:
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
                 if self._lifecycle is not None:
@@ -360,7 +360,7 @@ class RealExecutionGateway:
 
             try:
                 self._ledger._bind_external_id_locked(request_id, result.execution.external_id.strip())
-                self._ledger.mark_accepted(request_id)
+                self._ledger._transition_locked(request_id, ExecutionLedgerStatus.ACCEPTED)
             except (OSError, ValueError) as exc:
                 # The broker has already accepted the order. Any persistence
                 # failure therefore remains uncertain; never leave the lifecycle
