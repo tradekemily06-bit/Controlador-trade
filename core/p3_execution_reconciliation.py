@@ -36,18 +36,18 @@ class ExecutionReconciliationCoordinator:
 
     def request_execution_lock(self, request_id: str):
         """Serialize identity discovery with REAL dispatch for one request."""
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
             raise ValueError("request_id inválido.")
         return self._ledger.request_execution_lock(request_id)
 
     def external_id_for(self, request_id: str) -> str | None:
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
             raise ValueError("request_id inválido.")
         return self._ledger.external_id(request_id)
 
     def _bind_external_id_locked(self, request_id: str, external_id: str) -> None:
         """Bind an external identity while the caller already holds the request lock."""
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
             raise ValueError("request_id inválido.")
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido.")
@@ -77,7 +77,7 @@ class ExecutionReconciliationCoordinator:
         *,
         updated_at: datetime | None = None,
     ) -> ReconciliationResult:
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
             raise ValueError("request_id inválido.")
         result = self._boundary.reconcile(external_id, observation)
         target = self._target(result.status)
