@@ -352,3 +352,22 @@ def test_real_gateway_rejects_noncanonical_request_id(tmp_path):
     )
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
+
+
+def test_reconciliation_never_queries_broker_for_terminal_request(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-terminal")
+    ledger.mark_rejected("req-terminal", external_id="external-terminal")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", True, True)
+    with pytest.raises(ValueError, match="estado incerto reconciliável"):
+        gateway.reconcile_unknown(
+            "req-terminal",
+            broker="fake",
+            authorization=auth,
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert adapter.query_calls == 0
