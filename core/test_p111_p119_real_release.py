@@ -221,8 +221,13 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown("unknown-2", executed=True)
+    except ValueError as exc:
+        assert "lifecycle" in str(exc)
+    else:
+        raise AssertionError("REAL reconciliation must require durable external evidence")
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
