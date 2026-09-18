@@ -368,3 +368,103 @@ def test_save_rejects_divergent_snapshot_after_competing_append(tmp_path):
     restored = OperationMemoryStore(path).load().records()
     assert len(restored) == 2
     assert restored[-1].reason == "first append"
+
+
+def test_record_operation_retry_after_ambiguous_memory_commit_is_idempotent(tmp_path, monkeypatch):
+    store = OperationMemoryStore(tmp_path / "memory.json")
+    safety = OperationalSafetyStore(tmp_path / "safety.json")
+    recorder = PersistentOperationalRecorder(store=store, safety_store=safety)
+    snapshot = _snapshot(11)
+    original_append = store.append
+    calls = {"count": 0}
+
+    def append_then_fail(record):
+        calls["count"] += 1
+        original_append(record)
+        if calls["count"] == 1:
+            raise OSError("failure after durable memory commit")
+
+    monkeypatch.setattr(store, "append", append_then_fail)
+
+    timestamp = datetime.now(timezone.utc)
+    with pytest.raises(OSError, match="failure after durable memory commit"):
+        recorder.record_operation(snapshot, timestamp=timestamp)
+
+    monkeypatch.setattr(store, "append", original_append)
+    recorder._reload_memory()
+    recorder._reload_safety()
+
+    retry = recorder.record_operation(snapshot, timestamp=timestamp)
+
+    records = store.load().records()
+    audit = safety.load()[0].records()
+    assert len(records) == 1
+    assert len(audit) == 1
+    assert records[0] == retry.memory
+
+
+def test_operation_memory_rejects_mixed_timezone_awareness(tmp_path):
+    path = tmp_path / "memory.json"
+    store = OperationMemoryStore(path)
+    naive = OperationMemoryRecord(
+        datetime(2026, 1, 1),
+        Signal.COMPRA,
+        80,
+        "EXECUTAR",
+        "naive",
+    )
+    aware = OperationMemoryRecord(
+        datetime(2026, 1, 1, tzinfo=timezone.utc),
+        Signal.VENDA,
+        81,
+        "EXECUTAR",
+        "aware",
+    )
+    store.append(naive)
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        store.append(aware)
+
+
+def test_decision_audit_rejects_mixed_timezone_awareness():
+    audit = DecisionAudit()
+    audit.append(DecisionAuditRecord(datetime(2026, 1, 1), _snapshot(12)))
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        audit.append(
+            DecisionAuditRecord(
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+                _snapshot(13),
+            )
+        )
+
+
+def test_lifecycle_rejects_mixed_timezone_awareness(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    store.put(
+        ExecutionLifecycleRecord(
+            "req-timezone",
+            ExecutionLifecycleState.PENDING,
+            datetime(2026, 1, 1),
+        )
+    )
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        store.put(
+            ExecutionLifecycleRecord(
+                "req-timezone",
+                ExecutionLifecycleState.PENDING,
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+        )
+
+
+def test_checkpoint_rejects_mixed_timezone_awareness(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    store.save(RuntimeCheckpoint("s-timezone", 1, "req-1", datetime(2026, 1, 1)))
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        store.save(
+            RuntimeCheckpoint(
+                "s-timezone",
+                2,
+                "req-2",
+                datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+        )
