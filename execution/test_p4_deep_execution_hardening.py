@@ -1127,7 +1127,7 @@ def test_execute_real_is_called_only_by_real_gateway_source():
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
-                and node.func.attr in {"execute_real", "_execute_real"}
+                and node.func.attr in {"execute_real", "_execute_real", "real_dispatch_capability", "_real_dispatch_capability"}
             ):
                 violations.append(f"{path.relative_to(root)}:{node.lineno}")
     assert violations == []
