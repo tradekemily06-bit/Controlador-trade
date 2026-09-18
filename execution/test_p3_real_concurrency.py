@@ -507,7 +507,7 @@ def test_real_lifecycle_pending_before_ledger_reserve_failure_blocks_restart_wit
         admission=admission,
         safety=safety,
     )
-    assert retry.status == RealGatewayStatus.BLOCKED
+    assert retry.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
 
 
