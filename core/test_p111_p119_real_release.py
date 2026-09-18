@@ -62,6 +62,7 @@ class UnknownAdapter:
 
 
 class QueryPort:
+    adapter_id = "fake-adapter"
     def __init__(self, observation):
         self.observation = observation
         self.calls = 0
