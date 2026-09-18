@@ -456,6 +456,27 @@ def test_lifecycle_rejects_mixed_timezone_awareness(tmp_path):
         )
 
 
+def test_execution_audit_rejects_mixed_timezone_awareness(tmp_path):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    store.append_execution_audit(
+        {
+            "request_id": "req-timezone",
+            "state": "PENDING",
+            "timestamp": "2026-01-01T00:00:00",
+            "message": "naive",
+        }
+    )
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        store.append_execution_audit(
+            {
+                "request_id": "req-timezone-2",
+                "state": "PENDING",
+                "timestamp": "2026-01-01T00:00:01+00:00",
+                "message": "aware",
+            }
+        )
+
+
 def test_checkpoint_rejects_mixed_timezone_awareness(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     store.save(RuntimeCheckpoint("s-timezone", 1, "req-1", datetime(2026, 1, 1)))
