@@ -22,14 +22,39 @@ class RemoteMT5Bridge(Protocol):
 
 
 class SafeRemoteMT5Executor:
-    """Fail-closed execution facade for a remote MT5 bridge."""
+    """Fail-closed execution facade for a remote MT5 bridge.
+
+    This facade is DEMO-only and deliberately has no REAL capability. It
+    validates the request before touching the bridge, validates bridge health
+    immediately before dispatch, and validates the returned result.
+    """
+
+    supports_real_execution = False
 
     def __init__(self, bridge: RemoteMT5Bridge) -> None:
+        if bridge is None:
+            raise ValueError("ponte MT5 obrigatória.")
         self._bridge = bridge
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if type(request) is not ExecutionRequest:
+            return ExecutionResult(False, "ponte MT5 bloqueada: request inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            return ExecutionResult(False, "ponte MT5 bloqueada: símbolo inválido.")
+        if (
+            not isinstance(request.amount, (int, float))
+            or isinstance(request.amount, bool)
+            or request.amount <= 0
+        ):
+            return ExecutionResult(False, "ponte MT5 bloqueada: amount inválido.")
+        if (
+            not isinstance(request.duration_seconds, int)
+            or isinstance(request.duration_seconds, bool)
+            or request.duration_seconds <= 0
+        ):
+            return ExecutionResult(False, "ponte MT5 bloqueada: duração inválida.")
 
         try:
             health = self._bridge.health()
@@ -43,6 +68,7 @@ class SafeRemoteMT5Executor:
             return ExecutionResult(False, "ponte MT5 bloqueada: mensagem de health inválida.")
         if not health.available or not health.demo_account:
             return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
+
         try:
             result = self._bridge.execute_demo(request)
         except Exception as exc:
