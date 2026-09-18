@@ -17,6 +17,11 @@ class _RealDispatchCapability:
     adapter_id: str
 
 
+# Issued capability identities are tracked so an external caller cannot forge
+# a capability merely by instantiating the private dataclass directly.
+_REAL_DISPATCH_CAPABILITIES: dict[int, _RealDispatchCapability] = {}
+
+
 class _RealQueryCapability:
     """Broker query capability pinned to the authorized adapter instance."""
 
@@ -90,6 +95,8 @@ class BrokerAdapterGateway:
     ) -> AdapterExecutionResult:
         if type(capability) is not _RealDispatchCapability:
             return AdapterExecutionResult(False, "capacidade REAL inválida; dispatch bloqueado.")
+        if _REAL_DISPATCH_CAPABILITIES.get(id(capability)) is not capability:
+            return AdapterExecutionResult(False, "capacidade REAL não emitida pelo gateway; dispatch bloqueado.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(
                 False,
@@ -124,7 +131,9 @@ class BrokerAdapterGateway:
         adapter_id = getattr(adapter, "adapter_id", None)
         if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
             return None
-        return _RealDispatchCapability(adapter, adapter_id.strip())
+        capability = _RealDispatchCapability(adapter, adapter_id.strip())
+        _REAL_DISPATCH_CAPABILITIES[id(capability)] = capability
+        return capability
 
     def real_adapter_id(self, broker: str) -> str | None:
         """Return the explicit identity bound to a REAL-capable adapter."""
