@@ -17,6 +17,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class FakeAdapter:
+    supports_real_execution = True
     def __init__(self, available=True):
         self.available = available
         self.calls = 0
@@ -30,6 +31,7 @@ class FakeAdapter:
 
 
 class NoExternalIdAdapter:
+    supports_real_execution = True
     def is_available(self):
         return True
 
@@ -38,6 +40,7 @@ class NoExternalIdAdapter:
 
 
 class UnknownAdapter:
+    supports_real_execution = True
     def is_available(self):
         return True
 
