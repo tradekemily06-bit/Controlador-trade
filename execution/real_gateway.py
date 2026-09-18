@@ -419,12 +419,24 @@ class RealExecutionGateway:
                 else ExecutionLifecycleState.REJECTED
             )
             try:
-                self._lifecycle.reconcile(
-                    request_id,
-                    state,
-                    updated_at=datetime.now(timezone.utc),
-                    message="reconciliação externa consultada no broker",
-                )
+                updated_at = datetime.now(timezone.utc)
+                current = self._lifecycle.get(request_id)
+                if current is None:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            state,
+                            updated_at,
+                            "projeção Lifecycle criada durante reconciliação externa",
+                        )
+                    )
+                else:
+                    self._lifecycle.reconcile(
+                        request_id,
+                        state,
+                        updated_at=updated_at,
+                        message="reconciliação externa consultada no broker",
+                    )
             except (OSError, ValueError) as exc:
                 # Ledger is authoritative. If the projection write fails after
                 # durable reconciliation, never reopen or replay the order;
