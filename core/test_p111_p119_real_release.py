@@ -9,6 +9,7 @@ from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditS
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -176,7 +177,8 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True, external_id="reconciled-broker-id")
+    observation = ExternalOrderReconciliationBoundary().reconcile("reconciled-broker-id", ExternalOrderObservation("reconciled-broker-id", ExternalOrderStatus.EXECUTED, "broker confirmed"))
+    gateway.reconcile_unknown("unknown-2", reconciliation=observation)
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -193,7 +195,8 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
+    observation = ExternalOrderReconciliationBoundary().reconcile("crashed-broker-id", ExternalOrderObservation("crashed-broker-id", ExternalOrderStatus.NOT_EXECUTED, "broker confirmed absent"))
+    gateway.reconcile_unknown("crashed", reconciliation=observation)
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
