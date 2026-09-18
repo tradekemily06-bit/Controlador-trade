@@ -319,3 +319,36 @@ def test_real_safety_gate_rejects_non_boolean_prerequisite():
             market_healthy=True, recovery_safe=True,
             risk_approved=True, broker_available="yes",
         )
+
+
+def test_real_gateway_rejects_noncanonical_request_id(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+    )
+    auth = RealExecutionAuthorization("auth", "audit", "fake", "fake-adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True,
+        risk_approved=True, broker_available=True,
+    )
+    request = _request()
+    request = type(request)(
+        symbol=request.symbol, signal=request.signal, amount=request.amount,
+        duration_seconds=request.duration_seconds, mode=request.mode,
+        request_id=" req ",
+    )
+    result = gateway.execute(
+        broker="fake", request_id=" req ", request=request,
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
