@@ -61,3 +61,21 @@ def test_lifecycle_rejects_duplicate_request_ids_in_persisted_list(tmp_path):
     )
     with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
         ExecutionLifecycleStore(path)
+
+
+def test_lifecycle_publication_failure_preserves_previous_durable_state(tmp_path, monkeypatch):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("stable", ExecutionLifecycleState.PENDING, now))
+
+    def fail_fsync(fd):
+        raise OSError("simulated fsync failure")
+
+    monkeypatch.setattr("execution.execution_lifecycle.os.fsync", fail_fsync)
+    with pytest.raises(OSError, match="simulated fsync failure"):
+        store.put(ExecutionLifecycleRecord("stable", ExecutionLifecycleState.UNKNOWN, now))
+
+    assert ExecutionLifecycleStore(path).get("stable").state is ExecutionLifecycleState.PENDING
+    assert not path.with_name(".lifecycle.json.tmp").exists()
+
