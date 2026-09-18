@@ -1315,3 +1315,52 @@ def test_recovery_worker_racing_reconciliation_worker_never_reopens_terminal_sta
     assert ledger.external_id("recovery-vs-reconciliation") == "EXT-RECOVERY-RACE"
     assert ledger.status("recovery-vs-reconciliation") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("recovery-vs-reconciliation").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_lifecycle_admission_failure_persists_unknown_in_both_authorities(tmp_path: Path, monkeypatch):
+    class CountingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            raise AssertionError("broker must not be reached")
+
+    adapter = CountingAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    auth, admission, safety = _contracts()
+
+    original_put = lifecycle.put
+
+    def fail_pending(record):
+        if record.state is ExecutionLifecycleState.PENDING:
+            raise OSError("pending lifecycle persistence failed")
+        return original_put(record)
+
+    monkeypatch.setattr(lifecycle, "put", fail_pending)
+
+    result = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+    ).execute(
+        broker="fake",
+        request_id="real-lifecycle-admission-failure",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("real-lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("real-lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
