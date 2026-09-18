@@ -1,3 +1,4 @@
+from threading import Barrier, Thread
 from datetime import datetime, timezone
 
 import pytest
@@ -275,3 +276,50 @@ def test_terminal_ledger_without_external_id_cannot_consume_foreign_external_fac
     assert ledger.status(request_id) is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id(request_id) is None
     assert lifecycle.get(request_id) is None
+
+
+def test_concurrent_identical_reconciliation_is_idempotent(tmp_path):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-concurrent-reconcile"
+    now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
+    ledger.bind_external_id(request_id, "ext-concurrent")
+    lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
+
+    observation = ExternalOrderObservation(
+        "ext-concurrent",
+        ExternalOrderStatus.EXECUTED,
+        "filled",
+    )
+    coordinators = [
+        ExecutionReconciliationCoordinator(
+            ledger=ExecutionLedger(ledger.path),
+            lifecycle=ExecutionLifecycleStore(lifecycle.path),
+        )
+        for _ in range(2)
+    ]
+    barrier = Barrier(2)
+    errors = []
+
+    def run(coordinator):
+        try:
+            barrier.wait()
+            coordinator.reconcile(
+                request_id,
+                "ext-concurrent",
+                observation,
+                updated_at=now,
+            )
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [Thread(target=run, args=(coordinator,)) for coordinator in coordinators]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert ExecutionLedger(ledger.path).status(request_id) is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ExecutionLedger(ledger.path).external_id(request_id) == "ext-concurrent"
+    assert ExecutionLifecycleStore(lifecycle.path).get(request_id).state is ExecutionLifecycleState.ACCEPTED
