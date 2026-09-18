@@ -168,3 +168,24 @@ def test_reconcile_rejects_timestamp_regression(tmp_path):
         )
     assert store.get("req-time").state is ExecutionLifecycleState.UNKNOWN
     assert store.get("req-time").updated_at == current
+
+
+
+def test_reconcile_rejects_timezone_regime_mismatch(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    aware = datetime(2026, 9, 18, 12, 0, tzinfo=timezone.utc)
+    naive = datetime(2026, 9, 18, 12, 1)
+    store.put(ExecutionLifecycleRecord("req-timezone", ExecutionLifecycleState.UNKNOWN, aware))
+
+    with pytest.raises(ValueError, match="mesmo regime de timezone"):
+        store.reconcile(
+            "req-timezone",
+            ExecutionLifecycleState.ACCEPTED,
+            updated_at=naive,
+            message="mixed timezone",
+        )
+
+    restored = ExecutionLifecycleStore(path).get("req-timezone")
+    assert restored.state is ExecutionLifecycleState.UNKNOWN
+    assert restored.updated_at == aware
