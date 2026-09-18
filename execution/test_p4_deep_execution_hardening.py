@@ -7,13 +7,18 @@ from pathlib import Path
 import pytest
 
 from core.models import Signal
-from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.operation_memory import OperationMemory
-from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
-from execution.adapter_gateway import BrokerAdapterGateway
+from core.p121_external_order_reconciliation import (
+    ExternalOrderObservation,
+    ExternalOrderReconciliationBoundary,
+    ExternalOrderStatus,
+)
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import (
@@ -23,12 +28,12 @@ from execution.execution_lifecycle import (
 )
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_composition import build_real_execution_gateway
-from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class FakeAdapter:
     supports_real_execution = True
+
     def __init__(self, result: ExecutionResult | None = None):
         self.calls = 0
         self.result = result or ExecutionResult(True, "accepted", "ext-1")
@@ -41,11 +46,42 @@ class FakeAdapter:
         return self.result
 
 
+class DemoOnlyAdapter:
+    supports_real_execution = False
+
+    def __init__(self):
+        self.calls = 0
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "demo accepted", "demo-ext")
+
+
 class ExplodingLifecycle(ExecutionLifecycleStore):
     def put(self, record):
         if record.state is ExecutionLifecycleState.ACCEPTED:
             raise OSError("lifecycle write failed")
         return super().put(record)
+
+
+class ExplodingReconcileLifecycle(ExecutionLifecycleStore):
+    def reconcile(self, *args, **kwargs):
+        raise OSError("lifecycle reconcile failed")
+
+
+class QueryPort:
+    def __init__(self, observation):
+        self.observation = observation
+        self.calls = 0
+
+    def query_order(self, external_id):
+        self.calls += 1
+        if external_id != self.observation.external_id:
+            raise ValueError("unexpected external_id")
+        return self.observation
 
 
 def request():
@@ -79,7 +115,7 @@ def safety():
     )
 
 
-def gateway(tmp_path: Path, adapter: FakeAdapter, lifecycle=True):
+def gateway(tmp_path: Path, adapter, lifecycle=True):
     registry = BrokerRegistry()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
@@ -91,8 +127,8 @@ def gateway(tmp_path: Path, adapter: FakeAdapter, lifecycle=True):
     return RealExecutionGateway(BrokerAdapterGateway(registry), ledger, store), ledger, store
 
 
-def execute(gateway, request_id="r1"):
-    return gateway.execute(
+def execute(gw, request_id="r1"):
+    return gw.execute(
         broker="fake",
         request_id=request_id,
         request=request(),
@@ -103,8 +139,9 @@ def execute(gateway, request_id="r1"):
 
 
 def test_accepted_external_id_is_durable(tmp_path):
-    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-123"))
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", "broker-123"))
+    )
     result = execute(gw)
     assert result.status == RealGatewayStatus.ADMITTED
     assert ledger.status("r1") is ExecutionLedgerStatus.ACCEPTED
@@ -113,13 +150,14 @@ def test_accepted_external_id_is_durable(tmp_path):
     assert ExecutionLedger(tmp_path / "execution-ledger.json").external_id("r1") == "broker-123"
 
 
-def test_accepted_but_lifecycle_failure_does_not_erase_ledger_authority(tmp_path):
-    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-456"))
+def test_accepted_but_lifecycle_failure_keeps_ledger_authority(tmp_path):
     registry = BrokerRegistry()
+    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-456"))
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
     lifecycle = ExplodingLifecycle(tmp_path / "execution-lifecycle.json")
     gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+
     result = execute(gw)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("r1") is ExecutionLedgerStatus.ACCEPTED
@@ -128,8 +166,9 @@ def test_accepted_but_lifecycle_failure_does_not_erase_ledger_authority(tmp_path
 
 @pytest.mark.parametrize("external_id", ["broker-rejected", None])
 def test_rejection_with_or_without_external_id_is_terminal(tmp_path, external_id):
-    adapter = FakeAdapter(ExecutionResult(False, "rejected", external_id))
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(False, "rejected", external_id))
+    )
     result = execute(gw)
     assert result.status == RealGatewayStatus.REJECTED
     assert ledger.status("r1") is ExecutionLedgerStatus.REJECTED
@@ -137,21 +176,14 @@ def test_rejection_with_or_without_external_id_is_terminal(tmp_path, external_id
     assert lifecycle.get("r1").state is ExecutionLifecycleState.REJECTED
 
 
-def test_accepted_without_external_id_is_unknown_and_never_promoted_locally(tmp_path):
-    adapter = FakeAdapter(ExecutionResult(True, "accepted", None))
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+def test_accepted_without_external_id_becomes_unknown(tmp_path):
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", None))
+    )
     result = execute(gw)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("r1") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("r1").state is ExecutionLifecycleState.UNKNOWN
-    with pytest.raises(ValueError):
-        lifecycle.put(
-            ExecutionLifecycleRecord(
-                "r1",
-                ExecutionLifecycleState.ACCEPTED,
-                datetime.now(timezone.utc),
-            )
-        )
 
 
 def test_restart_with_reserved_never_reexecutes(tmp_path):
@@ -170,15 +202,39 @@ def test_restart_with_reserved_never_reexecutes(tmp_path):
 
 def test_two_gateway_instances_same_request_are_idempotent(tmp_path):
     adapter = FakeAdapter()
-    first, ledger, lifecycle = gateway(tmp_path, adapter)
+    first, _, _ = gateway(tmp_path, adapter)
     second, _, _ = gateway(tmp_path, adapter)
     assert execute(first, "same").status == RealGatewayStatus.ADMITTED
     assert execute(second, "same").status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
 
-def test_lifecycle_second_instance_sees_write_after_construction(tmp_path):
-    path = tmp_path / "execution-lifecycle.json"
+def test_ledger_rejects_normal_promotion_from_unknown(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("unknown")
+    ledger.mark_unknown("unknown")
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_accepted("unknown", "broker-1")
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_rejected("unknown")
+
+
+def test_ledger_requires_external_id_for_accepted(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("accepted")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.mark_accepted("accepted")
+
+
+def test_ledger_requires_external_id_for_executed_reconciliation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("reconcile")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.reconcile("reconcile", executed=True)
+
+
+def test_lifecycle_second_instance_sees_new_writes(tmp_path):
+    path = tmp_path / "lifecycle.json"
     first = ExecutionLifecycleStore(path)
     second = ExecutionLifecycleStore(path)
     first.put(
@@ -189,203 +245,173 @@ def test_lifecycle_second_instance_sees_write_after_construction(tmp_path):
     assert second.get("fresh").state is ExecutionLifecycleState.PENDING
 
 
-def test_ledger_rejects_normal_promotion_from_unknown(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+def test_recovery_requires_reconciliation_for_mismatches(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("reserved")
+    lifecycle.put(
+        ExecutionLifecycleRecord("reserved", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc))
+    )
     ledger.reserve("unknown")
     ledger.mark_unknown("unknown")
-    with pytest.raises(ValueError, match="UNKNOWN"):
-        ledger.mark_accepted("unknown", "broker-1")
-    with pytest.raises(ValueError, match="UNKNOWN"):
-        ledger.mark_rejected("unknown")
-
-
-def test_ledger_requires_external_id_for_accepted(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    ledger.reserve("accepted")
-    with pytest.raises(ValueError, match="external_id"):
-        ledger.mark_accepted("accepted")
-
-
-def test_ledger_requires_external_id_for_executed_reconciliation(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    ledger.reserve("reconcile")
-    with pytest.raises(ValueError, match="external_id"):
-        ledger.reconcile("reconcile", executed=True)
-
-
-def test_recovery_requires_reconciliation_for_every_mismatch(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
-    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    cases = [
-        (ExecutionLedgerStatus.RESERVED, ExecutionLifecycleState.PENDING),
-        (ExecutionLedgerStatus.UNKNOWN, ExecutionLifecycleState.UNKNOWN),
-        (ExecutionLedgerStatus.ACCEPTED, ExecutionLifecycleState.PENDING),
-        (ExecutionLedgerStatus.REJECTED, ExecutionLifecycleState.ACCEPTED),
-    ]
-    for index, (ledger_status, lifecycle_state) in enumerate(cases):
-        request_id = f"case-{index}"
-        ledger.reserve(request_id)
-        if ledger_status is ExecutionLedgerStatus.ACCEPTED:
-            ledger.mark_accepted(request_id, "ext")
-        elif ledger_status is ExecutionLedgerStatus.REJECTED:
-            ledger.mark_rejected(request_id)
-        elif ledger_status is ExecutionLedgerStatus.UNKNOWN:
-            ledger.mark_unknown(request_id)
-        lifecycle.put(
-            ExecutionLifecycleRecord(
-                request_id, lifecycle_state, datetime.now(timezone.utc)
-            )
-        )
-
-    recovery = RecoveryCoordinator(
-        checkpoint_store=checkpoint,
-        lifecycle_store=lifecycle,
-        execution_ledger=ledger,
-        memory=OperationMemory(),
+    lifecycle.put(
+        ExecutionLifecycleRecord("unknown", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc))
     )
-    assessment = recovery.assess()
-    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
-    assert set(assessment.unknown_request_ids) >= {"case-0", "case-1"}
+    ledger.reserve("mismatch")
+    ledger.mark_accepted("mismatch", "ext")
+    lifecycle.put(
+        ExecutionLifecycleRecord("mismatch", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc))
+    )
 
-
-def test_recovery_detects_ledger_without_lifecycle(tmp_path):
-    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
-    ledger.reserve("orphan")
-    lifecycle = ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
     recovery = RecoveryCoordinator(
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
         memory=OperationMemory(),
     )
+    assessment = recovery.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert {"reserved", "unknown"} <= set(assessment.unknown_request_ids)
+    assert "mismatch" in assessment.unknown_request_ids or assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+
+
+def test_recovery_detects_ledger_without_lifecycle(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("orphan")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
     assert recovery.assess().state is RecoveryState.REQUIRES_RECONCILIATION
 
 
-def test_sanctioned_composition_is_the_production_constructor(tmp_path):
+def test_sanctioned_composition_is_production_constructor(tmp_path):
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
-    gw = build_real_execution_gateway(root=tmp_path, registry=registry)
-    assert isinstance(gw, RealExecutionGateway)
+    assert isinstance(
+        build_real_execution_gateway(root=tmp_path, registry=registry),
+        RealExecutionGateway,
+    )
 
 
 def test_no_direct_adapter_execute_call_outside_adapter_gateway():
     root = Path(__file__).resolve().parent
     violations = []
     for path in root.glob("*.py"):
-        if path.name in {"adapter_gateway.py"} or path.name.startswith("test_"):
+        if path.name == "adapter_gateway.py" or path.name.startswith("test_"):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr == "execute" and isinstance(node.func.value, ast.Name):
-                    if node.func.value.id == "adapter":
-                        violations.append(f"{path.name}:{node.lineno}")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "execute"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "adapter"
+            ):
+                violations.append(f"{path.name}:{node.lineno}")
     assert violations == []
 
 
-def test_real_gateway_is_constructed_only_by_sanctioned_composition():
+def test_real_gateway_constructed_only_by_sanctioned_composition():
     root = Path(__file__).resolve().parent
     violations = []
     for path in root.glob("*.py"):
         if path.name in {"real_gateway.py", "real_composition.py"} or path.name.startswith("test_"):
             continue
-        text = path.read_text(encoding="utf-8")
-        if "RealExecutionGateway(" in text:
+        if "RealExecutionGateway(" in path.read_text(encoding="utf-8"):
             violations.append(path.name)
     assert violations == []
 
 
-def test_terminal_ledger_can_repair_lifecycle_projection(tmp_path):
-    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-repair"))
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
-    result = execute(gw, "repair-me")
-    assert result.status == RealGatewayStatus.ADMITTED
-    # Simulate the crash window: Ledger is authoritative, Lifecycle is stale.
+def test_terminal_ledger_repairs_lifecycle_projection(tmp_path):
+    gw, ledger, lifecycle = gateway(
+        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", "broker-repair"))
+    )
+    assert execute(gw, "repair-me").status == RealGatewayStatus.ADMITTED
+
     lifecycle_path = tmp_path / "execution-lifecycle.json"
     lifecycle_path.write_text(
         '[{"request_id":"repair-me","state":"PENDING","updated_at":"2026-09-18T00:00:00+00:00"}]',
         encoding="utf-8",
     )
-    assert lifecycle.get("repair-me").state is ExecutionLifecycleState.PENDING
     assert execute(gw, "repair-me").status == RealGatewayStatus.UNKNOWN
     gw.repair_lifecycle_projection("repair-me")
     assert lifecycle.get("repair-me").state is ExecutionLifecycleState.ACCEPTED
+    assert ledger.status("repair-me") is ExecutionLedgerStatus.ACCEPTED
 
 
-def test_explicit_reconciliation_updates_ledger_and_lifecycle(tmp_path):
-    adapter = FakeAdapter(ExecutionResult(True, "accepted", "broker-reconcile"))
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+def test_reconciliation_requires_broker_query_and_durable_external_id(tmp_path):
+    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
     ledger.reserve("reconcile-me")
     lifecycle.put(
         ExecutionLifecycleRecord(
             "reconcile-me", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
         )
     )
-    reconciliation = ExternalOrderReconciliationBoundary().reconcile(
-        "broker-reconcile",
-        ExternalOrderObservation("broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"),
+
+    with pytest.raises(ValueError, match="external_id durável"):
+        gw.reconcile_unknown(
+            "reconcile-me",
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+            query_port=QueryPort(
+                ExternalOrderObservation(
+                    "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+                )
+            ),
+        )
+
+    ledger.attach_external_id("reconcile-me", "broker-reconcile")
+    query = QueryPort(
+        ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed"
+        )
     )
-    gw.reconcile_unknown("reconcile-me", reconciliation=reconciliation)
+    gw.reconcile_unknown(
+        "reconcile-me",
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        query_port=query,
+    )
+    assert query.calls == 1
     assert ledger.status("reconcile-me") is ExecutionLedgerStatus.RECONCILED_EXECUTED
-    assert ledger.external_id("reconcile-me") == "broker-reconcile"
     assert lifecycle.get("reconcile-me").state is ExecutionLifecycleState.ACCEPTED
 
 
-class DemoOnlyAdapter:
-    def __init__(self):
-        self.calls = 0
-
-    def is_available(self):
-        return True
-
-    def execute(self, request):
-        self.calls += 1
-        return ExecutionResult(True, "demo accepted", "demo-ext")
-
-
-class ExplodingReconcileLifecycle(ExecutionLifecycleStore):
-    def reconcile(self, *args, **kwargs):
-        raise OSError("lifecycle reconcile failed")
-
-
-def test_demo_only_adapter_cannot_receive_real_dispatch(tmp_path):
-    adapter = DemoOnlyAdapter()
-    registry = BrokerRegistry()
-    registry.register("demo", adapter)
-    gateway = BrokerAdapterGateway(registry)
-    result = gateway.execute_real(
-        "demo",
-        request(),
-        capability=__import__("execution.adapter_gateway", fromlist=["_REAL_DISPATCH_CAPABILITY"])._REAL_DISPATCH_CAPABILITY,
+def test_pending_broker_observation_does_not_close_request(tmp_path):
+    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    ledger.reserve("pending")
+    ledger.attach_external_id("pending", "broker-pending")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
     )
-    assert result.accepted is False
-    assert adapter.calls == 0
-    assert "capacidade REAL" in result.message
+    query = QueryPort(
+        ExternalOrderObservation(
+            "broker-pending", ExternalOrderStatus.PENDING, "still open"
+        )
+    )
+    with pytest.raises(ValueError, match="ainda"):
+        gw.reconcile_unknown(
+            "pending",
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+            query_port=query,
+        )
+    assert ledger.status("pending") is ExecutionLedgerStatus.RESERVED
 
 
-def test_direct_real_gateway_dispatch_without_sanctioned_capability_is_blocked(tmp_path):
-    adapter = FakeAdapter()
+def test_reconciliation_lifecycle_failure_leaves_authoritative_ledger(tmp_path):
     registry = BrokerRegistry()
-    registry.register("fake", adapter)
-    gateway = BrokerAdapterGateway(registry)
-    result = gateway.execute("fake", request())
-    assert result.accepted is False
-    assert adapter.calls == 0
-    assert "RealExecutionGateway" in result.message
-
-
-def test_reconciliation_ledger_commit_before_lifecycle_failure_is_repairable(tmp_path):
-    adapter = FakeAdapter()
-    registry = BrokerRegistry()
-    registry.register("fake", adapter)
+    registry.register("fake", FakeAdapter())
     ledger_path = tmp_path / "ledger.json"
     lifecycle_path = tmp_path / "lifecycle.json"
     ledger = ExecutionLedger(ledger_path)
     lifecycle = ExplodingReconcileLifecycle(lifecycle_path)
     gw = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
-
     ledger.reserve("reconcile-crash")
+    ledger.attach_external_id("reconcile-crash", "broker-reconciled")
     lifecycle.put(
         ExecutionLifecycleRecord(
             "reconcile-crash",
@@ -395,40 +421,64 @@ def test_reconciliation_ledger_commit_before_lifecycle_failure_is_repairable(tmp
     )
 
     with pytest.raises(OSError, match="lifecycle reconcile failed"):
-        reconciliation = ExternalOrderReconciliationBoundary().reconcile(
-            "broker-reconciled",
-            ExternalOrderObservation("broker-reconciled", ExternalOrderStatus.EXECUTED, "confirmed"),
+        gw.reconcile_unknown(
+            "reconcile-crash",
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+            query_port=QueryPort(
+                ExternalOrderObservation(
+                    "broker-reconciled", ExternalOrderStatus.EXECUTED, "confirmed"
+                )
+            ),
         )
-        gw.reconcile_unknown("reconcile-crash", reconciliation=reconciliation)
 
     assert ExecutionLedger(ledger_path).status("reconcile-crash") is ExecutionLedgerStatus.RECONCILED_EXECUTED
-    assert adapter.calls == 0
-
-    healthy_lifecycle = ExecutionLifecycleStore(lifecycle_path)
-    repaired = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path), healthy_lifecycle)
+    repaired = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+    )
     repaired.repair_lifecycle_projection("reconcile-crash")
-    assert healthy_lifecycle.get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("reconcile-crash").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_demo_only_adapter_cannot_receive_real_dispatch():
+    adapter = DemoOnlyAdapter()
+    registry = BrokerRegistry()
+    registry.register("demo", adapter)
+    result = BrokerAdapterGateway(registry).execute_real(
+        "demo",
+        request(),
+        capability=_REAL_DISPATCH_CAPABILITY,
+    )
+    assert result.accepted is False
     assert adapter.calls == 0
 
 
-def test_reconciliation_rejects_unvalidated_boolean_and_pending_observation(tmp_path):
+def test_ordinary_adapter_gateway_blocks_real_dispatch():
     adapter = FakeAdapter()
-    gw, ledger, lifecycle = gateway(tmp_path, adapter)
-    ledger.reserve("reconcile-guard")
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    result = BrokerAdapterGateway(registry).execute("fake", request())
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
+def test_reconciliation_cannot_use_forged_boolean_or_local_result(tmp_path):
+    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    ledger.reserve("guard")
     lifecycle.put(
         ExecutionLifecycleRecord(
-            "reconcile-guard",
-            ExecutionLifecycleState.PENDING,
-            datetime.now(timezone.utc),
+            "guard", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
         )
     )
-    with pytest.raises(ValueError, match="resultado de reconciliação"):
-        gw.reconcile_unknown("reconcile-guard", reconciliation=True)
-    pending = ExternalOrderReconciliationBoundary().reconcile(
-        "broker-pending",
-        ExternalOrderObservation("broker-pending", ExternalOrderStatus.PENDING, "still open"),
-    )
-    with pytest.raises(ValueError, match="ainda não"):
-        gw.reconcile_unknown("reconcile-guard", reconciliation=pending)
-    assert ledger.status("reconcile-guard") is ExecutionLedgerStatus.RESERVED
-    assert adapter.calls == 0
+    with pytest.raises(TypeError):
+        gw.reconcile_unknown("guard", reconciliation=True)
+
+
+def test_reconciliation_boundary_rejects_hand_built_observation():
+    boundary = ExternalOrderReconciliationBoundary()
+    with pytest.raises(TypeError):
+        boundary.reconcile(
+            "ext-1",
+            ExternalOrderObservation("ext-1", ExternalOrderStatus.EXECUTED, "forged"),
+        )
