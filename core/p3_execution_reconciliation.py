@@ -34,6 +34,12 @@ class ExecutionReconciliationCoordinator:
         self._lifecycle = lifecycle
         self._boundary = ExternalOrderReconciliationBoundary()
 
+    def request_execution_lock(self, request_id: str):
+        """Serialize identity discovery with REAL dispatch for one request."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        return self._ledger.request_execution_lock(request_id)
+
     def external_id_for(self, request_id: str) -> str | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
