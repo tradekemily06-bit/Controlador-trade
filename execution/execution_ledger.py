@@ -255,4 +255,6 @@ class ExecutionLedger:
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        if request_id != request_id.strip():
+            raise ValueError("request_id inválido ou não canônico.")
 
