@@ -1150,3 +1150,15 @@ def test_ledger_normalizes_external_id_and_rejects_non_boolean_reconciliation(tm
     ledger.mark_unknown("strict-bool")
     with pytest.raises(ValueError, match="executed precisa ser booleano"):
         ledger.reconcile("strict-bool", executed="false", external_id="broker-456")
+
+
+def test_ledger_refresh_clears_stale_snapshot_when_file_is_removed(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("stale-id")
+    assert ledger.contains("stale-id")
+
+    path.unlink()
+
+    assert ledger.status("stale-id") is None
+    assert ledger.records() == ()
