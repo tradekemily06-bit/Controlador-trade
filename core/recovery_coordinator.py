@@ -58,7 +58,7 @@ class RecoveryCoordinator:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
             ledger_ids = set(self.execution_ledger.records())
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             return RecoveryAssessment(
                 RecoveryState.INVALID,
                 None,
