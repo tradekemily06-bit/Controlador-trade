@@ -39,8 +39,14 @@ class DecisionAudit:
     def append(self, record: DecisionAuditRecord) -> None:
         if not isinstance(record, DecisionAuditRecord):
             raise TypeError("record deve ser DecisionAuditRecord.")
-        if self._records and record.timestamp < self._records[-1].timestamp:
-            raise AuditValidationError("eventos de auditoria devem ser cronológicos.")
+        if self._records:
+            previous = self._records[-1].timestamp
+            previous_aware = previous.tzinfo is not None and previous.utcoffset() is not None
+            current_aware = record.timestamp.tzinfo is not None and record.timestamp.utcoffset() is not None
+            if previous_aware != current_aware:
+                raise AuditValidationError("timestamps de auditoria devem usar o mesmo regime de timezone.")
+            if record.timestamp < previous:
+                raise AuditValidationError("eventos de auditoria devem ser cronológicos.")
         self._records.append(record)
 
     def records(self) -> tuple[DecisionAuditRecord, ...]:
