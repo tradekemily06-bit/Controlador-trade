@@ -83,6 +83,11 @@ class PersistentOperationalRecorder:
         return state
 
     def deactivate_kill_switch(self):
+        # Fail closed: persist the disabled state before mutating the live
+        # kill switch. If durability fails, the live switch remains enabled.
+        candidate = KillSwitch()
+        candidate.deactivate()
+        if self.safety_store is not None:
+            self.safety_store.save(self.audit, candidate)
         state = self.kill_switch.deactivate()
-        self._persist_safety()
         return state
