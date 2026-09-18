@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from core.p121_external_order_reconciliation import (
     ExternalOrderObservation,
-    ExternalOrderQueryPort,
     ReconciliationResult,
 )
 from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
@@ -20,13 +19,15 @@ class ExternalExecutionReconciliationService:
         self,
         *,
         coordinator: ExecutionReconciliationCoordinator,
-        query_port: ExternalOrderQueryPort,
+        query_port: object,
     ) -> None:
         if not isinstance(coordinator, ExecutionReconciliationCoordinator):
             raise ValueError("coordinator inválido.")
-        if not hasattr(query_port, "query_order") or not callable(query_port.query_order):
-            if not hasattr(query_port, "query_order_by_request_id") or not callable(query_port.query_order_by_request_id):
-                raise ValueError("query_port inválido.")
+        # Capability is checked at the specific recovery operation. Adapters
+        # without read-only lookup can therefore exist safely; invoking an
+        # unsupported recovery path fails closed instead of at construction.
+        if query_port is None:
+            raise ValueError("query_port inválido.")
         self._coordinator = coordinator
         self._query_port = query_port
 
