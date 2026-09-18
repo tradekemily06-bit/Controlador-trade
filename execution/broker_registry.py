@@ -41,13 +41,19 @@ class BrokerRegistry:
 
     def is_available(self, name: str) -> bool:
         adapter = self.get(name)
-        return bool(adapter.is_available())
+        available = adapter.is_available()
+        if type(available) is not bool:
+            raise BrokerRegistryError("adapter retornou disponibilidade inválida.")
+        return available
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
-        return tuple(
-            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()))
-            for name, adapter in self._adapters.items()
-        )
+        records = []
+        for name, adapter in self._adapters.items():
+            available = adapter.is_available()
+            if type(available) is not bool:
+                raise BrokerRegistryError("adapter retornou disponibilidade inválida.")
+            records.append(BrokerAdapterInfo(name=name, available=available))
+        return tuple(records)
 
     def names(self) -> tuple[str, ...]:
         return tuple(self._adapters)
