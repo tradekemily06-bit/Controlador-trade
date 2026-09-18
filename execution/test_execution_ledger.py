@@ -259,3 +259,19 @@ def test_request_id_with_outer_whitespace_is_rejected(tmp_path):
         import pytest
         with pytest.raises(ValueError, match="canônico"):
             operation()
+
+
+def test_ledger_rejects_noncanonical_persisted_request_id(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{" req ": "ACCEPTED"}', encoding="utf-8")
+    import pytest
+    with pytest.raises(ValueError, match="ledger"):
+        ExecutionLedger(path)
+
+
+def test_legacy_list_rejects_noncanonical_request_id(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('[" req "]', encoding="utf-8")
+    import pytest
+    with pytest.raises(ValueError, match="ledger"):
+        ExecutionLedger(path)
