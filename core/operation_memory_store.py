@@ -143,6 +143,12 @@ class OperationMemoryStore:
             raise TypeError("record deve ser OperationMemoryRecord.")
         with locked_path(self.path):
             memory = self._load_unlocked()
+            existing = memory.records()
+            if record in existing:
+                self._last_loaded_records = existing
+                return record
+            if any(self._identity(item) == self._identity(record) for item in existing):
+                raise ValueError("registro de memória conflitante; append recusado.")
             memory.append(record)
             self._write_unlocked(memory)
             self._last_loaded_records = memory.records()
