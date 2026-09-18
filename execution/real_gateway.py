@@ -363,47 +363,47 @@ class RealExecutionGateway:
         reconciliation_boundary: ExternalOrderReconciliationBoundary,
     ) -> None:
         # The caller already holds the global -> request REAL lock.
-        # Resolve the query capability only inside that lock so the adapter
-        # cannot be carried across the authorization/check-to-use boundary.
         query_port = self._gateway.real_query_port(
-                broker,
-                expected_adapter_id=authorization.adapter_id,
+            broker,
+            expected_adapter_id=authorization.adapter_id,
+        )
+        if query_port is None:
+            raise ValueError(
+                "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
             )
-            if query_port is None:
-                raise ValueError(
-                    "adapter REAL autorizado não fornece query_port broker-backed; reconciliação bloqueada."
-                )
 
-            status = self._ledger.status(request_id)
-            if status not in (
-                ExecutionLedgerStatus.UNKNOWN,
-                ExecutionLedgerStatus.RESERVED,
-            ):
-                raise ValueError("request_id não está em estado incerto reconciliável.")
-            lifecycle_status = self._lifecycle_state(request_id)
-            consistency = self._check_consistency(status, lifecycle_status, request_id)
-            if consistency is not None:
-                raise ValueError(consistency.message)
+        status = self._ledger.status(request_id)
+        if status not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
+            raise ValueError("request_id não está em estado incerto reconciliável.")
+        lifecycle_status = self._lifecycle_state(request_id)
+        consistency = self._check_consistency(status, lifecycle_status, request_id)
+        if consistency is not None:
+            raise ValueError(consistency.message)
 
-            external_id = self._ledger.external_id(request_id)
-            if external_id is None:
-                raise ValueError(
-                    "request_id não possui external_id durável; reconciliação por external_id bloqueada."
-                )
-
-            reconciliation = reconciliation_boundary.reconcile(
-                external_id,
-                query_port=query_port,
+        external_id = self._ledger.external_id(request_id)
+        if external_id is None:
+            raise ValueError(
+                "request_id não possui external_id durável; reconciliação por external_id bloqueada."
             )
-            if not reconciliation.reconciled:
-                raise ValueError("broker ainda não fornece estado terminal; reconciliação permanece aberta.")
 
-            executed = reconciliation.status is ExternalOrderStatus.EXECUTED
-            self._ledger.reconcile(
-                request_id,
-                executed=executed,
-                external_id=reconciliation.external_id,
+        reconciliation = reconciliation_boundary.reconcile(
+            external_id,
+            query_port=query_port,
+        )
+        if not reconciliation.reconciled:
+            raise ValueError(
+                "broker ainda não fornece estado terminal; reconciliação permanece aberta."
             )
+
+        executed = reconciliation.status is ExternalOrderStatus.EXECUTED
+        self._ledger.reconcile(
+            request_id,
+            executed=executed,
+            external_id=reconciliation.external_id,
+        )
         if self._lifecycle is not None:
             state = (
                 ExecutionLifecycleState.ACCEPTED
