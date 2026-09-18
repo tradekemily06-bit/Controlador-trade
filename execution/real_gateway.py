@@ -362,11 +362,10 @@ class RealExecutionGateway:
         authorization: RealExecutionAuthorization,
         reconciliation_boundary: ExternalOrderReconciliationBoundary,
     ) -> None:
-        with self._locks.acquire(request_id):
-            # Resolve the query capability only after taking the same REAL
-            # request lock used for the Ledger. This avoids carrying a stale
-            # adapter instance across the authorization/check-to-use boundary.
-            query_port = self._gateway.real_query_port(
+        # The caller already holds the global -> request REAL lock.
+        # Resolve the query capability only inside that lock so the adapter
+        # cannot be carried across the authorization/check-to-use boundary.
+        query_port = self._gateway.real_query_port(
                 broker,
                 expected_adapter_id=authorization.adapter_id,
             )
@@ -405,18 +404,18 @@ class RealExecutionGateway:
                 executed=executed,
                 external_id=reconciliation.external_id,
             )
-            if self._lifecycle is not None:
-                state = (
-                    ExecutionLifecycleState.ACCEPTED
-                    if executed
-                    else ExecutionLifecycleState.REJECTED
-                )
-                self._lifecycle.reconcile(
-                    request_id,
-                    state,
-                    updated_at=datetime.now(timezone.utc),
-                    message="reconciliação externa consultada no broker",
-                )
+        if self._lifecycle is not None:
+            state = (
+                ExecutionLifecycleState.ACCEPTED
+                if executed
+                else ExecutionLifecycleState.REJECTED
+            )
+            self._lifecycle.reconcile(
+                request_id,
+                state,
+                updated_at=datetime.now(timezone.utc),
+                message="reconciliação externa consultada no broker",
+            )
 
     def repair_lifecycle_projection(self, request_id: str) -> None:
         with self._locks.acquire(request_id):
