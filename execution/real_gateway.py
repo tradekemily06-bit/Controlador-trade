@@ -167,6 +167,8 @@ class RealExecutionGateway:
                 capability = self._gateway._real_dispatch_capability(
                     broker,
                     expected_adapter_id=authorization.adapter_id,
+                    request_id=request_id,
+                    authorization_id=authorization.authorization_id,
                 )
                 if capability is None:
                     return RealGatewayResult(
@@ -178,6 +180,7 @@ class RealExecutionGateway:
                     request_id=request_id,
                     request=request,
                     capability=capability,
+                    authorization_id=authorization.authorization_id,
                 )
         except RealExecutionLockError as exc:
             return RealGatewayResult(
@@ -192,6 +195,7 @@ class RealExecutionGateway:
         request_id: str,
         request: ExecutionRequest,
         capability,
+        authorization_id: str,
     ) -> RealGatewayResult:
         current_status = self._ledger.status(request_id)
         lifecycle_status = self._lifecycle_state(request_id)
@@ -229,7 +233,7 @@ class RealExecutionGateway:
 
         try:
             result = self._gateway._execute_real(
-                broker, request, capability=capability
+                broker, request, capability=capability, request_id=request_id, authorization_id=authorization_id
             )
         except Exception as exc:
             self._mark_unknown(
