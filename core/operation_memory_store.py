@@ -6,6 +6,7 @@ from datetime import datetime
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
+from core.durable_json import atomic_write_json
 
 
 class OperationMemoryStore:
@@ -60,11 +61,7 @@ class OperationMemoryStore:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
         payload = [self._serialize(record) for record in memory.records()]
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        atomic_write_json(self.path, payload)
 
     def load(self) -> OperationMemory:
         memory = OperationMemory()
