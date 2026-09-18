@@ -923,3 +923,159 @@ def test_recovery_worker_racing_execution_worker_never_replays_uncertain_request
     assert ledger.external_id("race-recovery-execution") == "EXT-RACE"
     assert ledger.status("race-recovery-execution") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("race-recovery-execution").state is ExecutionLifecycleState.ACCEPTED
+
+def test_request_id_recovery_is_strictly_read_only_and_never_dispatches(tmp_path):
+    """Recovery by durable request identity may query, but must never place an order."""
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("request-id-read-only")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "request-id-read-only",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    class BrokerAdapterWithDangerousPlace:
+        def __init__(self):
+            self.query_calls = 0
+            self.place_calls = 0
+
+        def query_order_by_request_id(self, request_id):
+            self.query_calls += 1
+            assert request_id == "request-id-read-only"
+            return ExternalOrderObservation(
+                "EXT-READ-ONLY",
+                ExternalOrderStatus.EXECUTED,
+                "confirmed without submission",
+            )
+
+        def execute(self, _request):
+            self.place_calls += 1
+            raise AssertionError("request-id recovery must never dispatch")
+
+        def is_available(self):
+            return True
+
+    broker = BrokerAdapterWithDangerousPlace()
+    service = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(
+            ledger=ledger,
+            lifecycle=lifecycle,
+        ),
+        query_port=broker,
+    )
+
+    result = service.reconcile_request_by_request_id("request-id-read-only")
+
+    assert result.reconciled is True
+    assert result.status is ExternalOrderStatus.EXECUTED
+    assert broker.query_calls == 1
+    assert broker.place_calls == 0
+    assert ExecutionLedger(ledger_path).external_id("request-id-read-only") == "EXT-READ-ONLY"
+    assert ExecutionLedger(ledger_path).status("request-id-read-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("request-id-read-only").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_request_id_recovery_without_broker_capability_is_fail_closed_and_non_mutating(tmp_path):
+    """A concrete adapter without request-id lookup cannot auto-reconcile a lost identity."""
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("request-id-no-capability")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "request-id-no-capability",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    class PlaceOnlyAdapter:
+        def __init__(self):
+            self.place_calls = 0
+
+        def execute(self, _request):
+            self.place_calls += 1
+            raise AssertionError("recovery must not fall back to execution")
+
+        def is_available(self):
+            return True
+
+    adapter = PlaceOnlyAdapter()
+    service = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(
+            ledger=ledger,
+            lifecycle=lifecycle,
+        ),
+        query_port=adapter,
+    )
+
+    with pytest.raises(ValueError, match="somente-leitura por request_id"):
+        service.reconcile_request_by_request_id("request-id-no-capability")
+
+    assert adapter.place_calls == 0
+    assert ExecutionLedger(ledger_path).external_id("request-id-no-capability") is None
+    assert ExecutionLedger(ledger_path).status("request-id-no-capability") is ExecutionLedgerStatus.RESERVED
+    assert ExecutionLifecycleStore(lifecycle_path).get("request-id-no-capability").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_request_id_recovery_rejects_empty_external_identity_without_binding_or_dispatch(tmp_path):
+    """A broker response without a concrete external identity cannot close the crash window."""
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    ledger.reserve("request-id-empty-external")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "request-id-empty-external",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+
+    class QueryOnlyAdapter:
+        def __init__(self):
+            self.query_calls = 0
+            self.place_calls = 0
+
+        def query_order_by_request_id(self, request_id):
+            self.query_calls += 1
+            return ExternalOrderObservation(
+                "",
+                ExternalOrderStatus.EXECUTED,
+                "broker returned no identity",
+            )
+
+        def execute(self, _request):
+            self.place_calls += 1
+            raise AssertionError("recovery must not fall back to execution")
+
+        def is_available(self):
+            return True
+
+    adapter = QueryOnlyAdapter()
+    service = ExternalExecutionReconciliationService(
+        coordinator=ExecutionReconciliationCoordinator(
+            ledger=ledger,
+            lifecycle=lifecycle,
+        ),
+        query_port=adapter,
+    )
+
+    with pytest.raises(ValueError, match="não retornou external_id"):
+        service.reconcile_request_by_request_id("request-id-empty-external")
+
+    assert adapter.query_calls == 1
+    assert adapter.place_calls == 0
+    assert ExecutionLedger(ledger_path).external_id("request-id-empty-external") is None
+    assert ExecutionLedger(ledger_path).status("request-id-empty-external") is ExecutionLedgerStatus.RESERVED
+    assert ExecutionLifecycleStore(lifecycle_path).get("request-id-empty-external").state is ExecutionLifecycleState.UNKNOWN
