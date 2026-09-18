@@ -77,7 +77,7 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+        if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
         if self._lifecycle is not None:
@@ -87,6 +87,19 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        # Reserve the request atomically before touching the executor. The previous
+        # contains()+record() sequence left a cross-process race where two workers
+        # could both observe the ID as unused and both call the executor.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                if self._ledger.contains(request_id):
+                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar a execução: {exc}")
+
+        if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
@@ -103,13 +116,23 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
