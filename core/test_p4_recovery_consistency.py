@@ -4,7 +4,7 @@ from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 
 
 def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
@@ -77,9 +77,9 @@ def test_recovery_final_admission_check_can_ignore_only_current_request(tmp_path
     checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     ledger.reserve("current-request")
     lifecycle.put(
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+        ExecutionLifecycleRecord(
             "current-request",
-            __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.PENDING,
+            ExecutionLifecycleState.PENDING,
             datetime.now(timezone.utc),
             "admission in progress",
         )
