@@ -273,3 +273,58 @@ def test_restart_assessment_after_each_execution_state(tmp_path, lifecycle_state
 
     assert result.state is expected
     assert result.can_resume is (expected in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME))
+
+
+def test_checkpoint_referencing_missing_request_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint("session-1", 3, "req-missing", datetime.now(timezone.utc))
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "request_id inexistente" in result.message
+
+
+def test_checkpoint_from_wrong_expected_session_fails_closed(tmp_path):
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        memory=OperationMemory(),
+        expected_session_id="session-current",
+    )
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint("session-other", 3, None, datetime.now(timezone.utc))
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "outra sessão" in result.message
+
+
+def test_checkpoint_in_future_beyond_clock_skew_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    from datetime import timedelta
+    future = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(minutes=6)
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("session-future", 1, None, future))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "futuro" in result.message
+
+
+def test_checkpoint_older_than_associated_lifecycle_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    checkpoint_time = datetime(2026, 9, 18, 10, 0, tzinfo=timezone.utc)
+    lifecycle_time = datetime(2026, 9, 18, 10, 1, tzinfo=timezone.utc)
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("session-1", 3, "req-1", checkpoint_time))
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, lifecycle_time, "terminal")
+    )
+    coordinator.execution_ledger.mark_accepted("req-1")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "desatualizado" in result.message
