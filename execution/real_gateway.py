@@ -210,7 +210,9 @@ class RealExecutionGateway:
             if final_status is not ExecutionLedgerStatus.RESERVED:
                 if final_status in (
                     ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.REJECTED,
                     ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
                 ):
                     return RealGatewayResult(
                         RealGatewayStatus.BLOCKED,
@@ -220,7 +222,6 @@ class RealExecutionGateway:
                     RealGatewayStatus.UNKNOWN,
                     f"execução REAL não enviada: autoridade durável está {final_status.value if final_status else 'AUSENTE'}.",
                 )
-
             try:
                 # The live kill switch is the final mutable safety authority.
                 # Hold its execution window across the external side effect so
