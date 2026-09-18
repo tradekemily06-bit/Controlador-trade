@@ -108,15 +108,15 @@ class ExecutionLedger:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self._load()
+                mutation()
+                self._write()
+            finally:
                 if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-                try:
-                    self._load()
-                    mutation()
-                    self._write()
-                finally:
-                    if fcntl is not None:
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
@@ -149,7 +149,7 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def record(self, request_id: str) -> None:
-        """Backward-compatible terminal record for existing DEMO infrastructure."""
+        """Legacy DEMO-only compatibility; REAL paths never call this."""
         self._validate_id(request_id)
 
         def mutation() -> None:
@@ -159,10 +159,8 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def mark_accepted(self, request_id: str, external_id: str | None = None) -> None:
-        if external_id is not None and (
-            not isinstance(external_id, str) or not external_id.strip()
-        ):
-            raise ValueError("external_id inválido.")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id é obrigatório para ACCEPTED.")
         self._transition(
             request_id,
             ExecutionLedgerStatus.ACCEPTED,
@@ -216,6 +214,8 @@ class ExecutionLedger:
             not isinstance(external_id, str) or not external_id.strip()
         ):
             raise ValueError("external_id inválido.")
+        if executed and (not isinstance(external_id, str) or not external_id.strip()):
+            raise ValueError("external_id é obrigatório para reconciliação como EXECUTED.")
 
         def mutation() -> None:
             current = self._states.get(request_id)
@@ -255,10 +255,9 @@ class ExecutionLedger:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            if current.status not in (
-                ExecutionLedgerStatus.RESERVED,
-                ExecutionLedgerStatus.UNKNOWN,
-            ):
+            # UNKNOWN is a terminal safety barrier. It can leave UNKNOWN only
+            # through explicit reconcile(), never through a normal promotion.
+            if current.status is not ExecutionLedgerStatus.RESERVED:
                 raise ValueError(
                     f"transição inválida de {current.status.value} para {status.value}."
                 )
