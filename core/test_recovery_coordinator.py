@@ -106,3 +106,33 @@ def test_mismatched_terminal_states_require_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
 
+
+
+def test_reconciled_executed_with_accepted_lifecycle_is_safe(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, now, "reconciled")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.FRESH
+    assert result.can_resume is True
+
+
+def test_reconciled_not_executed_with_rejected_lifecycle_is_safe(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=False)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.REJECTED, now, "reconciled")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.FRESH
+    assert result.can_resume is True
