@@ -66,6 +66,50 @@ def _real_gateway(adapter_gateway, ledger, lifecycle=None, recovery=None, *, kil
     )
 
 
+
+def test_global_real_execution_lock_serializes_reconciliation_worker(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("global-race")
+    ledger.bind_external_id("global-race", "EXT-GLOBAL")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "global-race",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "awaiting broker result",
+        )
+    )
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    observation = ExternalOrderObservation(
+        "EXT-GLOBAL",
+        ExternalOrderStatus.EXECUTED,
+        "broker confirms execution",
+    )
+    completed = threading.Event()
+    errors = []
+
+    def reconcile():
+        try:
+            coordinator.reconcile("global-race", "EXT-GLOBAL", observation)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            completed.set()
+
+    with ledger.real_execution_lock():
+        worker = Thread(target=reconcile)
+        worker.start()
+        assert not completed.wait(0.15)
+        assert ledger.status("global-race") is ExecutionLedgerStatus.RESERVED
+
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert not errors
+    assert ledger.status("global-race") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("global-race").state is ExecutionLifecycleState.ACCEPTED
+
+
 def test_two_real_gateway_instances_cannot_double_dispatch(tmp_path: Path):
     class CountingAdapter:
         def __init__(self):
