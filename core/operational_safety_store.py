@@ -121,10 +121,6 @@ class OperationalSafetyStore:
                 execution_audit = self._normalize_execution_audit(payload)
                 # save() must not let an older in-memory audit erase records
                 # written by another instance. Merge instead of replacing.
-                merged_audit = list(audit.records())
-                for record in audit.records():
-                    if record not in merged_audit:
-                        merged_audit.append(record)
                 incoming = audit.records()
                 merged_audit = list(self._audit_from_payload(payload).records())
                 for record in incoming:
@@ -230,12 +226,24 @@ class OperationalSafetyStore:
                 payload = self._read_payload_unlocked()
                 audit = self._audit_from_payload(payload)
                 kill_switch = self._normalize_kill_switch(payload.get("kill_switch", {}))
-                payload = {
-                    "audit": [self._audit_dict(record) for record in audit.records()],
-                    "kill_switch": kill_switch,
-                    "execution_audit": normalized,
-                }
-                atomic_write_json(self.path, payload)
+                durable = self._normalize_execution_audit(payload)
+                merged = list(durable)
+                for event in normalized:
+                    if event not in merged:
+                        if merged:
+                            last_timestamp = datetime.fromisoformat(str(merged[-1]["timestamp"]))
+                            event_timestamp = datetime.fromisoformat(str(event["timestamp"]))
+                            if event_timestamp < last_timestamp:
+                                raise ValueError("auditoria de execução deve permanecer cronológica.")
+                        merged.append(event)
+                atomic_write_json(
+                    self.path,
+                    {
+                        "audit": [self._audit_dict(record) for record in audit.records()],
+                        "kill_switch": kill_switch,
+                        "execution_audit": merged,
+                    },
+                )
         except ValueError:
             raise
         except OSError as exc:
