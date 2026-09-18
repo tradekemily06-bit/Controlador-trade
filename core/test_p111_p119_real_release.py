@@ -293,3 +293,29 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-id"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_authorization_rejects_non_boolean_flags():
+    import pytest
+    with pytest.raises(ValueError, match="booleanos"):
+        RealExecutionAuthorization("auth", "audit", "fake", "adapter", 1, True)
+
+
+def test_real_admission_rejects_non_boolean_prerequisite():
+    import pytest
+    with pytest.raises(ValueError, match="booleanos"):
+        RealAdmissionBoundary().admit(
+            admission_id="adm", audit_id="audit", audit_verified="yes",
+            authorization_active=True, safety_ready=True,
+            broker_available=True, broker_id="fake",
+        )
+
+
+def test_real_safety_gate_rejects_non_boolean_prerequisite():
+    import pytest
+    with pytest.raises(ValueError, match="booleanos"):
+        RealSafetyGate().evaluate(
+            authorization_active=True, kill_switch_clear=True,
+            market_healthy=True, recovery_safe=True,
+            risk_approved=True, broker_available="yes",
+        )
