@@ -69,7 +69,7 @@ class BrokerAdapterGateway:
     """Single adapter dispatch boundary.
 
     DEMO/PAPER may use execute(). REAL can only cross this boundary through
-    execute_real(), which is called by RealExecutionGateway.
+    _execute_real(), which is called by RealExecutionGateway.
     """
 
     def __init__(self, registry: BrokerRegistry) -> None:
@@ -87,7 +87,7 @@ class BrokerAdapterGateway:
             )
         return self._dispatch(broker, request, require_real=False)
 
-    def execute_real(
+    def _execute_real(
         self,
         broker: str,
         request: ExecutionRequest,
@@ -120,7 +120,7 @@ class BrokerAdapterGateway:
             expected_adapter_id=capability.adapter_id,
         )
 
-    def real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
+    def _real_dispatch_capability(self, broker: str, *, expected_adapter_id: str) -> _RealDispatchCapability | None:
         if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
             return None
         try:
