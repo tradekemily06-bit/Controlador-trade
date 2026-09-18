@@ -17,6 +17,31 @@ class _RealDispatchCapability:
     adapter_id: str
 
 
+class _RealQueryCapability:
+    """Broker query capability pinned to the authorized adapter instance."""
+
+    def __init__(self, adapter: object, adapter_id: str) -> None:
+        self._adapter = adapter
+        self._adapter_id = adapter_id
+
+    def _valid(self) -> bool:
+        current_id = getattr(self._adapter, "adapter_id", None)
+        return (
+            isinstance(current_id, str)
+            and current_id.strip().lower() == self._adapter_id.strip().lower()
+            and bool(getattr(self._adapter, "supports_real_execution", False))
+            and callable(getattr(self._adapter, "query_order", None))
+        )
+
+    def query_order(self, external_id: str):
+        if not self._valid():
+            raise ValueError("capacidade de consulta REAL mudou; reconciliação bloqueada.")
+        result = self._adapter.query_order(external_id)
+        if not self._valid():
+            raise ValueError("capacidade de consulta REAL mudou durante a consulta; reconciliação bloqueada.")
+        return result
+
+
 _REAL_DISPATCH_CAPABILITY = None
 
 
@@ -121,7 +146,7 @@ class BrokerAdapterGateway:
             return None
         if not isinstance(adapter, ExternalOrderQueryPort):
             return None
-        return adapter
+        return _RealQueryCapability(adapter, adapter_id.strip())
 
     def _dispatch(
         self,
