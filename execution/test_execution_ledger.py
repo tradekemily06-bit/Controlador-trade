@@ -121,3 +121,14 @@ def test_terminal_transition_cannot_reuse_external_id(tmp_path: Path):
     # mark_rejected transition either.
     with pytest.raises(ValueError, match="external_id já associado"):
         ledger.mark_rejected("req-002", external_id="broker-001")
+
+
+
+def test_ledger_rejects_noncanonical_request_id_and_json_nonfinite_constants(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    with pytest.raises(ValueError, match="canônico"):
+        ledger.reserve(" req-1 ")
+    path.write_text('{"req-1": {"status": "RESERVED", "external_id": NaN}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="ledger de execução inválido"):
+        ExecutionLedger(path)
