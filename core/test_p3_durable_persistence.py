@@ -559,3 +559,29 @@ def test_recovery_blocks_orphaned_terminal_ledger(tmp_path):
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.can_resume is False
     assert "ledger terminal sem lifecycle" in assessment.message
+
+def test_recovery_blocks_orphaned_terminal_lifecycle(tmp_path):
+    checkpoint_store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    lifecycle_store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    memory = OperationMemory()
+
+    lifecycle_store.put(
+        ExecutionLifecycleRecord(
+            "req-orphan-lifecycle",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            "accepted without ledger",
+        )
+    )
+
+    assessment = RecoveryCoordinator(
+        checkpoint_store=checkpoint_store,
+        lifecycle_store=lifecycle_store,
+        execution_ledger=ledger,
+        memory=memory,
+    ).assess()
+
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.can_resume is False
+    assert "lifecycle/ledger inconsistente" in assessment.message
