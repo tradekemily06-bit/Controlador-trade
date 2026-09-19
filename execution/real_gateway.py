@@ -337,10 +337,12 @@ class RealExecutionGateway:
                     updated_at=now,
                     message="ciclo sincronizado após janela de crash entre Ledger e Lifecycle.",
                 )
-            else:
+            elif lifecycle.state is ExecutionLifecycleState.UNKNOWN:
                 self._lifecycle.reconcile(
                     request_id,
                     desired_lifecycle,
                     updated_at=now,
                     message="reconciliação REAL explícita.",
                 )
+            else:
+                raise ValueError("Ledger e Lifecycle não formam uma combinação reconciliável.")
