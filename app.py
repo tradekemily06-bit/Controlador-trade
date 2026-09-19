@@ -58,6 +58,11 @@ ONBOARDING = EcosystemOnboarding()
 # the service data plane. Any other stateful SaaS endpoint is fail-closed until
 # its storage path is tenant/subject scoped end-to-end.
 PUBLIC_SAAS_OWNER_SCOPED = {
+    ("GET", "/api/memory"),
+    ("GET", "/api/statistics"),
+    ("POST", "/api/analyze"),
+    ("POST", "/api/replay"),
+    ("POST", "/api/outcome"),
 }
 PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/health"),
@@ -68,11 +73,6 @@ PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/connections"),
 }
 PUBLIC_SAAS_BLOCKED = {
-    ("GET", "/api/memory"),
-    ("GET", "/api/statistics"),
-    ("POST", "/api/analyze"),
-    ("POST", "/api/replay"),
-    ("POST", "/api/outcome"),
     ("GET", "/api/learning"),
     ("GET", "/api/learning/resources"),
     ("GET", "/api/learning/sources"),
