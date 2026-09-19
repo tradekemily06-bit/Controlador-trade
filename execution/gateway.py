@@ -179,6 +179,22 @@ class ExecutionGateway:
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
+        # A non-final adapter result is uncertainty even in DEMO. Keep the
+        # lifecycle/ledger semantics identical across execution modes so a
+        # transport ambiguity can never be projected as a definitive outcome.
+        if not result.outcome_final:
+            if isinstance(result.external_id, str) and result.external_id.strip() and self._ledger is not None:
+                try:
+                    self._ledger.bind_external_id(request_id, result.external_id.strip())
+                except (OSError, ValueError):
+                    pass
+            self._mark_unknown(request_id, event_time, "resultado do executor não definitivo; reconciliação necessária.")
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                "resultado do executor não definitivo; execução marcada como UNKNOWN.",
+                result,
+            )
+
         if not result.accepted:
             if self._ledger is not None:
                 try:
