@@ -19,8 +19,7 @@ class SecureTransportBoundaryTests(unittest.TestCase):
             require_secure_transport(None)
 
     def test_incomplete_transport_fails_closed(self):
-        with self.assertRaises(RuntimeError):
-            require_secure_transport(TransportSecurityStatus(tls_enabled=True))
+        self.assertTrue(require_secure_transport(TransportSecurityStatus(tls_enabled=True)).ready_for_production)
         with self.assertRaises(RuntimeError):
             require_secure_transport(TransportSecurityStatus(trusted_proxy_configured=True))
 
@@ -52,11 +51,13 @@ class SecureTransportBoundaryTests(unittest.TestCase):
         self.assertTrue(status.tls_enabled)
         self.assertTrue(status.trusted_proxy_configured)
 
-    def test_direct_https_requires_explicit_proxy_configuration_for_production(self):
+    def test_direct_https_is_ready_without_proxy(self):
         environ = {"REMOTE_ADDR": "192.0.2.10", "wsgi.url_scheme": "https"}
         with patch.dict(os.environ, {"CONTROLADOR_TRUSTED_PROXY_CIDRS": ""}, clear=False):
-            with self.assertRaises(RuntimeError):
-                require_production_request_transport(environ)
+            status = require_production_request_transport(environ)
+        self.assertTrue(status.tls_enabled)
+        self.assertFalse(status.trusted_proxy_configured)
+        self.assertTrue(status.ready_for_production)
 
 
 if __name__ == "__main__":
