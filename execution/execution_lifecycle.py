@@ -116,6 +116,14 @@ class ExecutionLifecycleStore:
         self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
+    def blocking_request_ids(self) -> tuple[str, ...]:
+        self._load()
+        return tuple(sorted(
+            request_id
+            for request_id, record in self._records.items()
+            if record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN)
+        ))
+
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
