@@ -136,7 +136,7 @@ def application(environ, start_response):
 
     try:
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"ok": True} if AUTH.enabled else {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if AUTH.enabled and path != "/api/login":
             raw_cookie = str(environ.get("HTTP_COOKIE", ""))
             token = next((part.split("=", 1)[1] for part in raw_cookie.split(";") if part.strip().startswith("ct_session=") and "=" in part), "")
