@@ -19,7 +19,7 @@ class SQLiteScopedStateStore:
         self._lock = RLock()
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock, sqlite3.connect(self.database_path) as db:
-            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA journal_mode=DELETE")
             db.execute("PRAGMA synchronous=FULL")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS scoped_state ("
@@ -28,6 +28,10 @@ class SQLiteScopedStateStore:
                 "PRIMARY KEY (tenant_id, subject_id, namespace))"
             )
             db.commit()
+        try:
+            self.database_path.chmod(0o600)
+        except OSError as exc:
+            raise RuntimeError("scoped state storage permissions could not be hardened") from exc
 
     @staticmethod
     def _scope(tenant_id: str | None, subject_id: str | None) -> tuple[str, str]:
