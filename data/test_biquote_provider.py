@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 import pytest
 
@@ -6,22 +7,8 @@ from data.biquote_provider import BiQuoteProvider
 from data.feed import MarketDataRequest
 
 
-class FakeResponse:
-    def __init__(self, payload):
-        self.payload = payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-    def __iter__(self):
-        return iter(())
-
-
-def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
-    payload = {
+def _payload():
+    return {
         "symbol": "EURUSD",
         "interval": "5m",
         "bars": [
@@ -43,22 +30,12 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
                 "tickVolume": 18,
                 "isOpen": False,
             },
-        ]
+        ],
     }
 
-    def fake_urlopen(request, timeout):
-        class JsonResponse(FakeResponse):
-            def read(self, _size=-1):
-                import json
-                return json.dumps(self.payload).encode("utf-8")
 
-        import json
-
-        response = JsonResponse(payload)
-        original_load = json.load
-        response.__class__.json_payload = payload
-        return response
-
+def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
+    payload = _payload()
     import data.biquote_provider as module
 
     class Response:
@@ -68,25 +45,10 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
         def __exit__(self, exc_type, exc, tb):
             return False
 
-    Response.payload = payload
+        def read(self, _size=-1):
+            return json.dumps(payload).encode("utf-8")
 
-    def fake_open(request, timeout):
-        class Context:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-            def read(self, _size=-1):
-                import json
-                return json.dumps(self.payload).encode("utf-8")
-
-        context = Context()
-        context.payload = payload
-        return context
-
-    monkeypatch.setattr(module, "urlopen", fake_open)
+    monkeypatch.setattr(module, "urlopen", lambda request, timeout: Response())
 
     result = BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "5m", 10))
 
@@ -98,7 +60,6 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
 def test_biquote_provider_rejects_unknown_timeframe():
     with pytest.raises(ValueError, match="unsupported BiQuote timeframe"):
         BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "2m", 10))
-
 
 
 def test_biquote_provider_rejects_url_injection_symbol(monkeypatch):
