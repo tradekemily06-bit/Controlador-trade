@@ -44,6 +44,10 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("external_id inválido.")
         if not isinstance(observation, ExternalOrderObservation):
             raise ValueError("observação externa inválida.")
+        if observation.external_id is None:
+            raise ValueError("external_id da observação é obrigatório.")
+        if not isinstance(observation.external_id, str) or not observation.external_id.strip() or len(observation.external_id.strip()) > 256:
+            raise ValueError("external_id da observação inválido.")
         if observation.external_id.strip() != external_id.strip():
             raise ValueError("external_id da observação difere do solicitado.")
         if observation.request_id is not None and (not isinstance(observation.request_id, str) or not observation.request_id.strip() or len(observation.request_id.strip()) > 128):
