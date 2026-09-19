@@ -15,6 +15,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security.secure_transport import require_production_request_transport, request_uses_tls
+from security.secure_transport import require_production_request_transport, request_uses_tls
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
@@ -30,6 +31,13 @@ ONBOARDING = EcosystemOnboarding()
 
 def _audit(environ, request_id: str, status: int) -> None:
     AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/")), status=status, client_key=SECURITY.client_key(environ))
+
+
+def _security_headers(request_id: str, environ, script_nonce: str | None = None) -> list[tuple[str, str]]:
+    headers = SECURITY.headers(request_id, script_nonce=script_nonce)
+    if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1" and request_uses_tls(environ):
+        headers.append(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+    return headers
 
 
 def _security_headers(request_id: str, environ, script_nonce: str | None = None) -> list[tuple[str, str]]:
@@ -223,7 +231,7 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 
     headers = [("Content-Type", "text/plain; charset=utf-8")]
-    headers.extend(SECURITY.headers(request_id))
+    headers.extend(_security_headers(request_id, environ or {}))
     start_response("404 Not Found", headers)
     _audit(environ, request_id, 404)
     return [b"Not Found"]
