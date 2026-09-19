@@ -159,3 +159,14 @@ def test_gateway_blocks_new_execution_when_unresolved_ledger_exists(tmp_path):
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_blocks_uncertain_execution_result():
+    class UncertainExecutor:
+        def execute(self, request):
+            return ExecutionResult(True, "aceito", "EXT-1", uncertain=True)
+    gateway = ExecutionGateway(UncertainExecutor(), KillSwitch())
+    result = gateway.execute("req-uncertain", ExecutionRequest("SYM", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO))
+    assert result.accepted is False
+    assert result.execution is not None
+    assert result.execution.uncertain is True
