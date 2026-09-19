@@ -89,3 +89,15 @@ def test_reconciler_handles_empty_history():
     assert result.accepted == 0
     assert result.rejected == 0
     assert result.consistent is True
+
+
+def test_paper_executor_generates_unique_ids_under_concurrency():
+    from concurrent.futures import ThreadPoolExecutor
+
+    executor = PaperExecutor()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: executor.execute(make_request()), range(32)))
+
+    ids = [result.external_id for result in results]
+    assert len(ids) == len(set(ids)) == 32
+    assert len(executor.executions()) == 32
