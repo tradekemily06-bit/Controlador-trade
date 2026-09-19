@@ -216,6 +216,9 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
+    except Exception:
+        # Never expose unexpected internal/provider exception details through HTTP.
+        return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
 
     headers = [("Content-Type", "text/plain; charset=utf-8")]
     headers.extend(SECURITY.headers(request_id))
