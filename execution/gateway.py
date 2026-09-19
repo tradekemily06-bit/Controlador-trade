@@ -132,10 +132,14 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
-                # The ledger reservation already exists. Never leave the request
-                # looking executable after lifecycle persistence fails.
-                self._mark_unknown(request_id, event_time, f"não foi possível persistir o início da execução; estado incerto: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
+                # No broker side effect has happened yet. Prefer a durable terminal
+                # REJECTED state when both authorities can persist it; only fall back
+                # to UNKNOWN if the terminal stop itself cannot be durably recorded.
+                message = f"não foi possível persistir o início da execução; broker ainda não foi chamado: {exc}"
+                if self._mark_not_dispatched(request_id, event_time, message):
+                    return GatewayResult(GatewayStatus.BLOCKED, message)
+                self._mark_unknown(request_id, event_time, f"{message}; estado final não pôde ser comprovado.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"{message}; estado UNKNOWN por falha de persistência.")
 
         # Final durable-authority check immediately before the side effect.
         # Reconciliation may have completed this request after the earlier
@@ -213,6 +217,36 @@ class ExecutionGateway:
     @staticmethod
     def _ledger_status_reserved():
         return ExecutionLedgerStatus.RESERVED
+
+    def _mark_not_dispatched(self, request_id: str, timestamp: datetime, message: str) -> bool:
+        """Persist a terminal pre-executor rejection in every available authority."""
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError):
+                try:
+                    if self._ledger.status(request_id) is not ExecutionLedgerStatus.REJECTED:
+                        return False
+                except (OSError, ValueError):
+                    return False
+        if self._lifecycle is not None:
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.REJECTED,
+                        timestamp,
+                        message,
+                    )
+                )
+            except (OSError, ValueError):
+                try:
+                    current = self._lifecycle.get(request_id)
+                    if current is None or current.state is not ExecutionLifecycleState.REJECTED:
+                        return False
+                except (OSError, ValueError):
+                    return False
+        return True
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         # UNKNOWN is a cross-authority fail-closed state. Persist it independently
