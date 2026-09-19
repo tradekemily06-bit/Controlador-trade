@@ -88,7 +88,6 @@ class RealExecutionGateway:
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
-            self._processed_request_ids.add(request_id)
             if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 return RealGatewayResult(
                     RealGatewayStatus.UNKNOWN,
@@ -98,7 +97,14 @@ class RealExecutionGateway:
 
         try:
             self._ledger.reserve(request_id)
-            self._processed_request_ids.add(request_id)
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.PENDING,
+                    datetime.now(timezone.utc),
+                    "execução REAL reservada; despacho externo ainda não confirmado.",
+                )
+            )
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
@@ -190,13 +196,28 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
+        ledger_status = self._ledger.status(request_id)
+        if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        lifecycle_state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
+        lifecycle = self._lifecycle.get(request_id)
         now = datetime.now(timezone.utc)
+        if lifecycle is None:
+            # A crash can happen after ledger reservation but before lifecycle
+            # persistence. Reconciliation may create the missing UNKNOWN marker,
+            # but it must never silently resume dispatch.
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.UNKNOWN,
+                    now,
+                    "estado reconstruído durante reconciliação explícita; nenhum replay permitido.",
+                )
+            )
+        elif lifecycle.state is not ExecutionLifecycleState.UNKNOWN:
+            raise ValueError("ciclo de execução não está UNKNOWN; reconciliação explícita recusada.")
         self._ledger.reconcile(request_id, executed=executed)
         self._lifecycle.reconcile(
             request_id,
