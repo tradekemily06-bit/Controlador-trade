@@ -43,10 +43,12 @@ class PersistentOperationalRecorder:
             return
         audit, kill_switch = self.safety_store.load()
         self.recorder.audit = audit
+        # Reloading durable state is a recovery operation. It may restore a
+        # persisted emergency stop, but it must never clear a live stop merely
+        # because the durable snapshot says disabled. Explicit deactivation
+        # already goes through deactivate_kill_switch(), which persists first.
         if kill_switch.state.enabled:
             self.recorder.kill_switch.activate(kill_switch.state.reason or "estado persistido")
-        else:
-            self.recorder.kill_switch.deactivate()
 
     def _reload_memory(self) -> None:
         self.recorder.memory = self.store.load()
