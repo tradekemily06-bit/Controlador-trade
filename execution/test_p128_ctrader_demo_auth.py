@@ -32,7 +32,7 @@ def test_authorization_url_is_demo_safe_and_requests_trading_scope():
 
 def test_session_is_authenticated_only_with_live_access_token_metadata():
     session = CTraderDemoSession(
-        FakeTokenProvider(CTraderTokenSnapshot(3600, True, True))
+        FakeTokenProvider(CTraderTokenSnapshot(3600, True, True, "acct-1", "sess-1"))
     )
 
     observation = session.check_session()
