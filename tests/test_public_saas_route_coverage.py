@@ -51,7 +51,7 @@ def _declared_policy_routes() -> set[tuple[str, str]]:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if not any(isinstance(target, ast.Name) and target.id in {"PUBLIC_SAAS_OWNER_SCOPED", "PUBLIC_SAAS_GENERIC"} for target in node.targets):
+        if not any(isinstance(target, ast.Name) and target.id in {"PUBLIC_SAAS_OWNER_SCOPED", "PUBLIC_SAAS_GENERIC", "PUBLIC_SAAS_BLOCKED"} for target in node.targets):
             continue
         if not isinstance(node.value, ast.Set):
             continue
