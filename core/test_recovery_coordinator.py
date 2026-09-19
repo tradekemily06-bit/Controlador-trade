@@ -62,6 +62,37 @@ def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
+def test_ledger_only_terminal_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_accepted("req-1")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_ledger_and_lifecycle_terminal_mismatch_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_rejected("req-1")
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_matching_terminal_ledger_and_lifecycle_can_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_accepted("req-1")
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
+
+
 def test_invalid_checkpoint_fails_closed(tmp_path):
     coordinator = make_coordinator(tmp_path)
     (tmp_path / "checkpoint.json").write_text("{bad", encoding="utf-8")
