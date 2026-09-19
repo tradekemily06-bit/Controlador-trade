@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.models import Signal\nfrom execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.remote_mt5_bridge import BridgeHealth, SafeRemoteMT5Executor
 
 
@@ -95,4 +95,39 @@ def test_remote_bridge_converts_health_exception_to_rejection():
     bridge = BrokenBridge(BridgeHealth(True, True, "ok"))
     result = SafeRemoteMT5Executor(bridge).execute(request())
     assert result.accepted is False
+    assert bridge.calls == 0
+
+
+def test_remote_bridge_rejects_noncanonical_request_id_before_health():
+    bridge = FakeBridge(BridgeHealth(True, True, "ok"))
+    forged = request()
+    forged = ExecutionRequest(
+        forged.symbol,
+        forged.signal,
+        forged.amount,
+        forged.duration_seconds,
+        forged.mode,
+        " remote-1 ",
+    )
+    result = SafeRemoteMT5Executor(bridge).execute(forged)
+
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert bridge.calls == 0
+
+
+def test_remote_bridge_rejects_nonfinite_amount_before_health():
+    bridge = FakeBridge(BridgeHealth(True, True, "ok"))
+    forged = ExecutionRequest(
+        "EURUSD",
+        Signal.COMPRA,
+        float("nan"),
+        60,
+        ExecutionMode.DEMO,
+        "remote-nan",
+    )
+    result = SafeRemoteMT5Executor(bridge).execute(forged)
+
+    assert result.accepted is False
+    assert "amount" in result.message
     assert bridge.calls == 0
