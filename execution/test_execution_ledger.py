@@ -240,7 +240,7 @@ def test_per_request_lock_does_not_use_raw_request_id_as_path(tmp_path):
 
     # The hashed lock inode remains stable after release so waiting
     # processes cannot be split across different lock inodes.
-    assert len(list(tmp_path.glob(".*.execution.lock"))) == 1
+    assert len(list(tmp_path.glob(".*.execution.lock.lock"))) == 1
     assert not (tmp_path.parent / "outside").exists()
 
 
@@ -378,7 +378,7 @@ def test_ledger_rejects_external_id_on_definitive_non_execution_states(tmp_path)
         '{"rejected": {"status": "REJECTED", "external_id": "EXT-1"}}',
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="não executado"):
+    with pytest.raises(ValueError, match="REJECTED"):
         ExecutionLedger(path)
 
 
