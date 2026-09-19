@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover - Windows fallback
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .kill_switch import KillSwitch, KillSwitchState
+from .request_identity import validate_request_id
 
 
 class OperationalSafetyStore:
@@ -66,16 +67,22 @@ class OperationalSafetyStore:
         timestamp = data.get("timestamp")
         message = data.get("message")
         valid_states = {"PENDING", "ACCEPTED", "REJECTED", "UNKNOWN"}
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id da auditoria de execução é obrigatório.")
+        try:
+            validate_request_id(request_id)
+        except ValueError as exc:
+            raise ValueError("request_id da auditoria de execução é inválido.") from exc
         if not isinstance(state, str) or state not in valid_states:
             raise ValueError("estado da auditoria de execução inválido.")
         if not isinstance(timestamp, str) or not timestamp.strip():
             raise ValueError("timestamp da auditoria de execução é obrigatório.")
         try:
-            datetime.fromisoformat(timestamp)
+            parsed_timestamp = datetime.fromisoformat(timestamp)
         except ValueError as exc:
             raise ValueError("timestamp da auditoria de execução inválido.") from exc
+        if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+            raise ValueError("timestamp da auditoria de execução deve ser timezone-aware.")
+        if parsed_timestamp > datetime.now(timezone.utc):
+            raise ValueError("timestamp da auditoria de execução não pode estar no futuro.")
         if not isinstance(message, str) or not message.strip():
             raise ValueError("message da auditoria de execução é obrigatório.")
         return {"request_id": request_id, "state": state, "timestamp": timestamp, "message": message}
