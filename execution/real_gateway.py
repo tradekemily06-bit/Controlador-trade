@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -9,6 +10,7 @@ from core.p114_real_safety_gate import RealSafetyReport
 from core.p119_release_closure import RealReleaseClosure
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -29,14 +31,25 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(
+        self,
+        adapter_gateway: BrokerAdapterGateway,
+        ledger: ExecutionLedger,
+        lifecycle: ExecutionLifecycleStore | None = None,
+    ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if lifecycle is None:
+            lifecycle = ExecutionLifecycleStore(
+                ledger.path.with_name(f"{ledger.path.stem}-lifecycle{ledger.path.suffix}")
+            )
+        if not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
-        self._processed_request_ids: set[str] = set(ledger.records())
+        self._lifecycle = lifecycle
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
