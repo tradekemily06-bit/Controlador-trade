@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 
 from core.models import Signal
+from core.request_identity import validate_request_id
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -31,8 +32,10 @@ class BrokerAdapterGateway:
             return "requisição de execução inválida."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "AGUARDAR não pode chegar ao adapter."
-        if not isinstance(request.request_id, str) or not request.request_id.strip():
-            return "request_id obrigatório."
+        try:
+            validate_request_id(request.request_id)
+        except ValueError:
+            return "request_id inválido."
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "symbol inválido."
         if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(float(request.amount)) or request.amount <= 0:
