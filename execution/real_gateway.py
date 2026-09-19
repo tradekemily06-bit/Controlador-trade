@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.kill_switch import KillSwitch
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
@@ -28,13 +29,16 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, kill_switch: KillSwitch) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._kill_switch = kill_switch
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -62,6 +66,10 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
+        # Final-boundary TOCTOU defense: a safety snapshot can become stale after assessment.
+        # The live kill switch is checked immediately before ledger reservation/dispatch.
+        if not self._kill_switch.allows_execution():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(request.request_id, str) or request.request_id != request_id:
