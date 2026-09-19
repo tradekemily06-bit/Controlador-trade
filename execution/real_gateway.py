@@ -106,7 +106,17 @@ class RealExecutionGateway:
                 )
             )
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+            # If the ledger reservation succeeded but its lifecycle marker did not,
+            # never proceed to an external side effect. Marking UNKNOWN is the
+            # safest durable outcome; recovery will detect any cross-store gap.
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"reserva REAL persistida, mas ciclo de execução não pôde ser persistido: {exc}",
+            )
 
         try:
             result = self._gateway.execute_real(
