@@ -47,7 +47,7 @@ class ExecutionLedger:
             return
         try:
             if self.path.stat().st_size > MAX_LEDGER_FILE_BYTES:
-                raise ValueError("ledger de execução excede o limite permitido.")
+                raise ValueError("ledger de execução inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
