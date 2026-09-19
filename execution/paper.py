@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 from datetime import datetime, timezone
 
 from execution.ports import (
@@ -23,6 +24,7 @@ class PaperExecutor:
     def __init__(self) -> None:
         self._executions: list[PaperExecution] = []
         self._next_id = 1
+        self._lock = Lock()
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
@@ -49,8 +51,9 @@ class PaperExecutor:
                 message="Duração deve ser positiva.",
             )
 
-        external_id = f"PAPER-{self._next_id:06d}"
-        self._next_id += 1
+        with self._lock:
+            external_id = f"PAPER-{self._next_id:06d}"
+            self._next_id += 1
 
         result = ExecutionResult(
             accepted=True,
