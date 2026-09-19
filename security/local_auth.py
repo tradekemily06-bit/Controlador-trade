@@ -44,11 +44,11 @@ class LocalAuth:
         self.password_hash = os.environ.get("CONTROLADOR_AUTH_PASSWORD_HASH", "").strip()
         self.session_secret = os.environ.get("CONTROLADOR_SESSION_SECRET", "")
         self._sessions: dict[str, AuthSession] = {}
-        self._login_failures: dict[str, list[float]] = {}
+        self._login_failures: dict[str, list[float]] = {}\n        self._max_sessions = 1000\n        self._max_failure_clients = 10000
 
     @property
     def configured(self) -> bool:
-        return bool(self.username and self.password_hash and self.session_secret)
+        return bool(self.username and self.password_hash and len(self.session_secret) >= 32)
 
     @property
     def ready(self) -> bool:
@@ -89,7 +89,7 @@ class LocalAuth:
 
     def _record_failure(self, client_key: str, now: float) -> None:
         key = self._failure_key(client_key)
-        self._login_failures.setdefault(key, []).append(now)
+        self._login_failures.setdefault(key, []).append(now)\n        if len(self._login_failures) > self._max_failure_clients:\n            oldest = next(iter(self._login_failures))\n            self._login_failures.pop(oldest, None)
 
     def login(self, username: str, password: str, client_key: str) -> AuthSession | None:
         if not self.ready or not self.enabled:
@@ -109,7 +109,7 @@ class LocalAuth:
         raw_token = secrets.token_urlsafe(_SESSION_BYTES)
         token_hash = hmac.new(self.session_secret.encode("utf-8"), raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
         session = AuthSession(token_hash, self.username, secrets.token_urlsafe(32), now + _SESSION_TTL_SECONDS)
-        self._sessions[token_hash] = session
+        self._sessions[token_hash] = session\n        if len(self._sessions) > self._max_sessions:\n            oldest = min(self._sessions, key=lambda key: self._sessions[key].expires_at)\n            self._sessions.pop(oldest, None)
         return AuthSession(raw_token, session.username, session.csrf_token, session.expires_at)
 
     def authenticate(self, raw_token: str) -> AuthSession | None:
