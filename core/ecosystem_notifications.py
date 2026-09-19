@@ -116,7 +116,7 @@ class EcosystemNotificationCenter:
         if self._state_store is None:
             if self._require_durable:
                 raise RuntimeError("durable notification state provider is required")
-            return []
+            return self._scoped_notifications.get(scope, [])
         payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
         return [] if payload is None else self._decode(payload)
 
@@ -180,6 +180,15 @@ class EcosystemNotificationCenter:
             if scope is None:
                 return global_events
             return global_events + tuple(self._scoped(scope))
+
+    def publish_global(self, notification: EcosystemNotification) -> EcosystemNotification:
+        with self._lock:
+            if not isinstance(notification, EcosystemNotification):
+                raise ValueError("notification is required")
+            events = list(self._load_global())
+            events.append(notification)
+            self._save_global(events)
+            return notification
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         with self._lock:
