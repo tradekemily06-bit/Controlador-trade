@@ -225,3 +225,86 @@ def test_p5_persistent_kill_switch_blocks_final_dispatch(tmp_path: Path):
     assert adapter.calls == 0
     assert ledger.status("persistent-kill") is ExecutionLedgerStatus.REJECTED
     assert lifecycle.get("persistent-kill").state is ExecutionLifecycleState.REJECTED
+
+
+def test_p5_kill_switch_activation_cannot_interleave_final_dispatch(tmp_path: Path):
+    started = threading.Event()
+    release = threading.Event()
+
+    class BlockingAdapter:
+        def __init__(self):
+            self.calls = 0
+
+        def is_available(self):
+            return True
+
+        def execute(self, _request):
+            self.calls += 1
+            started.set()
+            assert release.wait(timeout=5)
+            return ExecutionResult(True, "accepted", "EXT-KILL-RACE")
+
+    adapter = BlockingAdapter()
+    safety_store = OperationalSafetyStore(tmp_path / "safety.json")
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    kill_switch = KillSwitch()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle=lifecycle,
+        recovery=recovery,
+        kill_switch=kill_switch,
+        safety_store=safety_store,
+    )
+    authorization, admission, safety = _contracts()
+    result_holder = []
+
+    worker = threading.Thread(
+        target=lambda: result_holder.append(
+            gateway.execute(
+                broker="fake",
+                request_id="kill-race",
+                request=_request(),
+                authorization=authorization,
+                admission=admission,
+                safety=safety,
+            )
+        )
+    )
+    worker.start()
+    assert started.wait(timeout=5)
+
+    activation_done = threading.Event()
+
+    def activate():
+        kill_switch.activate("race activation")
+        activation_done.set()
+
+    switch_worker = threading.Thread(target=activate)
+    switch_worker.start()
+
+    # Activation must wait for the final execution window rather than changing
+    # the in-flight admission half-way through the external side effect.
+    assert not activation_done.wait(timeout=0.2)
+
+    release.set()
+    worker.join(timeout=5)
+    switch_worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert not switch_worker.is_alive()
+    assert activation_done.is_set()
+    assert adapter.calls == 1
+    assert len(result_holder) == 1
+    assert result_holder[0].status is RealGatewayStatus.ADMITTED
+    assert ledger.status("kill-race") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("kill-race").state is ExecutionLifecycleState.ACCEPTED
