@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import time
+import os
+import hmac
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -24,6 +26,9 @@ def exchange_authorization_code(
         raise ValueError("authorization_code obrigatório")
     if not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
+    configured_redirect_uri = os.environ.get("CTRADER_REDIRECT_URI", "").strip()
+    if configured_redirect_uri and not hmac.compare_digest(redirect_uri.strip(), configured_redirect_uri):
+        raise ValueError("redirect_uri não corresponde ao URI configurado")
 
     query = urlencode({
         "grant_type": "authorization_code",
@@ -37,12 +42,15 @@ def exchange_authorization_code(
         headers={"Accept": "application/json"},
         method="GET",
     )
-    with urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"falha na comunicação OAuth cTrader: {type(exc).__name__}") from exc
 
     if payload.get("errorCode"):
         raise RuntimeError(
-            f"cTrader OAuth recusado: {payload.get('description') or payload['errorCode']}"
+            "cTrader OAuth recusado pelo provedor."
         )
 
     provider = InMemoryTokenProvider()
