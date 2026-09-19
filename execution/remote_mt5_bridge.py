@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
+import math
 
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -41,11 +42,14 @@ class SafeRemoteMT5Executor:
             return ExecutionResult(False, "ponte MT5 bloqueada: request inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip() or request.request_id != request.request_id.strip():
+            return ExecutionResult(False, "ponte MT5 bloqueada: request_id inválido ou não canônico.")
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return ExecutionResult(False, "ponte MT5 bloqueada: símbolo inválido.")
         if (
             not isinstance(request.amount, (int, float))
             or isinstance(request.amount, bool)
+            or not math.isfinite(float(request.amount))
             or request.amount <= 0
         ):
             return ExecutionResult(False, "ponte MT5 bloqueada: amount inválido.")
