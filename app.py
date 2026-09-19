@@ -57,7 +57,8 @@ ONBOARDING = EcosystemOnboarding()
 # Only these API paths currently propagate the trusted subject/tenant into
 # the service data plane. Any other stateful SaaS endpoint is fail-closed until
 # its storage path is tenant/subject scoped end-to-end.
-PUBLIC_SAAS_OWNER_SCOPED: set[tuple[str, str]] = set()
+PUBLIC_SAAS_OWNER_SCOPED = {
+}
 PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/health"),
     ("GET", "/api/status"),
@@ -169,8 +170,6 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
         return
     identity = require_trusted_identity(environ)
     route = (method, path)
-    if route in PUBLIC_SAAS_BLOCKED:
-        raise PublicSaaSNotReady("endpoint ainda não possui armazenamento tenant/subject-scoped; SaaS público bloqueado")
     if route in PUBLIC_SAAS_GENERIC:
         return
 if route in PUBLIC_SAAS_OWNER_SCOPED:
