@@ -67,5 +67,5 @@ def test_invalid_ledger_fails_closed(tmp_path: Path):
 
 def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    with pytest.raises(ValueError, match="request_id não pode ser vazio"):
+    with pytest.raises(ValueError, match="request_id inválido"):
         ledger.contains(" ")
