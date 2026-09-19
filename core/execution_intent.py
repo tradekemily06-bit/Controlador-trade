@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+
+from core.request_identity import validate_request_id
 
 from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -21,8 +23,10 @@ class ExecutionIntent:
     created_at: datetime
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_id, str) or not self.request_id.strip():
-            raise ValueError("request_id é obrigatório.")
+        try:
+            validate_request_id(self.request_id)
+        except ValueError as exc:
+            raise ValueError("request_id inválido.") from exc
         if not isinstance(self.symbol, str) or not self.symbol.strip():
             raise ValueError("symbol é obrigatório.")
         if not isinstance(self.signal, Signal):
@@ -37,8 +41,14 @@ class ExecutionIntent:
             raise ValueError("modo de execução inválido.")
         if self.mode is ExecutionMode.REAL:
             raise ValueError("execução REAL permanece bloqueada nesta etapa.")
-        if not isinstance(self.created_at, datetime):
-            raise ValueError("created_at inválido.")
+        if (
+            not isinstance(self.created_at, datetime)
+            or self.created_at.tzinfo is None
+            or self.created_at.utcoffset() is None
+        ):
+            raise ValueError("created_at deve ser timezone-aware.")
+        if self.created_at > datetime.now(timezone.utc):
+            raise ValueError("created_at não pode estar no futuro.")
 
     def as_execution_request(self) -> ExecutionRequest:
         """Build the existing port DTO without invoking any execution adapter."""
