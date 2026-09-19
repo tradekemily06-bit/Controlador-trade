@@ -10,8 +10,10 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
 
-RUN addgroup --system app && adduser --system --ingroup app app \
-    && chown -R app:app /app
+RUN addgroup --system app && adduser --system --ingroup app --home /home/app app \
+    && mkdir -p /home/app \
+    && chown -R app:app /app /home/app
+ENV HOME=/home/app
 USER app
 
 EXPOSE 7860
