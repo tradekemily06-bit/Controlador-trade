@@ -6,6 +6,8 @@ import uuid
 from enum import Enum
 from pathlib import Path
 
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
@@ -127,24 +129,24 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def mark_accepted(self, request_id: str, external_id: str | None = None) -> None:
+    def mark_accepted(self, request_id: str, external_id: str) -> None:
         self._validate_id(request_id)
-        if external_id is not None and (not isinstance(external_id, str) or not external_id.strip() or len(external_id.strip()) > 256):
-            raise ValueError("external_id inválido.")
+        if not isinstance(external_id, str) or not external_id.strip() or len(external_id.strip()) > 256:
+            raise ValueError("external_id obrigatório e inválido.")
+
         def mutation() -> None:
             current = self._states.get(request_id)
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            if current is not ExecutionLedgerStatus.RESERVED:
                 raise ValueError("transição inválida para ACCEPTED.")
+            normalized_external_id = external_id.strip()
+            owner = next(
+                (rid for rid, eid in self._external_ids.items() if eid == normalized_external_id and rid != request_id),
+                None,
+            )
+            if owner is not None:
+                raise ValueError("external_id já associado a outro request_id.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
-            if external_id is not None:
-                normalized_external_id = external_id.strip()
-                owner = next(
-                    (rid for rid, eid in self._external_ids.items() if eid == normalized_external_id and rid != request_id),
-                    None,
-                )
-                if owner is not None:
-                    raise ValueError("external_id já associado a outro request_id.")
-                self._external_ids[request_id] = normalized_external_id
+            self._external_ids[request_id] = normalized_external_id
         self._mutate_locked(mutation)
 
     def external_id(self, request_id: str) -> str | None:
@@ -158,18 +160,42 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> None:
+    def reconcile_observation(self, request_id: str, observation: ExternalOrderObservation) -> None:
         self._validate_id(request_id)
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("observação externa inválida.")
+        if observation.request_id != request_id:
+            raise ValueError("request_id da observação difere da requisição.")
+        if observation.status not in (ExternalOrderStatus.EXECUTED, ExternalOrderStatus.NOT_EXECUTED):
+            raise ValueError("observação externa não é terminal.")
+        if observation.external_id is not None and (
+            not isinstance(observation.external_id, str)
+            or not observation.external_id.strip()
+            or len(observation.external_id.strip()) > 256
+        ):
+            raise ValueError("external_id da observação inválido.")
 
         def mutation() -> None:
-            if self._states.get(request_id) not in (
-                ExecutionLedgerStatus.UNKNOWN,
-                ExecutionLedgerStatus.RESERVED,
-            ):
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+
+            stored_external_id = self._external_ids.get(request_id)
+            observed_external_id = observation.external_id.strip() if observation.external_id else None
+            if stored_external_id is not None and observed_external_id != stored_external_id:
+                raise ValueError("external_id da observação difere do identificador persistido.")
+            if observed_external_id is not None and stored_external_id is None:
+                owner = next(
+                    (rid for rid, eid in self._external_ids.items() if eid == observed_external_id and rid != request_id),
+                    None,
+                )
+                if owner is not None:
+                    raise ValueError("external_id já associado a outro request_id.")
+                self._external_ids[request_id] = observed_external_id
+
             self._states[request_id] = (
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
-                if executed
+                if observation.status is ExternalOrderStatus.EXECUTED
                 else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
             )
 
