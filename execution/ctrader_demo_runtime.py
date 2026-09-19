@@ -12,6 +12,7 @@ from execution.ctrader_demo_connection import (
 )
 
 CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
+MAX_OAUTH_RESPONSE_BYTES = 256 * 1024
 
 
 def exchange_authorization_code(
@@ -25,20 +26,30 @@ def exchange_authorization_code(
     if not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
 
-    query = urlencode({
+    # OAuth secrets must not be placed in URLs: URLs can leak through logs,
+    # proxies, browser history and tracing systems. Send the token exchange as
+    # an HTTPS POST body instead.
+    body = urlencode({
         "grant_type": "authorization_code",
         "code": authorization_code,
         "redirect_uri": redirect_uri,
         "client_id": credentials.client_id,
         "client_secret": credentials.client_secret,
-    })
+    }).encode("utf-8")
     request = Request(
-        f"{CTRADER_TOKEN_URL}?{query}",
-        headers={"Accept": "application/json"},
-        method="GET",
+        CTRADER_TOKEN_URL,
+        data=body,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
     )
     with urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+        raw_response = response.read(MAX_OAUTH_RESPONSE_BYTES + 1)
+        if len(raw_response) > MAX_OAUTH_RESPONSE_BYTES:
+            raise RuntimeError("resposta OAuth cTrader excede o limite permitido")
+        payload = json.loads(raw_response.decode("utf-8"))
 
     if payload.get("errorCode"):
         raise RuntimeError(

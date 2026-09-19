@@ -3,6 +3,11 @@ from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from core.operation_memory import OperationMemory
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
 
 
 def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
@@ -129,3 +134,183 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_lifecycle_failure_after_ledger_reservation_blocks_recovery(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+
+    def fail_pending(_record):
+        raise OSError("simulated lifecycle persistence failure")
+
+    lifecycle.put = fail_pending
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-pending-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-pending-failure") is ExecutionLedgerStatus.REJECTED
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
+
+
+def test_gateway_terminal_persistence_mismatch_blocks_recovery(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    original_put = lifecycle.put
+
+    def fail_accepted(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("simulated terminal lifecycle failure")
+        original_put(record)
+
+    lifecycle.put = fail_accepted
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-terminal-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-terminal-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("req-terminal-failure").state is ExecutionLifecycleState.UNKNOWN
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
+
+
+def test_gateway_reservation_error_with_unreadable_ledger_fails_closed(tmp_path, monkeypatch):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    def fail_reserve(_request_id):
+        raise OSError("reservation write failed")
+
+    def fail_contains(_request_id):
+        raise ValueError("ledger became unreadable")
+
+    monkeypatch.setattr(ledger, "reserve", fail_reserve)
+    monkeypatch.setattr(ledger, "contains", fail_contains)
+
+    result = gateway.execute("req-unreadable-ledger", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert "não enviada" in result.message
+
+
+def test_gateway_executor_error_persists_unknown_across_restart(tmp_path):
+    class BrokenExecutor:
+        def execute(self, _request):
+            raise RuntimeError("broker timeout")
+
+    path_ledger = tmp_path / "ledger.json"
+    path_lifecycle = tmp_path / "lifecycle.json"
+    gateway = ExecutionGateway(
+        BrokenExecutor(),
+        KillSwitch(),
+        ledger=ExecutionLedger(path_ledger),
+        lifecycle=ExecutionLifecycleStore(path_lifecycle),
+    )
+
+    result = gateway.execute("req-executor-unknown", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ExecutionLedger(path_ledger).status("req-executor-unknown") is ExecutionLedgerStatus.UNKNOWN
+    assert ExecutionLifecycleStore(path_lifecycle).get("req-executor-unknown").state is ExecutionLifecycleState.UNKNOWN
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(path_lifecycle),
+        execution_ledger=ExecutionLedger(path_ledger),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
+
+
+def test_gateway_rejected_terminal_persistence_failure_blocks_restart(tmp_path):
+    class RejectingExecutor:
+        def execute(self, _request):
+            return ExecutionResult(accepted=False, message="broker rejected")
+
+    ledger_path = tmp_path / "ledger-rejected.json"
+    lifecycle_path = tmp_path / "lifecycle-rejected.json"
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    original_put = lifecycle.put
+
+    def fail_rejected(record):
+        if record.state is ExecutionLifecycleState.REJECTED:
+            raise OSError("terminal lifecycle persistence failed")
+        original_put(record)
+
+    lifecycle.put = fail_rejected
+    gateway = ExecutionGateway(
+        RejectingExecutor(),
+        KillSwitch(),
+        ledger=ExecutionLedger(ledger_path),
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-rejected-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ExecutionLedger(ledger_path).status("req-rejected-failure") is ExecutionLedgerStatus.REJECTED
+    assert ExecutionLifecycleStore(lifecycle_path).get("req-rejected-failure").state is ExecutionLifecycleState.UNKNOWN
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=ExecutionLifecycleStore(lifecycle_path),
+        execution_ledger=ExecutionLedger(ledger_path),
+        memory=OperationMemory(),
+    ).assess()
+    assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert recovery.can_resume is False
+
+
+def test_gateway_non_final_executor_result_is_unknown(tmp_path):
+    class AmbiguousExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=True,
+                message="aceite não definitivo",
+                external_id="DEMO-AMBIGUOUS",
+                outcome_final=False,
+            )
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    gateway = ExecutionGateway(
+        AmbiguousExecutor(),
+        KillSwitch(),
+        ledger=ExecutionLedger(ledger_path),
+        lifecycle=ExecutionLifecycleStore(lifecycle_path),
+    )
+
+    result = gateway.execute("req-non-final", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution is not None
+    assert result.execution.outcome_final is False
+    assert ExecutionLedger(ledger_path).status("req-non-final") is ExecutionLedgerStatus.UNKNOWN
+    assert ExecutionLedger(ledger_path).external_id("req-non-final") == "DEMO-AMBIGUOUS"
+    assert ExecutionLifecycleStore(lifecycle_path).get("req-non-final").state is ExecutionLifecycleState.UNKNOWN

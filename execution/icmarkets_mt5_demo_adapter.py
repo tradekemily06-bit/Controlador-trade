@@ -24,6 +24,7 @@ class ICMarketsMT5DemoConfig:
 class ICMarketsMT5DemoAdapter:
     """IC Markets MT5 DEMO boundary.
 
+
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
     The adapter stays outside decision/risk logic and rejects REAL requests.
     ``ExecutionRequest.amount`` is interpreted as MT5 volume (lots). MT5 has
@@ -146,7 +147,15 @@ class ICMarketsMT5DemoAdapter:
 
             result = mt5.order_send(payload)
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                # No response is not proof of rejection: the terminal may have
+                # accepted the request before the transport failed. Keep this
+                # explicitly non-final so an eventual REAL path cannot replay it.
+                return ExecutionResult(
+                    False,
+                    f"order_send sem confirmação: {self._last_error(mt5)}",
+                    None,
+                    outcome_final=False,
+                )
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
@@ -155,9 +164,8 @@ class ICMarketsMT5DemoAdapter:
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
-                return ExecutionResult(
-                    False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                raise MT5AdapterError(
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado DEMO incerto."
                 )
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))

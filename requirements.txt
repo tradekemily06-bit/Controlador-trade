@@ -1,1 +1,2 @@
-pytest
+# Runtime dependencies are intentionally standard-library-only.
+# Test tooling is installed separately by CI.

@@ -22,7 +22,7 @@ class FakeAdapter:
 
 
 def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO)
 
 
 def gateway_with(adapter):
@@ -31,12 +31,24 @@ def gateway_with(adapter):
     return BrokerAdapterGateway(registry)
 
 
+def test_public_adapter_gateway_blocks_direct_real_dispatch():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute(
+        "fake",
+        ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL),
+    )
+    assert result.accepted is False
+    assert result.dispatch_attempted is False
+    assert adapter.calls == 0
+
+
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
 
     result = gateway_with(adapter).execute("fake", request())
 
     assert result.accepted is False
+    assert result.dispatch_attempted is False
     assert adapter.calls == 0
 
 
@@ -48,16 +60,19 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
+    assert result.dispatch_attempted is True
     assert adapter.calls == 1
 
 
-def test_adapter_gateway_handles_adapter_exception_fail_closed():
+def test_adapter_gateway_propagates_adapter_exception_as_uncertain():
+    import pytest
+    from execution.adapter_gateway import AdapterGatewayError
+
     adapter = FakeAdapter(error=True)
 
-    result = gateway_with(adapter).execute("fake", request())
+    with pytest.raises(AdapterGatewayError, match="execução não confirmada"):
+        gateway_with(adapter).execute("fake", request())
 
-    assert result.accepted is False
-    assert result.execution is None
     assert adapter.calls == 1
 
 
@@ -68,6 +83,7 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 
     assert result.accepted is False
     assert result.execution is None
+    assert result.dispatch_attempted is True
 
 
 def test_adapter_gateway_unknown_broker_does_not_execute():
@@ -78,3 +94,25 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+    assert result.dispatch_attempted is False
+
+
+def test_adapter_gateway_rejects_malformed_public_request_without_touching_adapter():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", None)
+    assert result.accepted is False
+    assert result.dispatch_attempted is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_rejects_forged_real_capability():
+    adapter = FakeAdapter()
+    from execution.ports import ExecutionRequest
+    from core.models import Signal
+    real_request = ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    import pytest
+    with pytest.raises(PermissionError, match="capacidade de despacho REAL inválida"):
+        gateway_with(adapter).execute_real("fake", real_request, capability=object())
+
+    assert adapter.calls == 0

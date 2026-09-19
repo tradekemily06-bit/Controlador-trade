@@ -21,7 +21,7 @@ class BrokerOrderRequest:
     duration_seconds: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_id, str) or not self.request_id.strip():
+        if not isinstance(self.request_id, str) or not self.request_id.strip() or self.request_id != self.request_id.strip():
             raise ValueError("request_id inválido")
         if not isinstance(self.symbol, str) or not self.symbol.strip():
             raise ValueError("symbol inválido")

@@ -38,9 +38,20 @@ class PersistentOperationalRecorder:
         recorder = P4OperationalRecorder(audit=audit, memory=store.load(), kill_switch=active_kill_switch)
         return cls(store=store, safety_store=safety_store, recorder=recorder)
 
-    def _persist_safety(self) -> None:
-        if self.safety_store is not None:
-            self.safety_store.save(self.audit, self.kill_switch)
+    def _reload_safety(self) -> None:
+        if self.safety_store is None:
+            return
+        audit, kill_switch = self.safety_store.load()
+        self.recorder.audit = audit
+        # Reloading durable state is a recovery operation. It may restore a
+        # persisted emergency stop, but it must never clear a live stop merely
+        # because the durable snapshot says disabled. Explicit deactivation
+        # already goes through deactivate_kill_switch(), which persists first.
+        if kill_switch.state.enabled:
+            self.recorder.kill_switch.activate(kill_switch.state.reason or "estado persistido")
+
+    def _reload_memory(self) -> None:
+        self.recorder.memory = self.store.load()
 
     @property
     def memory(self):
@@ -56,19 +67,76 @@ class PersistentOperationalRecorder:
 
     def record_decision(self, snapshot: DecisionSnapshot, *, timestamp: datetime) -> DecisionAuditRecord:
         record = self.recorder.record_decision(snapshot, timestamp=timestamp)
-        self._persist_safety()
+        try:
+            if self.safety_store is not None:
+                self.safety_store.append_audit(record)
+        except Exception:
+            try:
+                self._reload_safety()
+            except Exception:
+                pass
+            raise
         return record
 
     def record_operation(self, snapshot: DecisionSnapshot, *, timestamp: datetime, result: str = "PENDENTE", entry_conditions: tuple[str, ...] = (), audit_record: DecisionAuditRecord | None = None) -> RecordedOperation:
-        recorded = self.recorder.record_operation(snapshot, timestamp=timestamp, result=result, entry_conditions=entry_conditions, audit_record=audit_record)
-        self.store.save(self.memory)
-        self._persist_safety()
+        recorded = self.recorder.record_operation(
+            snapshot,
+            timestamp=timestamp,
+            result=result,
+            entry_conditions=entry_conditions,
+            audit_record=audit_record,
+        )
+        try:
+            if self.safety_store is not None:
+                self.safety_store.append_audit(recorded.audit)
+        except Exception:
+            try:
+                self._reload_memory()
+            except Exception:
+                pass
+            if self.safety_store is not None:
+                try:
+                    self._reload_safety()
+                except Exception:
+                    pass
+            raise
+        try:
+            self.store.append(recorded.memory)
+        except Exception:
+            # The audit may already be durable. Rebuild both views from disk;
+            # recovery/audit inspection must see the durable truth rather than
+            # the speculative in-memory operation. Never mask the original
+            # persistence exception if a best-effort reload also fails.
+            try:
+                self._reload_memory()
+            except Exception:
+                pass
+            if self.safety_store is not None:
+                try:
+                    self._reload_safety()
+                except Exception:
+                    pass
+            raise
+        # The durable writes above are the commit point. A post-commit reload
+        # must not turn a successful operation into an apparent failure.
+        try:
+            self._reload_memory()
+            self._reload_safety()
+        except Exception:
+            # Keep the already-committed operation result available in memory;
+            # recovery/reload can be retried by the caller without duplicating
+            # the durable append.
+            pass
         return recorded
 
     def settle_operation(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
-        updated = self.recorder.settle_operation(record, result)
-        self.store.save(self.memory)
-        self._persist_safety()
+        updated = self.store.settle(record, result)
+        try:
+            self._reload_memory()
+        except Exception:
+            # Settlement is already durable; do not turn a post-commit
+            # refresh failure into a false negative for the caller.
+            pass
         return updated
 
     def can_execute(self) -> bool:
@@ -78,11 +146,21 @@ class PersistentOperationalRecorder:
         self.recorder.guard_execution()
 
     def activate_kill_switch(self, reason: str):
-        state = self.kill_switch.activate(reason)
-        self._persist_safety()
-        return state
+        # Persist the safety stop before mutating the live switch. This closes
+        # the crash window where the process could activate the switch, fail
+        # to persist it, then restart with a durable CLEAR state.
+        candidate = KillSwitch()
+        candidate.activate(reason)
+        if self.safety_store is not None:
+            self.safety_store.save_kill_switch(candidate)
+        return self.kill_switch.activate(reason)
 
     def deactivate_kill_switch(self):
+        # Fail closed: persist the disabled state before mutating the live
+        # kill switch. If durability fails, the live switch remains enabled.
+        candidate = KillSwitch()
+        candidate.deactivate()
+        if self.safety_store is not None:
+            self.safety_store.save_kill_switch(candidate)
         state = self.kill_switch.deactivate()
-        self._persist_safety()
         return state
