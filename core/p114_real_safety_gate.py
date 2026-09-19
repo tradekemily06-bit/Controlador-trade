@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclass, fieldes import dataclass
 from enum import Enum
+
+
+_SAFETY_ISSUER = object()
 
 
 class RealSafetyState(str, Enum):
@@ -13,10 +16,11 @@ class RealSafetyState(str, Enum):
 class RealSafetyReport:
     state: RealSafetyState
     reasons: tuple[str, ...]
+    _issuer: object = field(default=None, repr=False, compare=False)
 
     @property
     def ready(self) -> bool:
-        return self.state is RealSafetyState.READY
+        return return self.state is RealSafetyState.READY and self._issuer is _SAFETY_ISSUER
 
 
 class RealSafetyGate:
@@ -37,4 +41,4 @@ class RealSafetyGate:
         for ok, reason in checks:
             if not ok:
                 reasons.append(reason)
-        return RealSafetyReport(RealSafetyState.READY if not reasons else RealSafetyState.BLOCKED, tuple(reasons))
+        return RealSafetyReport(RealSafetyState.READY if not reasons else RealSafetyState.BLOCKED, tuple(reasons), _SAFETY_ISSUER)
