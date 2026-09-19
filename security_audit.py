@@ -76,12 +76,14 @@ class SecurityAudit:
             path = Path(self._database_path or "")
             if path.parent != Path("."):
                 path.parent.mkdir(parents=True, exist_ok=True)
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise OSError("security audit database directory must not be a symlink")
             if path.exists():
                 stat = path.lstat()
                 if path.is_symlink() or not path.is_file():
                     raise OSError("security audit database must be a regular file")
             with self._db_lock, self._connect() as connection:
-                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("PRAGMA journal_mode=DELETE")
                 connection.execute("PRAGMA synchronous=FULL")
                 connection.execute(
                     """
