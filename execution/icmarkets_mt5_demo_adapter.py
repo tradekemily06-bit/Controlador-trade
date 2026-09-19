@@ -143,18 +143,24 @@ class ICMarketsMT5DemoAdapter:
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
 
-            check = mt5.order_check(payload)
+            try:
+                check = mt5.order_check(payload)
+            except Exception as exc:
+                return ExecutionResult(False, f"order_check falhou: {type(exc).__name__}")
             if check is None or getattr(check, "retcode", 0) != 0:
-                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
+                return ExecutionResult(False, "order_check bloqueou a ordem.")
 
-            result = mt5.order_send(payload)
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                return ExecutionResult(False, f"order_send falhou; execução não confirmada: {type(exc).__name__}")
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(False, "order_send sem confirmação.")
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
             if success_code is None or retcode != success_code:
-                return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
+                return ExecutionResult(False, "ordem rejeitada pelo MT5.")
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
