@@ -60,7 +60,7 @@ class CTraderDemoAdapter:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
         except (TypeError, ValueError) as exc:
-            return ExecutionResult(False, f"falha de validação cTrader DEMO: {exc}")
+            return ExecutionResult(False, f"falha de validação cTrader DEMO.")
 
         return ExecutionResult(
             accepted=validated.accepted,
