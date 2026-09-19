@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import threading
 
 import pytest
 
@@ -112,3 +113,41 @@ def test_safety_reload_never_clears_live_kill_switch(tmp_path):
 
     assert recorder.kill_switch.state.enabled is True
     assert recorder.kill_switch.state.reason == "emergency local stop"
+
+
+def test_persistent_kill_switch_window_serializes_safety_updates(tmp_path):
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    clear = KillSwitch()
+    store.save(DecisionAudit(), clear)
+    entered = threading.Event()
+    release = threading.Event()
+    writer_done = threading.Event()
+
+    def writer():
+        blocked = KillSwitch()
+        blocked.activate("emergency from another worker")
+        with store.kill_switch_execution_window() as state:
+            assert state.enabled is False
+            entered.set()
+            release.wait(timeout=2)
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    assert entered.wait(timeout=2)
+
+    def persist_activation():
+        blocked = KillSwitch()
+        blocked.activate("emergency from another worker")
+        store.save_kill_switch(blocked)
+        writer_done.set()
+
+    updater = threading.Thread(target=persist_activation)
+    updater.start()
+    assert not writer_done.wait(timeout=0.2)
+    release.set()
+    updater.join(timeout=2)
+    thread.join(timeout=2)
+    assert writer_done.is_set()
+    _, restored = store.load()
+    assert restored.state.enabled is True
+    assert restored.state.reason == "emergency from another worker"
