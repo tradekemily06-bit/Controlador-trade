@@ -142,14 +142,16 @@ class RealExecutionGateway:
                     try:
                         self._ledger.mark_rejected(request_id)
                     except (OSError, ValueError):
-                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem rejeitada, mas persistência do estado falhou; reconciliação necessária.", result.execution)
+                        self._persistence_fault = True
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, "ordem rejeitada, mas a persistência falhou; novas execuções bloqueadas.", result.execution)
                     return RealGatewayResult(RealGatewayStatus.REJECTED, self._safe_adapter_message(result.execution), result.execution)
 
                 if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
-                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id e persistência também falhou; reconciliação necessária.", result.execution)
+                        self._persistence_fault = True
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, "aceite REAL sem external_id e persistência também falhou; novas execuções bloqueadas.", result.execution)
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
                 try:
@@ -182,10 +184,20 @@ class RealExecutionGateway:
         source: str,
     ) -> None:
         """Reconcile only from explicit external evidence; never resubmits."""
+        if self._persistence_fault:
+            raise RuntimeError("persistência REAL em falha; reconciliação bloqueada até recuperação.")
+        validate_request_id(request_id)
+        if not isinstance(broker, str) or not broker.strip():
+            raise ValueError("broker inválido.")
+        if not isinstance(adapter, str) or not adapter.strip():
+            raise ValueError("adapter inválido.")
+        canonical_adapter = self._gateway.adapter_id(broker)
+        if canonical_adapter.casefold() != adapter.strip().casefold():
+            raise ValueError("adapter de reconciliação não corresponde ao adapter registrado.")
         self._ledger.reconcile_with_evidence(
             request_id,
             broker=broker,
-            adapter=adapter,
+            adapter=canonical_adapter,
             external_id=external_id,
             status=status,
             observed_at=observed_at,
