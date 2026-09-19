@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -282,6 +283,28 @@ class OperationalSafetyStore:
             raise
         except OSError as exc:
             raise OSError("não foi possível persistir a auditoria de execução.") from exc
+
+    @contextmanager
+    def kill_switch_execution_window(self):
+        """Hold the shared safety-state lock across a REAL side-effect window.
+
+        The caller reads the latest durable kill-switch state while holding the
+        same file lock used by save_kill_switch(). This closes the cross-process
+        race where one worker could dispatch while another worker activates the
+        persistent emergency stop.
+        """
+        try:
+            with locked_path(self.path):
+                payload = self._read_payload_unlocked()
+                kill_switch_data = self._normalize_kill_switch(payload.get("kill_switch", {}))
+                yield KillSwitchState(
+                    enabled=kill_switch_data["enabled"],
+                    reason=kill_switch_data["reason"],
+                )
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível ler o estado persistido do kill switch.") from exc
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         try:
