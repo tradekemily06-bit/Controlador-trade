@@ -16,6 +16,7 @@ def test_lifecycle_store_reloads_before_mutation(tmp_path):
 def test_unknown_cannot_be_overwritten_without_reconciliation(tmp_path):
     store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now))
     try:
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
