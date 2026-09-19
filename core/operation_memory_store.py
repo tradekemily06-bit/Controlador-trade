@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from datetime import datetime
 
@@ -72,12 +73,20 @@ class OperationMemoryStore:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
-                temporary = self.path.with_name(f".{self.path.name}.tmp")
-                temporary.write_text(
-                    json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-                    encoding="utf-8",
-                )
-                os.replace(temporary, self.path)
+                fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+                temporary = Path(temporary_name)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                        stream.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, self.path)
+                except Exception:
+                    try:
+                        temporary.unlink()
+                    except OSError:
+                        pass
+                    raise
             finally:
                 if fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
