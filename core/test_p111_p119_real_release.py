@@ -303,3 +303,58 @@ def test_real_reconciliation_rejects_wrong_request_identity(tmp_path: Path):
     else:
         raise AssertionError("mismatched broker observation must fail closed")
     assert ledger.status("unknown-correlation") is ExecutionLedgerStatus.UNKNOWN
+
+
+class PersistFailureLedger(ExecutionLedger):
+    def mark_accepted(self, request_id: str, external_id: str) -> None:
+        raise OSError("simulated crash after external acceptance")
+
+
+class AcceptedAdapter:
+    def __init__(self):
+        self.calls = 0
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "accepted externally", "external-crash-1")
+
+
+def test_real_crash_after_external_acceptance_never_retries_same_request(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    registry = BrokerRegistry()
+    adapter = AcceptedAdapter()
+    registry.register("fake", adapter)
+    ledger = PersistFailureLedger(path)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    first = gateway.execute(
+        broker="fake",
+        request_id="crash-after-accept",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert first.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    assert ExecutionLedger(path).status("crash-after-accept") is ExecutionLedgerStatus.RESERVED
+
+    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    second = restored.execute(
+        broker="fake",
+        request_id="crash-after-accept",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert second.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
