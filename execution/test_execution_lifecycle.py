@@ -98,3 +98,19 @@ def test_reconciliation_cannot_override_non_unknown_state(tmp_path):
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
     with pytest.raises(ValueError, match="UNKNOWN"):
         store.reconcile("req-1", ExecutionLifecycleState.REJECTED, updated_at=now)
+
+
+def test_lifecycle_rejects_oversized_persisted_file(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
+
+
+def test_lifecycle_rejects_excessive_persisted_records(tmp_path):
+    import json
+    path = tmp_path / "lifecycle.json"
+    payload = [{"request_id": f"req-{i}", "state": "UNKNOWN", "updated_at": "2026-09-19T00:00:00+00:00", "message": ""} for i in range(10001)]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
