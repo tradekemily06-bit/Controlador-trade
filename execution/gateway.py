@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -37,14 +38,7 @@ class GatewayResult:
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
 
-    def __init__(
-        self,
-        executor: ExecutionPort,
-        kill_switch: KillSwitch,
-        recorder: P4OperationalRecorder | None = None,
-        ledger: ExecutionLedger | None = None,
-        lifecycle: ExecutionLifecycleStore | None = None,
-    ) -> None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder | None = None, ledger: ExecutionLedger | None = None, lifecycle: ExecutionLifecycleStore | None = None) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
         if kill_switch is None:
@@ -56,15 +50,7 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
-    def execute(
-        self,
-        request_id: str,
-        request: ExecutionRequest,
-        *,
-        snapshot: DecisionSnapshot | None = None,
-        timestamp: datetime | None = None,
-        entry_conditions: tuple[str, ...] = (),
-    ) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
@@ -104,7 +90,11 @@ class ExecutionGateway:
 
         if not result.accepted:
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"rejeição recebida, mas persistência do ciclo falhou: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"resultado rejeitado, mas persistência falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
@@ -145,14 +135,18 @@ class ExecutionGateway:
             return "request_id não pode ser vazio."
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return "request.request_id não pode ser vazio."
+        if request.request_id != request_id:
+            return "request_id externo deve ser idêntico ao request.request_id."
         if request.mode is not ExecutionMode.DEMO:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
-            return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            return "Símbolo inválido."
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(float(request.amount)) or request.amount <= 0:
+            return "Valor da execução deve ser um número finito positivo."
+        if isinstance(request.duration_seconds, bool) or not isinstance(request.duration_seconds, int) or request.duration_seconds <= 0:
+            return "Duração deve ser um inteiro positivo."
         return None
