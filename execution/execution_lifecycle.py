@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -29,6 +31,7 @@ class ExecutionLifecycleRecord:
 
 
 class ExecutionLifecycleStore:
+    REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
     """Durable execution state; writes are serialized and atomic."""
 
     def __init__(self, path: str | Path) -> None:
@@ -65,19 +68,23 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
+        if not isinstance(record.request_id, str) or not ExecutionLifecycleStore.REQUEST_ID_PATTERN.fullmatch(record.request_id):
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if not isinstance(record.updated_at, datetime) or record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
+            raise ValueError("timestamp deve ser timezone-aware.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
     def _mutate_locked(self, mutation):
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
+        lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, flags, 0o600)
+        with os.fdopen(lock_fd, "a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -140,12 +147,18 @@ class ExecutionLifecycleStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         records = [self._records[key] for key in sorted(self._records)]
-        temporary.write_text(
-            json.dumps(
-                [{"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                 for r in records],
-                ensure_ascii=False, indent=2, sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        payload = json.dumps([{"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message} for r in records], ensure_ascii=False, indent=2, sort_keys=True)
+        fd, temporary_name = tempfile.mkstemp(prefix="." + self.path.name + ".", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
