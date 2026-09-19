@@ -144,8 +144,24 @@ class RealExecutionGateway:
         except RuntimeError:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+    def reconcile_unknown(
+        self,
+        request_id: str,
+        *,
+        broker: str,
+        adapter: str,
+        external_id: str,
+        status: str,
+        observed_at,
+        source: str,
+    ) -> None:
+        """Reconcile only from explicit external evidence; never resubmits."""
+        self._ledger.reconcile_with_evidence(
+            request_id,
+            broker=broker,
+            adapter=adapter,
+            external_id=external_id,
+            status=status,
+            observed_at=observed_at,
+            source=source,
+        )
