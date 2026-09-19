@@ -62,9 +62,10 @@ class ExecutionReconciliationCoordinator:
         self._ledger._bind_external_id_locked(request_id, external_id.strip())
 
     def bind_external_id(self, request_id: str, external_id: str) -> None:
-        """Durably bind a broker identity under the same lock used by REAL dispatch."""
-        with self.request_execution_lock(request_id):
-            self._bind_external_id_locked(request_id, external_id)
+        """Durably bind a broker identity using the canonical REAL lock order."""
+        with self._ledger.real_execution_lock():
+            with self.request_execution_lock(request_id):
+                self._bind_external_id_locked(request_id, external_id)
 
     @staticmethod
     def _target(status: ExternalOrderStatus) -> tuple[bool, ExecutionLedgerStatus, ExecutionLifecycleState] | None:
