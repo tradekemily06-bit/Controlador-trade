@@ -333,8 +333,8 @@ class RealExecutionGateway:
     def reconcile_unknown_with_evidence(self, request_id: str, *, executed: bool,
                                         evidence_id: str, evidence_source: str) -> None:
         with self._configuration_lock:
-            if self._dispatch_started:
-                raise RuntimeError("dispatch REAL já iniciou; reconciliação não pode ser iniciada por este gateway")
+            if self._reconciliation_started:
+                raise RuntimeError("reconciliação REAL já iniciou neste gateway")
             self._reconciliation_started = True
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
