@@ -1,4 +1,3 @@
-import math
 import pytest
 from core.kill_switch import KillSwitch
 from core.models import Signal
