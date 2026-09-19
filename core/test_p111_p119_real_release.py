@@ -171,6 +171,22 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
         gateway.reconcile_unknown("missing", executed=True)
 
 
+def test_invalid_reconciliation_request_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="request_id"):
+        gateway.reconcile_unknown_with_evidence("", executed=True, evidence_id="e1", evidence_source="broker")
+    assert gateway._global_barrier_error() is None
+
+
+def test_non_reconcilable_request_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="estado incerto"):
+        gateway.reconcile_unknown_with_evidence("missing", executed=True, evidence_id="e1", evidence_source="broker")
+    assert gateway._global_barrier_error() is None
+
+
 def test_invalid_reconciliation_does_not_poison_gateway_configuration(tmp_path: Path):
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
     gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
