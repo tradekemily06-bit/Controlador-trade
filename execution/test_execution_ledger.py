@@ -82,3 +82,9 @@ def test_independent_ledger_instances_serialize_shared_file_state(tmp_path: Path
 
     restored = ExecutionLedger(path)
     assert restored.records() == tuple(f"req-{index:03d}" for index in range(8))
+
+
+def test_ledger_rejects_oversized_request_identity(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    with pytest.raises(ValueError, match="limite permitido"):
+        ledger.reserve("x" * 257)
