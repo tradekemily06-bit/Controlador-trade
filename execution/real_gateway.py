@@ -6,7 +6,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.adapter_gateway import BrokerAdapterGateway
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -86,7 +86,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute_real(\n                broker, request, capability=_REAL_DISPATCH_CAPABILITY\n            )
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
