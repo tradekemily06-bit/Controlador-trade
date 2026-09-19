@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -290,3 +291,31 @@ def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
         request=_request("adapter-mismatch"), authorization=auth,
         admission=_admission("adapter-mismatch", auth=auth, adapter_id="authorized-adapter"), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
+
+
+
+def test_real_gateway_concurrent_same_request_id_dispatches_at_most_once(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(registry, ledger)
+    auth = _authorization("concurrent-request")
+    admission = _admission("concurrent-request", auth=auth)
+    safety = _safety(auth)
+    request = _request("concurrent-request")
+    snapshot = _snapshot()
+
+    def dispatch():
+        return gateway.execute(
+            broker="fake", request_id="concurrent-request", request=request,
+            authorization=auth, admission=admission, safety=safety, snapshot=snapshot,
+        )
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(lambda _index: dispatch(), range(16)))
+
+    assert sum(result.status == RealGatewayStatus.ADMITTED for result in results) == 1
+    assert sum(result.status == RealGatewayStatus.BLOCKED for result in results) == 15
+    assert adapter.calls == 1
+    assert ledger.status("concurrent-request") is ExecutionLedgerStatus.ACCEPTED
