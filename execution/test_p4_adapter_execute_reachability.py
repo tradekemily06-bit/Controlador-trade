@@ -85,4 +85,4 @@ def test_real_adapter_gateway_capability_cannot_gain_a_second_call_site():
                 invalid_capability_calls.append(site)
 
     assert invalid_capability_calls == []
-    assert call_sites == ["execution/real_gateway.py:423"]
+    assert len(call_sites) == 1\n    assert call_sites[0].startswith("execution/real_gateway.py:")
