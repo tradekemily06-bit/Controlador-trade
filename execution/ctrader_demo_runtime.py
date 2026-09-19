@@ -28,6 +28,10 @@ def exchange_authorization_code(
         raise ValueError("authorization_code obrigatório")
     if not isinstance(redirect_uri, str) or not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
+    if len(authorization_code) > 4096:
+        raise ValueError("authorization_code excede o limite permitido")
+    if len(redirect_uri) > 2048:
+        raise ValueError("redirect_uri excede o limite permitido")
     _validate_ctrader_redirect_uri(redirect_uri)
 
     query = urlencode({
