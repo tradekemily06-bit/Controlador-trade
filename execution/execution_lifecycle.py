@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from core.request_identity import REQUEST_ID_PATTERN, validate_request_id
 
@@ -73,6 +73,8 @@ class ExecutionLifecycleStore:
             raise ValueError("estado de execução inválido.")
         if not isinstance(record.updated_at, datetime) or record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
             raise ValueError("timestamp deve ser timezone-aware.")
+        if record.updated_at > datetime.now(timezone.utc):
+            raise ValueError("timestamp não pode estar no futuro.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
