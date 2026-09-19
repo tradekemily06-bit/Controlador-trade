@@ -411,7 +411,7 @@ def test_global_real_lock_rejects_symlinked_lock_file(tmp_path):
 
     path = tmp_path / "ledger.json"
     ledger = ExecutionLedger(path)
-    lock = tmp_path / ".ledger.json.real-execution.lock"
+    lock = tmp_path / "..ledger.json.real-execution.lock.lock"
     target = tmp_path / "attacker-target"
     target.write_text("do not touch", encoding="utf-8")
     lock.symlink_to(target)
@@ -435,7 +435,7 @@ def test_request_execution_lock_rejects_symlinked_lock_file(tmp_path):
     ledger = ExecutionLedger(path)
     request_id = "symlink-lock-request"
     request_key = hashlib.sha256(request_id.encode("utf-8")).hexdigest()
-    lock = tmp_path / f".ledger.json.{request_key}.execution.lock"
+    lock = tmp_path / f"..ledger.json.{request_key}.execution.lock.lock"
     target = tmp_path / "attacker-request-target"
     target.write_text("do not touch", encoding="utf-8")
     lock.symlink_to(target)
