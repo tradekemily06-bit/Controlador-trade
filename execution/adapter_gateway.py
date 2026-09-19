@@ -43,10 +43,12 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, str(exc))
 
         try:
-            available = bool(adapter.is_available())
-        except Exception as exc:
+            available = adapter.is_available()
+        except Exception:
             return AdapterExecutionResult(False, "disponibilidade do adapter falhou.")
 
+        if not isinstance(available, bool):
+            return AdapterExecutionResult(False, "adapter retornou disponibilidade inválida.")
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
@@ -57,5 +59,15 @@ class BrokerAdapterGateway:
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+        if not isinstance(result.accepted, bool) or not isinstance(result.uncertain, bool):
+            return AdapterExecutionResult(False, "adapter retornou flags de execução inválidas.")
+        if not isinstance(result.message, str) or not result.message.strip() or len(result.message) > 4096:
+            return AdapterExecutionResult(False, "adapter retornou mensagem inválida.")
+        if result.external_id is not None and (
+            not isinstance(result.external_id, str)
+            or not result.external_id.strip()
+            or len(result.external_id.strip()) > 256
+        ):
+            return AdapterExecutionResult(False, "adapter retornou identificador externo inválido.")
 
         return AdapterExecutionResult(result.accepted, result.message, result)
