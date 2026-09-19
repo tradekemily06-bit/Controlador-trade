@@ -10,8 +10,10 @@ from execution.ctrader_demo_connection import (
     InMemoryTokenProvider,
     CTraderDemoConnection,
 )
+from execution.p128_ctrader_demo_auth import _validate_ctrader_redirect_uri
 
 CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
+MAX_TOKEN_RESPONSE_BYTES = 64 * 1024
 
 
 def exchange_authorization_code(
@@ -20,10 +22,17 @@ def exchange_authorization_code(
     redirect_uri: str,
 ) -> InMemoryTokenProvider:
     """Exchange the short-lived OAuth code for a runtime-only token."""
-    if not authorization_code.strip():
+    if not isinstance(credentials, CTraderCredentials):
+        raise ValueError("credentials inválidas")
+    if not isinstance(authorization_code, str) or not authorization_code.strip():
         raise ValueError("authorization_code obrigatório")
-    if not redirect_uri.strip():
+    if not isinstance(redirect_uri, str) or not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
+    if len(authorization_code) > 4096:
+        raise ValueError("authorization_code excede o limite permitido")
+    if len(redirect_uri) > 2048:
+        raise ValueError("redirect_uri excede o limite permitido")
+    _validate_ctrader_redirect_uri(redirect_uri)
 
     query = urlencode({
         "grant_type": "authorization_code",
@@ -38,7 +47,15 @@ def exchange_authorization_code(
         method="GET",
     )
     with urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+        raw = response.read(MAX_TOKEN_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_TOKEN_RESPONSE_BYTES:
+            raise ValueError("cTrader token response exceeds the allowed size")
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("cTrader token response is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("cTrader token response is invalid")
 
     if payload.get("errorCode"):
         raise RuntimeError(

@@ -119,3 +119,17 @@ def test_kill_switch_is_fail_safe_and_independent():
 def test_kill_switch_requires_reason_when_active():
     with pytest.raises(KillSwitchValidationError):
         KillSwitch().activate("")
+
+
+def test_kill_switch_serializes_concurrent_state_transitions():
+    from concurrent.futures import ThreadPoolExecutor
+    switch = KillSwitch()
+    def toggle(i):
+        if i % 2:
+            return switch.activate(f"reason-{i}")
+        return switch.deactivate()
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        states = list(pool.map(toggle, range(64)))
+    assert all(state.enabled is True or state.reason is None for state in states)
+    final = switch.state
+    assert final.enabled == (final.reason is not None)

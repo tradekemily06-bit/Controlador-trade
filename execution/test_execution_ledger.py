@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -67,3 +68,38 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_independent_ledger_instances_serialize_shared_file_state(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledgers = [ExecutionLedger(path) for _ in range(8)]
+
+    def reserve(index: int):
+        ledgers[index].reserve(f"req-{index:03d}")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(reserve, range(8)))
+
+    restored = ExecutionLedger(path)
+    assert restored.records() == tuple(f"req-{index:03d}" for index in range(8))
+
+
+def test_ledger_rejects_oversized_request_identity(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    with pytest.raises(ValueError, match="limite permitido"):
+        ledger.reserve("x" * 257)
+
+
+def test_ledger_rejects_oversized_persisted_file(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError, match="ledger de execução inválido"):
+        ExecutionLedger(path)
+
+
+def test_ledger_rejects_excessive_persisted_records(tmp_path):
+    import json
+    path = tmp_path / "ledger.json"
+    path.write_text(json.dumps({"states": {f"req-{i}": "ACCEPTED" for i in range(10001)}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="ledger de execução inválido|excede o limite"):
+        ExecutionLedger(path)

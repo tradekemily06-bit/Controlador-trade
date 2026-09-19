@@ -80,3 +80,9 @@ def test_decision_store_migrates_legacy_database_with_owner_columns(tmp_path):
     assert loaded[0].decision_id == "legacy"
     assert loaded[0].subject_id is None
     assert loaded[0].tenant_id is None
+
+
+def test_decision_store_database_is_private(tmp_path):
+    database = tmp_path / "decisions.sqlite3"
+    DecisionStore(str(database))
+    assert database.stat().st_mode & 0o077 == 0

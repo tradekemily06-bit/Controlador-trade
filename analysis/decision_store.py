@@ -58,6 +58,7 @@ class DecisionStore:
                         connection.execute(f"ALTER TABLE decisions ADD COLUMN {name} {sql_type}")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_tenant ON decisions(tenant_id)")
+            path.chmod(0o600)
         except (OSError, sqlite3.Error) as exc:
             raise RuntimeError("decision storage could not be initialized") from exc
 

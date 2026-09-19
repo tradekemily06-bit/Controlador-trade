@@ -45,3 +45,22 @@ def test_maintenance_cannot_be_scheduled_in_the_past():
             duration_minutes=10,
             now=datetime(2026, 9, 14, 20, 0, tzinfo=timezone.utc),
         )
+
+
+def test_persisted_maintenance_state_rejects_symlink(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text('{"current":null}', encoding="utf-8")
+    path = tmp_path / "maintenance.json"
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink não suportado neste ambiente")
+    manager = MaintenanceManager(path)
+    assert manager.status()["status"] == "CORRUPT"
+
+
+def test_persisted_maintenance_state_rejects_oversized_file(tmp_path):
+    path = tmp_path / "maintenance.json"
+    path.write_bytes(b"x" * (64 * 1024 + 1))
+    manager = MaintenanceManager(path)
+    assert manager.status()["status"] == "CORRUPT"

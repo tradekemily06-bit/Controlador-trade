@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
+
+from core.file_lock import exclusive_file_lock
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
+
+
+MAX_MEMORY_RECORDS = 10_000
+MAX_MEMORY_FILE_BYTES = 4 * 1024 * 1024
 
 
 class OperationMemoryStore:
@@ -59,23 +66,46 @@ class OperationMemoryStore:
     def save(self, memory: OperationMemory) -> None:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
-        payload = [self._serialize(record) for record in memory.records()]
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        records = memory.records()
+        if len(records) > MAX_MEMORY_RECORDS:
+            raise ValueError("memória excede o limite permitido.")
+        payload = [self._serialize(record) for record in records]
+        encoded = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+        if len(encoded) > MAX_MEMORY_FILE_BYTES:
+            raise ValueError("arquivo de memória excede o limite permitido.")
+        with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            try:
+                temporary.write_bytes(encoded)
+                with temporary.open("rb") as handle:
+                    os.fsync(handle.fileno())
+                os.replace(temporary, self.path)
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            finally:
+                try:
+                    if temporary.exists():
+                        temporary.unlink()
+                except OSError:
+                    pass
 
     def load(self) -> OperationMemory:
         memory = OperationMemory()
-        if not self.path.exists():
+        with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
+            if not self.path.exists():
+                return memory
+            try:
+                if self.path.stat().st_size > MAX_MEMORY_FILE_BYTES:
+                    raise ValueError("arquivo de memória excede o limite permitido.")
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                raise ValueError("arquivo de memória inválido.") from exc
+            if not isinstance(payload, list) or len(payload) > MAX_MEMORY_RECORDS:
+                raise ValueError("arquivo de memória deve conter uma lista válida dentro do limite.")
+            for item in payload:
+                memory.append(self._deserialize(item))
             return memory
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("arquivo de memória inválido.") from exc
-        if not isinstance(payload, list):
-            raise ValueError("arquivo de memória deve conter uma lista.")
-        for item in payload:
-            memory.append(self._deserialize(item))
-        return memory

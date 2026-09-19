@@ -58,3 +58,28 @@ def test_session_rejects_expired_token():
     observation = session.check_session()
 
     assert observation.status is BrokerSessionStatus.EXPIRED
+
+
+def test_oauth_redirect_uri_rejects_http_embedded_credentials_and_fragments():
+    invalid = (
+        "http://example.test/callback",
+        "https://user:pass@example.test/callback",
+        "https://example.test/callback#fragment",
+    )
+    for redirect_uri in invalid:
+        try:
+            CTraderOAuthConfig(client_id="39411", redirect_uri=redirect_uri)
+        except ValueError:
+            continue
+        raise AssertionError(f"unsafe redirect URI accepted: {redirect_uri}")
+
+
+def test_oauth_inputs_have_bounded_size():
+    from execution.ctrader_demo_runtime import exchange_authorization_code
+    from execution.ctrader_demo_connection import CTraderCredentials
+
+    credentials = CTraderCredentials(client_id="id", client_secret="secret")
+    with __import__("pytest").raises(ValueError, match="authorization_code"):
+        exchange_authorization_code(credentials, "x" * 4097, "https://example.test/callback")
+    with __import__("pytest").raises(ValueError, match="redirect_uri"):
+        exchange_authorization_code(credentials, "code", "https://example.test/" + "x" * 2048)

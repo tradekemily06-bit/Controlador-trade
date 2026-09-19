@@ -4,6 +4,7 @@ import secrets
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from threading import Lock
 
 MAX_BODY_BYTES = 256 * 1024
 RATE_LIMIT_REQUESTS = 60
@@ -32,6 +33,7 @@ class SecurityGuard:
         self.limit = limit
         self.window = window
         self._buckets: dict[str, _Bucket] = defaultdict(lambda: _Bucket(deque()))
+        self._lock = Lock()
 
     def request_id(self) -> str:
         return secrets.token_hex(16)
@@ -57,18 +59,19 @@ class SecurityGuard:
             self._buckets.pop(next(iter(self._buckets)))
 
     def allow(self, environ, now: float | None = None) -> bool:
-        current = time.monotonic() if now is None else now
-        cutoff = current - self.window
-        self._prune(cutoff)
-        key = self.client_key(environ)
-        bucket = self._buckets[key]
-        while bucket.timestamps and bucket.timestamps[0] <= cutoff:
-            bucket.timestamps.popleft()
-        if len(bucket.timestamps) >= self.limit:
-            return False
-        bucket.timestamps.append(current)
-        self._bound_clients()
-        return True
+        with self._lock:
+            current = time.monotonic() if now is None else now
+            cutoff = current - self.window
+            self._prune(cutoff)
+            key = self.client_key(environ)
+            bucket = self._buckets[key]
+            while bucket.timestamps and bucket.timestamps[0] <= cutoff:
+                bucket.timestamps.popleft()
+            if len(bucket.timestamps) >= self.limit:
+                return False
+            bucket.timestamps.append(current)
+            self._bound_clients()
+            return True
 
     @staticmethod
     def headers(request_id: str, script_nonce: str | None = None) -> list[tuple[str, str]]:

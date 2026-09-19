@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Callable
+from threading import RLock
 
 
 class KillSwitchValidationError(ValueError):
@@ -37,23 +38,28 @@ class KillSwitch:
         if on_change is not None and not callable(on_change):
             raise ValueError("on_change deve ser chamável ou None.")
         self._state = KillSwitchState()
+        self._lock = RLock()
         self._on_change = on_change
 
     @property
     def state(self) -> KillSwitchState:
-        return self._state
+        with self._lock:
+            return self._state
 
     def set_on_change(self, callback: Callable[[KillSwitchState], None] | None) -> None:
         """Attach persistence/observation after trusted state restoration."""
         if callback is not None and not callable(callback):
             raise ValueError("callback deve ser chamável ou None.")
-        self._on_change = callback
+        with self._lock:
+            self._on_change = callback
 
     def _commit(self, state: KillSwitchState) -> KillSwitchState:
-        self._state = state
-        if self._on_change is not None:
-            self._on_change(state)
-        return state
+        with self._lock:
+            self._state = state
+            callback = self._on_change
+            if callback is not None:
+                callback(state)
+            return state
 
     def activate(self, reason: str) -> KillSwitchState:
         return self._commit(KillSwitchState(enabled=True, reason=reason))
@@ -65,12 +71,16 @@ class KillSwitch:
         """Adopt trusted persisted state without invoking persistence callbacks."""
         if not isinstance(state, KillSwitchState):
             raise KillSwitchValidationError("state deve ser KillSwitchState.")
-        self._state = state
-        return state
+        with self._lock:
+            self._state = state
+            return state
 
     def allows_execution(self) -> bool:
-        return not self._state.enabled
+        with self._lock:
+            return not self._state.enabled
 
     def guard(self) -> None:
-        if self._state.enabled:
-            raise RuntimeError(f"execução bloqueada pelo kill switch: {self._state.reason}")
+        with self._lock:
+            state = self._state
+            if state.enabled:
+                raise RuntimeError(f"execução bloqueada pelo kill switch: {state.reason}")

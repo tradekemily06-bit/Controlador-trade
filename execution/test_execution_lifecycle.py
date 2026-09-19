@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -7,6 +8,18 @@ from execution.execution_lifecycle import (
     ExecutionLifecycleState,
     ExecutionLifecycleStore,
 )
+
+
+def test_lifecycle_rejects_symlinked_state(tmp_path: Path):
+    target = tmp_path / "target.json"
+    target.write_text("[]", encoding="utf-8")
+    path = tmp_path / "lifecycle.json"
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink não suportado neste ambiente")
+    with pytest.raises(ValueError, match="arquivo regular"):
+        ExecutionLifecycleStore(path)
 
 
 def test_lifecycle_survives_restart(tmp_path):
@@ -98,3 +111,37 @@ def test_reconciliation_cannot_override_non_unknown_state(tmp_path):
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
     with pytest.raises(ValueError, match="UNKNOWN"):
         store.reconcile("req-1", ExecutionLifecycleState.REJECTED, updated_at=now)
+
+
+def test_lifecycle_rejects_oversized_persisted_file(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
+
+
+def test_lifecycle_rejects_excessive_persisted_records(tmp_path):
+    import json
+    path = tmp_path / "lifecycle.json"
+    payload = [{"request_id": f"req-{i}", "state": "UNKNOWN", "updated_at": "2026-09-19T00:00:00+00:00", "message": ""} for i in range(10001)]
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
+
+
+def test_independent_lifecycle_instances_serialize_shared_file_state(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+
+    def write(index):
+        ExecutionLifecycleStore(path).put(
+            ExecutionLifecycleRecord(f"req-{index}", ExecutionLifecycleState.PENDING, now, "started")
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(write, range(32)))
+
+    records = ExecutionLifecycleStore(path).records()
+    assert {record.request_id for record in records} == {f"req-{i}" for i in range(32)}

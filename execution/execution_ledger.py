@@ -18,6 +18,11 @@ class ExecutionLedgerStatus(str, Enum):
     RECONCILED_NOT_EXECUTED = "RECONCILED_NOT_EXECUTED"
 
 
+MAX_IDENTIFIER_LENGTH = 256
+MAX_LEDGER_RECORDS = 10_000
+MAX_LEDGER_FILE_BYTES = 4 * 1024 * 1024
+
+
 class ExecutionLedger:
     """Persistent request state, REAL identity and reconciliation evidence."""
 
@@ -41,6 +46,8 @@ class ExecutionLedger:
             self._execution_context = {}
             return
         try:
+            if self.path.stat().st_size > MAX_LEDGER_FILE_BYTES:
+                raise ValueError("ledger de execução inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
@@ -67,6 +74,8 @@ class ExecutionLedger:
             if not isinstance(states_payload, dict) or not isinstance(evidence_payload, dict) or not isinstance(context_payload, dict):
                 raise ValueError("ledger de execução inválido.")
 
+        if isinstance(states_payload, dict) and len(states_payload) > MAX_LEDGER_RECORDS:
+            raise ValueError("ledger de execução excede o limite permitido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in states_payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
@@ -121,7 +130,10 @@ class ExecutionLedger:
             "reconciliation_evidence": {key: self._reconciliation_evidence[key] for key in sorted(self._reconciliation_evidence)},
             "execution_context": {key: self._execution_context[key] for key in sorted(self._execution_context)},
         }
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        encoded = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        if len(encoded) > MAX_LEDGER_FILE_BYTES:
+            raise ValueError("ledger de execução excede o limite permitido.")
+        temporary.write_bytes(encoded)
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
@@ -175,8 +187,15 @@ class ExecutionLedger:
 
     def reserve_real(self, request_id: str, *, broker_id: str, symbol: str) -> None:
         self._validate_id(request_id)
-        if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("identidade REAL de broker e símbolo é obrigatória.")
+        if (
+            not isinstance(broker_id, str)
+            or not broker_id.strip()
+            or not isinstance(symbol, str)
+            or not symbol.strip()
+            or len(broker_id.strip()) > MAX_IDENTIFIER_LENGTH
+            or len(symbol.strip()) > MAX_IDENTIFIER_LENGTH
+        ):
+            raise ValueError("identidade REAL de broker e símbolo é obrigatória ou excede o limite.")
         def mutation() -> None:
             if request_id in self._states:
                 raise ValueError("request_id já possui estado; replay REAL recusado.")
@@ -196,8 +215,8 @@ class ExecutionLedger:
 
     def mark_accepted_real(self, request_id: str, *, external_id: str) -> None:
         self._validate_id(request_id)
-        if not isinstance(external_id, str) or not external_id.strip():
-            raise ValueError("external_id REAL é obrigatório.")
+        if not isinstance(external_id, str) or not external_id.strip() or len(external_id.strip()) > MAX_IDENTIFIER_LENGTH:
+            raise ValueError("external_id REAL é obrigatório e deve respeitar o limite.")
         normalized_external_id = external_id.strip()
         def mutation() -> None:
             current = self._states.get(request_id)
@@ -223,7 +242,14 @@ class ExecutionLedger:
         self._validate_id(request_id)
         if evidence_id is None or evidence_source is None:
             raise ValueError("reconciliação exige evidence_id e evidence_source autoritativos")
-        if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
+        if (
+            not isinstance(evidence_id, str)
+            or not evidence_id.strip()
+            or not isinstance(evidence_source, str)
+            or not evidence_source.strip()
+            or len(evidence_id.strip()) > MAX_IDENTIFIER_LENGTH
+            or len(evidence_source.strip()) > MAX_IDENTIFIER_LENGTH
+        ):
             raise ValueError("evidência externa inválida")
         normalized_evidence_id = evidence_id.strip()
         normalized_evidence_source = evidence_source.strip()
@@ -246,6 +272,8 @@ class ExecutionLedger:
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        if len(request_id.strip()) > MAX_IDENTIFIER_LENGTH:
+            raise ValueError("request_id excede o limite permitido.")
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
         self._validate_id(request_id)

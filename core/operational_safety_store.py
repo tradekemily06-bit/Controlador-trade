@@ -11,6 +11,13 @@ from .file_lock import exclusive_file_lock
 from .kill_switch import KillSwitch, KillSwitchState
 
 
+MAX_SAFETY_FILE_BYTES = 4 * 1024 * 1024
+MAX_SAFETY_AUDIT_RECORDS = 10_000
+MAX_SAFETY_EXECUTION_AUDIT_RECORDS = 10_000
+MAX_SAFETY_IDENTIFIER_LENGTH = 256
+MAX_SAFETY_MESSAGE_LENGTH = 4_096
+
+
 class OperationalSafetyStore:
     """Persists validated operational audit and kill-switch state atomically."""
 
@@ -80,18 +87,32 @@ class OperationalSafetyStore:
         if not self.path.exists():
             return {"audit": [], "kill_switch": {}, "execution_audit": []}
         try:
+            stat = self.path.lstat()
+            if not self.path.is_file() or self.path.is_symlink():
+                raise ValueError("estado de segurança deve ser um arquivo regular.")
+            if stat.st_size > MAX_SAFETY_FILE_BYTES:
+                raise ValueError("estado de segurança inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
         if not isinstance(payload, dict):
             raise ValueError("estado de segurança deve ser um objeto.")
+        audit_items = payload.get("audit", [])
+        execution_items = payload.get("execution_audit", [])
+        if not isinstance(audit_items, list) or len(audit_items) > MAX_SAFETY_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
+        if not isinstance(execution_items, list) or len(execution_items) > MAX_SAFETY_EXECUTION_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
         return payload
 
     def _write_payload(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > MAX_SAFETY_FILE_BYTES:
+            raise ValueError("estado de segurança excede o limite permitido.")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
-            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            temporary.write_bytes(encoded)
             with temporary.open("r+b") as handle:
                 handle.flush()
                 os.fsync(handle.fileno())

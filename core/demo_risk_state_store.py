@@ -19,6 +19,7 @@ class DemoRiskStateUnavailable(RuntimeError):
 
 class DemoRiskStateStore:
     VERSION = 1
+    MAX_FILE_BYTES = 4 * 1024 * 1024
     TRUSTED_SOURCES = frozenset({"demo-account-adapter", "reconciliation"})
     DEFAULT_MAX_AGE_SECONDS = 30.0
     MAX_FUTURE_SKEW_SECONDS = 2.0
@@ -69,7 +70,14 @@ class DemoRiskStateStore:
         if not self.path.exists():
             raise DemoRiskStateUnavailable("estado de risco DEMO ainda não foi sincronizado")
         try:
+            stat = self.path.lstat()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise DemoRiskStateUnavailable("estado de risco DEMO deve ser um arquivo regular")
+            if stat.st_size > self.MAX_FILE_BYTES:
+                raise DemoRiskStateUnavailable("estado de risco DEMO excede o limite permitido")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except DemoRiskStateUnavailable:
+            raise
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise DemoRiskStateUnavailable("estado de risco DEMO indisponível") from exc
         if not isinstance(payload, dict) or payload.get("version") != self.VERSION:
@@ -128,12 +136,23 @@ class DemoRiskStateStore:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         with self._lock():
             try:
-                temporary.write_text(
-                    json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8"
-                )
-                with temporary.open("rb") as handle:
+                encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+                if len(encoded) > self.MAX_FILE_BYTES:
+                    raise ValueError("estado de risco DEMO excede o limite permitido")
+                temporary.write_bytes(encoded)
+                with temporary.open("r+b") as handle:
+                    handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, self.path)
+                try:
+                    directory_fd = os.open(self.path.parent, os.O_RDONLY)
+                except OSError:
+                    directory_fd = None
+                if directory_fd is not None:
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
             finally:
                 try:
                     if temporary.exists():

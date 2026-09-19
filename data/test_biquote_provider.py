@@ -48,8 +48,9 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
 
     def fake_urlopen(request, timeout):
         class JsonResponse(FakeResponse):
-            def read(self):
-                return b""
+            def read(self, _size=-1):
+                import json
+                return json.dumps(self.payload).encode("utf-8")
 
         import json
 
@@ -77,18 +78,15 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-            def read(self):
-                return b""
+            def read(self, _size=-1):
+                import json
+                return json.dumps(self.payload).encode("utf-8")
 
         context = Context()
         context.payload = payload
         return context
 
-    def fake_json_load(response):
-        return response.payload
-
     monkeypatch.setattr(module, "urlopen", fake_open)
-    monkeypatch.setattr(module.json, "load", fake_json_load)
 
     result = BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "5m", 10))
 
@@ -100,3 +98,37 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
 def test_biquote_provider_rejects_unknown_timeframe():
     with pytest.raises(ValueError, match="unsupported BiQuote timeframe"):
         BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "2m", 10))
+
+
+
+def test_biquote_provider_rejects_url_injection_symbol(monkeypatch):
+    import data.biquote_provider as module
+    called = False
+
+    def fake_open(request, timeout):
+        nonlocal called
+        called = True
+        raise AssertionError("network must not be reached for an invalid symbol")
+
+    monkeypatch.setattr(module, "urlopen", fake_open)
+    with pytest.raises(ValueError, match="invalid BiQuote symbol"):
+        BiQuoteProvider().fetch(MarketDataRequest("EURUSD/../../secret", "5m", 10))
+    assert called is False
+
+
+def test_biquote_provider_rejects_oversized_response(monkeypatch):
+    import data.biquote_provider as module
+
+    class OversizedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self, size=-1):
+            return b"x" * (size + 1)
+
+    monkeypatch.setattr(module, "urlopen", lambda request, timeout: OversizedResponse())
+    with pytest.raises(ValueError, match="response exceeds"):
+        BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "5m", 10))
