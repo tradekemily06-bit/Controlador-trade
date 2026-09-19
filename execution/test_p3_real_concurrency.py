@@ -1653,3 +1653,32 @@ def test_real_reconciliation_race_after_final_admission_check_never_dispatches(t
     assert adapter.calls == 0
     assert ExecutionLedger(ledger_path).status("real-reconciliation-race") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ExecutionLifecycleStore(lifecycle_path).get("real-reconciliation-race").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_kill_switch_activation_cannot_interleave_final_execution_window(tmp_path: Path):
+    """The mutable kill switch cannot activate between final check and adapter dispatch."""
+    from core.kill_switch import KillSwitch
+
+    kill_switch = KillSwitch()
+    entered = threading.Event()
+    release = threading.Event()
+    activation_finished = threading.Event()
+
+    def activation_worker():
+        kill_switch.activate("emergency")
+        activation_finished.set()
+
+    worker = Thread(target=activation_worker)
+    with kill_switch.execution_window():
+        assert kill_switch.allows_execution() is True
+        entered.set()
+        worker.start()
+        assert entered.is_set()
+        # Activation must wait while the final execution window is held.
+        assert not activation_finished.wait(0.15)
+        release.set()
+
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert activation_finished.is_set()
+    assert kill_switch.state.enabled is True
