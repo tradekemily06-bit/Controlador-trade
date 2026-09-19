@@ -7,6 +7,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.kill_switch import KillSwitch
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.request_identity import validate_request_id
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -58,7 +59,9 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
-        if not isinstance(request_id, str) or not request_id.strip():
+        try:
+            validate_request_id(request_id)
+        except ValueError:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
@@ -72,7 +75,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if not isinstance(request.request_id, str) or request.request_id != request_id:
+        try:
+            validate_request_id(request.request_id)
+        except ValueError:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request.request_id inválido.")
+        if request.request_id != request_id:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id externo deve ser idêntico ao request.request_id.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
