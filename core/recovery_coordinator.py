@@ -81,11 +81,32 @@ class RecoveryCoordinator:
             ):
                 inconsistent.add(record.request_id)
 
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+
         for request_id, ledger_status in ledger_states.items():
+            record = lifecycle_by_id.get(request_id)
+            if record is None:
+                inconsistent.add(request_id)
+                continue
             if ledger_status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-                record = next((item for item in lifecycle if item.request_id == request_id), None)
-                if record is None or record.state is not ExecutionLifecycleState.UNKNOWN:
+                if record.state is not ExecutionLifecycleState.UNKNOWN:
                     inconsistent.add(request_id)
+            elif ledger_status is ExecutionLedgerStatus.ACCEPTED:
+                if record.state is not ExecutionLifecycleState.ACCEPTED:
+                    inconsistent.add(request_id)
+            elif ledger_status is ExecutionLedgerStatus.REJECTED:
+                if record.state is not ExecutionLifecycleState.REJECTED:
+                    inconsistent.add(request_id)
+            elif ledger_status is ExecutionLedgerStatus.RECONCILED_EXECUTED:
+                if record.state is not ExecutionLifecycleState.ACCEPTED:
+                    inconsistent.add(request_id)
+            elif ledger_status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+                if record.state is not ExecutionLifecycleState.REJECTED:
+                    inconsistent.add(request_id)
+
+        for request_id in lifecycle_by_id:
+            if request_id not in ledger_states:
+                inconsistent.add(request_id)
 
         if unknown or pending or inconsistent:
             details = []
