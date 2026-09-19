@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-import re
 from enum import Enum
 from pathlib import Path
+
+from core.request_identity import REQUEST_ID_PATTERN, validate_request_id
 
 try:
     import fcntl
@@ -45,7 +46,7 @@ class ExecutionLedger:
     @staticmethod
     def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
         if isinstance(payload, list):
-            if any(not isinstance(item, str) or not ExecutionLedger.REQUEST_ID_PATTERN.fullmatch(item) for item in payload):
+            if any(not isinstance(item, str) or not REQUEST_ID_PATTERN.fullmatch(item) for item in payload):
                 raise ValueError("ledger de execução inválido.")
             return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}
         if not isinstance(payload, dict):
@@ -192,8 +193,7 @@ class ExecutionLedger:
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
-        if not isinstance(request_id, str) or not REQUEST_ID_PATTERN.fullmatch(request_id):
-            raise ValueError("request_id inválido.")
+        validate_request_id(request_id)
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
         self._validate_id(request_id)
