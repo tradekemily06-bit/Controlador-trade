@@ -33,7 +33,7 @@ class BrokerRegistry:
 
     def register(self, name: str, adapter: BrokerAdapter, *, adapter_id: str | None = None) -> None:
         with self._lock:
-        normalized = self._normalize_name(name)
+            normalized = self._normalize_name(name)
         if normalized in self._adapters:
             raise BrokerRegistryError(f"adapter já registrado: {normalized}")
         if not callable(getattr(adapter, "execute", None)):
@@ -56,7 +56,7 @@ class BrokerRegistry:
 
     def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
         with self._lock:
-        if capability is not _BROKER_GATEWAY_CAPABILITY:
+            if capability is not _BROKER_GATEWAY_CAPABILITY:
             raise BrokerRegistryError("acesso ao adapter exige a barreira do broker gateway")
         normalized = self._normalize_name(name)
         try:
@@ -66,7 +66,7 @@ class BrokerRegistry:
 
     def adapter_id(self, name: str) -> str:
         with self._lock:
-        """Return immutable adapter identity metadata without exposing the adapter."""
+            """Return immutable adapter identity metadata without exposing the adapter."""
         normalized = self._normalize_name(name)
         try:
             return self._adapter_ids[normalized]
@@ -75,13 +75,13 @@ class BrokerRegistry:
 
     def is_available(self, name: str) -> bool:
         with self._lock:
-        # Availability is intentionally metadata-only and cannot return the adapter.
+            # Availability is intentionally metadata-only and cannot return the adapter.
         adapter = self._get_for_gateway(name, capability=_BROKER_GATEWAY_CAPABILITY)
         return bool(adapter.is_available())
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         with self._lock:
-        return tuple(
+            return tuple(
             BrokerAdapterInfo(
                 name=name,
                 available=bool(adapter.is_available()),
@@ -92,11 +92,11 @@ class BrokerRegistry:
 
     def names(self) -> tuple[str, ...]:
         with self._lock:
-        return tuple(self._adapters)
+            return tuple(self._adapters)
 
     def as_mapping(self) -> Mapping[str, BrokerAdapterInfo]:
         with self._lock:
-        """Return metadata only; executable adapters never leave the registry."""
+            """Return metadata only; executable adapters never leave the registry."""
         return {
             name: BrokerAdapterInfo(
                 name=name,
