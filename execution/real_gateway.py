@@ -73,13 +73,13 @@ class RealExecutionGateway:
                 safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not isinstance(release, RealReleaseClosure) or not release.released:
+        if type(release) is not RealReleaseClosure or not release.released:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "release REAL não está formalmente fechado.")
-        if not authorization.active:
+        if type(authorization) is not RealExecutionAuthorization or not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
-        if not admission.admitted:
+        if type(admission) is not RealAdmission or not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
-        if not safety.ready:
+        if type(safety) is not RealSafetyReport or not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
