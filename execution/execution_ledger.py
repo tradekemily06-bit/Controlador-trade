@@ -36,11 +36,32 @@ class ExecutionLedger:
         self._reconciliation: dict[str, dict[str, str]] = {}
         self._load()
 
+    @staticmethod
+    def _reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("ledger de execução contém chaves JSON duplicadas.")
+            result[key] = value
+        return result
+
     def _load(self) -> None:
+        if self.path.is_symlink():
+            raise ValueError("ledger de execução não pode ser um link simbólico.")
         if not self.path.exists():
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(self.path, flags)
+            try:
+                with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                    payload = json.load(stream, object_pairs_hook=self._reject_duplicate_keys)
+                fd = None
+            finally:
+                if fd is not None:
+                    os.close(fd)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states, self._external_bindings, self._reconciliation = self._decode(payload)
@@ -141,6 +162,16 @@ class ExecutionLedger:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                # Some filesystems/platforms do not support directory fsync;
+                # the file itself was already fsynced before replacement.
+                pass
         except Exception:
             try:
                 temporary.unlink()
