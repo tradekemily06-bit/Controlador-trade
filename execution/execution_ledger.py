@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from enum import Enum
 from pathlib import Path
 
@@ -58,20 +59,32 @@ class ExecutionLedger:
         return states
 
     def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         payload = {key: self._states[key].value for key in sorted(self._states)}
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
+        lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, flags, 0o600)
+        with os.fdopen(lock_fd, "a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
