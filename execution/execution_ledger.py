@@ -141,6 +141,14 @@ class ExecutionLedger:
         self._load()
         return tuple(sorted(self._states))
 
+    def uncertain_request_ids(self) -> tuple[str, ...]:
+        self._load()
+        return tuple(sorted(
+            request_id
+            for request_id, status in self._states.items()
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+        ))
+
     @staticmethod
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
