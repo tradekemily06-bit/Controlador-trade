@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-from core.models import Signal\nfrom execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.remote_mt5_bridge import BridgeHealth, SafeRemoteMT5Executor
 
 
@@ -18,8 +19,6 @@ class FakeBridge:
 
 
 def request(mode: ExecutionMode = ExecutionMode.DEMO) -> ExecutionRequest:
-    from core.models import Signal
-
     return ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
@@ -75,8 +74,6 @@ def test_remote_bridge_rejects_malformed_execution_result():
 
 
 def test_remote_bridge_rejects_request_subclass_before_health():
-    from core.models import Signal
-
     class RequestOverride(ExecutionRequest):
         pass
 
