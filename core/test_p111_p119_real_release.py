@@ -45,6 +45,8 @@ class NoExternalIdAdapter:
 
 
 class UnknownAdapter:
+    adapter_id = "fake-adapter"
+
     def is_available(self):
         return True
 
