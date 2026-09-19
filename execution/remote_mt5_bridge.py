@@ -29,13 +29,23 @@ class SafeRemoteMT5Executor:
     def __init__(self, bridge: RemoteMT5Bridge) -> None:
         self._bridge = bridge
 
+    def is_available(self) -> bool:
+        try:
+            health = self._bridge.health()
+        except Exception:
+            return False
+        return bool(health.available and health.demo_account)
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
 
-        health = self._bridge.health()
+        try:
+            health = self._bridge.health()
+        except Exception as exc:
+            return ExecutionResult(False, f"ponte MT5 bloqueada: falha de health check: {exc}")
         if not health.available or not health.demo_account:
             return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
 
