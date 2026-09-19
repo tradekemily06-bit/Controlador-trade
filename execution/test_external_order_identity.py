@@ -82,7 +82,7 @@ def test_real_gateway_collision_becomes_unknown_without_resubmission(tmp_path: P
 
     registry = BrokerRegistry()
     adapter = ExternalIdAdapter("order-42")
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="adapter-1")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path), KillSwitch())
     auth = _auth()
     admission, safety = _admit_and_safety()
