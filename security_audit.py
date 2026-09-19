@@ -76,6 +76,10 @@ class SecurityAudit:
             path = Path(self._database_path or "")
             if path.parent != Path("."):
                 path.parent.mkdir(parents=True, exist_ok=True)
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise OSError("security audit database must be a regular file")
             with self._db_lock, self._connect() as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
                 connection.execute("PRAGMA synchronous=FULL")
@@ -92,6 +96,13 @@ class SecurityAudit:
                     )
                     """
                 )
+            # Security audit metadata must not become world-readable through a
+            # permissive process umask. The database contains request paths and
+            # pseudonymous client identifiers.
+            try:
+                os.chmod(path, 0o600)
+            except OSError as exc:
+                raise OSError("security audit database permissions could not be hardened") from exc
         except (OSError, sqlite3.Error) as exc:
             self._database_path = None
             if self._require_durable:
