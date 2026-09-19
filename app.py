@@ -23,6 +23,8 @@ WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
+MAX_QUERY_STRING_BYTES = 8 * 1024
+MAX_REPLAY_CASES = 100
 
 
 def _build_authoritative_risk_provider():
@@ -136,6 +138,9 @@ def _read_json(environ) -> dict:
 
 
 def _query_limit(environ, default: int, maximum: int = 100) -> int:
+    raw_query = environ.get("QUERY_STRING") or ""
+    if len(str(raw_query).encode("utf-8", "replace")) > MAX_QUERY_STRING_BYTES:
+        raise ValueError("query string excede o limite permitido")
     if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
         raise ValueError("maximum deve ser maior que zero")
     if not isinstance(default, int) or isinstance(default, bool) or default < 1 or default > maximum:
@@ -242,6 +247,7 @@ def application(environ, start_response):
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list): raise ValueError("cases deve ser uma lista")
+            if len(cases) > MAX_REPLAY_CASES: raise ValueError("cases excede o limite permitido")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases, **owner_kwargs), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50), **owner_kwargs)}, request_id, environ)
         if path == "/api/statistics" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(**owner_kwargs), request_id, environ)
