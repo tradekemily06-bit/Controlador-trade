@@ -80,3 +80,12 @@ def test_audit_rejects_unbounded_internal_inputs():
         audit.record(request_id="req", method="GET", path="/", status=99, client_key="client")
     with pytest.raises(ValueError, match="método"):
         audit.record(request_id="req", method="X" * 17, path="/", status=200, client_key="client")
+
+
+def test_persistent_audit_rejects_symlink_database(tmp_path):
+    target = tmp_path / "real.sqlite3"
+    target.write_bytes(b"not-a-database")
+    link = tmp_path / "security-audit.sqlite3"
+    link.symlink_to(target)
+    with pytest.raises(RuntimeError, match="durable security audit storage"):
+        SecurityAudit(database_path=str(link), require_durable=True)
