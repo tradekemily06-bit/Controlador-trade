@@ -19,6 +19,8 @@ class ExecutionLedgerStatus(str, Enum):
 
 
 MAX_IDENTIFIER_LENGTH = 256
+MAX_LEDGER_RECORDS = 10_000
+MAX_LEDGER_FILE_BYTES = 4 * 1024 * 1024
 
 
 class ExecutionLedger:
