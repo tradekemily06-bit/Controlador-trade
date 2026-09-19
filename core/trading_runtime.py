@@ -69,14 +69,22 @@ class TradingRuntime:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
         if checkpoint_store is not None and not isinstance(checkpoint_store, RuntimeCheckpointStore):
             raise ValueError("checkpoint_store inválido.")
-        if checkpoint_store is not None and (not isinstance(session_id, str) or not session_id.strip()):
-            raise ValueError("session_id é obrigatório quando checkpoint_store é usado.")
+        if checkpoint_store is not None and (
+            not isinstance(session_id, str) or not session_id.strip() or session_id != session_id.strip()
+        ):
+            raise ValueError("session_id é obrigatório e deve ser canônico quando checkpoint_store é usado.")
         if request_id_factory is None:
             request_id_factory = lambda index: f"runtime-{index:06d}"
 
         cycles: list[RuntimeCycle] = []
         stopped = False
         stop_reason = None
+
+        if checkpoint_store is not None:
+            checkpoint_store.begin_session(
+                session_id,
+                updated_at=datetime.now(timezone.utc),
+            )
 
         for index in range(1, max_cycles + 1):
             orchestration = self.orchestrator.evaluate(
