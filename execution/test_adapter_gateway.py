@@ -95,3 +95,24 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
     assert result.accepted is False
     assert result.execution is None
     assert result.dispatch_attempted is False
+
+
+def test_adapter_gateway_rejects_malformed_public_request_without_touching_adapter():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", None)
+    assert result.accepted is False
+    assert result.dispatch_attempted is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_rejects_forged_real_capability():
+    adapter = FakeAdapter()
+    from execution.ports import ExecutionRequest
+    from core.models import Signal
+    real_request = ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+    import pytest
+    with pytest.raises(PermissionError, match="capacidade de despacho REAL inválida"):
+        gateway_with(adapter).execute_real("fake", real_request, capability=object())
+
+    assert adapter.calls == 0
