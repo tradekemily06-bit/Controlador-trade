@@ -332,10 +332,6 @@ class RealExecutionGateway:
 
     def reconcile_unknown_with_evidence(self, request_id: str, *, executed: bool,
                                         evidence_id: str, evidence_source: str) -> None:
-        with self._configuration_lock:
-            if self._reconciliation_started:
-                raise RuntimeError("reconciliação REAL já iniciou neste gateway")
-            self._reconciliation_started = True
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
@@ -345,6 +341,10 @@ class RealExecutionGateway:
             raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
+                with self._configuration_lock:
+                    if self._reconciliation_started:
+                        raise RuntimeError("reconciliação REAL já iniciou neste gateway")
+                    self._reconciliation_started = True
                 status = self._ledger.status(request_id)
                 if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                     raise ValueError("request_id não está em estado incerto reconciliável.")
