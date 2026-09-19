@@ -122,3 +122,23 @@ def test_executor_rejection_is_not_reported_as_accepted():
     result = gateway.execute("req-1", request())
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_blocks_future_execution_after_unknown_persistence_failure():
+    from execution.execution_lifecycle import ExecutionLifecycleState
+
+    class BrokenLifecycle:
+        def get(self, _request_id):
+            return None
+
+        def put(self, _record):
+            raise OSError("storage unavailable")
+
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), lifecycle=BrokenLifecycle())
+    result = gateway.execute("req-persist", request(request_id="req-persist"))
+    blocked = gateway.execute("req-next", request(request_id="req-next"))
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert blocked.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()
