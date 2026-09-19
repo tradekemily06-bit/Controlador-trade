@@ -12,6 +12,7 @@ from core.p121_external_order_reconciliation import (
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from core.models import Signal
+from core.kill_switch import KillSwitch
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import (
@@ -50,6 +51,7 @@ class RealExecutionGateway:
         adapter_gateway: BrokerAdapterGateway,
         ledger: ExecutionLedger,
         lifecycle: ExecutionLifecycleStore | None = None,
+        kill_switch: KillSwitch | None = None,
     ) -> None:
         if type(adapter_gateway) is not BrokerAdapterGateway:
             raise ValueError("adapter_gateway inválido.")
@@ -60,6 +62,9 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
+        if kill_switch is not None and type(kill_switch) is not KillSwitch:
+            raise ValueError("kill_switch inválido.")
+        self._kill_switch = kill_switch or KillSwitch()
         self._locks = RealExecutionLocks(ledger.path)
 
     @staticmethod
@@ -161,6 +166,14 @@ class RealExecutionGateway:
             )
         try:
             with self._locks.acquire(request_id):
+                # Re-read the live kill switch after entering the REAL lock.
+                # The safety report is a snapshot; it must never outrank a
+                # newer kill-switch activation immediately before dispatch.
+                if not self._kill_switch.allows_execution():
+                    return RealGatewayResult(
+                        RealGatewayStatus.BLOCKED,
+                        f"execução REAL bloqueada pelo kill switch: {self._kill_switch.state.reason}",
+                    )
                 # Pin the REAL adapter only after entering the same lock that
                 # protects reservation and dispatch. This removes the
                 # authorization-to-capability TOCTOU window.
