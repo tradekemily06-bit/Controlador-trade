@@ -97,6 +97,21 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
     assert result[0].timestamp == datetime(2026, 9, 10, 18, 0, tzinfo=timezone.utc)
 
 
+def test_biquote_provider_rejects_unsafe_symbol_format(monkeypatch):
+    import data.biquote_provider as module
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("network must not be reached for an unsafe symbol")
+
+    monkeypatch.setattr(module, "urlopen", fail_if_called)
+
+    with pytest.raises(ValueError, match="unsupported BiQuote symbol format"):
+        BiQuoteProvider().fetch(MarketDataRequest("../etc/passwd", "5m", 10))
+
+    with pytest.raises(ValueError, match="unsupported BiQuote symbol format"):
+        BiQuoteProvider().fetch(MarketDataRequest("file://etc/passwd", "5m", 10))
+
+
 def test_biquote_provider_rejects_unknown_timeframe():
     with pytest.raises(ValueError, match="unsupported BiQuote timeframe"):
         BiQuoteProvider().fetch(MarketDataRequest("EURUSD", "2m", 10))

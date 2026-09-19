@@ -14,6 +14,8 @@ from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
+from security.input_validation import InputValidationError, validate_json_value, _reject_constant, _reject_duplicate_pairs
+from security.local_auth import LocalAuth
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
@@ -25,6 +27,7 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
+AUTH = LocalAuth()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -42,20 +45,23 @@ def _json_response(start_response, status: HTTPStatus, payload: dict, request_id
 
 
 def _read_json(environ) -> dict:
+    content_type = str(environ.get("CONTENT_TYPE") or "").split(";", 1)[0].strip().lower()
+    if content_type not in {"application/json", ""}:
+        raise InputValidationError("apenas application/json é aceito; uploads/multipart são rejeitados")
     raw_length = environ.get("CONTENT_LENGTH") or "0"
     try:
         length = int(raw_length)
     except (TypeError, ValueError) as exc:
-        raise ValueError("content-length inválido") from exc
+        raise InputValidationError("content-length inválido") from exc
     if length < 0 or length > MAX_BODY_BYTES:
-        raise ValueError("payload excede o limite permitido")
+        raise InputValidationError("payload excede o limite permitido")
     raw = environ["wsgi.input"].read(length)
     if len(raw) > MAX_BODY_BYTES:
-        raise ValueError("payload excede o limite permitido")
-    data = json.loads(raw or b"{}")
+        raise InputValidationError("payload excede o limite permitido")
+    data = json.loads(raw or b"{}", parse_constant=_reject_constant, object_pairs_hook=_reject_duplicate_pairs)
     if not isinstance(data, dict):
-        raise ValueError("payload deve ser um objeto JSON")
-    return data
+        raise InputValidationError("payload deve ser um objeto JSON")
+    return validate_json_value(data)
 
 
 def _query_limit(environ, default: int, maximum: int = 100) -> int:
@@ -66,6 +72,13 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     if not 1 <= limit <= maximum:
         raise ValueError(f"limit deve estar entre 1 e {maximum}")
     return limit
+
+
+def _required_bool(data: dict, key: str) -> bool:
+    value = data.get(key, False)
+    if not isinstance(value, bool):
+        raise InputValidationError(f"{key} deve ser booleano")
+    return value
 
 
 def _authorize_internal_update(environ) -> tuple[bool, str]:
@@ -108,12 +121,57 @@ def application(environ, start_response):
     request_id = SECURITY.request_id()
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
+    if path == "/api/login" and method == "POST":
+        try:
+            data = _read_json(environ)
+            session = AUTH.login(str(data.get("username", "")), str(data.get("password", "")), SECURITY.client_key(environ))
+            if session is None:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if not AUTH.ready else HTTPStatus.UNAUTHORIZED
+                return _json_response(start_response, status, {"error": "autenticação recusada", "request_id": request_id}, request_id, environ)
+            cookie_secure = "; Secure" if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"} else ""
+            headers = [("Set-Cookie", f"ct_session={session.token_hash}; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict{cookie_secure}")]
+            body = json.dumps({"authenticated": True, "username": session.username, "csrf_token": session.csrf_token, "request_id": request_id}).encode("utf-8")
+            headers.extend([("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))])
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        except (TypeError, ValueError, json.JSONDecodeError, InputValidationError):
+            return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "entrada inválida", "request_id": request_id}, request_id, environ)
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     try:
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"ok": True} if AUTH.enabled else {"ok": True, **SERVICE.system_status()}, request_id, environ)
+        if AUTH.enabled and path != "/api/login":
+            raw_cookie = str(environ.get("HTTP_COOKIE", ""))
+            token = next((part.split("=", 1)[1] for part in raw_cookie.split(";") if part.strip().startswith("ct_session=") and "=" in part), "")
+            session = AUTH.authenticate(token.strip())
+            if session is None:
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "autenticação necessária", "request_id": request_id}, request_id, environ)
+            if method in {"POST", "PUT", "PATCH", "DELETE"} and path != "/api/logout":
+                if not AUTH.csrf_valid(session, str(environ.get("HTTP_X_CSRF_TOKEN", ""))):
+                    return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "CSRF inválido", "request_id": request_id}, request_id, environ)
+        if path == "/api/logout" and method == "POST":
+            raw_cookie = str(environ.get("HTTP_COOKIE", ""))
+            token = next((part.split("=", 1)[1] for part in raw_cookie.split(";") if part.strip().startswith("ct_session=") and "=" in part), "")
+            AUTH.logout(token.strip())
+            cookie_secure = "; Secure" if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"} else ""
+            headers = [("Set-Cookie", f"ct_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{cookie_secure}")]
+            body = json.dumps({"authenticated": False, "request_id": request_id}).encode("utf-8")
+            headers.extend([("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))])
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        if path == "/api/session" and method == "GET":
+            raw_cookie = str(environ.get("HTTP_COOKIE", ""))
+            token = next((part.split("=", 1)[1] for part in raw_cookie.split(";") if part.strip().startswith("ct_session=") and "=" in part), "")
+            session = AUTH.authenticate(token.strip())
+            if session is None:
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"authenticated": False, "request_id": request_id}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"authenticated": True, "username": session.username, "csrf_token": session.csrf_token, "request_id": request_id}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
@@ -180,14 +238,14 @@ def application(environ, start_response):
             source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
             if source is None:
                 raise ValueError("source_id não encontrado")
-            updated = SERVICE.validate_learning_source(source, content_verified=bool(data.get("content_verified", False)), security_checked=bool(data.get("security_checked", False)))
+            updated = SERVICE.validate_learning_source(source, content_verified=_required_bool(data, "content_verified"), security_checked=_required_bool(data, "security_checked"))
             return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/sources/admit" and method == "POST":
             data = _read_json(environ)
             source = SERVICE.learning_sources.get(str(data.get("source_id", "")))
             if source is None:
                 raise ValueError("source_id não encontrado")
-            updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=bool(data.get("knowledge_validated", False)))
+            updated = SERVICE.admit_learning_knowledge(source, knowledge_validated=_required_bool(data, "knowledge_validated"))
             return _json_response(start_response, HTTPStatus.OK, {"source": {**updated.__dict__, "source_type": updated.source_type.value, "status": updated.status.value}, "operation_eligible": False}, request_id, environ)
         if path == "/api/learning/observations" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"observations": SERVICE.learning_observations_view(), "execution_allowed": False}, request_id, environ)
@@ -209,8 +267,10 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (TypeError, ValueError, json.JSONDecodeError, InputValidationError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
+    except Exception:
+        return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "erro interno", "request_id": request_id}, request_id, environ)
 
     headers = [("Content-Type", "text/plain; charset=utf-8")]
     headers.extend(SECURITY.headers(request_id))

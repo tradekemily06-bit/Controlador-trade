@@ -69,3 +69,12 @@ def test_notification_preferences_endpoint_cannot_be_used_as_execution_authority
     assert status == "200 OK"
     assert payload["preferences"]["notifications"]["important_enabled"] is False
     assert payload["preferences"]["notifications"]["security_enabled"] is False
+
+
+def test_validation_flags_are_strict_booleans():
+    from app import _required_bool
+    assert _required_bool({"flag": True}, "flag") is True
+    assert _required_bool({"flag": False}, "flag") is False
+    import pytest
+    with pytest.raises(Exception):
+        _required_bool({"flag": "false"}, "flag")

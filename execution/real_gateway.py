@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderQueryPort
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -43,19 +44,22 @@ class RealExecutionGateway:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
-        if not isinstance(request.symbol, str) or not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip() or len(request.symbol.strip()) > 64:
             return False
-        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool) or not math.isfinite(float(request.amount)) or request.amount <= 0:
             return False
-        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0 or request.duration_seconds > 86_400:
             return False
         return True
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        embedded_request_id = request.request_id if isinstance(request, ExecutionRequest) else None
+        if embedded_request_id is not None and embedded_request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id da requisição difere do request_id operacional.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
@@ -79,20 +83,28 @@ class RealExecutionGateway:
                 )
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
-        try:
-            self._ledger.reserve(request_id)
-            self._processed_request_ids.add(request_id)
-        except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+        uncertain_ids = self._ledger.uncertain_request_ids()
+        if uncertain_ids:
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "há execução REAL em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+            )
 
         try:
-            result = self._gateway.execute(broker, request)
+            self._ledger.reserve_exclusive(request_id)
+            self._processed_request_ids.add(request_id)
+        except (OSError, ValueError):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança.")
+
+        dispatch_request = replace(request, request_id=request_id)
+        try:
+            result = self._gateway.execute(broker, dispatch_request)
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}")
 
         if result.execution is None:
             try:
@@ -101,11 +113,18 @@ class RealExecutionGateway:
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
+        if result.execution.uncertain:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL explicitamente incerto; reconciliação obrigatória.", result.execution)
+
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem rejeitada, mas persistência do estado falhou.", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
 
         # An accepted REAL result without a durable broker/exchange reference is
@@ -114,20 +133,27 @@ class RealExecutionGateway:
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError) as exc:
-                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id e persistência falhou.", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted(request_id, result.execution.external_id)
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem REAL aceita, mas persistência falhou.", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(self, request_id: str, *, query_port: ExternalOrderQueryPort) -> None:
+        """Query the broker read-only, then reconcile; never accepts caller-forged evidence."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        if not isinstance(query_port, ExternalOrderQueryPort):
+            raise ValueError("query_port externo obrigatório.")
+        observation = query_port.query_order_by_request_id(request_id)
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("consulta externa retornou observação inválida.")
+        if observation.request_id != request_id:
+            raise ValueError("request_id da observação difere da requisição.")
+        self._ledger.reconcile_observation(request_id, observation)

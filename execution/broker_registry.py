@@ -41,11 +41,14 @@ class BrokerRegistry:
 
     def is_available(self, name: str) -> bool:
         adapter = self.get(name)
-        return bool(adapter.is_available())
+        available = adapter.is_available()
+        if not isinstance(available, bool):
+            raise BrokerRegistryError("adapter retornou disponibilidade inválida.")
+        return available
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
-            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()))
+            BrokerAdapterInfo(name=name, available=self._availability(adapter))
             for name, adapter in self._adapters.items()
         )
 
@@ -54,6 +57,13 @@ class BrokerRegistry:
 
     def as_mapping(self) -> Mapping[str, BrokerAdapter]:
         return dict(self._adapters)
+
+    @staticmethod
+    def _availability(adapter: BrokerAdapter) -> bool:
+        available = adapter.is_available()
+        if not isinstance(available, bool):
+            raise BrokerRegistryError("adapter retornou disponibilidade inválida.")
+        return available
 
     @staticmethod
     def _normalize_name(name: str) -> str:

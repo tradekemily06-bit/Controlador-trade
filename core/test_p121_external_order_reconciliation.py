@@ -47,3 +47,31 @@ def test_invalid_external_id_fails_closed():
             " ",
             ExternalOrderObservation("ext", ExternalOrderStatus.UNKNOWN, "unknown"),
         )
+
+def test_request_bound_reconciliation_requires_matching_request_id():
+    observation = ExternalOrderObservation("ext-5", ExternalOrderStatus.EXECUTED, "filled", request_id="req-5")
+    result = ExternalOrderReconciliationBoundary().reconcile_for_request("req-5", observation)
+    assert result.reconciled is True
+    with pytest.raises(ValueError):
+        ExternalOrderReconciliationBoundary().reconcile_for_request("other", observation)
+
+
+def test_request_bound_reconciliation_can_confirm_not_executed_without_external_id():
+    observation = ExternalOrderObservation(None, ExternalOrderStatus.NOT_EXECUTED, "no order found", request_id="req-6")
+    result = ExternalOrderReconciliationBoundary().reconcile_for_request("req-6", observation)
+    assert result.reconciled is True
+    assert result.external_id is None
+
+
+def test_request_bound_reconciliation_keeps_ambiguous_status_nonterminal():
+    observation = ExternalOrderObservation(None, ExternalOrderStatus.PENDING, "still pending", request_id="req-7")
+    result = ExternalOrderReconciliationBoundary().reconcile_for_request("req-7", observation)
+    assert result.reconciled is False
+
+
+def test_external_reconciliation_rejects_missing_external_id_for_external_lookup():
+    with pytest.raises(ValueError, match="external_id da observação"):
+        ExternalOrderReconciliationBoundary().reconcile(
+            "ext-8",
+            ExternalOrderObservation(None, ExternalOrderStatus.EXECUTED, "filled"),
+        )

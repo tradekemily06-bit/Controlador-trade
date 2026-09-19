@@ -129,3 +129,44 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_blocks_new_execution_when_unresolved_lifecycle_exists(tmp_path):
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+    from datetime import datetime, timezone
+
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    lifecycle.put(ExecutionLifecycleRecord("old-unknown", ExecutionLifecycleState.UNKNOWN, now))
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), lifecycle=lifecycle)
+
+    result = gateway.execute("new-request", request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()
+
+
+def test_gateway_blocks_new_execution_when_unresolved_ledger_exists(tmp_path):
+    from execution.execution_ledger import ExecutionLedger
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("old-reserved")
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("new-request", request())
+
+    assert result.status is GatewayStatus.BLOCKED
+    assert executor.executions() == ()
+
+
+def test_gateway_blocks_uncertain_execution_result():
+    class UncertainExecutor:
+        def execute(self, request):
+            return ExecutionResult(True, "aceito", "EXT-1", uncertain=True)
+    gateway = ExecutionGateway(UncertainExecutor(), KillSwitch())
+    result = gateway.execute("req-uncertain", ExecutionRequest("SYM", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO))
+    assert result.accepted is False
+    assert result.execution is not None
+    assert result.execution.uncertain is True

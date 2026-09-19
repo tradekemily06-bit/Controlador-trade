@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -62,17 +62,67 @@ class RecoveryCoordinator:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
+        ledger_uncertain = {
+            request_id
+            for request_id in ledger_ids
+            if self.execution_ledger.status(request_id)
+            in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+        }
+        unknown = tuple(sorted(lifecycle_unknown | ledger_uncertain))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        ledger_statuses = {
+            request_id: self.execution_ledger.status(request_id)
+            for request_id in ledger_ids
+        }
+        lifecycle_ids = {record.request_id for record in lifecycle}
+        inconsistent = []
+
+        # Validate both directions of the durable state machine. A restart
+        # must not silently trust a terminal state that exists in only one
+        # store, nor accept contradictory lifecycle/ledger states.
+        allowed_ledger_states = {
+            ExecutionLifecycleState.PENDING: {
+                None,
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            },
+            ExecutionLifecycleState.UNKNOWN: {
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            },
+            ExecutionLifecycleState.ACCEPTED: {
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            },
+            ExecutionLifecycleState.REJECTED: {
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            },
+        }
+        for record in lifecycle:
+            ledger_status = ledger_statuses.get(record.request_id)
+            if ledger_status not in allowed_ledger_states[record.state]:
+                inconsistent.append(record.request_id)
+
+        # The inverse direction matters: a terminal ledger record without a
+        # lifecycle record means the durable stores have lost correlation.
+        for request_id, ledger_status in ledger_statuses.items():
+            if request_id not in lifecycle_ids and ledger_status not in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            ):
+                inconsistent.append(request_id)
+
+        inconsistent = sorted(set(inconsistent))
         if unknown or pending or inconsistent:
             details = []
             if unknown:
-                details.append("UNKNOWN requer reconciliação")
+                details.append("UNKNOWN/RESERVED requer reconciliação")
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Lifecycle/Ledger inconsistente requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,

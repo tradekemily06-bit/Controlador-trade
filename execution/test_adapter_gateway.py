@@ -22,7 +22,7 @@ class FakeAdapter:
 
 
 def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, "test-request")
 
 
 def gateway_with(adapter):
@@ -76,5 +76,27 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     result = gateway.execute("missing", request())
 
+    assert result.accepted is False
+    assert result.execution is None
+
+
+def test_adapter_gateway_rejects_non_boolean_availability():
+    adapter = FakeAdapter(available="yes")
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_rejects_malformed_execution_flags():
+    adapter = FakeAdapter(result=ExecutionResult(True, "ok", "EXT-1", uncertain="yes"))
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.execution is None
+
+
+def test_adapter_gateway_rejects_malformed_external_id():
+    adapter = FakeAdapter(result=ExecutionResult(True, "ok", "   "))
+    result = gateway_with(adapter).execute("fake", request())
     assert result.accepted is False
     assert result.execution is None

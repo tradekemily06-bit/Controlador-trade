@@ -1,6 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,20 +32,31 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                temporary = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
+                temporary.write_text(
+                    json.dumps(
+                        {
+                            "session_id": checkpoint.session_id,
+                            "last_cycle": checkpoint.last_cycle,
+                            "last_request_id": checkpoint.last_request_id,
+                            "updated_at": checkpoint.updated_at.isoformat(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                os.replace(temporary, self.path)
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
@@ -62,12 +80,12 @@ class RuntimeCheckpointStore:
     def _validate(checkpoint: RuntimeCheckpoint) -> None:
         if not isinstance(checkpoint, RuntimeCheckpoint):
             raise ValueError("checkpoint inválido.")
-        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip():
+        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip() or len(checkpoint.session_id.strip()) > 128:
             raise ValueError("checkpoint inválido.")
         if not isinstance(checkpoint.last_cycle, int) or isinstance(checkpoint.last_cycle, bool) or checkpoint.last_cycle < 0:
             raise ValueError("checkpoint inválido.")
         if checkpoint.last_request_id is not None and (
-            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
+            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip() or len(checkpoint.last_request_id.strip()) > 128
         ):
             raise ValueError("request_id do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):

@@ -34,3 +34,21 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def test_checkpoint_concurrent_writes_keep_valid_json(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+
+    def save(i):
+        store.save(RuntimeCheckpoint(f"session-{i}", i, f"req-{i}", datetime.now(timezone.utc)))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(save, range(32)))
+
+    restored = store.load()
+    assert restored is not None
+    assert restored.session_id.startswith("session-")
+    assert path.read_text(encoding="utf-8").strip().startswith("{")
