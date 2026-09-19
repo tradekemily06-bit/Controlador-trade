@@ -34,9 +34,10 @@ class RuntimeCheckpointStore:
         checkpoint = RuntimeCheckpoint(session_id, 0, None, updated_at)
         self._validate(checkpoint)
         with locked_path(self.path):
-            if self.path.exists():
+            current_payload = read_json(self.path, None)
+            if current_payload is not None:
                 try:
-                    current = read_json(self.path, {})
+                    current = current_payload
                     if not isinstance(current, dict):
                         raise ValueError("checkpoint de runtime inválido.")
                     current_checkpoint = RuntimeCheckpoint(
@@ -79,9 +80,10 @@ class RuntimeCheckpointStore:
             # A stale runtime instance must never move the durable checkpoint
             # backwards. Corrupt durable state must fail closed rather than
             # being silently replaced by a fresh checkpoint.
-            if self.path.exists():
+            current_payload = read_json(self.path, None)
+            if current_payload is not None:
                 try:
-                    current = read_json(self.path, {})
+                    current = current_payload
                     if not isinstance(current, dict):
                         raise ValueError("checkpoint de runtime inválido.")
                     current_checkpoint = RuntimeCheckpoint(
@@ -131,9 +133,9 @@ class RuntimeCheckpointStore:
     def load(self) -> RuntimeCheckpoint | None:
         try:
             with locked_path(self.path):
-                if not self.path.exists():
-                    return None
-                data = read_json(self.path, {})
+                data = read_json(self.path, None)
+            if data is None:
+                return None
             if not isinstance(data, dict):
                 raise ValueError
             checkpoint = RuntimeCheckpoint(
