@@ -13,6 +13,8 @@ try:
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
+MAX_JSON_BYTES = 16 * 1024 * 1024
+
 try:
     import msvcrt
 except ImportError:  # pragma: no cover - Unix fallback
@@ -64,7 +66,11 @@ def read_json(path: str | Path, default: object) -> object:
     """Read one JSON file without a check-then-open filesystem race."""
     target = Path(path)
     try:
-        return json.loads(target.read_text(encoding="utf-8"))
+        with target.open("rb") as handle:
+            raw = handle.read(MAX_JSON_BYTES + 1)
+        if len(raw) > MAX_JSON_BYTES:
+            raise ValueError("arquivo JSON durável grande demais.")
+        return json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return default
 
@@ -81,6 +87,8 @@ def atomic_write_json(path: str | Path, payload: object) -> None:
     temporary = Path(temporary_name)
     try:
         encoded = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+        if len(encoded.encode("utf-8")) > MAX_JSON_BYTES:
+            raise ValueError("payload JSON durável grande demais.")
         with os.fdopen(temporary_fd, "w", encoding="utf-8") as handle:
             temporary_fd = -1
             handle.write(encoded)
