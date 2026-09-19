@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from enum import Enum
 from pathlib import Path
 
@@ -59,7 +60,7 @@ class ExecutionLedger:
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
         payload = {key: self._states[key].value for key in sorted(self._states)}
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -142,8 +143,8 @@ class ExecutionLedger:
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
+            raise ValueError("request_id inválido.")
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
         self._validate_id(request_id)
