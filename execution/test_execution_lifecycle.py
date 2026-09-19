@@ -9,6 +9,18 @@ from execution.execution_lifecycle import (
 )
 
 
+def test_lifecycle_rejects_symlinked_state(tmp_path: Path):
+    target = tmp_path / "target.json"
+    target.write_text("[]", encoding="utf-8")
+    path = tmp_path / "lifecycle.json"
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink não suportado neste ambiente")
+    with pytest.raises(ValueError, match="arquivo regular"):
+        ExecutionLifecycleStore(path)
+
+
 def test_lifecycle_survives_restart(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
