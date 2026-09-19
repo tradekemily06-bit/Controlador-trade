@@ -51,3 +51,38 @@ def test_adapter_execute_has_single_production_call_site():
 
     assert violations == sanctioned_sites
     assert len(sanctioned_sites) == 1
+
+
+def test_real_adapter_gateway_capability_cannot_gain_a_second_call_site():
+    """REAL dispatch must remain a single, capability-gated source of truth."""
+    root = Path(__file__).resolve().parents[1]
+    call_sites: list[str] = []
+    invalid_capability_calls: list[str] = []
+
+    for path in root.rglob("*.py"):
+        relative = path.relative_to(root)
+        if path.name.startswith("test_"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Attribute) or node.func.attr != "execute_real":
+                continue
+
+            site = f"{relative}:{node.lineno}"
+            call_sites.append(site)
+
+            if relative.as_posix() != "execution/real_gateway.py":
+                invalid_capability_calls.append(site)
+                continue
+
+            capability_kw = next(
+                (kw for kw in node.keywords if kw.arg == "capability"),
+                None,
+            )
+            if capability_kw is None:
+                invalid_capability_calls.append(site)
+
+    assert invalid_capability_calls == []
+    assert call_sites == ["execution/real_gateway.py:423"]
