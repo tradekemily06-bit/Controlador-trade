@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -23,7 +29,7 @@ class ExecutionLifecycleRecord:
 
 
 class ExecutionLifecycleStore:
-    """Durable execution state; UNKNOWN is terminal until explicitly reconciled."""
+    """Durable execution state; writes are serialized and atomic."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -39,6 +45,7 @@ class ExecutionLifecycleStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            records: dict[str, ExecutionLifecycleRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -49,7 +56,10 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
-                self._records[record.request_id] = record
+                if record.request_id in records:
+                    raise ValueError("request_id duplicado no lifecycle.")
+                records[record.request_id] = record
+            self._records = records
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
@@ -64,40 +74,66 @@ class ExecutionLifecycleStore:
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
+    def _mutate_locked(self, mutation):
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self._load()
+                mutation()
+                self._save()
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        previous = self._records.get(record.request_id)
-        if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+
+        def mutation() -> None:
+            previous = self._records.get(record.request_id)
+            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            self._records[record.request_id] = record
+
+        self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        self._load()
         return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("execução não encontrada.")
-        record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
-        self._validate(record)
-        self._records[request_id] = record
-        self._save()
-        return record
+        self._validate(ExecutionLifecycleRecord(request_id, state, updated_at, message))
+
+        def mutation() -> None:
+            current = self._records.get(request_id)
+            if current is None:
+                raise ValueError("execução não encontrada.")
+            if current.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("somente UNKNOWN pode ser reconciliado explicitamente.")
+            self._records[request_id] = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+
+        self._mutate_locked(mutation)
+        return self.get(request_id)  # type: ignore[return-value]
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
-            ], ensure_ascii=False, indent=2, sort_keys=True),
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(
+                [{"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
+                 for r in self.records()],
+                ensure_ascii=False, indent=2, sort_keys=True,
+            ),
             encoding="utf-8",
         )
+        os.replace(temporary, self.path)
