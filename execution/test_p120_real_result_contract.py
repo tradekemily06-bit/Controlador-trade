@@ -4,6 +4,7 @@ from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
+from core.p119_release_closure import RealReleaseClosureBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -40,6 +41,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
         authorization=authorization, admission=admission, safety=safety,
+        release=RealReleaseClosureBoundary().close(release_id="release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN
