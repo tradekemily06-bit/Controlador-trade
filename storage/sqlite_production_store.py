@@ -23,7 +23,7 @@ class SQLiteProductionStore:
         connection = sqlite3.connect(self.path, timeout=10.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA journal_mode = DELETE")
         connection.execute("PRAGMA synchronous = FULL")
         return connection
 
@@ -49,6 +49,10 @@ class SQLiteProductionStore:
                 "ON production_records (tenant_id, subject_id, updated_at, record_id)"
             )
             connection.commit()
+        try:
+            Path(self.path).chmod(0o600)
+        except OSError as exc:
+            raise RuntimeError("production storage permissions could not be hardened") from exc
 
     @staticmethod
     def _require_scope(tenant_id: str, subject_id: str) -> tuple[str, str]:
