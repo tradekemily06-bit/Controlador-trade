@@ -30,7 +30,7 @@ class ExternalOrderQueryPort(Protocol):
 
 @dataclass(frozen=True)
 class ReconciliationResult:
-    external_id: str
+    external_id: str | None
     status: ExternalOrderStatus
     reconciled: bool
     message: str
@@ -50,6 +50,8 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("request_id da observação inválido.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
+        if not isinstance(observation.message, str) or len(observation.message) > 4096:
+            raise ValueError("mensagem da observação inválida.")
 
         return ReconciliationResult(
             external_id=external_id.strip(),
@@ -72,6 +74,8 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("external_id da observação inválido.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
+        if not isinstance(observation.message, str) or len(observation.message) > 4096:
+            raise ValueError("mensagem da observação inválida.")
         return ReconciliationResult(
             external_id=observation.external_id.strip() if observation.external_id else None,
             status=observation.status,
