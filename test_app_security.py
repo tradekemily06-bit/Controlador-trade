@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import unittest
 
 from app import application
@@ -7,7 +8,12 @@ from security_guard import MAX_BODY_BYTES
 
 
 class AppSecurityTests(unittest.TestCase):
-    def request(self, path, method="GET", payload=None, remote="test-client"):
+    def setUp(self):
+        os.environ["CONTROLADOR_API_TOKEN"] = "test-token"
+
+    def tearDown(self):
+        os.environ.pop("CONTROLADOR_API_TOKEN", None)
+    def request(self, path, method="GET", payload=None, remote="192.0.2.10"):
         body = b"" if payload is None else json.dumps(payload).encode("utf-8")
         captured = {}
 
@@ -23,6 +29,7 @@ class AppSecurityTests(unittest.TestCase):
             "CONTENT_LENGTH": str(len(body)),
             "REMOTE_ADDR": remote,
             "wsgi.input": io.BytesIO(body),
+            "HTTP_AUTHORIZATION": "Bearer test-token",
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
@@ -46,9 +53,9 @@ class AppSecurityTests(unittest.TestCase):
         old_limit = SECURITY.limit
         try:
             SECURITY.limit = 1
-            first, _, _ = self.request("/api/health", remote="client-a")
+            first, _, _ = self.request("/api/health", remote="192.0.2.10")
             blocked, _, _ = self.request("/api/health", remote="client-a")
-            other, _, _ = self.request("/api/health", remote="client-b")
+            other, _, _ = self.request("/api/health", remote="192.0.2.11")
             self.assertEqual(first, "200 OK")
             self.assertEqual(blocked, "429 Too Many Requests")
             self.assertEqual(other, "200 OK")
