@@ -137,7 +137,14 @@ class ExecutionLedger:
                 raise ValueError("transição inválida para ACCEPTED.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
             if external_id is not None:
-                self._external_ids[request_id] = external_id.strip()
+                normalized_external_id = external_id.strip()
+                owner = next(
+                    (rid for rid, eid in self._external_ids.items() if eid == normalized_external_id and rid != request_id),
+                    None,
+                )
+                if owner is not None:
+                    raise ValueError("external_id já associado a outro request_id.")
+                self._external_ids[request_id] = normalized_external_id
         self._mutate_locked(mutation)
 
     def external_id(self, request_id: str) -> str | None:
