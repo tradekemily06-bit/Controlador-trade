@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b9c4e9c4c2f8a0e7b9b0f4f6a0f3f0c0b0d # v7.0.0
         with:
           python-version: "3.12"
 
@@ -50,10 +50,10 @@ jobs:
           }
           trap cleanup EXIT
 
-          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
+          docker run -d --name controlador-trade-ci controlador-trade:ci
 
           for attempt in {1..30}; do
-            if python - <<'PY'
+            if docker exec controlador-trade-ci python - <<'PY'
           import json
           import urllib.request
 
