@@ -33,21 +33,21 @@ class RuntimeCheckpointStore:
         self._validate(checkpoint)
         with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            encoded = json.dumps(\n                {\n                    "session_id": checkpoint.session_id,\n                    "last_cycle": checkpoint.last_cycle,\n                    "last_request_id": checkpoint.last_request_id,\n                    "updated_at": checkpoint.updated_at.isoformat(),\n                },\n                ensure_ascii=False,\n                indent=2,\n                sort_keys=True,\n            ).encode("utf-8")\n            if len(encoded) > MAX_CHECKPOINT_FILE_BYTES:\n                raise ValueError("checkpoint excede o limite permitido.")\n            temporary = self.path.with_name(f".{self.path.name}.tmp")
-            temporary.write_text(
-                json.dumps(
-                    {
-                        "session_id": checkpoint.session_id,
-                        "last_cycle": checkpoint.last_cycle,
-                        "last_request_id": checkpoint.last_request_id,
-                        "updated_at": checkpoint.updated_at.isoformat(),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                ),
-                encoding="utf-8",
-            )
+            encoded = json.dumps(
+                {
+                    "session_id": checkpoint.session_id,
+                    "last_cycle": checkpoint.last_cycle,
+                    "last_request_id": checkpoint.last_request_id,
+                    "updated_at": checkpoint.updated_at.isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            ).encode("utf-8")
+            if len(encoded) > MAX_CHECKPOINT_FILE_BYTES:
+                raise ValueError("checkpoint excede o limite permitido.")
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            temporary.write_bytes(encoded)
             with temporary.open("rb") as handle:
                 os.fsync(handle.fileno())
             os.replace(temporary, self.path)
@@ -58,6 +58,8 @@ class RuntimeCheckpointStore:
             if not self.path.exists():
                 return None
             try:
+                if self.path.stat().st_size > MAX_CHECKPOINT_FILE_BYTES:
+                    raise ValueError("checkpoint excede o limite permitido.")
                 data = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(data, dict):
                     raise ValueError
@@ -83,12 +85,12 @@ class RuntimeCheckpointStore:
     def _validate(checkpoint: RuntimeCheckpoint) -> None:
         if not isinstance(checkpoint, RuntimeCheckpoint):
             raise ValueError("checkpoint inválido.")
-        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip():
+        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip() or len(checkpoint.session_id.strip()) > MAX_CHECKPOINT_IDENTIFIER_LENGTH:
             raise ValueError("checkpoint inválido.")
         if not isinstance(checkpoint.last_cycle, int) or isinstance(checkpoint.last_cycle, bool) or checkpoint.last_cycle < 0:
             raise ValueError("checkpoint inválido.")
         if checkpoint.last_request_id is not None and (
-            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
+            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip() or len(checkpoint.last_request_id.strip()) > MAX_CHECKPOINT_IDENTIFIER_LENGTH
         ):
             raise ValueError("request_id do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):
