@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
@@ -10,6 +11,7 @@ from core.p121_external_order_reconciliation import ExternalOrderObservation, Ex
 from core.p3_execution_reconciliation import ExecutionReconciliationCoordinator
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.kill_switch import KillSwitch
+from core.operational_safety_store import OperationalSafetyStore
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -34,7 +36,7 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, recovery: RecoveryCoordinator | None = None, kill_switch: KillSwitch | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, recovery: RecoveryCoordinator | None = None, kill_switch: KillSwitch | None = None, safety_store: OperationalSafetyStore | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -45,11 +47,14 @@ class RealExecutionGateway:
             raise ValueError("recovery é obrigatório para execução REAL.")
         if not isinstance(kill_switch, KillSwitch):
             raise ValueError("kill_switch é obrigatório para execução REAL.")
+        if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
+            raise ValueError("safety_store inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._recovery = recovery
         self._kill_switch = kill_switch
+        self._safety_store = safety_store
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -343,10 +348,27 @@ class RealExecutionGateway:
                                 if self._mark_not_dispatched(request_id, message):
                                     return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
                                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
+                            # When durable safety state is available, hold its shared
+                            # lock across the final broker side effect. A second
+                            # process cannot persist a kill-switch activation while
+                            # this window is open, and this process re-reads the
+                            # latest durable state instead of trusting a stale
+                            # in-memory snapshot.
+                            persistent_window = (
+                                self._safety_store.kill_switch_execution_window()
+                                if self._safety_store is not None
+                                else nullcontext(None)
+                            )
                             try:
-                                result = self._gateway.execute_real(
-                                    broker, request, capability=_REAL_DISPATCH_CAPABILITY
-                                )
+                                with persistent_window as persistent_kill_state:
+                                    if persistent_kill_state is not None and persistent_kill_state.enabled:
+                                        message = f"execução REAL bloqueada pelo kill switch persistido: {persistent_kill_state.reason}."
+                                        if self._mark_not_dispatched(request_id, message):
+                                            return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+                                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
+                                    result = self._gateway.execute_real(
+                                        broker, request, capability=_REAL_DISPATCH_CAPABILITY
+                                    )
                             except BaseException:
                                 # A hard interruption (KeyboardInterrupt/SystemExit)
                                 # can happen after the broker side effect. Preserve
