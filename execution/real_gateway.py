@@ -454,11 +454,48 @@ class RealExecutionGateway:
                         return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
     
                     if not result.execution.accepted:
-                        # A negative flag is not sufficient to prove that no external
-                        # order exists. Some broker APIs can return an external reference
-                        # alongside a rejection/ambiguous response. In that contradictory
-                        # case, persist identity + UNKNOWN and reconcile instead of
-                        # manufacturing a definitive REJECTED terminal state.
+                        # A negative flag is definitive only when the adapter explicitly
+                        # says the outcome is final. Transport/time-out ambiguity must
+                        # remain UNKNOWN even when no external_id was returned.
+                        if not result.execution.outcome_final:
+                            if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
+                                try:
+                                    self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                                except (OSError, ValueError) as exc:
+                                    return RealGatewayResult(
+                                        RealGatewayStatus.UNKNOWN,
+                                        f"resultado negativo ambíguo com external_id, mas persistência falhou: {exc}",
+                                        result.execution,
+                                    )
+                            try:
+                                self._ledger.mark_unknown(request_id)
+                            except (OSError, ValueError) as exc:
+                                return RealGatewayResult(
+                                    RealGatewayStatus.UNKNOWN,
+                                    f"resultado negativo ambíguo; persistência da incerteza falhou: {exc}",
+                                    result.execution,
+                                )
+                            if self._lifecycle is not None:
+                                try:
+                                    self._lifecycle.put(
+                                        ExecutionLifecycleRecord(
+                                            request_id,
+                                            ExecutionLifecycleState.UNKNOWN,
+                                            datetime.now(timezone.utc),
+                                            "resultado negativo não definitivo; resultado externo requer reconciliação.",
+                                        )
+                                    )
+                                except (OSError, ValueError):
+                                    pass
+                            return RealGatewayResult(
+                                RealGatewayStatus.UNKNOWN,
+                                "resultado negativo não definitivo; reconciliação explícita necessária.",
+                                result.execution,
+                            )
+
+                        # A negative result carrying an external reference is also
+                        # treated as uncertain: the broker-side identity must be
+                        # reconciled before any terminal rejection is projected.
                         if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
                             try:
                                 self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
