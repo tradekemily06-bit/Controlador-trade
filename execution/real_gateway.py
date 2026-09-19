@@ -215,33 +215,52 @@ class RealExecutionGateway:
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        """Explicitly reconcile an uncertain request without any replay."""
         ledger_status = self._ledger.status(request_id)
+        lifecycle = self._lifecycle.get(request_id)
+        desired_ledger = (
+            ExecutionLedgerStatus.RECONCILED_EXECUTED
+            if executed
+            else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+        )
+        desired_lifecycle = (
+            ExecutionLifecycleState.ACCEPTED
+            if executed
+            else ExecutionLifecycleState.REJECTED
+        )
+
         if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
+            desired_ledger,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        lifecycle = self._lifecycle.get(request_id)
+
         now = datetime.now(timezone.utc)
         if lifecycle is None:
-            # A crash can happen after ledger reservation but before lifecycle
-            # persistence. Reconciliation may create the missing UNKNOWN marker,
-            # but it must never silently resume dispatch.
-            self._lifecycle.put(
-                ExecutionLifecycleRecord(
-                    request_id,
-                    ExecutionLifecycleState.UNKNOWN,
-                    now,
-                    "estado reconstruído durante reconciliação explícita; nenhum replay permitido.",
-                )
+            # Crash window: ledger exists but lifecycle was never persisted.
+            # Reconciliation may reconstruct only an UNKNOWN marker; it never
+            # treats the missing record as permission to dispatch.
+            lifecycle = ExecutionLifecycleRecord(
+                request_id,
+                ExecutionLifecycleState.UNKNOWN,
+                now,
+                "estado reconstruído durante reconciliação explícita; nenhum replay permitido.",
             )
-        elif lifecycle.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("ciclo de execução não está UNKNOWN; reconciliação explícita recusada.")
-        self._ledger.reconcile(request_id, executed=executed)
-        self._lifecycle.reconcile(
-            request_id,
-            lifecycle_state,
-            updated_at=now,
-            message="reconciliação REAL explícita.",
-        )
+            self._lifecycle.put(lifecycle)
+
+        if lifecycle.state not in (ExecutionLifecycleState.UNKNOWN, desired_lifecycle):
+            raise ValueError("ciclo de execução não está em estado reconciliável.")
+
+        # Each side is made idempotent so a crash between these two durable
+        # stores can be retried safely without resubmitting the external order.
+        if ledger_status is not desired_ledger:
+            self._ledger.reconcile(request_id, executed=executed)
+
+        if lifecycle.state is not desired_lifecycle:
+            self._lifecycle.reconcile(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message="reconciliação REAL explícita.",
+            )
