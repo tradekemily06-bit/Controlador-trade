@@ -5,6 +5,7 @@ import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
+from core.p121_external_order_reconciliation import ExternalOrderObservation
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -117,6 +118,13 @@ class RealExecutionGateway:
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
+        if result.execution.uncertain:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL explicitamente incerto; reconciliação obrigatória.", result.execution)
+
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
@@ -139,11 +147,15 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem REAL aceita, mas persistência falhou.", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
+        """Reconcile only from broker-correlated terminal evidence; never resubmits."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("observação externa obrigatória.")
+        if observation.request_id != request_id:
+            raise ValueError("request_id da observação difere da requisição.")
+        self._ledger.reconcile_observation(request_id, observation)
