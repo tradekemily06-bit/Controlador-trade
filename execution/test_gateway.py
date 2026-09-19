@@ -1,3 +1,4 @@
+import math
 import pytest
 from core.kill_switch import KillSwitch
 from core.models import Signal
@@ -15,6 +16,50 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
         mode=mode,
     )
 
+
+
+def test_gateway_rejects_noncanonical_request_id():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute(" req-1 ", request())
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_rejects_mismatched_optional_request_id():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    req = request()
+    req = ExecutionRequest(
+        symbol=req.symbol,
+        signal=req.signal,
+        amount=req.amount,
+        duration_seconds=req.duration_seconds,
+        mode=req.mode,
+        request_id="other",
+    )
+
+    result = gateway.execute("req-1", req)
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+@pytest.mark.parametrize("amount", [float("nan"), float("inf"), -float("inf"), True])
+def test_gateway_rejects_nonfinite_or_boolean_amount(amount):
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute("req-amount", request_with_amount(amount))
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def request_with_amount(amount):
+    return ExecutionRequest(
+        symbol="BTCUSD",
+        signal=Signal.COMPRA,
+        amount=amount,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+    )
 
 def test_gateway_executes_valid_demo_request():
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
