@@ -99,7 +99,7 @@ class ICMarketsMT5DemoAdapter:
 
         mt5 = self._module()
         if not mt5.initialize():
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+            return ExecutionResult(False, "MT5 indisponível.")
 
         try:
             account = mt5.account_info()
@@ -111,21 +111,21 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
             symbol = symbol.strip()
             if not mt5.symbol_select(symbol, True):
-                return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
+                return ExecutionResult(False, "símbolo não disponível no MT5.")
 
             symbol_info = mt5.symbol_info(symbol)
             if symbol_info is None or not self._valid_volume(request.amount, symbol_info):
-                return ExecutionResult(False, f"volume inválido para o símbolo {symbol}; ordem bloqueada.")
+                return ExecutionResult(False, "volume inválido para o símbolo; ordem bloqueada.")
 
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
-                return ExecutionResult(False, f"cotação indisponível para {symbol}.")
+                return ExecutionResult(False, "cotação indisponível.")
 
             is_buy = request.signal is Signal.COMPRA
             order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
             price = tick.ask if is_buy else tick.bid
             if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
-                return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
+                return ExecutionResult(False, "cotação inválida; ordem bloqueada.")
 
             payload = {
                 "action": mt5.TRADE_ACTION_DEAL,
@@ -142,16 +142,16 @@ class ICMarketsMT5DemoAdapter:
 
             check = mt5.order_check(payload)
             if check is None or getattr(check, "retcode", 0) != 0:
-                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
+                return ExecutionResult(False, "order_check bloqueou a ordem.")
 
             result = mt5.order_send(payload)
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(False, "order_send sem confirmação.")
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
             if success_code is None or retcode != success_code:
-                return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
+                return ExecutionResult(False, "ordem rejeitada pelo MT5.")
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
