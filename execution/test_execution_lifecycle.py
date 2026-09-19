@@ -114,3 +114,21 @@ def test_lifecycle_rejects_excessive_persisted_records(tmp_path):
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
         ExecutionLifecycleStore(path)
+
+
+def test_independent_lifecycle_instances_serialize_shared_file_state(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+
+    def write(index):
+        ExecutionLifecycleStore(path).put(
+            ExecutionLifecycleRecord(f"req-{index}", ExecutionLifecycleState.PENDING, now, "started")
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(write, range(32)))
+
+    records = ExecutionLifecycleStore(path).records()
+    assert {record.request_id for record in records} == {f"req-{i}" for i in range(32)}
