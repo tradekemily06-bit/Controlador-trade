@@ -75,21 +75,46 @@ class RecoveryCoordinator:
             request_id: self.execution_ledger.status(request_id)
             for request_id in ledger_ids
         }
+        lifecycle_ids = {record.request_id for record in lifecycle}
         inconsistent = []
+
+        # Validate both directions of the durable state machine. A restart
+        # must not silently trust a terminal state that exists in only one
+        # store, nor accept contradictory lifecycle/ledger states.
+        allowed_ledger_states = {
+            ExecutionLifecycleState.PENDING: {
+                None,
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            },
+            ExecutionLifecycleState.UNKNOWN: {
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            },
+            ExecutionLifecycleState.ACCEPTED: {
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            },
+            ExecutionLifecycleState.REJECTED: {
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            },
+        }
         for record in lifecycle:
             ledger_status = ledger_statuses.get(record.request_id)
-            if record.state is ExecutionLifecycleState.ACCEPTED and ledger_status not in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
-            ):
+            if ledger_status not in allowed_ledger_states[record.state]:
                 inconsistent.append(record.request_id)
-            elif record.state is ExecutionLifecycleState.REJECTED and ledger_status in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+
+        # The inverse direction matters: a terminal ledger record without a
+        # lifecycle record means the durable stores have lost correlation.
+        for request_id, ledger_status in ledger_statuses.items():
+            if request_id not in lifecycle_ids and ledger_status not in (
                 ExecutionLedgerStatus.RESERVED,
                 ExecutionLedgerStatus.UNKNOWN,
             ):
-                inconsistent.append(record.request_id)
+                inconsistent.append(request_id)
+
+        inconsistent = sorted(set(inconsistent))
         if unknown or pending or inconsistent:
             details = []
             if unknown:
