@@ -52,8 +52,12 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
         self._request_lock = Lock()
+        self._persistence_fault = False
 
     def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
+        if self._persistence_fault:
+            return GatewayResult(GatewayStatus.BLOCKED, "persistência de execução em estado de falha; novas execuções bloqueadas até recuperação.")
+
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
@@ -83,7 +87,8 @@ class ExecutionGateway:
                         return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
                 try:
                     self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
-                except (OSError, ValueError) as exc:
+                except (OSError, ValueError):
+                    self._persistence_fault = True
                     return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução; envio bloqueado.")
 
         try:
@@ -126,20 +131,20 @@ class ExecutionGateway:
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
-    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> bool:
         if self._lifecycle is None:
-            return
+            return True
         try:
             current = self._lifecycle.get(request_id)
             if current is None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
             elif current.state is not ExecutionLifecycleState.UNKNOWN:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+            return True
         except (OSError, ValueError):
-            # The original operation is already ambiguous. If the safety state
-            # itself cannot be persisted, do not fabricate a terminal result.
-            # The caller still receives a non-accepted outcome.
-            return
+            # Persistence failure is itself a safety fault. The caller must not
+            # treat an ambiguous execution as durably recorded.
+            return False
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
