@@ -420,3 +420,18 @@ def test_reconciliation_rejects_noncanonical_request_id_before_broker_query(tmp_
             reconciliation_boundary=ExternalOrderReconciliationBoundary(),
         )
     assert adapter.query_calls == 0
+
+
+def test_real_admission_rejects_non_string_identifiers():
+    with pytest.raises(ValueError, match="admission_id"):
+        RealAdmissionBoundary().admit(
+            admission_id=123, audit_id="audit", audit_verified=True,
+            authorization_active=True, safety_ready=True,
+            broker_available=True, broker_id="fake",
+        )
+
+
+def test_kill_switch_rejects_non_string_reason():
+    with pytest.raises(ValueError, match="reason"):
+        from core.kill_switch import KillSwitchState
+        KillSwitchState(enabled=True, reason=123)
