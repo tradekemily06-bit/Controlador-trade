@@ -93,3 +93,84 @@ def test_unknown_ledger_without_lifecycle_requires_reconciliation(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.unknown_request_ids == ("req-unknown",)
+
+
+def _assert_requires_reconciliation(coordinator):
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_lifecycle_unknown_cannot_pair_with_terminal_ledger(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.UNKNOWN, now))
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_accepted("req-mismatch", "ext-1")
+    _assert_requires_reconciliation(coordinator)
+
+
+def test_lifecycle_accepted_cannot_pair_with_reconciled_not_executed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.ACCEPTED, now))
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_unknown("req-mismatch")
+    coordinator.execution_ledger.reconcile_observation(
+        "req-mismatch",
+        __import__("core.p121_external_order_reconciliation", fromlist=["ExternalOrderObservation", "ExternalOrderStatus"]).ExternalOrderObservation(
+            None,
+            __import__("core.p121_external_order_reconciliation", fromlist=["ExternalOrderStatus"]).ExternalOrderStatus.NOT_EXECUTED,
+            "not found",
+            request_id="req-mismatch",
+        ),
+    )
+    _assert_requires_reconciliation(coordinator)
+
+
+def test_lifecycle_rejected_can_pair_with_reconciled_not_executed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-rejected", ExecutionLifecycleState.REJECTED, now))
+    coordinator.execution_ledger.reserve("req-rejected")
+    coordinator.execution_ledger.mark_unknown("req-rejected")
+    from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+    coordinator.execution_ledger.reconcile_observation(
+        "req-rejected", ExternalOrderObservation(None, ExternalOrderStatus.NOT_EXECUTED, "confirmed", request_id="req-rejected")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.FRESH
+
+
+def test_lifecycle_pending_cannot_pair_with_terminal_ledger(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-pending", ExecutionLifecycleState.PENDING, now))
+    coordinator.execution_ledger.reserve("req-pending")
+    coordinator.execution_ledger.mark_rejected("req-pending")
+    _assert_requires_reconciliation(coordinator)
+
+
+def test_lifecycle_only_rejected_is_not_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-only", ExecutionLifecycleState.REJECTED, now))
+    _assert_requires_reconciliation(coordinator)
+
+
+def test_ledger_only_accepted_is_not_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-only")
+    coordinator.execution_ledger.mark_accepted("req-only", "ext-only")
+    _assert_requires_reconciliation(coordinator)
+
+
+def test_ledger_only_reconciled_executed_is_not_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-only")
+    coordinator.execution_ledger.mark_unknown("req-only")
+    from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+    coordinator.execution_ledger.reconcile_observation(
+        "req-only", ExternalOrderObservation("ext-only", ExternalOrderStatus.EXECUTED, "confirmed", request_id="req-only")
+    )
+    _assert_requires_reconciliation(coordinator)
