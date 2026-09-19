@@ -72,3 +72,14 @@ def test_oauth_redirect_uri_rejects_http_embedded_credentials_and_fragments():
         except ValueError:
             continue
         raise AssertionError(f"unsafe redirect URI accepted: {redirect_uri}")
+
+
+def test_oauth_inputs_have_bounded_size():
+    from execution.ctrader_demo_runtime import exchange_authorization_code
+    from execution.ctrader_demo_connection import CTraderCredentials
+
+    credentials = CTraderCredentials(client_id="id", client_secret="secret")
+    with __import__("pytest").raises(ValueError, match="authorization_code"):
+        exchange_authorization_code(credentials, "x" * 4097, "https://example.test/callback")
+    with __import__("pytest").raises(ValueError, match="redirect_uri"):
+        exchange_authorization_code(credentials, "code", "https://example.test/" + "x" * 2048)
