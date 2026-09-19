@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -85,8 +85,12 @@ class RealExecutionGateway:
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança.")
 
+        if request.request_id is not None and request.request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id da requisição difere do request_id da operação.")
+
+        dispatch_request = replace(request, request_id=request_id)
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute(broker, dispatch_request)
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
