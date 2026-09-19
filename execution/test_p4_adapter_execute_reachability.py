@@ -5,13 +5,7 @@ from pathlib import Path
 
 
 def test_adapter_execute_has_single_production_call_site():
-    """Broker adapters may only be invoked by the sanctioned adapter gateway.
-
-    The test deliberately checks source syntax rather than runtime behavior:
-    a new integration must not accidentally create a second path to
-    adapter.execute(...) that bypasses the REAL/DEMO boundary.
-    """
-
+    """Broker adapters may only be invoked by the sanctioned adapter gateway."""
     root = Path(__file__).resolve().parents[1]
     violations: list[str] = []
     sanctioned_sites: list[str] = []
@@ -85,4 +79,5 @@ def test_real_adapter_gateway_capability_cannot_gain_a_second_call_site():
                 invalid_capability_calls.append(site)
 
     assert invalid_capability_calls == []
-    assert len(call_sites) == 1\n    assert call_sites[0].startswith("execution/real_gateway.py:")
+    assert len(call_sites) == 1
+    assert call_sites[0].startswith("execution/real_gateway.py:")
