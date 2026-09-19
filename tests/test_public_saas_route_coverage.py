@@ -45,7 +45,7 @@ def _declared_policy_paths() -> set[str]:
     for node in tree.body:
         if not isinstance(node, ast.Assign):
             continue
-        if not any(isinstance(target, ast.Name) and target.id in {"PUBLIC_SAAS_MUTATIONS", "PUBLIC_SAAS_READS"} for target in node.targets):
+        if not any(isinstance(target, ast.Name) and target.id in {"PUBLIC_SAAS_OWNER_SCOPED", "PUBLIC_SAAS_GENERIC"} for target in node.targets):
             continue
         if not isinstance(node.value, ast.Set):
             continue
