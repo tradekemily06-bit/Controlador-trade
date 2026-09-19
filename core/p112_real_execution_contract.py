@@ -23,3 +23,12 @@ class RealExecutionAuthorization:
     @property
     def active(self) -> bool:
         return self.explicitly_enabled and self.real_execution_allowed and self._issuer is _AUTH_ISSUER
+
+
+class RealExecutionAuthorizationBoundary:
+    def issue(self, *, authorization_id: str, audit_id: str, broker_id: str, adapter_id: str,
+              explicitly_enabled: bool = False, real_execution_allowed: bool = False) -> RealExecutionAuthorization:
+        return RealExecutionAuthorization(
+            authorization_id, audit_id, broker_id, adapter_id,
+            explicitly_enabled, real_execution_allowed, _AUTH_ISSUER,
+        )
