@@ -14,7 +14,7 @@ def build_real_execution_gateway(
     *,
     root: str | Path,
     registry: BrokerRegistry,
-    kill_switch: KillSwitch,
+    kill_switch: KillSwitch | None = None,
 ) -> RealExecutionGateway:
     """The sanctioned REAL gateway composition point.
 
@@ -23,8 +23,10 @@ def build_real_execution_gateway(
     """
     if type(registry) is not BrokerRegistry:
         raise ValueError("registry inválido.")
-    if type(kill_switch) is not KillSwitch:
-        raise ValueError("kill_switch é obrigatório para a composição REAL.")
+    if kill_switch is not None and type(kill_switch) is not KillSwitch:
+        raise ValueError("kill_switch inválido.")
+    if kill_switch is None:
+        kill_switch = KillSwitch()
 
     root = Path(root)
     ledger = ExecutionLedger(root / "execution-ledger.json")
