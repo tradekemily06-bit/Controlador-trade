@@ -33,12 +33,19 @@ def locked_path(path: str | Path) -> Iterator[Path]:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     lock_path = target.with_name(f".{target.name}.lock")
-    lock_path.touch(exist_ok=True)
     process_lock = _WINDOWS_LOCK if msvcrt is not None and fcntl is None else None
     if process_lock is not None:
         process_lock.acquire()
     try:
-        with lock_path.open("r+", encoding="utf-8") as lock_file:
+        lock_flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            lock_flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, lock_flags, 0o600)
+        try:
+            os.fchmod(lock_fd, 0o600)
+        except OSError:
+            pass
+        with os.fdopen(lock_fd, "r+", encoding="utf-8") as lock_file:
             if lock_file.seek(0, 2) == 0:
                 lock_file.write("0")
                 lock_file.flush()
