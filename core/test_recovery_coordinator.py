@@ -54,8 +54,11 @@ def test_pending_requires_verification(tmp_path):
 def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
-    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
-    result = coordinator.assess()
+    (tmp_path / "lifecycle.json").write_text(
+        '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
+        encoding="utf-8",
+    )
+    result = make_coordinator(tmp_path).assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
