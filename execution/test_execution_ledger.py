@@ -445,3 +445,13 @@ def test_request_execution_lock_rejects_symlinked_lock_file(tmp_path):
             pass
 
     assert target.read_text(encoding="utf-8") == "do not touch"
+
+
+def test_rejected_ledger_cannot_persist_external_identity(tmp_path):
+    path = tmp_path / "ledger-rejected-external.json"
+    path.write_text(
+        '{"req-rejected":{"status":"REJECTED","external_id":"EXT-INVALID"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="REJECTED"):
+        ExecutionLedger(path)
