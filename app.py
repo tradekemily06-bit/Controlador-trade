@@ -33,7 +33,7 @@ def _audit(environ, request_id: str, status: int) -> None:
 
 
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id))
     start_response(f"{status.value} {status.phrase}", headers)
@@ -53,7 +53,7 @@ def _read_json(environ) -> dict:
     raw = environ["wsgi.input"].read(length)
     if len(raw) > MAX_BODY_BYTES:
         raise ValueError("payload excede o limite permitido")
-    data = json.loads(raw or b"{}")
+    data = json.loads(raw or b"{}", parse_constant=lambda value: (_ for _ in ()).throw(ValueError("JSON numérico inválido")) )
     if not isinstance(data, dict):
         raise ValueError("payload deve ser um objeto JSON")
     return data
