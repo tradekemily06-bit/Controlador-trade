@@ -154,7 +154,7 @@ def test_gateway_lifecycle_failure_after_ledger_reservation_blocks_recovery(tmp_
     result = gateway.execute("req-pending-failure", request())
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
-    assert ledger.status("req-pending-failure") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("req-pending-failure") is ExecutionLedgerStatus.REJECTED
     recovery = RecoveryCoordinator(
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
         lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
