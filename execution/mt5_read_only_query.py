@@ -151,9 +151,8 @@ class MT5ReadOnlyOrderQuery(ExternalOrderQueryPort):
             return False
         return initial > 0 and 0 <= current < initial
 
-    @staticmethod
-    def _is_state(state: Any, *names: str) -> bool:
-        return any(state == name for name in names) or False
+    def _is_state(self, state: Any, *names: str) -> bool:
+        return any(state == getattr(self._mt5, name, object()) for name in names)
 
     @staticmethod
     def _unknown(ticket: int, message: str) -> ExternalOrderObservation:
