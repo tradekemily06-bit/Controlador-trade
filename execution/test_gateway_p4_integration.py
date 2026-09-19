@@ -37,6 +37,7 @@ def make_request() -> ExecutionRequest:
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="req-audit",
     )
 
 
@@ -91,6 +92,7 @@ def test_invalid_request_is_not_audit_event():
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="req-invalid-1",
     )
 
     result = gateway.execute("req-invalid-1", invalid, snapshot=make_snapshot())
