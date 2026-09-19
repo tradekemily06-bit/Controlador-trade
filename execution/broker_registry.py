@@ -14,6 +14,7 @@ class BrokerRegistryError(ValueError):
 class BrokerAdapterInfo:
     name: str
     available: bool
+    adapter_id: str | None = None
 
 
 class BrokerRegistry:
@@ -42,6 +43,15 @@ class BrokerRegistry:
     def is_available(self, name: str) -> bool:
         adapter = self.get(name)
         return bool(adapter.is_available())
+
+    def adapter_id(self, name: str) -> str | None:
+        adapter = self.get(name)
+        value = getattr(adapter, "adapter_id", None)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise BrokerRegistryError("adapter_id inválido.")
+        return value.strip()
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
