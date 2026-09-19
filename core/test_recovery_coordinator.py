@@ -94,6 +94,7 @@ def test_matching_terminal_ledger_and_lifecycle_can_resume(tmp_path):
         '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
         encoding="utf-8",
     )
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-1", now))
     result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
     assert result.can_resume is True
