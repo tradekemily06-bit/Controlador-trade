@@ -125,8 +125,6 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
 
 def test_gateway_blocks_future_execution_after_unknown_persistence_failure():
-    from execution.execution_lifecycle import ExecutionLifecycleState
-
     class BrokenLifecycle:
         def get(self, _request_id):
             return None
