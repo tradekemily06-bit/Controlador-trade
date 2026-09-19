@@ -123,7 +123,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted(request_id, broker=broker, adapter=authorization.adapter_id, external_id=result.execution.external_id.strip())
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
