@@ -7,7 +7,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.kill_switch import KillSwitch
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.p124_broker_session import BrokerSessionBoundary, BrokerSessionObservation
+from execution.p124_broker_session import BrokerSessionBoundary, BrokerSessionObservation, BrokerSessionPort
 from core.request_identity import validate_request_id
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -65,7 +65,8 @@ class RealExecutionGateway:
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
-                safety: RealSafetyReport, session: BrokerSessionObservation | None = None) -> RealGatewayResult:
+                safety: RealSafetyReport, session: BrokerSessionObservation | None = None,
+                session_port: BrokerSessionPort | None = None) -> RealGatewayResult:
         try:
             validate_request_id(request_id)
         except ValueError:
@@ -74,10 +75,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "persistência REAL em estado de falha; novas execuções bloqueadas até recuperação.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
-        if session is None:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL autenticada e vinculada à conta é obrigatória.")
+        if session_port is None or not hasattr(session_port, "check_session"):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "origem confiável da sessão REAL é obrigatória.")
         try:
-            session = BrokerSessionBoundary.validate(session)
+            observed_session = session_port.check_session()
+            session = BrokerSessionBoundary.validate(observed_session)
         except ValueError:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL inválida.")
         if not BrokerSessionBoundary.is_usable(session):
