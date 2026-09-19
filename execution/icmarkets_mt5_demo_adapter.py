@@ -30,6 +30,8 @@ class ICMarketsMT5DemoAdapter:
     no fixed expiry here; positions remain open until explicitly closed.
     """
 
+    adapter_id = "ic-markets-mt5-demo-v1"
+
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
         self._mt5 = mt5_module
