@@ -33,6 +33,7 @@ class ExecutionLedger:
 
     def _load(self) -> None:
         if not self.path.exists():
+            self._states = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -43,14 +44,16 @@ class ExecutionLedger:
     @staticmethod
     def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
         if isinstance(payload, list):
-            if any(not isinstance(item, str) or not item.strip() for item in payload):
+            if any(not isinstance(item, str) or not item.strip() or len(item.strip()) > 128 for item in payload):
+                raise ValueError("ledger de execução inválido.")
+            if len(set(payload)) != len(payload):
                 raise ValueError("ledger de execução inválido.")
             return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in payload.items():
-            if not isinstance(request_id, str) or not request_id.strip():
+            if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
