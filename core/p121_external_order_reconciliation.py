@@ -19,6 +19,7 @@ class ExternalOrderObservation:
     status: ExternalOrderStatus
     message: str
     observed_at: datetime
+    source: str = "external-query"
 
 
 class ExternalOrderQueryPort(Protocol):
@@ -46,6 +47,8 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("external_id da observação difere do solicitado.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
+        if not isinstance(observation.source, str) or not observation.source.strip():
+            raise ValueError("fonte da observação externa inválida.")
         if observation.observed_at.tzinfo is None or observation.observed_at.utcoffset() is None:
             raise ValueError("observação externa deve ter timestamp timezone-aware.")
         if observation.observed_at > datetime.now(timezone.utc):
