@@ -67,22 +67,39 @@ class RealExecutionGateway:
         return True
 
     def _mark_not_dispatched(self, request_id: str, message: str) -> bool:
-        """Persist a definitive pre-broker stop without manufacturing UNKNOWN."""
+        """Persist a definitive pre-broker stop without manufacturing UNKNOWN.
+        
+        A persistence API may raise after its atomic replace already committed.
+        Verify the durable authorities before deciding that the terminal stop
+        failed; otherwise a harmless post-commit error would unnecessarily turn
+        a provably non-dispatched request into UNKNOWN.
+        """
         try:
             self._ledger.mark_rejected(request_id)
         except (OSError, ValueError):
-            return False
+            try:
+                durable_ledger = ExecutionLedger(self._ledger.path)
+                if durable_ledger.status(request_id) is not ExecutionLedgerStatus.REJECTED:
+                    return False
+            except (OSError, ValueError):
+                return False
+
+        record = ExecutionLifecycleRecord(
+            request_id,
+            ExecutionLifecycleState.REJECTED,
+            datetime.now(timezone.utc),
+            message,
+        )
         try:
-            self._lifecycle.put(
-                ExecutionLifecycleRecord(
-                    request_id,
-                    ExecutionLifecycleState.REJECTED,
-                    datetime.now(timezone.utc),
-                    message,
-                )
-            )
+            self._lifecycle.put(record)
         except (OSError, ValueError):
-            return False
+            try:
+                durable_lifecycle = ExecutionLifecycleStore(self._lifecycle.path)
+                current = durable_lifecycle.get(request_id)
+                if current is None or current.state is not ExecutionLifecycleState.REJECTED:
+                    return False
+            except (OSError, ValueError):
+                return False
         return True
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
