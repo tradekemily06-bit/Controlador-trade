@@ -174,10 +174,29 @@ class ExecutionLedger:
         return self._external_ids.get(request_id)
 
     def mark_rejected(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.REJECTED)
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current is not ExecutionLedgerStatus.RESERVED:
+                raise ValueError("somente uma reserva ainda não enviada pode ser rejeitada.")
+            self._states[request_id] = ExecutionLedgerStatus.REJECTED
+
+        self._mutate_locked(mutation)
 
     def mark_unknown(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current is ExecutionLedgerStatus.UNKNOWN:
+                return
+            if current is not ExecutionLedgerStatus.RESERVED:
+                raise ValueError("somente uma reserva ativa pode entrar em UNKNOWN.")
+
+            self._states[request_id] = ExecutionLedgerStatus.UNKNOWN
+
+        self._mutate_locked(mutation)
 
     def reconcile_observation(self, request_id: str, observation: ExternalOrderObservation) -> None:
         self._validate_id(request_id)
