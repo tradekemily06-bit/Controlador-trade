@@ -47,10 +47,14 @@ class NoExternalIdAdapter:
 class UnknownAdapter:
     adapter_id = "fake-adapter"
 
+    def __init__(self):
+        self.calls = 0
+
     def is_available(self):
         return True
 
     def execute(self, request):
+        self.calls += 1
         raise TimeoutError("timeout after dispatch")
 
 
