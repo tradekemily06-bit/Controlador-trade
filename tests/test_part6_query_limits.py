@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import io
-
 import pytest
 
 from app import _query_limit
