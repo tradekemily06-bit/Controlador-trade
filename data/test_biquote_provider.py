@@ -49,7 +49,8 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
     def fake_urlopen(request, timeout):
         class JsonResponse(FakeResponse):
             def read(self, _size=-1):
-                return b""
+                import json
+                return json.dumps(self.payload).encode("utf-8")
 
         import json
 
@@ -78,7 +79,8 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
                 return False
 
             def read(self, _size=-1):
-                return b""
+                import json
+                return json.dumps(self.payload).encode("utf-8")
 
         context = Context()
         context.payload = payload
