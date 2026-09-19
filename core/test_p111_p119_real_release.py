@@ -35,6 +35,8 @@ class FakeAdapter:
 
 
 class NoExternalIdAdapter:
+    adapter_id = "fake-adapter"
+
     def is_available(self):
         return True
 
@@ -382,6 +384,14 @@ def test_real_gateway_blocks_new_dispatch_when_recovery_is_required(tmp_path: Pa
     ledger.reserve("stuck")
     ledger.mark_unknown("stuck")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "stuck",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
     lifecycle.put(
         ExecutionLifecycleRecord(
             "stuck",
