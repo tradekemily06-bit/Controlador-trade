@@ -33,11 +33,22 @@ def exclusive_file_lock(path: str | Path) -> Iterator[None]:
     except OSError as exc:
         raise RuntimeError("não foi possível abrir o lock operacional com segurança") from exc
     try:
-        with os.fdopen(fd, "a+") as handle:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle = os.fdopen(fd, "a+")
     except OSError as exc:
-        raise RuntimeError("falha no lock operacional") from exc
+        os.close(fd)
+        raise RuntimeError("não foi possível abrir o lock operacional com segurança") from exc
+    try:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except OSError as exc:
+            handle.close()
+            raise RuntimeError("falha ao adquirir o lock operacional") from exc
+        try:
+            yield
+        finally:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+    except RuntimeError:
+        raise
