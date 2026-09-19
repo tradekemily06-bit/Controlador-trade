@@ -68,6 +68,37 @@ class RealExecutionGateway:
             return False
         return True
 
+    def _recovery_safe(self) -> bool:
+        """Block new REAL dispatch when any durable execution state needs repair."""
+        try:
+            lifecycle = self._lifecycle.records()
+            ledger_ids = self._ledger.records()
+            ledger_states = {request_id: self._ledger.status(request_id) for request_id in ledger_ids}
+        except (OSError, ValueError):
+            return False
+
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+        if any(record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN) for record in lifecycle):
+            return False
+
+        if set(lifecycle_by_id) != set(ledger_states):
+            return False
+
+        for request_id, status in ledger_states.items():
+            record = lifecycle_by_id[request_id]
+            if status is ExecutionLedgerStatus.ACCEPTED and record.state is not ExecutionLifecycleState.ACCEPTED:
+                return False
+            if status is ExecutionLedgerStatus.REJECTED and record.state is not ExecutionLifecycleState.REJECTED:
+                return False
+            if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and record.state is not ExecutionLifecycleState.ACCEPTED:
+                return False
+            if status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED and record.state is not ExecutionLifecycleState.REJECTED:
+                return False
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                return False
+
+        return True
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
@@ -83,6 +114,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if not self._recovery_safe():
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "estado de execução exige reconciliação; novo despacho REAL bloqueado.",
+            )
         if request.request_id is None:
             # Bind the canonical ledger identity into the broker-facing request.
             request = replace(request, request_id=request_id)
