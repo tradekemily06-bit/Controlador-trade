@@ -443,3 +443,40 @@ def test_non_definitive_negative_result_is_unknown_not_rejected(tmp_path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("non-definitive-rejection") is ExecutionLedgerStatus.UNKNOWN
+
+class NonFinalAcceptanceAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(
+            True,
+            "aceite provisório",
+            "EXT-NONFINAL",
+            outcome_final=False,
+        )
+
+
+def test_non_final_acceptance_is_unknown_and_reconcilable(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", NonFinalAcceptanceAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(tmp_path, registry, ledger)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+
+    result = gateway.execute(
+        broker="fake", request_id="non-final-acceptance", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("non-final-acceptance") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id("non-final-acceptance") == "EXT-NONFINAL"
