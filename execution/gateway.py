@@ -91,55 +91,54 @@ class ExecutionGateway:
                     self._persistence_fault = True
                     return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução; envio bloqueado.")
 
-        try:
-            result = self._executor.execute(request)
-        except Exception:
-            if not self._mark_unknown(request_id, event_time, "resultado do executor é incerto."):
-                self._persistence_fault = True
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor falhou e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.")
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor falhou; resultado marcado como UNKNOWN.")
-
-        if not isinstance(result, ExecutionResult):
-            if not self._mark_unknown(request_id, event_time, "executor retornou resultado inválido."):
-                self._persistence_fault = True
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.")
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
-
-        if not result.accepted:
+            try:
+                result = self._executor.execute(request)
+            except Exception:
+                if not self._mark_unknown(request_id, event_time, "resultado do executor é incerto."):
+                    self._persistence_fault = True
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor falhou e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor falhou; resultado marcado como UNKNOWN.")
+    
+            if not isinstance(result, ExecutionResult):
+                if not self._mark_unknown(request_id, event_time, "executor retornou resultado inválido."):
+                    self._persistence_fault = True
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
+    
+            if not result.accepted:
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                    except (OSError, ValueError):
+                        self._persistence_fault = True
+                        return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "resultado rejeitado, mas persistência falhou; novas execuções bloqueadas.", result)
+                return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
+    
+            if self._ledger is not None:
+                try:
+                    self._ledger.record(request_id)
+                except (OSError, ValueError):
+                    if not self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido."):
+                        self._persistence_fault = True
+                        return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.", result)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência falhou; estado UNKNOWN.", result)
             if self._lifecycle is not None:
                 try:
-                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
                 except (OSError, ValueError):
-                    self._persistence_fault = True
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "resultado rejeitado, mas persistência falhou; novas execuções bloqueadas.", result)
-            return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
-
-        if self._ledger is not None:
-            try:
-                self._ledger.record(request_id)
-            except (OSError, ValueError):
-                if not self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido."):
-                    self._persistence_fault = True
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.", result)
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência falhou; estado UNKNOWN.", result)
-        if self._lifecycle is not None:
-            try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
-            except (OSError, ValueError):
-                if not self._mark_unknown(request_id, event_time, "execução aceita, mas ciclo não foi persistido."):
-                    self._persistence_fault = True
-                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.", result)
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN.", result)
-        with self._request_lock:
+                    if not self._mark_unknown(request_id, event_time, "execução aceita, mas ciclo não foi persistido."):
+                        self._persistence_fault = True
+                        return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita e o estado UNKNOWN não pôde ser persistido; novas execuções bloqueadas.", result)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN.", result)
             self._processed_request_ids.add(request_id)
-
-        recorded_operation = None
-        if snapshot is not None and self._recorder is not None:
-            recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
-
-        return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
-
-    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> bool:
+    
+            recorded_operation = None
+            if snapshot is not None and self._recorder is not None:
+                recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
+    
+            return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+    
+        def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> bool:
         if self._lifecycle is None:
             return True
         try:
