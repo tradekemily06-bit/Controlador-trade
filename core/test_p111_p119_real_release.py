@@ -2,6 +2,7 @@ from core.kill_switch import KillSwitch
 from pathlib import Path
 
 from core.models import Signal
+from core.operational_safety_store import OperationalSafetyStore
 from core.operation_memory import OperationMemory
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -89,6 +90,7 @@ def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, 
         lifecycle=lifecycle,
         recovery=recovery,
         kill_switch=kill_switch or KillSwitch(),
+        safety_store=OperationalSafetyStore(tmp_path / "operational-safety.json"),
     )
 
 
