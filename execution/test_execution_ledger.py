@@ -156,3 +156,20 @@ def test_ledger_exclusive_reservation_is_available_after_reconciliation(tmp_path
     )
     ledger.reserve_exclusive("new-request")
     assert ledger.status("new-request") is ExecutionLedgerStatus.RESERVED
+
+
+def test_unknown_cannot_be_closed_as_rejected(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+    with pytest.raises(ValueError):
+        ledger.mark_rejected("req-unknown")
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_mark_unknown_is_idempotent_but_only_for_uncertain_state(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-unknown-idempotent")
+    ledger.mark_unknown("req-unknown-idempotent")
+    ledger.mark_unknown("req-unknown-idempotent")
+    assert ledger.status("req-unknown-idempotent") is ExecutionLedgerStatus.UNKNOWN
