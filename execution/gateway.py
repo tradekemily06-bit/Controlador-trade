@@ -190,7 +190,7 @@ class ExecutionGateway:
             return "request_id inválido ou não canônico."
         if type(request) is not ExecutionRequest:
             return "requisição de execução inválida."
-        if request.request_id != request_id:
+        if request.request_id is not None and request.request_id != request_id:
             return "request_id externo e request.request_id precisam coincidir."
         if request.mode is not ExecutionMode.DEMO:
             return "esta etapa aceita somente execução DEMO."
