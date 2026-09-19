@@ -45,6 +45,20 @@ class UnknownAdapter:
     def execute(self, request):
         raise TimeoutError("timeout after dispatch")
 
+    
+class FakeQueryPort:
+    def __init__(self, observation):
+        self.observation = observation
+        self.calls = []
+
+    def query_order(self, external_id):
+        self.calls.append(("external_id", external_id))
+        return self.observation
+
+    def query_order_by_request_id(self, request_id):
+        self.calls.append(("request_id", request_id))
+        return self.observation
+
 
 def _authorization():
     return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
@@ -174,7 +188,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", observation=ExternalOrderObservation("broker-unknown-2", ExternalOrderStatus.EXECUTED, "broker confirmed", request_id="unknown-2"))
+    gateway.reconcile_unknown("unknown-2", query_port=FakeQueryPort(ExternalOrderObservation("broker-unknown-2", ExternalOrderStatus.EXECUTED, "broker confirmed", request_id="unknown-2")))
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -191,7 +205,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", observation=ExternalOrderObservation(None, ExternalOrderStatus.NOT_EXECUTED, "broker query found no order", request_id="crashed"))
+    gateway.reconcile_unknown("crashed", query_port=FakeQueryPort(ExternalOrderObservation(None, ExternalOrderStatus.NOT_EXECUTED, "broker query found no order", request_id="crashed")))
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
@@ -275,11 +289,11 @@ def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="unknown-bool", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     try:
-        gateway.reconcile_unknown("unknown-bool", executed=True)
-    except TypeError:
+        gateway.reconcile_unknown("unknown-bool", query_port=object())
+    except ValueError:
         pass
     else:
-        raise AssertionError("REAL reconciliation must not accept a naked boolean")
+        raise AssertionError("REAL reconciliation must require a broker query port")
     assert ledger.status("unknown-bool") is ExecutionLedgerStatus.UNKNOWN
 
 
@@ -296,7 +310,9 @@ def test_real_reconciliation_rejects_wrong_request_identity(tmp_path: Path):
     try:
         gateway.reconcile_unknown(
             "unknown-correlation",
-            observation=ExternalOrderObservation("broker-id", ExternalOrderStatus.EXECUTED, "mismatched", request_id="other-request"),
+            query_port=FakeQueryPort(
+                ExternalOrderObservation("broker-id", ExternalOrderStatus.EXECUTED, "mismatched", request_id="other-request")
+            ),
         )
     except ValueError:
         pass
