@@ -43,7 +43,7 @@ class BrokerAdapterGateway:
                 False,
                 "execução REAL exige a fronteira RealExecutionGateway.",
             )
-        return self._dispatch(broker, request)
+        return self._dispatch(broker, request, preserve_exceptions=False)
 
     def execute_real(
         self,
@@ -57,9 +57,9 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, "capacidade de despacho REAL inválida.")
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "request REAL obrigatório na fronteira de despacho REAL.")
-        return self._dispatch(broker, request)
+        return self._dispatch(broker, request, preserve_exceptions=True)
 
-    def _dispatch(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+    def _dispatch(self, broker: str, request: ExecutionRequest, *, preserve_exceptions: bool) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
@@ -76,6 +76,8 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception as exc:
+            if preserve_exceptions:
+                raise AdapterGatewayError(f"adapter REAL falhou após o despacho: {exc}") from exc
             return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
 
         if not isinstance(result, ExecutionResult):
