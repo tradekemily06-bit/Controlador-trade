@@ -92,6 +92,12 @@ class OperationalSafetyStore:
             raise ValueError("estado de segurança inválido.") from exc
         if not isinstance(payload, dict):
             raise ValueError("estado de segurança deve ser um objeto.")
+        audit_items = payload.get("audit", [])
+        execution_items = payload.get("execution_audit", [])
+        if not isinstance(audit_items, list) or len(audit_items) > MAX_SAFETY_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
+        if not isinstance(execution_items, list) or len(execution_items) > MAX_SAFETY_EXECUTION_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
         return payload
 
     def _write_payload(self, payload: dict[str, object]) -> None:
