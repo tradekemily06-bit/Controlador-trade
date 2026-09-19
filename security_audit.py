@@ -11,6 +11,10 @@ from pathlib import Path
 from threading import Lock
 
 MAX_SECURITY_EVENTS = 1000
+MAX_SECURITY_REQUEST_ID_LENGTH = 128
+MAX_SECURITY_METHOD_LENGTH = 16
+MAX_SECURITY_PATH_LENGTH = 512
+MAX_SECURITY_CLIENT_KEY_LENGTH = 256
 
 
 @dataclass(frozen=True)
@@ -94,8 +98,21 @@ class SecurityAudit:
                 raise RuntimeError("durable security audit storage could not be initialized") from exc
 
     def record(self, *, request_id: str, method: str, path: str, status: int, client_key: str) -> None:
+        # Audit input is an internal boundary, but it must remain bounded even
+        # when called outside the HTTP layer. Otherwise a malformed request_id
+        # or client_key could inflate the durable trail before retention pruning.
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > MAX_SECURITY_REQUEST_ID_LENGTH:
+            raise ValueError("request_id de auditoria inválido ou excede o limite permitido")
+        if not isinstance(method, str) or not method.strip() or len(method) > MAX_SECURITY_METHOD_LENGTH:
+            raise ValueError("método de auditoria inválido ou excede o limite permitido")
+        if not isinstance(path, str) or len(path) > MAX_SECURITY_PATH_LENGTH:
+            raise ValueError("caminho de auditoria excede o limite permitido")
+        if not isinstance(client_key, str) or len(client_key) > MAX_SECURITY_CLIENT_KEY_LENGTH:
+            raise ValueError("identidade do cliente excede o limite permitido")
+        if isinstance(status, bool) or not isinstance(status, int) or not 100 <= status <= 599:
+            raise ValueError("status HTTP de auditoria inválido")
         digest = hashlib.sha256(self._salt + client_key.encode("utf-8", "replace")).hexdigest()
-        event = SecurityEvent(time.time(), request_id, method, path[:512], int(status), digest)
+        event = SecurityEvent(time.time(), request_id, method.strip().upper(), path, int(status), digest)
         if self._require_durable and not self._database_path:
             raise RuntimeError("durable security audit provider is unavailable")
         if self._database_path:
