@@ -161,16 +161,37 @@ class ExecutionLifecycleStore:
 
     def _save(self, records: dict[str, ExecutionLifecycleRecord]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do ciclo de execução não pode ser symlink")
+        if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+            raise OSError("ciclo de execução deve ser um arquivo regular")
         if len(records) > MAX_LIFECYCLE_RECORDS:
             raise ValueError("ciclo de execução excede o limite permitido.")
         encoded = self._serialize(records).encode("utf-8")
         if len(encoded) > MAX_LIFECYCLE_FILE_BYTES:
             raise ValueError("ciclo de execução excede o limite permitido.")
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_bytes(encoded)
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
+        try:
+            fd = os.open(temporary, flags, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                fd = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+        except FileExistsError as exc:
+            raise RuntimeError("arquivo temporário do ciclo de execução já existe") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
         directory_fd = os.open(self.path.parent, os.O_RDONLY)
         try:
             os.fsync(directory_fd)
