@@ -98,3 +98,17 @@ def test_safety_store_atomic_failure_preserves_existing_durable_state(tmp_path, 
     assert restored_kill.state.enabled is True
     assert restored_kill.state.reason == "durable block"
     assert json.loads(original)["kill_switch"]["enabled"] is True
+
+
+def test_safety_reload_never_clears_live_kill_switch(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    recorder = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    # A direct live activation represents an emergency stop that has not yet
+    # reached durable storage. A recovery refresh must not accidentally clear it.
+    recorder.kill_switch.activate("emergency local stop")
+    recorder._reload_safety()
+
+    assert recorder.kill_switch.state.enabled is True
+    assert recorder.kill_switch.state.reason == "emergency local stop"
