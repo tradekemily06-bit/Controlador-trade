@@ -72,6 +72,29 @@ PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/news"),
     ("GET", "/api/connections"),
 }
+PUBLIC_SAAS_BLOCKED = {
+    ("GET", "/api/learning"),
+    ("GET", "/api/learning/resources"),
+    ("GET", "/api/learning/sources"),
+    ("GET", "/api/notifications"),
+    ("GET", "/api/notifications/all"),
+    ("GET", "/api/preferences"),
+    ("GET", "/api/psychology/status"),
+    ("GET", "/api/risk"),
+    ("POST", "/api/learning/activities"),
+    ("POST", "/api/learning/attempts"),
+    ("POST", "/api/learning/observations"),
+    ("POST", "/api/learning/professor/activity"),
+    ("POST", "/api/learning/resources"),
+    ("POST", "/api/learning/sources/admit"),
+    ("POST", "/api/learning/sources/screen"),
+    ("POST", "/api/learning/sources/validate"),
+    ("POST", "/api/preferences"),
+    ("POST", "/api/preferences/candles"),
+    ("POST", "/api/preferences/notifications"),
+    ("POST", "/api/psychology/advanced"),
+    ("POST", "/api/psychology/check-in"),
+}
 
 
 def _audit(environ, request_id: str, status: int) -> None:
