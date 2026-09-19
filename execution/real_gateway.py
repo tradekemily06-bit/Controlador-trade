@@ -143,6 +143,21 @@ class RealExecutionGateway:
         if current_status is not None:
             self._processed_request_ids.add(request_id)
             if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                # A crash can occur after ledger admission but before lifecycle
+                # publication. Materialize the missing lifecycle uncertainty now,
+                # without ever reopening the broker-dispatch path.
+                if self._lifecycle.get(request_id) is None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                datetime.now(timezone.utc),
+                                "request_id durável incerto após restart; reconciliação explícita obrigatória.",
+                            )
+                        )
+                    except (OSError, ValueError):
+                        pass
                 return RealGatewayResult(
                     RealGatewayStatus.UNKNOWN,
                     "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
