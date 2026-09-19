@@ -7,6 +7,7 @@ from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.execution_coordination import ExecutionCoordinationLock
 
 
 class RecoveryState(str, Enum):
@@ -53,8 +54,16 @@ class RecoveryCoordinator:
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
         self.memory = memory
+        self._coordination = ExecutionCoordinationLock(execution_ledger.path)
 
     def assess(self) -> RecoveryAssessment:
+        # Recovery must observe the same critical section used by REAL dispatch.
+        # Otherwise it could read between Ledger/Lifecycle mutations and report
+        # a transiently safe state while an external side effect is in flight.
+        with self._coordination.acquire():
+            return self._assess_locked()
+
+    def _assess_locked(self) -> RecoveryAssessment:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
