@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
@@ -84,37 +90,58 @@ class OperationalSafetyStore:
             raise ValueError("estado de segurança deve ser um objeto.")
         return payload
 
+    def _mutate_locked(self, mutation) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                mutation()
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+    def _atomic_write(self, payload: dict[str, object]) -> None:
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
     def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
         if not isinstance(kill_switch, KillSwitch):
             raise TypeError("kill_switch deve ser KillSwitch.")
-        state = kill_switch.state
-        payload = self._read_payload()
-        execution_audit = payload.get("execution_audit", [])
-        if not isinstance(execution_audit, list):
-            raise ValueError("auditoria de execução persistida inválida.")
-        execution_audit = [self._execution_audit_item(item) for item in execution_audit]
-        payload = {
-            "audit": [self._audit_dict(record) for record in audit.records()],
-            "kill_switch": {"enabled": state.enabled, "reason": state.reason},
-            "execution_audit": execution_audit,
-        }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+        def mutation() -> None:
+            current = self._read_payload()
+            execution_audit = current.get("execution_audit", [])
+            if not isinstance(execution_audit, list):
+                raise ValueError("auditoria de execução persistida inválida.")
+            execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+            self._atomic_write({
+                "audit": [self._audit_dict(record) for record in audit.records()],
+                "kill_switch": {"enabled": kill_switch.state.enabled, "reason": kill_switch.state.reason},
+                "execution_audit": execution_audit,
+            })
+        self._mutate_locked(mutation)
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
         normalized = [self._execution_audit_item(item) for item in events]
-        payload = self._read_payload()
-        audit = payload.get("audit", [])
-        kill_switch = payload.get("kill_switch", {})
-        if not isinstance(audit, list) or not isinstance(kill_switch, dict):
-            raise ValueError("estado de segurança inválido.")
-        payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
+        def mutation() -> None:
+            current = self._read_payload()
+            audit = current.get("audit", [])
+            kill_switch = current.get("kill_switch", {})
+            if not isinstance(audit, list) or not isinstance(kill_switch, dict):
+                raise ValueError("estado de segurança inválido.")
+            self._atomic_write({"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized})
+        self._mutate_locked(mutation)
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         payload = self._read_payload()
