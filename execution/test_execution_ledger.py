@@ -135,3 +135,24 @@ def test_ledger_reconciliation_rejects_nonterminal_observation(tmp_path):
             "req-pending",
             ExternalOrderObservation(None, ExternalOrderStatus.PENDING, "still pending", request_id="req-pending"),
         )
+
+
+def test_ledger_exclusive_reservation_blocks_existing_uncertainty(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("uncertain-1")
+    ledger.mark_unknown("uncertain-1")
+    with pytest.raises(ValueError, match="estado incerto"):
+        ledger.reserve_exclusive("new-request")
+
+
+def test_ledger_exclusive_reservation_is_available_after_reconciliation(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("uncertain-1")
+    ledger.mark_unknown("uncertain-1")
+    ledger.reconcile_observation(
+        "uncertain-1",
+        ExternalOrderObservation(None, ExternalOrderStatus.NOT_EXECUTED, "not found", request_id="uncertain-1"),
+    )
+    ledger.reserve_exclusive("new-request")
+    assert ledger.status("new-request") is ExecutionLedgerStatus.RESERVED
