@@ -53,3 +53,10 @@ def test_scoped_state_requires_both_scope_dimensions(tmp_path):
         store.get(tenant_id=None, subject_id="user", namespace="prefs")
     with pytest.raises(PermissionError):
         store.put(tenant_id="tenant", subject_id=None, namespace="prefs", payload={})
+
+
+def test_production_and_scoped_databases_are_private(tmp_path):
+    production = SQLiteProductionStore(tmp_path / "production.sqlite")
+    scoped = SQLiteScopedStateStore(tmp_path / "state.sqlite")
+    assert production.path and (tmp_path / "production.sqlite").stat().st_mode & 0o077 == 0
+    assert (tmp_path / "state.sqlite").stat().st_mode & 0o077 == 0
