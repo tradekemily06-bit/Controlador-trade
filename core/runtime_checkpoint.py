@@ -59,8 +59,16 @@ class RuntimeCheckpointStore:
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
             return None
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            with lock_path.open("a+", encoding="utf-8") as lock_file:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+                try:
+                    data = json.loads(self.path.read_text(encoding="utf-8"))
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             if not isinstance(data, dict):
                 raise ValueError
             checkpoint = RuntimeCheckpoint(
