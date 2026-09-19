@@ -288,12 +288,18 @@ class RealExecutionGateway:
             else ExecutionLifecycleState.REJECTED
         )
 
+        terminal_status = (
+            ExecutionLedgerStatus.ACCEPTED
+            if executed
+            else ExecutionLedgerStatus.REJECTED
+        )
         if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
+            terminal_status,
             desired_ledger,
         ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
+            raise ValueError("request_id não está em estado reconciliável.")
 
         now = datetime.now(timezone.utc)
         if lifecycle is None:
