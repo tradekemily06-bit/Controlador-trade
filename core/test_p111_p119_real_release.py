@@ -373,6 +373,48 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_gateway_blocks_new_dispatch_when_recovery_is_required(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("stuck")
+    ledger.mark_unknown("stuck")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "stuck",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+            "uncertain",
+        )
+    )
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="recovery-block",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="new-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
 def test_real_gateway_rejects_request_id_mismatch(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
