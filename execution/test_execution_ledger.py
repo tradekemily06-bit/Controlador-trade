@@ -370,3 +370,27 @@ def test_request_execution_lock_is_reentrant_for_public_mutators(tmp_path):
         ledger.mark_accepted("nested")
     assert ledger.status("nested") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id("nested") == "EXT-NESTED"
+
+
+def test_ledger_rejects_external_id_on_definitive_non_execution_states(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"rejected": {"status": "REJECTED", "external_id": "EXT-1"}, '
+        '"not-executed": {"status": "RECONCILED_NOT_EXECUTED", "external_id": "EXT-2"}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="não executado"):
+        ExecutionLedger(path)
+
+
+def test_ledger_cannot_bind_external_id_after_definitive_non_execution(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("rejected")
+    ledger.mark_rejected("rejected")
+    with pytest.raises(ValueError, match="não executado"):
+        ledger.bind_external_id("rejected", "EXT-REJECTED")
+
+    ledger.reserve("not-executed")
+    ledger._reconcile_locked("not-executed", executed=False)
+    with pytest.raises(ValueError, match="não executado"):
+        ledger.bind_external_id("not-executed", "EXT-NOT-EXECUTED")
