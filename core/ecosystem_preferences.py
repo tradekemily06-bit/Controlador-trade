@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from typing import Any
+from threading import RLock
 
 
 class CandleStyle(str, Enum):
@@ -72,6 +73,7 @@ class EcosystemPreferencesStore:
         self._validate(self._default_preferences)
         self._scoped: dict[tuple[str, str], EcosystemPreferences] = {}
         self._state_store = state_store
+        self._lock = RLock()
 
     @staticmethod
     def _trusted_scope() -> tuple[str, str] | None:
@@ -154,7 +156,8 @@ class EcosystemPreferencesStore:
 
     @property
     def preferences(self) -> EcosystemPreferences:
-        return self._current()
+        with self._lock:
+            return self._current()
 
     def _save(self, value: EcosystemPreferences) -> EcosystemPreferences:
         self._validate(value)
@@ -168,15 +171,18 @@ class EcosystemPreferencesStore:
         return value
 
     def update(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._fresh_current(), **changes))
+        with self._lock:
+            return self._save(replace(self._fresh_current(), **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, candle=replace(current.candle, **changes)))
+        with self._lock:
+            current = self._fresh_current()
+            return self._save(replace(current, candle=replace(current.candle, **changes)))
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, notifications=replace(current.notifications, **changes)))
+        with self._lock:
+            current = self._fresh_current()
+            return self._save(replace(current, notifications=replace(current.notifications, **changes)))
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
