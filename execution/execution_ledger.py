@@ -188,6 +188,11 @@ class ExecutionLedger:
                 raise ValueError("external_id conflitante para o mesmo request_id.")
             if normalized in self._external_ids.values() and existing != normalized:
                 raise ValueError("external_id já está associado a outro request_id.")
+            current = self._states[request_id]
+            if current is ExecutionLedgerStatus.REJECTED:
+                raise ValueError("estado REJECTED não pode receber external_id após rejeição definitiva.")
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
+                raise ValueError(f"estado inválido para vínculo de external_id: {current.value}.")
             self._external_ids[request_id] = normalized
 
         self._mutate_locked(mutation)
@@ -270,6 +275,8 @@ class ExecutionLedger:
                 raise ValueError("estado UNKNOWN requer reconciliação explícita.")
             if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError(f"transição inválida de {current.value} para {status.value}.")
+            if status is ExecutionLedgerStatus.REJECTED and request_id in self._external_ids:
+                raise ValueError("não é permitido rejeitar definitivamente um request com external_id.")
             self._states[request_id] = status
 
         self._mutate_locked(mutation)
