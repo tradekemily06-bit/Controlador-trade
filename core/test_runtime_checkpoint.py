@@ -47,3 +47,15 @@ def test_checkpoint_rejects_oversized_persisted_file(tmp_path):
     path.write_bytes(b"x" * (64 * 1024 + 1))
     with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
         RuntimeCheckpointStore(path).load()
+
+
+def test_checkpoint_rejects_symlinked_state(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text('{"session_id":"s","last_cycle":0,"last_request_id":null,"updated_at":"2026-09-19T00:00:00+00:00"}', encoding="utf-8")
+    path = tmp_path / "checkpoint.json"
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink não suportado neste ambiente")
+    with pytest.raises(ValueError, match="arquivo regular"):
+        RuntimeCheckpointStore(path).load()
