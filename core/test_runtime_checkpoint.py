@@ -59,3 +59,21 @@ def test_checkpoint_rejects_symlinked_state(tmp_path):
         pytest.skip("symlink não suportado neste ambiente")
     with pytest.raises(ValueError, match="arquivo regular"):
         RuntimeCheckpointStore(path).load()
+
+def test_checkpoint_rejects_symlinked_state_and_stale_temp(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text("{}", encoding="utf-8")
+    state = tmp_path / "checkpoint.json"
+    state.symlink_to(target)
+    store = RuntimeCheckpointStore(state)
+    from datetime import datetime, timezone
+    with pytest.raises(OSError):
+        store.save(RuntimeCheckpoint("s", 1, None, datetime.now(timezone.utc)))
+
+def test_checkpoint_refuses_stale_temporary_file(tmp_path):
+    from datetime import datetime, timezone
+    state = tmp_path / "checkpoint.json"
+    (tmp_path / ".checkpoint.json.tmp").write_text("attacker", encoding="utf-8")
+    store = RuntimeCheckpointStore(state)
+    with pytest.raises(RuntimeError):
+        store.save(RuntimeCheckpoint("s", 1, None, datetime.now(timezone.utc)))
