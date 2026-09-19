@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -67,3 +68,17 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_independent_ledger_instances_serialize_shared_file_state(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledgers = [ExecutionLedger(path) for _ in range(8)]
+
+    def reserve(index: int):
+        ledgers[index].reserve(f"req-{index:03d}")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(reserve, range(8)))
+
+    restored = ExecutionLedger(path)
+    assert restored.records() == tuple(f"req-{index:03d}" for index in range(8))
