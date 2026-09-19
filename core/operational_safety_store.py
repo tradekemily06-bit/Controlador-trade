@@ -129,6 +129,45 @@ class OperationalSafetyStore:
             })
         self._mutate_locked(mutation)
 
+
+    def save_audit(self, audit: DecisionAudit) -> None:
+        """Persist only the decision audit, preserving the authoritative kill-switch state."""
+        if not isinstance(audit, DecisionAudit):
+            raise TypeError("audit deve ser DecisionAudit.")
+
+        def mutation() -> None:
+            current = self._read_payload()
+            kill_switch = current.get("kill_switch", {})
+            execution_audit = current.get("execution_audit", [])
+            if not isinstance(kill_switch, dict) or not isinstance(execution_audit, list):
+                raise ValueError("estado de segurança inválido.")
+            execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+            self._atomic_write({
+                "audit": [self._audit_dict(record) for record in audit.records()],
+                "kill_switch": kill_switch,
+                "execution_audit": execution_audit,
+            })
+        self._mutate_locked(mutation)
+
+    def save_kill_switch(self, kill_switch: KillSwitch) -> None:
+        """Atomically update only the kill-switch state, preserving concurrent audit changes."""
+        if not isinstance(kill_switch, KillSwitch):
+            raise TypeError("kill_switch deve ser KillSwitch.")
+
+        def mutation() -> None:
+            current = self._read_payload()
+            audit = current.get("audit", [])
+            execution_audit = current.get("execution_audit", [])
+            if not isinstance(audit, list) or not isinstance(execution_audit, list):
+                raise ValueError("estado de segurança inválido.")
+            execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+            self._atomic_write({
+                "audit": audit,
+                "kill_switch": {"enabled": kill_switch.state.enabled, "reason": kill_switch.state.reason},
+                "execution_audit": execution_audit,
+            })
+        self._mutate_locked(mutation)
+
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
