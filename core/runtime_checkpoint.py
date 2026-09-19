@@ -58,7 +58,10 @@ class RuntimeCheckpointStore:
             if not self.path.exists():
                 return None
             try:
-                if self.path.stat().st_size > MAX_CHECKPOINT_FILE_BYTES:
+                stat = self.path.lstat()
+                if self.path.is_symlink() or not self.path.is_file():
+                    raise ValueError("checkpoint deve ser um arquivo regular.")
+                if stat.st_size > MAX_CHECKPOINT_FILE_BYTES:
                     raise ValueError("checkpoint excede o limite permitido.")
                 data = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(data, dict):
