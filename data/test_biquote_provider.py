@@ -77,7 +77,7 @@ def test_biquote_provider_keeps_only_closed_bars(monkeypatch):
             def __exit__(self, exc_type, exc, tb):
                 return False
 
-            def read(self):
+            def read(self, _size=-1):
                 return b""
 
         context = Context()
