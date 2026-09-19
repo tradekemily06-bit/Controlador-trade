@@ -34,7 +34,7 @@ def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, 
         lifecycle=lifecycle,
         recovery=recovery,
         kill_switch=kill_switch or KillSwitch(),
-        safety_store=safety_store,
+        safety_store=safety_store or OperationalSafetyStore(tmp_path / "operational-safety.json"),
     )
 
 
