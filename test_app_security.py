@@ -3,6 +3,7 @@ import json
 import unittest
 
 from app import application
+from security_audit import MAX_SECURITY_PATH_LENGTH
 from security_guard import MAX_BODY_BYTES
 
 
@@ -40,6 +41,11 @@ class AppSecurityTests(unittest.TestCase):
         status, _, body = self.request("/api/analyze", method="POST", payload=payload)
         self.assertEqual(status, "400 Bad Request")
         self.assertIn(b"Entrada inv\xc3\xa1lida", body)
+
+    def test_oversized_path_is_bounded_in_audit_and_does_not_break_response(self):
+        path = "/api/" + ("x" * (MAX_SECURITY_PATH_LENGTH + 500))
+        status, _, _ = self.request(path)
+        self.assertEqual(status, "404 Not Found")
 
     def test_rate_limit_is_per_client(self):
         from app import SECURITY
