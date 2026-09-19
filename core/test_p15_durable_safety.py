@@ -86,3 +86,19 @@ def test_safety_store_rejects_excessive_audit_records(tmp_path):
     path.write_text(json.dumps({"audit": [{}] * 10001, "kill_switch": {}, "execution_audit": []}), encoding="utf-8")
     with pytest.raises(ValueError, match="estado de segurança inválido"):
         OperationalSafetyStore(path).load()
+
+
+def test_safety_store_rejects_oversized_file_before_json_parse(tmp_path):
+    path = tmp_path / "safety.json"
+    path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError, match="excede o limite permitido"):
+        OperationalSafetyStore(path).load()
+
+
+def test_safety_store_rejects_symlinked_state_file(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text('{"audit":[],"kill_switch":{},"execution_audit":[]}', encoding="utf-8")
+    path = tmp_path / "safety.json"
+    path.symlink_to(target)
+    with pytest.raises(ValueError, match="arquivo regular"):
+        OperationalSafetyStore(path).load()
