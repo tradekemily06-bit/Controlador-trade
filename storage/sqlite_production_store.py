@@ -7,6 +7,11 @@ from threading import RLock
 from typing import Any
 
 
+MAX_SCOPE_COMPONENT_LENGTH = 256
+MAX_RECORD_ID_LENGTH = 256
+MAX_RECORD_PAYLOAD_BYTES = 256 * 1024
+
+
 class SQLiteProductionStore:
     """Durable provider-neutral production store with tenant+subject isolation.
 
@@ -16,10 +21,20 @@ class SQLiteProductionStore:
 
     def __init__(self, path: str | Path) -> None:
         self.path = str(path)
+        self._path = Path(path)
         self._lock = RLock()
+        self._reject_symlinked_database()
         self._initialize()
 
+    def _reject_symlinked_database(self) -> None:
+        try:
+            if self._path.is_symlink():
+                raise RuntimeError("production database cannot be a symbolic link")
+        except OSError as exc:
+            raise RuntimeError("production database could not be inspected") from exc
+
     def _connect(self) -> sqlite3.Connection:
+        self._reject_symlinked_database()
         connection = sqlite3.connect(self.path, timeout=10.0)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -28,9 +43,10 @@ class SQLiteProductionStore:
         return connection
 
     def _initialize(self) -> None:
-        parent = Path(self.path).parent
+        parent = self._path.parent
         if str(parent) not in {"", "."}:
             parent.mkdir(parents=True, exist_ok=True)
+        self._reject_symlinked_database()
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
@@ -50,29 +66,49 @@ class SQLiteProductionStore:
             )
             connection.commit()
         try:
-            Path(self.path).chmod(0o600)
+            self._path.chmod(0o600)
         except OSError as exc:
             raise RuntimeError("production storage permissions could not be hardened") from exc
 
     @staticmethod
-    def _require_scope(tenant_id: str, subject_id: str) -> tuple[str, str]:
-        tenant = str(tenant_id).strip()
-        subject = str(subject_id).strip()
-        if not tenant or not subject:
-            raise ValueError("tenant_id and subject_id are required")
-        return tenant, subject
+    def _component(value: str, field: str, *, maximum: int = MAX_SCOPE_COMPONENT_LENGTH) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"{field} must be a string")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"{field} is required")
+        if len(normalized) > maximum:
+            raise ValueError(f"{field} exceeds the maximum length")
+        return normalized
+
+    @classmethod
+    def _require_scope(cls, tenant_id: str, subject_id: str) -> tuple[str, str]:
+        return (
+            cls._component(tenant_id, "tenant_id"),
+            cls._component(subject_id, "subject_id"),
+        )
+
+    @classmethod
+    def _record_id(cls, record: dict[str, Any]) -> str:
+        if not isinstance(record, dict):
+            raise ValueError("record must be a dictionary")
+        raw = record.get("record_id") or record.get("decision_id") or ""
+        return cls._component(str(raw), "record_id", maximum=MAX_RECORD_ID_LENGTH)
 
     @staticmethod
-    def _record_id(record: dict[str, Any]) -> str:
-        record_id = str(record.get("record_id") or record.get("decision_id") or "").strip()
-        if not record_id:
-            raise ValueError("record_id or decision_id is required")
-        return record_id
+    def _encode_record(record: dict[str, Any]) -> str:
+        try:
+            payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise ValueError("production record is not safely serializable") from exc
+        if len(payload.encode("utf-8")) > MAX_RECORD_PAYLOAD_BYTES:
+            raise ValueError("production record exceeds the maximum size")
+        return payload
 
     def save(self, record: dict[str, Any], *, tenant_id: str, subject_id: str) -> None:
         tenant, subject = self._require_scope(tenant_id, subject_id)
         record_id = self._record_id(record)
-        payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        payload = self._encode_record(record)
         with self._lock, self._connect() as connection:
             connection.execute(
                 """
@@ -87,20 +123,24 @@ class SQLiteProductionStore:
 
     def load(self, record_id: str, *, tenant_id: str, subject_id: str) -> dict[str, Any] | None:
         tenant, subject = self._require_scope(tenant_id, subject_id)
-        key = str(record_id).strip()
-        if not key:
-            raise ValueError("record_id is required")
+        key = self._component(record_id, "record_id", maximum=MAX_RECORD_ID_LENGTH)
         with self._lock, self._connect() as connection:
             row = connection.execute(
                 "SELECT payload FROM production_records WHERE tenant_id = ? AND subject_id = ? AND record_id = ?",
                 (tenant, subject, key),
             ).fetchone()
-        return json.loads(row["payload"]) if row is not None else None
+        if row is None:
+            return None
+        try:
+            return json.loads(row["payload"])
+        except (TypeError, json.JSONDecodeError, RecursionError) as exc:
+            raise RuntimeError("production record is corrupt") from exc
 
     def list(self, *, tenant_id: str, subject_id: str, limit: int | None = None) -> list[dict[str, Any]]:
         tenant, subject = self._require_scope(tenant_id, subject_id)
-        if limit is not None and limit < 1:
-            raise ValueError("limit must be greater than zero when provided")
+        if limit is not None:
+            if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 10_000:
+                raise ValueError("limit must be between 1 and 10000 when provided")
         query = (
             "SELECT payload FROM production_records "
             "WHERE tenant_id = ? AND subject_id = ? "
@@ -109,7 +149,13 @@ class SQLiteProductionStore:
         params: tuple[Any, ...] = (tenant, subject)
         if limit is not None:
             query += " LIMIT ?"
-            params = (tenant, subject, int(limit))
+            params = (tenant, subject, limit)
         with self._lock, self._connect() as connection:
             rows = connection.execute(query, params).fetchall()
-        return [json.loads(row["payload"]) for row in rows]
+        decoded: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                decoded.append(json.loads(row["payload"]))
+            except (TypeError, json.JSONDecodeError, RecursionError) as exc:
+                raise RuntimeError("production record is corrupt") from exc
+        return decoded
