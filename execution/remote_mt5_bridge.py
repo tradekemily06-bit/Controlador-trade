@@ -22,6 +22,8 @@ class RemoteMT5Bridge(Protocol):
 
 
 class SafeRemoteMT5Executor:
+    adapter_id = "remote-mt5-demo-v1"
+
     """Fail-closed execution facade for a remote MT5 bridge."""
 
     def __init__(self, bridge: RemoteMT5Bridge) -> None:
