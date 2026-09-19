@@ -127,9 +127,13 @@ def application(environ, start_response):
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
-    try:
-        if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1":
+    if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1":
+        try:
             require_production_request_transport(environ)
+        except RuntimeError:
+            return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "transporte seguro de produção não configurado", "request_id": request_id}, request_id, environ)
+
+    try:
         if path == "/api/health" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
