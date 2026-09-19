@@ -238,3 +238,11 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_release_closure_cannot_be_forged_as_released():
+    from core.p119_release_closure import RealReleaseClosure, RealReleaseState
+
+    forged = RealReleaseClosure("forged", RealReleaseState.RELEASED, "P111-P119", ())
+    assert forged.released is False
+    assert forged.issued_by_boundary is False
