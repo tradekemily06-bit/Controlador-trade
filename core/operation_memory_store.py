@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
-from core.durable_json import atomic_write_json, locked_path
+from core.durable_json import atomic_write_json, locked_path, read_json
 
 
 class OperationMemoryStore:
@@ -60,10 +60,10 @@ class OperationMemoryStore:
 
     def _load_unlocked(self) -> OperationMemory:
         memory = OperationMemory()
-        if not self.path.exists():
-            return memory
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = read_json(self.path, None)
+            if payload is None:
+                return memory
             if not isinstance(payload, list):
                 raise ValueError("arquivo de memória deve conter uma lista.")
             for item in payload:
