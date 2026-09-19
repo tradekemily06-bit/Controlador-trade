@@ -388,3 +388,15 @@ def test_ledger_cannot_bind_external_id_after_definitive_non_execution(tmp_path)
     ledger.mark_rejected("rejected")
     with pytest.raises(ValueError, match="não executado"):
         ledger.bind_external_id("rejected", "EXT-REJECTED")
+
+def test_ledger_refuses_definitive_rejection_after_external_identity_is_bound(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("identified")
+    ledger.bind_external_id("identified", "EXT-IDENTIFIED")
+
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.mark_rejected("identified")
+
+    restored = ExecutionLedger(tmp_path / "ledger.json")
+    assert restored.status("identified") is ExecutionLedgerStatus.RESERVED
+    assert restored.external_id("identified") == "EXT-IDENTIFIED"
