@@ -41,10 +41,11 @@ def locked_path(path: str | Path) -> Iterator[Path]:
         if hasattr(os, "O_NOFOLLOW"):
             lock_flags |= os.O_NOFOLLOW
         lock_fd = os.open(lock_path, lock_flags, 0o600)
-        try:
-            os.fchmod(lock_fd, 0o600)
-        except OSError:
-            pass
+        if hasattr(os, "fchmod"):
+            try:
+                os.fchmod(lock_fd, 0o600)
+            except OSError:
+                pass
         with os.fdopen(lock_fd, "r+", encoding="utf-8") as lock_file:
             if lock_file.seek(0, 2) == 0:
                 lock_file.write("0")
