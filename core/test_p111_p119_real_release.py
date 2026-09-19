@@ -263,3 +263,76 @@ def test_real_authority_objects_cannot_be_forged_as_active():
     from core.p114_real_safety_gate import RealSafetyReport
     forged_safety = RealSafetyReport(RealSafetyState.READY, ())
     assert forged_safety.ready is False
+
+
+def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = RealExecutionAuthorizationBoundary().issue(
+        authorization_id="auth-mismatch",
+        audit_id="audit",
+        broker_id="fake",
+        adapter_id="different-adapter",
+        explicitly_enabled=True,
+        real_execution_allowed=True,
+    )
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="mismatch-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="adapter-mismatch",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
+    class UnidentifiedAdapter(FakeAdapter):
+        adapter_id = None
+
+    registry = BrokerRegistry()
+    adapter = UnidentifiedAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = RealExecutionAuthorizationBoundary().issue(
+        authorization_id="auth-no-id",
+        audit_id="audit",
+        broker_id="fake",
+        adapter_id="fake-adapter",
+        explicitly_enabled=True,
+        real_execution_allowed=True,
+    )
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="no-id-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="adapter-no-id",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
