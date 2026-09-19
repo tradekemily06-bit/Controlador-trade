@@ -35,7 +35,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
     )
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, "missing-external-id")
 
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
