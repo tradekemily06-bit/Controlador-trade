@@ -78,38 +78,53 @@ def test_stale_checkpoint_cannot_overwrite_newer_checkpoint(tmp_path):
     assert store.load() == newer
 
 
-def test_older_checkpoint_from_other_session_cannot_overwrite_newer_checkpoint(tmp_path):
+def test_stale_writer_from_previous_session_is_fenced(tmp_path):
     path = tmp_path / "checkpoint.json"
     store = RuntimeCheckpointStore(path)
-    newer = RuntimeCheckpoint(
+    store.save(
+        RuntimeCheckpoint(
+            "session-old",
+            10,
+            "req-old",
+            datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+        )
+    )
+    store.begin_session(
         "session-new",
-        2,
-        "req-new",
-        datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
-    )
-    older = RuntimeCheckpoint(
-        "session-old",
-        99,
-        "req-old",
-        datetime(2026, 9, 18, 0, 5, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 9, 18, 0, 11, tzinfo=timezone.utc),
     )
 
-    store.save(newer)
-    store.save(older)
+    with pytest.raises(ValueError, match="sessão do checkpoint diverge"):
+        store.save(
+            RuntimeCheckpoint(
+                "session-old",
+                99,
+                "req-old-99",
+                datetime(2026, 9, 18, 0, 12, tzinfo=timezone.utc),
+            )
+        )
 
-    assert store.load() == newer
+    assert store.load() == RuntimeCheckpoint(
+        "session-new",
+        0,
+        None,
+        datetime(2026, 9, 18, 0, 11, tzinfo=timezone.utc),
+    )
 
-def test_equal_timestamp_checkpoint_conflict_cannot_overwrite_newer_snapshot(tmp_path):
-    path = tmp_path / "checkpoint.json"
-    store = RuntimeCheckpointStore(path)
-    timestamp = datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc)
-    newer = RuntimeCheckpoint("session-new", 7, "req-new", timestamp)
-    conflicting = RuntimeCheckpoint("session-old", 1, "req-old", timestamp)
 
-    store.save(newer)
-    store.save(conflicting)
+def test_begin_session_is_idempotent_for_same_session(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    first = store.begin_session(
+        "session",
+        updated_at=datetime(2026, 9, 18, 0, 10, tzinfo=timezone.utc),
+    )
+    second = store.begin_session(
+        "session",
+        updated_at=datetime(2026, 9, 18, 0, 11, tzinfo=timezone.utc),
+    )
 
-    assert store.load() == newer
+    assert second == first
+    assert store.load() == first
 
 
 def test_corrupted_checkpoint_cannot_be_overwritten_by_save(tmp_path):
