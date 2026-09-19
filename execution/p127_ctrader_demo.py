@@ -40,7 +40,7 @@ class CTraderDemoAdapter:
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
-            raise ValueError("request de execução inválido")
+            return ExecutionResult(False, "request de execução inválido")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "cTrader DEMO adapter rejeita modo diferente de DEMO")
         if request.signal is Signal.AGUARDAR:
