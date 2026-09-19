@@ -28,6 +28,16 @@ def test_authorization_url_is_demo_safe_and_requests_trading_scope():
     assert "scope=trading" in url
     assert "product=web" in url
     assert "client_secret" not in url
+    assert "https%3A%2F%2Fexample.test%2Fcallback" in url
+
+
+def test_authorization_url_never_places_client_secret_in_query():
+    config = CTraderOAuthConfig(
+        client_id="39411",
+        redirect_uri="https://example.test/callback",
+        scope=CTraderOAuthScope.TRADING,
+    )
+    assert "secret" not in config.authorization_url().lower()
 
 
 def test_session_is_authenticated_only_with_live_access_token_metadata():
