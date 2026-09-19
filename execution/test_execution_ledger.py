@@ -400,3 +400,48 @@ def test_ledger_refuses_definitive_rejection_after_external_identity_is_bound(tm
     restored = ExecutionLedger(tmp_path / "ledger.json")
     assert restored.status("identified") is ExecutionLedgerStatus.RESERVED
     assert restored.external_id("identified") == "EXT-IDENTIFIED"
+
+
+def test_global_real_lock_rejects_symlinked_lock_file(tmp_path):
+    import os
+    import pytest
+
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW indisponível neste sistema")
+
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    lock = tmp_path / ".ledger.json.real-execution.lock"
+    target = tmp_path / "attacker-target"
+    target.write_text("do not touch", encoding="utf-8")
+    lock.symlink_to(target)
+
+    with pytest.raises(OSError):
+        with ledger.real_execution_lock():
+            pass
+
+    assert target.read_text(encoding="utf-8") == "do not touch"
+
+
+def test_request_execution_lock_rejects_symlinked_lock_file(tmp_path):
+    import hashlib
+    import os
+    import pytest
+
+    if not hasattr(os, "O_NOFOLLOW"):
+        pytest.skip("O_NOFOLLOW indisponível neste sistema")
+
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    request_id = "symlink-lock-request"
+    request_key = hashlib.sha256(request_id.encode("utf-8")).hexdigest()
+    lock = tmp_path / f".ledger.json.{request_key}.execution.lock"
+    target = tmp_path / "attacker-request-target"
+    target.write_text("do not touch", encoding="utf-8")
+    lock.symlink_to(target)
+
+    with pytest.raises(OSError):
+        with ledger.request_execution_lock(request_id):
+            pass
+
+    assert target.read_text(encoding="utf-8") == "do not touch"
