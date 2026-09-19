@@ -180,3 +180,17 @@ def test_ledger_rejects_duplicate_external_ids_on_load(tmp_path):
     path.write_text('{"req-a":{"status":"ACCEPTED","external_id":"ext-1"},"req-b":{"status":"ACCEPTED","external_id":"ext-1"}}', encoding="utf-8")
     with pytest.raises(ValueError):
         ExecutionLedger(path)
+
+
+def test_ledger_rejects_external_id_on_uncertain_state_on_load(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-a":{"status":"UNKNOWN","external_id":"ext-1"}}', encoding="utf-8")
+    with pytest.raises(ValueError):
+        ExecutionLedger(path)
+
+
+def test_ledger_rejects_external_id_on_reserved_state_on_load(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-a":{"status":"RESERVED","external_id":"ext-1"}}', encoding="utf-8")
+    with pytest.raises(ValueError):
+        ExecutionLedger(path)
