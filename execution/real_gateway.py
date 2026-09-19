@@ -250,7 +250,13 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         if self._recovery is not None:
-            recovery = self._recovery.assess()
+            try:
+                recovery = self._recovery.assess()
+            except (OSError, ValueError, RuntimeError) as exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    f"recovery REAL indisponível; broker não chamado: {exc}",
+                )
             if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
                 return RealGatewayResult(
                     RealGatewayStatus.BLOCKED,
@@ -296,7 +302,13 @@ class RealExecutionGateway:
             # recovery admission and the publication of PENDING.
             # Recheck after durable reservation but before publishing lifecycle PENDING.
             if self._recovery is not None:
-                final_recovery = self._recovery.assess(ignore_request_id=request_id)
+                try:
+                    final_recovery = self._recovery.assess(ignore_request_id=request_id)
+                except (OSError, ValueError, RuntimeError) as exc:
+                    message = f"recovery REAL indisponível no limite final; broker não chamado: {exc}"
+                    if self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message}; persistência do bloqueio terminal falhou.")
                 if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
                     message = f"execução REAL bloqueada antes do broker pelo estado de recovery: {final_recovery.state.value}."
                     if not self._mark_not_dispatched(request_id, message):
@@ -542,6 +554,38 @@ class RealExecutionGateway:
                                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada no ledger, mas lifecycle não foi persistido: {exc}", result.execution)
                         return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
     
+                    # An accepted result must also be final. A broker/adapter that
+                    # explicitly labels an acceptance as non-final is contradictory to
+                    # a terminal ACCEPTED projection, so preserve UNKNOWN instead.
+                    if not result.execution.outcome_final:
+                        try:
+                            if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
+                                self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
+                            self._ledger.mark_unknown(request_id)
+                        except (OSError, ValueError) as exc:
+                            return RealGatewayResult(
+                                RealGatewayStatus.UNKNOWN,
+                                f"aceite REAL não definitivo e persistência da incerteza falhou: {exc}",
+                                result.execution,
+                            )
+                        if self._lifecycle is not None:
+                            try:
+                                self._lifecycle.put(
+                                    ExecutionLifecycleRecord(
+                                        request_id,
+                                        ExecutionLifecycleState.UNKNOWN,
+                                        datetime.now(timezone.utc),
+                                        "aceite REAL não definitivo; resultado requer reconciliação.",
+                                    )
+                                )
+                            except (OSError, ValueError):
+                                pass
+                        return RealGatewayResult(
+                            RealGatewayStatus.UNKNOWN,
+                            "aceite REAL não definitivo; reconciliação explícita necessária.",
+                            result.execution,
+                        )
+
                     # An accepted REAL result without a durable broker/exchange reference is
                     # ambiguous: the external order may exist but cannot be safely reconciled.
                     if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
