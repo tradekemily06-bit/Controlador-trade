@@ -77,10 +77,22 @@ class RealExecutionGateway:
         try:
             self._ledger.mark_rejected(request_id)
         except (OSError, ValueError):
+            # A persistence call can fail after committing, or a concurrent
+            # recovery worker can have already resolved this request. Re-read
+            # the durable authority before declaring the pre-dispatch stop
+            # unprovable. Any terminal state proves that this gateway must not
+            # dispatch, so it is safe to continue repairing the lifecycle
+            # projection rather than manufacturing UNKNOWN.
             try:
-                if self._ledger.status(request_id) is not ExecutionLedgerStatus.REJECTED:
-                    return False
+                durable_status = self._ledger.status(request_id)
             except (OSError, ValueError):
+                return False
+            if durable_status not in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
                 return False
 
         record = ExecutionLifecycleRecord(
@@ -90,12 +102,44 @@ class RealExecutionGateway:
             message,
         )
         try:
+            current = self._lifecycle.get(request_id)
+            if current is not None and current.state in (
+                ExecutionLifecycleState.ACCEPTED,
+                ExecutionLifecycleState.REJECTED,
+            ):
+                # If the durable ledger is already terminal, a matching
+                # terminal lifecycle is sufficient proof that no new broker
+                # dispatch may occur. A conflicting terminal projection is
+                # never overwritten.
+                if (
+                    durable_status is ExecutionLedgerStatus.REJECTED
+                    and current.state is ExecutionLifecycleState.REJECTED
+                ) or (
+                    durable_status in (
+                        ExecutionLedgerStatus.ACCEPTED,
+                        ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                    )
+                    and current.state is ExecutionLifecycleState.ACCEPTED
+                ) or (
+                    durable_status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+                    and current.state is ExecutionLifecycleState.REJECTED
+                ):
+                    return True
+                return False
             self._lifecycle.put(record)
         except (OSError, ValueError):
             try:
                 current = self._lifecycle.get(request_id)
-                if current is None or current.state is not ExecutionLifecycleState.REJECTED:
+                if current is None:
                     return False
+                if current.state is ExecutionLifecycleState.REJECTED:
+                    return True
+                if durable_status in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ) and current.state is ExecutionLifecycleState.ACCEPTED:
+                    return True
+                return False
             except (OSError, ValueError):
                 return False
         return True
