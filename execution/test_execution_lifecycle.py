@@ -35,3 +35,27 @@ def test_reconcile_requires_unknown_state(tmp_path):
         pass
     else:
         raise AssertionError("reconciliation must not bypass UNKNOWN")
+
+
+def test_lifecycle_rejects_non_pending_initial_state(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    try:
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("lifecycle must start in PENDING")
+
+
+def test_lifecycle_terminal_state_is_immutable(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    try:
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("terminal lifecycle state must be immutable")
