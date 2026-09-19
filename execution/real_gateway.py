@@ -71,8 +71,6 @@ class RealExecutionGateway:
                 raise RuntimeError("barreira operacional REAL já foi vinculada ao ciclo de execução e não pode ser substituída")
             if provider is not None and not callable(provider):
                 raise ValueError("operational_barrier_provider inválido.")
-            if self._operational_barrier_provider is not None and provider is not self._operational_barrier_provider:
-                raise RuntimeError("barreira operacional REAL já configurada; substituição não permitida")
             self._operational_barrier_provider = provider
 
     def set_reconciliation_evidence_verifier(self, verifier: BrokerReconciliationEvidenceAuthority | None) -> None:
