@@ -246,3 +246,17 @@ def test_real_release_closure_cannot_be_forged_as_released():
     forged = RealReleaseClosure("forged", RealReleaseState.RELEASED, "P111-P119", ())
     assert forged.released is False
     assert forged.issued_by_boundary is False
+
+
+def test_real_authority_objects_cannot_be_forged_as_active():
+    forged_auth = RealExecutionAuthorization("forged", "audit", "fake", "adapter", True, True)
+    assert forged_auth.issued_by_boundary is False
+    assert forged_auth.active is False
+
+    from core.p117_real_admission import RealAdmission
+    forged_admission = RealAdmission("adm", "audit", RealAdmissionStatus.ADMITTED, "fake", ())
+    assert forged_admission.admitted is False
+
+    from core.p114_real_safety_gate import RealSafetyReport
+    forged_safety = RealSafetyReport(RealSafetyState.READY, ())
+    assert forged_safety.ready is False
