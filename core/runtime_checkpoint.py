@@ -9,6 +9,10 @@ from pathlib import Path
 from core.file_lock import exclusive_file_lock
 
 
+MAX_CHECKPOINT_FILE_BYTES = 64 * 1024
+MAX_CHECKPOINT_IDENTIFIER_LENGTH = 256
+
+
 @dataclass(frozen=True)
 class RuntimeCheckpoint:
     session_id: str
@@ -29,7 +33,7 @@ class RuntimeCheckpointStore:
         self._validate(checkpoint)
         with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            encoded = json.dumps(\n                {\n                    "session_id": checkpoint.session_id,\n                    "last_cycle": checkpoint.last_cycle,\n                    "last_request_id": checkpoint.last_request_id,\n                    "updated_at": checkpoint.updated_at.isoformat(),\n                },\n                ensure_ascii=False,\n                indent=2,\n                sort_keys=True,\n            ).encode("utf-8")\n            if len(encoded) > MAX_CHECKPOINT_FILE_BYTES:\n                raise ValueError("checkpoint excede o limite permitido.")\n            temporary = self.path.with_name(f".{self.path.name}.tmp")
             temporary.write_text(
                 json.dumps(
                     {
