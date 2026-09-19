@@ -72,6 +72,12 @@ class ExecutionLedger:
                 states[request_id] = ExecutionLedgerStatus(status_value)
             except ValueError as exc:
                 raise ValueError("ledger de execução inválido.") from exc
+            if external_id is not None and states[request_id] in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.UNKNOWN,
+            ):
+                raise ValueError("ledger de execução inválido.")
             if external_id is not None:
                 normalized_external_id = external_id.strip()
                 if normalized_external_id in external_ids.values():
