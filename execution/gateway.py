@@ -12,6 +12,7 @@ from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperatio
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
+from dataclasses import replace
 
 
 class GatewayStatus(str, Enum):
@@ -106,8 +107,9 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução com segurança.")
 
+        dispatch_request = replace(request, request_id=request_id)
         try:
-            result = self._executor.execute(request)
+            result = self._executor.execute(dispatch_request)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}")
