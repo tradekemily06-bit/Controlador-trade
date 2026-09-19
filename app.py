@@ -98,6 +98,10 @@ def _read_json(environ) -> dict:
 
 
 def _query_limit(environ, default: int, maximum: int = 100) -> int:
+    if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
+        raise ValueError("maximum deve ser maior que zero")
+    if not isinstance(default, int) or isinstance(default, bool) or default < 1 or default > maximum:
+        raise ValueError("default de limit inválido")
     values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("limit")
     if not values or values[-1] == "":
         return default
@@ -105,8 +109,8 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
         limit = int(values[-1])
     except (TypeError, ValueError) as exc:
         raise ValueError("limit deve ser um inteiro") from exc
-    if limit < 1:
-        raise ValueError("limit deve ser maior que zero")
+    if limit < 1 or limit > maximum:
+        raise ValueError("limit fora do limite permitido")
     return limit
 
 
