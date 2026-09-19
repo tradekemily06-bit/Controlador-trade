@@ -44,12 +44,16 @@ class CTraderAccessToken:
     access_token: str
     refresh_token: str | None
     expires_at: float
+    account_id: str | None = None
+    session_id: str | None = None
 
     def snapshot(self) -> CTraderTokenSnapshot:
         return CTraderTokenSnapshot(
             expires_in=max(0, int(self.expires_at - time.time())),
             has_access_token=bool(self.access_token),
             has_refresh_token=bool(self.refresh_token),
+            account_id=self.account_id,
+            session_id=self.session_id,
         )
 
 
@@ -68,12 +72,26 @@ class InMemoryTokenProvider(CTraderTokenProvider):
             access_token=access_token,
             refresh_token=refresh_token,
             expires_at=time.time() + expires_in,
+            session_id=uuid.uuid4().hex,
         )
 
     def snapshot(self) -> CTraderTokenSnapshot:
         if self._token is None:
             return CTraderTokenSnapshot(0, False, False)
         return self._token.snapshot()
+
+    def bind_account(self, account_id: int) -> None:
+        if not isinstance(account_id, int) or isinstance(account_id, bool) or account_id <= 0:
+            raise ValueError("account_id inválido")
+        if self._token is None:
+            raise RuntimeError("não há token para vincular à conta")
+        self._token = CTraderAccessToken(
+            access_token=self._token.access_token,
+            refresh_token=self._token.refresh_token,
+            expires_at=self._token.expires_at,
+            account_id=str(account_id),
+            session_id=self._token.session_id,
+        )
 
     @property
     def access_token(self) -> str:
@@ -144,6 +162,8 @@ class CTraderDemoConnection:
         request.ctidTraderAccountId = account_id
         request.accessToken = self._tokens.access_token
         self._account_id = account_id
+        if isinstance(self._tokens, InMemoryTokenProvider):
+            self._tokens.bind_account(account_id)
         return request
 
     def new_client_message_id(self) -> str:
