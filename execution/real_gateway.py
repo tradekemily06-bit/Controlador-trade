@@ -451,8 +451,18 @@ class RealExecutionGateway:
         if self._lifecycle is None:
             raise ValueError("reconciliação REAL exige lifecycle durável.")
 
+        lifecycle_record = self._lifecycle.get(request_id)
+        if lifecycle_record is None:
+            raise ValueError("reconciliação REAL exige lifecycle durável para o request_id.")
+
+        if lifecycle_record.state not in (
+            ExecutionLifecycleState.PENDING,
+            ExecutionLifecycleState.UNKNOWN,
+        ):
+            raise ValueError("lifecycle do request_id não está em estado incerto reconciliável.")
+
         if not isinstance(observation.external_id, str) or not observation.external_id.strip():
-            raise ValueError("observação externa sem external_id não é reconciliável com segurança.")
+            raise ValueError("external_id durável é obrigatório para reconciliação externa segura.")
 
         ExecutionReconciliationCoordinator(
             ledger=self._ledger,
