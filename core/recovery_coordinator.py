@@ -65,6 +65,17 @@ class RecoveryCoordinator:
         self.expected_session_id = expected_session_id
 
     def assess(self, *, ignore_request_id: str | None = None) -> RecoveryAssessment:
+        """Assess recovery under the same global REAL barrier used by execution/reconciliation.
+
+        Holding the barrier across the complete cross-store snapshot removes the
+        ABA window for cooperating execution-state writers: a REAL execution or
+        reconciliation worker cannot mutate the ledger/lifecycle/checkpoint
+        authorities while this assessment is reading them.
+        """
+        with self.execution_ledger.real_execution_lock():
+            return self._assess_unlocked(ignore_request_id=ignore_request_id)
+
+    def _assess_unlocked(self, *, ignore_request_id: str | None = None) -> RecoveryAssessment:
         """Assess durable recovery, optionally excluding the request currently being admitted.
 
         The excluded request is still governed by its own atomic ledger/lifecycle
