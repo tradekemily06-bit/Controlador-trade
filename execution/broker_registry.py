@@ -55,7 +55,7 @@ class BrokerRegistry:
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
-            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()))
+            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()), adapter_id=self.adapter_id(name))
             for name, adapter in self._adapters.items()
         )
 
