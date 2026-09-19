@@ -11,14 +11,14 @@ from core.models import Signal
 from integration.market_data_execution_guard import MarketDataExecutionGuard
 
 
-def _request(symbol: str = "EURUSD") -> ExecutionRequest:
+def _request(symbol: str = "EURUSD", request_id: str = "market-data-req") -> ExecutionRequest:
     return ExecutionRequest(
         symbol=symbol,
         signal=Signal.COMPRA,
         amount=0.01,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
-        request_id="market-data-req",
+        request_id=request_id,
     )
 
 
@@ -40,14 +40,14 @@ def _state(*, health: MarketDataHealth, symbol: str = "EURUSD") -> MarketDataRun
 def test_guard_blocks_when_no_market_snapshot_exists():
     state = MarketDataRuntimeState(integrity=object())
     guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
-    result = guard.execute("missing-data", _request())
+    result = guard.execute("missing-data", _request(request_id="missing-data"))
     assert result.status is GatewayStatus.BLOCKED
 
 
 def test_guard_blocks_unhealthy_market_data_before_executor():
     state = _state(health=MarketDataHealth.STALE)
     guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
-    result = guard.execute("stale-data", _request())
+    result = guard.execute("stale-data", _request(request_id="stale-data"))
     assert result.status is GatewayStatus.BLOCKED
     assert "HEALTHY" in result.message
 
@@ -55,12 +55,12 @@ def test_guard_blocks_unhealthy_market_data_before_executor():
 def test_guard_blocks_symbol_mismatch():
     state = _state(health=MarketDataHealth.HEALTHY, symbol="GBPUSD")
     guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
-    result = guard.execute("symbol-mismatch", _request("EURUSD"))
+    result = guard.execute("symbol-mismatch", _request("EURUSD", "symbol-mismatch"))
     assert result.status is GatewayStatus.BLOCKED
 
 
 def test_guard_allows_healthy_matching_data_to_reach_gateway():
     state = _state(health=MarketDataHealth.HEALTHY)
     guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
-    result = guard.execute("healthy-data", _request())
+    result = guard.execute("healthy-data", _request(request_id="healthy-data"))
     assert result.status is GatewayStatus.ACCEPTED
