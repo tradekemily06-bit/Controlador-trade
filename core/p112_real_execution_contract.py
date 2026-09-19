@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -22,4 +22,4 @@ class RealExecutionAuthorization:
 
     @property
     def active(self) -> bool:
-        return self.explicitly_enabled and self.real_execution_allowed
+        return self.explicitly_enabled and self.real_execution_allowed and self._issuer is _AUTH_ISSUER
