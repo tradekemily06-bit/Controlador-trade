@@ -487,3 +487,53 @@ def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     )
     assert result.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
+
+
+def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("crash-accepted")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "crash-accepted",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "pending before crash",
+        )
+    )
+    ledger.mark_accepted("crash-accepted")
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+    )
+    gateway.reconcile_unknown("crash-accepted", executed=True)
+
+    assert ledger.status("crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("crash-accepted").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconcile_repairs_ledger_rejected_lifecycle_pending_crash_window(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("crash-rejected")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "crash-rejected",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "pending before crash",
+        )
+    )
+    ledger.mark_rejected("crash-rejected")
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+    )
+    gateway.reconcile_unknown("crash-rejected", executed=False)
+
+    assert ledger.status("crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    assert lifecycle.get("crash-rejected").state is ExecutionLifecycleState.REJECTED
