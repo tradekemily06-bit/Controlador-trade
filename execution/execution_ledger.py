@@ -121,7 +121,6 @@ class ExecutionLedger:
         if lock_path in held:
             yield
             return
-        lock_path.touch(exist_ok=True)
         with locked_path(lock_path):
             held.add(lock_path)
             self._real_lock_local.held = held
@@ -150,7 +149,6 @@ class ExecutionLedger:
         if lock_path in held:
             yield
             return
-        lock_path.touch(exist_ok=True)
         with locked_path(lock_path):
             held.add(lock_path)
             self._request_lock_local.held = held
