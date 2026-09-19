@@ -46,3 +46,19 @@ def test_public_saas_blocks_unscoped_preferences_endpoint(monkeypatch):
     assert status.startswith("503 ")
     assert "tenant/subject-scoped" in payload["error"]
 
+
+
+def test_replay_endpoint_rejects_excessive_case_count(monkeypatch):
+    monkeypatch.setattr(app, "saas_public_mode", lambda: False)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
+    cases = json.dumps({"cases": [{} for _ in range(app.MAX_REPLAY_CASES + 1)]}).encode("utf-8")
+    captured = {}
+    def start_response(status, headers):
+        captured["status"] = status
+    environ = {
+        "REQUEST_METHOD": "POST", "PATH_INFO": "/api/replay", "QUERY_STRING": "",
+        "CONTENT_LENGTH": str(len(cases)), "wsgi.input": io.BytesIO(cases), "REMOTE_ADDR": "127.0.0.1",
+    }
+    payload = json.loads(b"".join(app.application(environ, start_response)))
+    assert captured["status"].startswith("400 ")
+    assert payload["error"] == "Entrada inválida"
