@@ -80,12 +80,12 @@ class RuntimeCheckpointStore:
     def _validate(checkpoint: RuntimeCheckpoint) -> None:
         if not isinstance(checkpoint, RuntimeCheckpoint):
             raise ValueError("checkpoint inválido.")
-        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip():
+        if not isinstance(checkpoint.session_id, str) or not checkpoint.session_id.strip() or len(checkpoint.session_id.strip()) > 128:
             raise ValueError("checkpoint inválido.")
         if not isinstance(checkpoint.last_cycle, int) or isinstance(checkpoint.last_cycle, bool) or checkpoint.last_cycle < 0:
             raise ValueError("checkpoint inválido.")
         if checkpoint.last_request_id is not None and (
-            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
+            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip() or len(checkpoint.last_request_id.strip()) > 128
         ):
             raise ValueError("request_id do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):
