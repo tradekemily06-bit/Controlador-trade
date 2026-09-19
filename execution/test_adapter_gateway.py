@@ -22,7 +22,7 @@ class FakeAdapter:
 
 
 def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, "test-request")
 
 
 def gateway_with(adapter):
