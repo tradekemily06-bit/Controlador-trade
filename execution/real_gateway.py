@@ -308,18 +308,35 @@ class RealExecutionGateway:
             )
             self._lifecycle.put(lifecycle)
 
-        if lifecycle.state not in (ExecutionLifecycleState.UNKNOWN, desired_lifecycle):
+        if lifecycle.state not in (
+            ExecutionLifecycleState.UNKNOWN,
+            ExecutionLifecycleState.PENDING,
+            desired_lifecycle,
+        ):
             raise ValueError("ciclo de execução não está em estado reconciliável.")
 
-        # Each side is made idempotent so a crash between these two durable
-        # stores can be retried safely without resubmitting the external order.
+        # A terminal Ledger state is authoritative evidence that the external
+        # side-effect was already classified. A crash can occur after the
+        # Ledger commit but before the Lifecycle commit, leaving PENDING on the
+        # second store. In that case synchronization is safe and must never
+        # redispatch the broker request.
         if ledger_status is not desired_ledger:
             self._ledger.reconcile(request_id, executed=executed)
 
         if lifecycle.state is not desired_lifecycle:
-            self._lifecycle.reconcile(
-                request_id,
-                desired_lifecycle,
-                updated_at=now,
-                message="reconciliação REAL explícita.",
-            )
+            if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        desired_lifecycle,
+                        now,
+                        "ciclo sincronizado após janela de crash entre Ledger e Lifecycle.",
+                    )
+                )
+            else:
+                self._lifecycle.reconcile(
+                    request_id,
+                    desired_lifecycle,
+                    updated_at=now,
+                    message="reconciliação REAL explícita.",
+                )
