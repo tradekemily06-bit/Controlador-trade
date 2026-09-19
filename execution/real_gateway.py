@@ -149,6 +149,14 @@ class RealExecutionGateway:
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.REJECTED,
+                        datetime.now(timezone.utc),
+                        result.execution.message,
+                    )
+                )
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
@@ -158,12 +166,28 @@ class RealExecutionGateway:
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
                 self._ledger.mark_unknown(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        "aceite REAL sem external_id; reconciliação explícita necessária.",
+                    )
+                )
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
             self._ledger.mark_accepted(request_id)
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    datetime.now(timezone.utc),
+                    result.execution.message,
+                )
+            )
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
@@ -175,4 +199,12 @@ class RealExecutionGateway:
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        lifecycle_state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
+        now = datetime.now(timezone.utc)
         self._ledger.reconcile(request_id, executed=executed)
+        self._lifecycle.reconcile(
+            request_id,
+            lifecycle_state,
+            updated_at=now,
+            message="reconciliação REAL explícita.",
+        )
