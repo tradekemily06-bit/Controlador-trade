@@ -142,7 +142,10 @@ class ExecutionLedger:
 
     @staticmethod
     def _binding_key(broker: str, adapter: str, external_id: str) -> str:
-        if not all(isinstance(value, str) and value.strip() for value in (broker, adapter, external_id)):
+        values = (broker, adapter, external_id)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("identidade externa inválida.")
+        if any(len(value.strip()) > 256 or any(ord(ch) < 32 for ch in value) for value in values):
             raise ValueError("identidade externa inválida.")
         return json.dumps([broker.strip().casefold(), adapter.strip().casefold(), external_id.strip()], ensure_ascii=False, separators=(",", ":"))
 
@@ -286,6 +289,11 @@ class ExecutionLedger:
                 previous_at = datetime.fromisoformat(previous["observed_at"])
                 if observed_at < previous_at:
                     raise ValueError("observação antiga não pode sobrescrever evidência mais nova.")
+                if observed_at == previous_at:
+                    candidate = (external_id.strip(), broker.strip(), adapter.strip(), status, source.strip())
+                    previous_evidence = (previous["external_id"], previous["broker"], previous["adapter"], previous["status"], previous["source"])
+                    if candidate != previous_evidence:
+                        raise ValueError("evidências conflitantes com o mesmo timestamp; reconciliação bloqueada.")
             self._reconciliation[request_id] = {
                 "external_id": external_id.strip(),
                 "broker": broker.strip(),
