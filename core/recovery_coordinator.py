@@ -71,11 +71,25 @@ class RecoveryCoordinator:
         }
         unknown = tuple(sorted(lifecycle_unknown | ledger_uncertain))
 
-        inconsistent = [
-            r.request_id
-            for r in lifecycle
-            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
-        ]
+        ledger_statuses = {
+            request_id: self.execution_ledger.status(request_id)
+            for request_id in ledger_ids
+        }
+        inconsistent = []
+        for record in lifecycle:
+            ledger_status = ledger_statuses.get(record.request_id)
+            if record.state is ExecutionLifecycleState.ACCEPTED and ledger_status not in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ):
+                inconsistent.append(record.request_id)
+            elif record.state is ExecutionLifecycleState.REJECTED and ledger_status in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            ):
+                inconsistent.append(record.request_id)
         if unknown or pending or inconsistent:
             details = []
             if unknown:
@@ -83,7 +97,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Lifecycle/Ledger inconsistente requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
