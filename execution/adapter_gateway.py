@@ -20,7 +20,7 @@ class AdapterExecutionResult:
 
 
 class BrokerAdapterGateway:
-    """Defense-in-depth broker boundary; invalid requests never reach an adapter."""
+    """Defense-in-depth broker boundary with explicit REAL authorization handoff."""
 
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
@@ -29,8 +29,6 @@ class BrokerAdapterGateway:
     def _validate(request: ExecutionRequest) -> str | None:
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
-        if request.mode is not ExecutionMode.DEMO:
-            return "BrokerAdapterGateway aceita somente DEMO nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "AGUARDAR não pode chegar ao adapter."
         if not isinstance(request.request_id, str) or not request.request_id.strip():
@@ -43,10 +41,14 @@ class BrokerAdapterGateway:
             return "duration_seconds inválido."
         return None
 
-    def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+    def execute(self, broker: str, request: ExecutionRequest, *, allow_real: bool = False) -> AdapterExecutionResult:
         validation_error = self._validate(request)
         if validation_error is not None:
             return AdapterExecutionResult(False, validation_error)
+        if request.mode is ExecutionMode.REAL and not allow_real:
+            return AdapterExecutionResult(False, "REAL exige handoff explícito do RealExecutionGateway.")
+        if request.mode not in (ExecutionMode.DEMO, ExecutionMode.REAL):
+            return AdapterExecutionResult(False, "modo de execução inválido.")
         if not isinstance(broker, str) or not broker.strip():
             return AdapterExecutionResult(False, "broker inválido.")
         try:
