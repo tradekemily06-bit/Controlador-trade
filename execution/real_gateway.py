@@ -253,7 +253,31 @@ class RealExecutionGateway:
                                 if self._mark_not_dispatched(request_id, message):
                                     return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
                                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
-                            result = self._gateway.execute_real(broker, request, capability=_REAL_DISPATCH_CAPABILITY)
+                            try:
+                                result = self._gateway.execute_real(
+                                    broker, request, capability=_REAL_DISPATCH_CAPABILITY
+                                )
+                            except BaseException:
+                                # A hard interruption (KeyboardInterrupt/SystemExit)
+                                # can happen after the broker side effect. Preserve
+                                # the durable pre-broker lifecycle marker so restart
+                                # sees RESERVED+PENDING and forces reconciliation;
+                                # never attempt a replay here.
+                                if self._lifecycle is not None:
+                                    try:
+                                        current = self._lifecycle.get(request_id)
+                                        if current is None:
+                                            self._lifecycle.put(
+                                                ExecutionLifecycleRecord(
+                                                    request_id,
+                                                    ExecutionLifecycleState.PENDING,
+                                                    datetime.now(timezone.utc),
+                                                    "REAL interrompido durante o despacho; resultado requer reconciliação.",
+                                                )
+                                            )
+                                    except (OSError, ValueError):
+                                        pass
+                                raise
                     except Exception as exc:
                         try:
                             self._ledger.mark_unknown(request_id)
