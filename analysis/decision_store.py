@@ -43,6 +43,12 @@ class DecisionStore:
             path = Path(self.database_path or "")
             if path.parent != Path("."):
                 path.parent.mkdir(parents=True, exist_ok=True)
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise OSError("decision database directory must not be a symlink")
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise OSError("decision database must be a regular file")
             columns = ", ".join([
                 "decision_id TEXT PRIMARY KEY", "created_at TEXT NOT NULL", "symbol TEXT",
                 "timeframe TEXT", "signal TEXT NOT NULL", "score REAL NOT NULL",
