@@ -11,6 +11,7 @@ from core.p119_release_closure import RealReleaseClosure
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.execution_coordination import ExecutionCoordinationLock
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -46,6 +47,7 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._coordination = ExecutionCoordinationLock(ledger.path)
 
     @staticmethod
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
@@ -102,6 +104,23 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
+        # Recovery assessment, reservation and the external side effect share
+        # one process/host coordination boundary. This prevents a concurrent
+        # recovery or second REAL request from observing a transient safe state.
+        with self._coordination.acquire():
+            return self._execute_locked(
+                broker=broker,
+                request_id=request_id,
+                request=request,
+                authorization=authorization,
+                admission=admission,
+                safety=safety,
+                release=release,
+            )
+
+    def _execute_locked(self, *, broker: str, request_id: str, request: ExecutionRequest,
+                        authorization: RealExecutionAuthorization, admission: RealAdmission,
+                        safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if type(release) is not RealReleaseClosure or not release.released:
@@ -252,6 +271,10 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile an uncertain request without any replay."""
+        with self._coordination.acquire():
+            self._reconcile_unknown_locked(request_id, executed=executed)
+
+    def _reconcile_unknown_locked(self, request_id: str, *, executed: bool) -> None:
         ledger_status = self._ledger.status(request_id)
         lifecycle = self._lifecycle.get(request_id)
         desired_ledger = (
