@@ -12,6 +12,7 @@ from execution.ctrader_demo_connection import (
 )
 
 CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
+MAX_OAUTH_RESPONSE_BYTES = 256 * 1024
 
 
 def exchange_authorization_code(
@@ -45,7 +46,10 @@ def exchange_authorization_code(
         method="POST",
     )
     with urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+        raw_response = response.read(MAX_OAUTH_RESPONSE_BYTES + 1)
+        if len(raw_response) > MAX_OAUTH_RESPONSE_BYTES:
+            raise RuntimeError("resposta OAuth cTrader excede o limite permitido")
+        payload = json.loads(raw_response.decode("utf-8"))
 
     if payload.get("errorCode"):
         raise RuntimeError(
