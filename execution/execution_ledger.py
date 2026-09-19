@@ -217,10 +217,9 @@ class ExecutionLedger:
                 raise ValueError("request_id não está em estado incerto reconciliável.")
             binding = self._binding_key(broker, adapter, external_id)
             owner = self._external_bindings.get(binding)
-            if status == "EXECUTED" and owner != request_id:
-                raise ValueError("evidência EXECUTED não está vinculada ao request_id.")
-            if status == "NOT_EXECUTED" and owner is not None and owner != request_id:
+            if owner is not None and owner != request_id:
                 raise ValueError("evidência externa pertence a outro request_id.")
+            self._external_bindings[binding] = request_id
             previous = self._reconciliation.get(request_id)
             if previous is not None:
                 previous_at = datetime.fromisoformat(previous["observed_at"])
@@ -239,21 +238,10 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def reconcile(self, request_id: str, *, executed: bool) -> None:
+        """Legacy API intentionally disabled: REAL reconciliation needs evidence."""
         self._validate_id(request_id)
+        raise ValueError("reconciliação REAL exige evidência externa explícita.")
 
-        def mutation() -> None:
-            if self._states.get(request_id) not in (
-                ExecutionLedgerStatus.UNKNOWN,
-                ExecutionLedgerStatus.RESERVED,
-            ):
-                raise ValueError("request_id não está em estado incerto reconciliável.")
-            self._states[request_id] = (
-                ExecutionLedgerStatus.RECONCILED_EXECUTED
-                if executed
-                else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            )
-
-        self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
         self._load()
