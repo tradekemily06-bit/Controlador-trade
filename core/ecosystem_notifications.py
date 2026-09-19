@@ -174,11 +174,12 @@ class EcosystemNotificationCenter:
             self._scoped_notifications.popitem(last=False)
 
     def _current(self) -> tuple[EcosystemNotification, ...]:
-        global_events = tuple(self._load_global())
-        scope = self._trusted_scope()
-        if scope is None:
-            return global_events
-        return global_events + tuple(self._scoped(scope))
+        with self._lock:
+            global_events = tuple(self._load_global())
+            scope = self._trusted_scope()
+            if scope is None:
+                return global_events
+            return global_events + tuple(self._scoped(scope))
 
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         with self._lock:
