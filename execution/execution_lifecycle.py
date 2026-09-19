@@ -114,7 +114,7 @@ class ExecutionLifecycleStore:
                 "updated_at": r.updated_at.isoformat(),
                 "message": r.message,
             }
-            for r in self.records()
+            for r in sorted(self._records.values(), key=lambda item: item.request_id)
         ]
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
