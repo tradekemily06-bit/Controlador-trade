@@ -115,11 +115,33 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        f"resultado REAL incerto: {type(exc).__name__}: {exc}",
+                    )
+                )
+            except (OSError, ValueError):
+                pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
             try:
                 self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        result.message,
+                    )
+                )
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
