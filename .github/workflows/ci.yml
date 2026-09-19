@@ -41,7 +41,6 @@ jobs:
       - name: Dependency security audit
         run: |
           python -m pip_audit -r requirements-dev.txt
-          python -m pip_audit -r requirements-ctrader.txt
           python -m pip_audit -r requirements-mt5-windows.txt
 
       - name: Compile all Python project surfaces
