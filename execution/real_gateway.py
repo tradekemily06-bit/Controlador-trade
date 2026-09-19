@@ -247,31 +247,31 @@ class RealExecutionGateway:
             # discovery. A recovery worker must not resolve RESERVED between the final
             # recovery admission and the publication of PENDING.
             # Recheck after durable reservation but before publishing lifecycle PENDING.
-                if self._recovery is not None:
-                    final_recovery = self._recovery.assess(ignore_request_id=request_id)
-                    if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
-                        message = f"execução REAL bloqueada antes do broker pelo estado de recovery: {final_recovery.state.value}."
-                        if not self._mark_not_dispatched(request_id, message):
-                            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
-                        return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
-        
-                if self._lifecycle is not None:
-                    try:
-                        self._lifecycle.put(
-                            ExecutionLifecycleRecord(
-                                request_id,
-                                ExecutionLifecycleState.PENDING,
-                                datetime.now(timezone.utc),
-                                "REAL reservado; aguardando resultado do broker.",
-                            )
+            if self._recovery is not None:
+                final_recovery = self._recovery.assess(ignore_request_id=request_id)
+                if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                    message = f"execução REAL bloqueada antes do broker pelo estado de recovery: {final_recovery.state.value}."
+                    if not self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+
+            if self._lifecycle is not None:
+                try:
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.PENDING,
+                            datetime.now(timezone.utc),
+                            "REAL reservado; aguardando resultado do broker.",
                         )
-                    except (OSError, ValueError) as exc:
-                        message = f"não foi possível preparar o lifecycle REAL; broker ainda não foi chamado: {exc}"
-                        if not self._mark_not_dispatched(request_id, message):
-                            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message}; persistência do bloqueio terminal falhou.")
-                        return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
-        
-        
+                    )
+                except (OSError, ValueError) as exc:
+                    message = f"não foi possível preparar o lifecycle REAL; broker ainda não foi chamado: {exc}"
+                    if not self._mark_not_dispatched(request_id, message):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message}; persistência do bloqueio terminal falhou.")
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
+
+
             # Serialize the final authority check with the broker side effect.
             # Reconciliation for this request takes the same per-request lock, so it
             # cannot resolve RESERVED between the last check and the external call.
