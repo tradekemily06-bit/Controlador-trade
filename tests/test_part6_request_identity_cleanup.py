@@ -28,6 +28,7 @@ def _request(path: str = "/api/health", method: str = "GET"):
 
 def test_request_identity_is_cleared_after_successful_request(monkeypatch):
     monkeypatch.setattr(app, "saas_public_mode", lambda: True)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
 
     status, payload = _request()
 
@@ -38,6 +39,7 @@ def test_request_identity_is_cleared_after_successful_request(monkeypatch):
 
 def test_request_identity_is_cleared_after_identity_failure(monkeypatch):
     monkeypatch.setattr(app, "saas_public_mode", lambda: True)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
 
     # First request establishes an identity. The second request must not inherit it.
     _request()
