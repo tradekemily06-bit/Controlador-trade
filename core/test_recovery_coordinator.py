@@ -89,7 +89,9 @@ def test_matching_terminal_ledger_and_lifecycle_can_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
     coordinator.execution_ledger.reserve("req-1")
-    coordinator.execution_ledger.mark_accepted("req-1")
+    coordinator.execution_ledger.mark_accepted(
+        "req-1", broker="fake", adapter="adapter-1", external_id="order-1"
+    )
     (tmp_path / "lifecycle.json").write_text(
         '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
         encoding="utf-8",
