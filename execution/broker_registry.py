@@ -32,10 +32,7 @@ class BrokerRegistry:
         self._lock = RLock()
 
     def register(self, name: str, adapter: BrokerAdapter, *, adapter_id: str | None = None) -> None:
-        with self._lock:
-            normalized = self._normalize_name(name)
-        if normalized in self._adapters:
-            raise BrokerRegistryError(f"adapter já registrado: {normalized}")
+        normalized = self._normalize_name(name)
         if not callable(getattr(adapter, "execute", None)):
             raise BrokerRegistryError("adapter deve implementar execute().")
         if not callable(getattr(adapter, "is_available", None)):
@@ -49,45 +46,52 @@ class BrokerRegistry:
         if not isinstance(adapter_id, str) or not adapter_id.strip():
             raise BrokerRegistryError("adapter_id não pode ser vazio.")
         normalized_adapter_id = adapter_id.strip()
+        with self._lock:
+            if normalized in self._adapters:
+                raise BrokerRegistryError(f"adapter já registrado: {normalized}")
         if normalized_adapter_id in self._adapter_ids.values():
             raise BrokerRegistryError(f"adapter_id já registrado: {normalized_adapter_id}")
         self._adapters[normalized] = adapter
         self._adapter_ids[normalized] = normalized_adapter_id
 
     def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
-        with self._lock:
-            if capability is not _BROKER_GATEWAY_CAPABILITY:
+        if capability is not _BROKER_GATEWAY_CAPABILITY:
             raise BrokerRegistryError("acesso ao adapter exige a barreira do broker gateway")
         normalized = self._normalize_name(name)
-        try:
-            return self._adapters[normalized]
-        except KeyError as exc:
-            raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
+        with self._lock:
+            try:
+                return self._adapters[normalized]
+            except KeyError as exc:
+                raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
 
     def adapter_id(self, name: str) -> str:
-        with self._lock:
-            """Return immutable adapter identity metadata without exposing the adapter."""
+        """Return immutable adapter identity metadata without exposing the adapter."""
         normalized = self._normalize_name(name)
-        try:
-            return self._adapter_ids[normalized]
-        except KeyError as exc:
-            raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
+        with self._lock:
+            try:
+                return self._adapter_ids[normalized]
+            except KeyError as exc:
+                raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
 
     def is_available(self, name: str) -> bool:
+        normalized = self._normalize_name(name)
         with self._lock:
-            # Availability is intentionally metadata-only and cannot return the adapter.
-        adapter = self._get_for_gateway(name, capability=_BROKER_GATEWAY_CAPABILITY)
+            adapter = self._adapters.get(normalized)
+        if adapter is None:
+            raise BrokerRegistryError(f"adapter não registrado: {normalized}")
         return bool(adapter.is_available())
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         with self._lock:
-            return tuple(
+            adapters = tuple(self._adapters.items())
+            ids = dict(self._adapter_ids)
+        return tuple(
             BrokerAdapterInfo(
                 name=name,
                 available=bool(adapter.is_available()),
-                adapter_id=self._adapter_ids[name],
+                adapter_id=ids[name],
             )
-            for name, adapter in self._adapters.items()
+            for name, adapter in adapters
         )
 
     def names(self) -> tuple[str, ...]:
@@ -95,15 +99,17 @@ class BrokerRegistry:
             return tuple(self._adapters)
 
     def as_mapping(self) -> Mapping[str, BrokerAdapterInfo]:
+        """Return metadata only; executable adapters never leave the registry."""
         with self._lock:
-            """Return metadata only; executable adapters never leave the registry."""
+            adapters = tuple(self._adapters.items())
+            ids = dict(self._adapter_ids)
         return {
             name: BrokerAdapterInfo(
                 name=name,
                 available=bool(adapter.is_available()),
-                adapter_id=self._adapter_ids[name],
+                adapter_id=ids[name],
             )
-            for name, adapter in self._adapters.items()
+            for name, adapter in adapters
         }
 
     @staticmethod
