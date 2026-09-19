@@ -57,7 +57,7 @@ class ExecutionLedger:
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in raw_states.items():
-            if not isinstance(request_id, str) or not ExecutionLedger.REQUEST_ID_PATTERN.fullmatch(request_id):
+            if not isinstance(request_id, str) or not REQUEST_ID_PATTERN.fullmatch(request_id):
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
