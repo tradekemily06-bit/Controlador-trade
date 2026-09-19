@@ -358,3 +358,31 @@ def test_real_crash_after_external_acceptance_never_retries_same_request(tmp_pat
 
     assert second.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 1
+
+
+def test_real_gateway_blocks_different_request_while_another_is_uncertain(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(path)
+    ledger.reserve("uncertain-existing")
+    ledger.mark_unknown("uncertain-existing")
+
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="different-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(path).status("different-request") is None
