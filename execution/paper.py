@@ -20,7 +20,7 @@ class PaperExecution:
 class PaperExecutor:
     """Executa ordens somente em ambiente simulado."""
 
-    def __init__(self) -> None:
+    adapter_id = "paper-demo-v1"\n\n    def __init__(self) -> None:
         self._executions: list[PaperExecution] = []
         self._next_id = 1
 
