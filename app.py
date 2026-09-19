@@ -14,6 +14,7 @@ from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
+from security.secure_transport import require_production_request_transport, request_uses_tls
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
@@ -31,10 +32,17 @@ def _audit(environ, request_id: str, status: int) -> None:
     AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/")), status=status, client_key=SECURITY.client_key(environ))
 
 
+def _security_headers(request_id: str, environ, script_nonce: str | None = None) -> list[tuple[str, str]]:
+    headers = SECURITY.headers(request_id, script_nonce=script_nonce)
+    if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1" and request_uses_tls(environ):
+        headers.append(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
+    return headers
+
+
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id))
+    headers.extend(_security_headers(request_id, environ or {}))
     start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None:
         _audit(environ, request_id, status.value)
@@ -98,7 +106,7 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
-    headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
+    headers.extend(_security_headers(request_id, environ, script_nonce=script_nonce))
     start_response("200 OK", headers)
     _audit(environ, request_id, 200)
     return [body]
@@ -112,6 +120,8 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     try:
+        if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1":
+            require_production_request_transport(environ)
         if path == "/api/health" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
