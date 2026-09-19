@@ -67,3 +67,12 @@ def test_terminal_state_cannot_be_overwritten(tmp_path):
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
     with pytest.raises(ValueError, match="terminal"):
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now, "rewritten"))
+
+
+def test_lifecycle_rejects_future_timestamp():
+    from datetime import datetime, timedelta, timezone
+    future = datetime.now(timezone.utc) + timedelta(minutes=1)
+    with pytest.raises(ValueError, match="timestamp não pode estar no futuro"):
+        ExecutionLifecycleStore("/tmp/unused")._validate(
+            ExecutionLifecycleRecord("req-future", ExecutionLifecycleState.PENDING, future, "")
+        )
