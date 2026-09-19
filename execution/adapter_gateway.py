@@ -29,6 +29,12 @@ class BrokerAdapterGateway:
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         """Public adapter path is DEMO-only; REAL requires the dedicated gateway."""
+        if not isinstance(request, ExecutionRequest):
+            return AdapterExecutionResult(
+                False,
+                "requisição de execução inválida.",
+                dispatch_attempted=False,
+            )
         if request.mode is ExecutionMode.REAL:
             return AdapterExecutionResult(
                 False,
@@ -47,6 +53,12 @@ class BrokerAdapterGateway:
         """Internal REAL dispatch path guarded by a module-private capability."""
         if capability is not _REAL_DISPATCH_CAPABILITY:
             raise PermissionError("capacidade de despacho REAL inválida.")
+        if not isinstance(request, ExecutionRequest):
+            return AdapterExecutionResult(
+                False,
+                "requisição de execução inválida.",
+                dispatch_attempted=False,
+            )
         if request.mode is not ExecutionMode.REAL:
             return AdapterExecutionResult(False, "execução REAL exige request REAL.", dispatch_attempted=False)
         return self._execute(broker, request)
