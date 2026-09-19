@@ -86,3 +86,13 @@ def test_ledger_loads_legacy_status_only_format(tmp_path):
     ledger = ExecutionLedger(path)
     assert ledger.status("req-1") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id("req-1") is None
+
+
+def test_ledger_rejects_external_id_reuse(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1")
+    ledger.mark_accepted("req-1", "BROKER-123")
+    ledger.reserve("req-2")
+    import pytest
+    with pytest.raises(ValueError):
+        ledger.mark_accepted("req-2", "BROKER-123")
