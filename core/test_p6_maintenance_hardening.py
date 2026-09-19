@@ -42,7 +42,7 @@ def test_maintenance_rejects_symlinked_state_file(tmp_path):
     state = tmp_path / "maintenance.json"
     state.symlink_to(target)
     manager = MaintenanceManager(state)
-    with pytest.raises(OSError):
+    with pytest.raises(RuntimeError):
         manager.schedule(
             maintenance_id="m1",
             title="Update",
