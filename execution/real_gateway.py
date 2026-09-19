@@ -48,10 +48,14 @@ class RealExecutionGateway:
         self._lifecycle = lifecycle
 
     @staticmethod
-    def _valid_request(request: ExecutionRequest) -> bool:
+    def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
+        if not isinstance(request_id, str) or not request_id.strip():
+            return False
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
+            return False
+        if not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -74,7 +78,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        if not self._valid_request(request):
+        if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
