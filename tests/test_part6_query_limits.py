@@ -44,3 +44,19 @@ def test_read_json_rejects_deep_recursion_as_invalid_input():
     environ = {"CONTENT_LENGTH": str(len(nested.encode("utf-8"))), "wsgi.input": __import__("io").BytesIO(nested.encode("utf-8"))}
     with pytest.raises(ValueError, match="payload deve ser um objeto JSON|JSON inválido"):
         _read_json(environ)
+
+
+def test_read_json_rejects_unknown_length_transfer_encoding():
+    from app import _read_json
+    import io
+    environ = {"HTTP_TRANSFER_ENCODING": "chunked", "wsgi.input": io.BytesIO(b'{"ok": true}')}
+    with pytest.raises(ValueError, match="transferência de payload"):
+        _read_json(environ)
+
+
+def test_read_json_rejects_ambiguous_transfer_encoding_with_content_length():
+    from app import _read_json
+    import io
+    environ = {"HTTP_TRANSFER_ENCODING": "chunked", "CONTENT_LENGTH": "12", "wsgi.input": io.BytesIO(b'{"ok": true}')}
+    with pytest.raises(ValueError, match="transferência de payload"):
+        _read_json(environ)
