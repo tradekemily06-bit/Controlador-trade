@@ -173,3 +173,10 @@ def test_mark_unknown_is_idempotent_but_only_for_uncertain_state(tmp_path):
     ledger.mark_unknown("req-unknown-idempotent")
     ledger.mark_unknown("req-unknown-idempotent")
     assert ledger.status("req-unknown-idempotent") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_ledger_rejects_duplicate_external_ids_on_load(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-a":{"status":"ACCEPTED","external_id":"ext-1"},"req-b":{"status":"ACCEPTED","external_id":"ext-1"}}', encoding="utf-8")
+    with pytest.raises(ValueError):
+        ExecutionLedger(path)
