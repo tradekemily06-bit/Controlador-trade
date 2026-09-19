@@ -39,7 +39,10 @@ jobs:
         run: python -m pytest -q
 
       - name: Dependency security audit
-        run: python -m pip_audit -r requirements-dev.txt
+        run: |
+          python -m pip_audit -r requirements-dev.txt
+          python -m pip_audit -r requirements-ctrader.txt
+          python -m pip_audit -r requirements-mt5-windows.txt
 
       - name: Compile all Python project surfaces
         run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
