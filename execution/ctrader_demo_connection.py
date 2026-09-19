@@ -64,12 +64,14 @@ class InMemoryTokenProvider(CTraderTokenProvider):
         self._token: CTraderAccessToken | None = None
 
     def set_token(self, access_token: str, expires_in: int, refresh_token: str | None = None) -> None:
-        if not access_token.strip():
+        if not isinstance(access_token, str) or not access_token.strip():
             raise ValueError("access_token obrigatório")
         if expires_in <= 0:
             raise ValueError("expires_in inválido")
+        # A new token starts a new authenticated session. Never carry an
+        # account binding from the previous token across refresh/login.
         self._token = CTraderAccessToken(
-            access_token=access_token,
+            access_token=access_token.strip(),
             refresh_token=refresh_token,
             expires_at=time.time() + expires_in,
             session_id=uuid.uuid4().hex,
