@@ -45,3 +45,21 @@ def test_public_saas_blocks_unscoped_preferences_endpoint(monkeypatch):
 
     assert status.startswith("503 ")
     assert "tenant/subject-scoped" in payload["error"]
+
+
+def test_public_saas_keeps_owner_routes_blocked_until_service_storage_is_end_to_end_scoped(monkeypatch):
+    monkeypatch.setattr(app, "saas_public_mode", lambda: True)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app, "require_tenant_scoped_data_plane", lambda: None)
+
+    routes = [
+        ("GET", "/api/memory"),
+        ("GET", "/api/statistics"),
+        ("POST", "/api/analyze"),
+        ("POST", "/api/replay"),
+        ("POST", "/api/outcome"),
+    ]
+    for method, path in routes:
+        status, payload = _request(path, method)
+        assert status.startswith("503 "), (method, path, status, payload)
+        assert "tenant/subject-scoped" in payload["error"]
