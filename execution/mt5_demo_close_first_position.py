@@ -24,7 +24,7 @@ def main() -> None:
         positions = mt5.positions_get(symbol=SYMBOL) or ()
         candidates = [p for p in positions if getattr(p, "magic", None) == MAGIC]
         if len(candidates) != 1:
-            print(f"BLOQUEADO: esperado exatamente 1 posição do Controlador; encontrado={len(candidates)}")
+            print("BLOQUEADO: quantidade de posições do Controlador não corresponde ao esperado.")
             return
         position = candidates[0]
         tick = mt5.symbol_info_tick(position.symbol)
@@ -46,18 +46,18 @@ def main() -> None:
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
         check = mt5.order_check(request)
-        print(f"CLOSE_ORDER_CHECK={check}")
+        print("CLOSE_ORDER_CHECK=RECEIVED")
         if check is None or getattr(check, "retcode", 0) != 0:
             print("FECHAMENTO BLOQUEADO: order_check não aprovado.")
             return
         result = mt5.order_send(request)
-        print(f"CLOSE_ORDER_RESULT={result}")
+        print("CLOSE_ORDER_RESULT=RECEIVED")
         if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
             print("FECHAMENTO NÃO CONFIRMADO pelo MT5.")
             return
         remaining = mt5.positions_get(symbol=SYMBOL) or ()
         remaining_ours = [p for p in remaining if getattr(p, "magic", None) == MAGIC]
-        print(f"CLOSE_CONFIRMED=True; REMAINING_CONTROLADOR_POSITIONS={len(remaining_ours)}; DEMO_ONLY=True; REAL=False")
+        print("CLOSE_CONFIRMED=True; DEMO_ONLY=True; REAL=False")
     finally:
         mt5.shutdown()
 
