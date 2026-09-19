@@ -25,6 +25,9 @@ class RealSafetyGate:
     def evaluate(self, *, authorization_active: bool, kill_switch_clear: bool,
                  market_healthy: bool, recovery_safe: bool, risk_approved: bool,
                  broker_available: bool) -> RealSafetyReport:
+        for value in (authorization_active, kill_switch_clear, market_healthy, recovery_safe, risk_approved, broker_available):
+            if type(value) is not bool:
+                raise ValueError("pré-requisitos da barreira REAL precisam ser booleanos.")
         reasons: list[str] = []
         checks = (
             (authorization_active, "autorização REAL não está ativa"),

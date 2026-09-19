@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 class ExternalOrderStatus(str, Enum):
@@ -19,7 +19,10 @@ class ExternalOrderObservation:
     message: str
 
 
+@runtime_checkable
 class ExternalOrderQueryPort(Protocol):
+    """Read-only broker query port used as the source of reconciliation evidence."""
+
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         ...
 
@@ -33,22 +36,43 @@ class ReconciliationResult:
 
 
 class ExternalOrderReconciliationBoundary:
-    """Read-only external order reconciliation; it never resubmits an order."""
+    """Turns a broker query response into reconciliation evidence.
 
-    def reconcile(self, external_id: str, observation: ExternalOrderObservation) -> ReconciliationResult:
+    A caller cannot close a REAL request by supplying a local boolean or a
+    hand-built observation. The boundary must query the broker-side port.
+    """
+
+    def reconcile(
+        self,
+        external_id: str,
+        *,
+        query_port: ExternalOrderQueryPort,
+    ) -> ReconciliationResult:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido.")
+        if not isinstance(query_port, ExternalOrderQueryPort):
+            raise ValueError("query_port de reconciliação inválido.")
+
+        requested_id = external_id.strip()
+        observation = query_port.query_order(requested_id)
+
         if not isinstance(observation, ExternalOrderObservation):
             raise ValueError("observação externa inválida.")
-        if observation.external_id.strip() != external_id.strip():
-            raise ValueError("external_id da observação difere do solicitado.")
+        if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+            raise ValueError("external_id observado inválido.")
+        if not isinstance(observation.message, str):
+            raise ValueError("mensagem externa inválida.")
+        observed_id = observation.external_id.strip()
+        if observed_id != requested_id:
+            raise ValueError("external_id retornado pelo broker difere do solicitado.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
 
         return ReconciliationResult(
-            external_id=external_id.strip(),
+            external_id=requested_id,
             status=observation.status,
-            reconciled=observation.status in (
+            reconciled=observation.status
+            in (
                 ExternalOrderStatus.EXECUTED,
                 ExternalOrderStatus.NOT_EXECUTED,
             ),

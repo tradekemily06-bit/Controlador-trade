@@ -111,3 +111,45 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_mt5_demo_rejects_request_subclass_before_terminal_access():
+    class RequestOverride(ExecutionRequest):
+        pass
+
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    forged = RequestOverride(
+        "EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, "test-1"
+    )
+    result = adapter.execute(forged)
+
+    assert result.accepted is False
+    assert "request" in result.message
+    assert mt5.calls == []
+
+
+def test_mt5_demo_rejects_noncanonical_request_id_before_terminal_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    forged = ExecutionRequest(
+        "EURUSD", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, " test-1 "
+    )
+    result = adapter.execute(forged)
+
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert mt5.calls == []
+
+
+def test_mt5_demo_rejects_boolean_amount_before_terminal_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    forged = ExecutionRequest(
+        "EURUSD", Signal.COMPRA, True, 60, ExecutionMode.DEMO, "test-bool"
+    )
+    result = adapter.execute(forged)
+
+    assert result.accepted is False
+    assert "volume" in result.message
+    assert mt5.calls == []

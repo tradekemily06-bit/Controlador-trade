@@ -38,6 +38,7 @@ class ICMarketsDemoConfig:
 
 
 class ICMarketsCTraderDemoBoundary:
+    supports_real_execution = False
     """Fail-closed boundary waiting for approved cTrader Open API access."""
 
     def __init__(self, config: ICMarketsDemoConfig | None = None) -> None:

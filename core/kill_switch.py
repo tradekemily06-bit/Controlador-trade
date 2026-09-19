@@ -13,12 +13,12 @@ class KillSwitchState:
     reason: str | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.enabled, bool):
+        if type(self.enabled) is not bool:
             raise KillSwitchValidationError("enabled deve ser booleano.")
-        if self.enabled and (self.reason is None or not self.reason.strip()):
-            raise KillSwitchValidationError("kill switch ativo exige motivo.")
-        if self.reason is not None and not isinstance(self.reason, str):
+        if self.reason is not None and type(self.reason) is not str:
             raise KillSwitchValidationError("reason deve ser texto ou None.")
+        if self.enabled and not self.reason.strip():
+            raise KillSwitchValidationError("kill switch ativo exige motivo.")
 
 
 class KillSwitch:

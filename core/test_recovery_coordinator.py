@@ -75,3 +75,32 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+def test_persistence_oserror_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+
+    def fail_records():
+        raise OSError("storage temporarily unavailable")
+
+    coordinator.lifecycle_store.records = fail_records
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "storage temporarily unavailable" in result.message
+
+
+def test_ledger_read_race_fails_closed(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+
+    def fail_entry(request_id):
+        raise OSError("ledger changed during recovery assessment")
+
+    coordinator.execution_ledger.entry = fail_entry
+    coordinator.execution_ledger.reserve("existing")
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
+    assert "ledger changed during recovery assessment" in result.message

@@ -1,3 +1,4 @@
+import pytest
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -14,6 +15,50 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
         mode=mode,
     )
 
+
+
+def test_gateway_rejects_noncanonical_request_id():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute(" req-1 ", request())
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_rejects_mismatched_optional_request_id():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    req = request()
+    req = ExecutionRequest(
+        symbol=req.symbol,
+        signal=req.signal,
+        amount=req.amount,
+        duration_seconds=req.duration_seconds,
+        mode=req.mode,
+        request_id="other",
+    )
+
+    result = gateway.execute("req-1", req)
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+@pytest.mark.parametrize("amount", [float("nan"), float("inf"), -float("inf"), True])
+def test_gateway_rejects_nonfinite_or_boolean_amount(amount):
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute("req-amount", request_with_amount(amount))
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def request_with_amount(amount):
+    return ExecutionRequest(
+        symbol="BTCUSD",
+        signal=Signal.COMPRA,
+        amount=amount,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+    )
 
 def test_gateway_executes_valid_demo_request():
     gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
@@ -129,3 +174,18 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+@pytest.mark.parametrize("result", [
+    ExecutionResult(accepted=1, message="accepted", external_id="x"),
+    ExecutionResult(accepted=True, message="", external_id="x"),
+    ExecutionResult(accepted=True, message="accepted", external_id=1),
+])
+def test_gateway_rejects_malformed_execution_result_fields(result):
+    class MalformedExecutor:
+        def execute(self, _request):
+            return result
+
+    gateway = ExecutionGateway(MalformedExecutor(), KillSwitch())
+    outcome = gateway.execute("malformed", request())
+
+    assert outcome.status is GatewayStatus.EXECUTOR_ERROR
