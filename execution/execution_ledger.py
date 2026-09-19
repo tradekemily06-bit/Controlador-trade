@@ -105,8 +105,6 @@ class ExecutionLedger:
 
         for request_id, state in states.items():
             evidence = reconciliation.get(request_id)
-            if state is ExecutionLedgerStatus.ACCEPTED and bindings_by_request.get(request_id, 0) < 1:
-                raise ValueError("ledger aceito sem identidade externa vinculada.")
             if state in (
                 ExecutionLedgerStatus.RECONCILED_EXECUTED,
                 ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
