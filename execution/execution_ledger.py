@@ -285,6 +285,14 @@ class ExecutionLedger:
                 raise ValueError("estado UNKNOWN requer reconciliação explícita.")
             if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError(f"transição inválida de {current.value} para {status.value}.")
+            # Once an external identity exists, the broker-side outcome is no
+            # longer provably a definitive local rejection. Never allow a
+            # REJECTED transition that would leave an external_id attached to
+            # a state the decoder correctly treats as "not executed".
+            if status is ExecutionLedgerStatus.REJECTED and request_id in self._external_ids:
+                raise ValueError(
+                    "request_id possui external_id; rejeição definitiva exige reconciliação externa."
+                )
             self._states[request_id] = status
 
         self._mutate_locked(mutation)
