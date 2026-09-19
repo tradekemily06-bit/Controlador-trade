@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -40,11 +41,13 @@ class ExecutionLifecycleStore:
 
     def _load(self) -> None:
         if not self.path.exists():
+            self._records = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            loaded: dict[str, ExecutionLifecycleRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -55,7 +58,10 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
-                self._records[record.request_id] = record
+                if record.request_id in loaded:
+                    raise ValueError("request_id duplicado no ciclo persistido.")
+                loaded[record.request_id] = record
+            self._records = loaded
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
@@ -126,11 +132,11 @@ class ExecutionLifecycleStore:
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
         temporary.write_text(
             json.dumps([
                 {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
+                for r in tuple(self._records.values())
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
