@@ -67,3 +67,22 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_ledger_persists_external_id_for_accepted_execution(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-1")
+    ledger.mark_accepted("req-1", "BROKER-123")
+
+    reloaded = ExecutionLedger(path)
+    assert reloaded.status("req-1") is ExecutionLedgerStatus.ACCEPTED
+    assert reloaded.external_id("req-1") == "BROKER-123"
+
+
+def test_ledger_loads_legacy_status_only_format(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"req-1": "ACCEPTED"}', encoding="utf-8")
+    ledger = ExecutionLedger(path)
+    assert ledger.status("req-1") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req-1") is None
