@@ -78,8 +78,7 @@ class RealExecutionGateway:
             self._ledger.mark_rejected(request_id)
         except (OSError, ValueError):
             try:
-                durable_ledger = ExecutionLedger(self._ledger.path)
-                if durable_ledger.status(request_id) is not ExecutionLedgerStatus.REJECTED:
+                if self._ledger.status(request_id) is not ExecutionLedgerStatus.REJECTED:
                     return False
             except (OSError, ValueError):
                 return False
@@ -94,8 +93,7 @@ class RealExecutionGateway:
             self._lifecycle.put(record)
         except (OSError, ValueError):
             try:
-                durable_lifecycle = ExecutionLifecycleStore(self._lifecycle.path)
-                current = durable_lifecycle.get(request_id)
+                current = self._lifecycle.get(request_id)
                 if current is None or current.state is not ExecutionLifecycleState.REJECTED:
                     return False
             except (OSError, ValueError):
