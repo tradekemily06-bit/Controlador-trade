@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from threading import Lock
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -49,6 +50,7 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        self._request_lock = Lock()
 
     def execute(self, request_id: str, request: ExecutionRequest, *, snapshot: DecisionSnapshot | None = None, timestamp: datetime | None = None, entry_conditions: tuple[str, ...] = ()) -> GatewayResult:
         validation_error = self._validate(request_id, request)
@@ -63,20 +65,21 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
-            return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+        with self._request_lock:
+            if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+                return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
-        if self._lifecycle is not None:
-            existing = self._lifecycle.get(request_id)
-            if existing is not None:
-                if existing.state is ExecutionLifecycleState.UNKNOWN:
-                    return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
-                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
-            try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
-            except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+            if self._lifecycle is not None:
+                existing = self._lifecycle.get(request_id)
+                if existing is not None:
+                    if existing.state is ExecutionLifecycleState.UNKNOWN:
+                        return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
+                    if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
+                        return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
+                except (OSError, ValueError) as exc:
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
         try:
             result = self._executor.execute(request)
@@ -109,7 +112,8 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
-        self._processed_request_ids.add(request_id)
+        with self._request_lock:
+            self._processed_request_ids.add(request_id)
 
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
