@@ -158,8 +158,7 @@ class RecoveryCoordinator:
         inconsistent = [
             r.request_id
             for r in lifecycle
-            if r.request_id != ignored_id
-            and (
+            if (
                 r.request_id not in ledger_ids
                 or (
                     r.state is ExecutionLifecycleState.ACCEPTED
