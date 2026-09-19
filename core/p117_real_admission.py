@@ -26,8 +26,13 @@ class RealAdmissionBoundary:
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
               broker_available: bool, broker_id: str) -> RealAdmission:
-        if not admission_id.strip() or not audit_id.strip() or not broker_id.strip():
-            raise ValueError("identificadores e broker_id são obrigatórios.")
+        for name, value in (
+            ("admission_id", admission_id),
+            ("audit_id", audit_id),
+            ("broker_id", broker_id),
+        ):
+            if type(value) is not str or not value.strip():
+                raise ValueError(f"{name} é obrigatório.")
         for value in (audit_verified, authorization_active, safety_ready, broker_available):
             if type(value) is not bool:
                 raise ValueError("pré-requisitos de admissão REAL precisam ser booleanos.")
@@ -41,4 +46,4 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons))
+        return RealAdmission(admission_id.strip(), audit_id.strip(), status, broker_id.strip(), tuple(reasons))
