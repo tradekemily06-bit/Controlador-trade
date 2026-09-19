@@ -84,6 +84,13 @@ class ExecutionLedger:
                 normalized_external_id = external_id.strip()
                 if normalized_external_id in external_ids.values():
                     raise ValueError("ledger de execução inválido; external_id duplicado.")
+                if states[request_id] in (
+                    ExecutionLedgerStatus.REJECTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                ):
+                    raise ValueError(
+                        "ledger de execução inválido; estado não executado não pode possuir external_id."
+                    )
                 external_ids[request_id] = normalized_external_id
         return states, external_ids
 
@@ -190,6 +197,14 @@ class ExecutionLedger:
                 raise ValueError("external_id conflitante para o mesmo request_id.")
             if normalized in self._external_ids.values() and existing != normalized:
                 raise ValueError("external_id já está associado a outro request_id.")
+            current = self._states[request_id]
+            if current in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                raise ValueError(
+                    "estado não executado não pode receber external_id."
+                )
             self._external_ids[request_id] = normalized
 
         self._mutate_locked(mutation)
