@@ -145,3 +145,21 @@ def test_independent_lifecycle_instances_serialize_shared_file_state(tmp_path):
 
     records = ExecutionLifecycleStore(path).records()
     assert {record.request_id for record in records} == {f"req-{i}" for i in range(32)}
+
+def test_lifecycle_refuses_symlinked_state_and_stale_temp(tmp_path):
+    from datetime import datetime, timezone
+    target = tmp_path / "target.json"
+    target.write_text("[]", encoding="utf-8")
+    state = tmp_path / "lifecycle.json"
+    state.symlink_to(target)
+    store = ExecutionLifecycleStore(state)
+    with pytest.raises(OSError):
+        store.put(ExecutionLifecycleRecord("req", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+
+def test_lifecycle_refuses_stale_temporary_file(tmp_path):
+    from datetime import datetime, timezone
+    state = tmp_path / "lifecycle.json"
+    (tmp_path / ".lifecycle.json.tmp").write_text("attacker", encoding="utf-8")
+    store = ExecutionLifecycleStore(state)
+    with pytest.raises(RuntimeError):
+        store.put(ExecutionLifecycleRecord("req", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
