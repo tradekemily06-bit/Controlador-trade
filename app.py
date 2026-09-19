@@ -112,6 +112,9 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
 
 def application(environ, start_response):
     request_id = SECURITY.request_id()
+    require_https = os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"}
+    if require_https and str(environ.get("wsgi.url_scheme", "http")).lower() != "https":
+        return _json_response(start_response, HTTPStatus.UPGRADE_REQUIRED, {"error": "HTTPS obrigatório", "request_id": request_id}, request_id, environ)
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
     if path == "/api/login" and method == "POST":
