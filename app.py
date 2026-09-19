@@ -168,16 +168,17 @@ def _authorize_internal_update(environ) -> tuple[bool, str]:
 def _authorize_public_saas_request(environ, path: str, method: str) -> None:
     if not saas_public_mode():
         return
-    identity = require_trusted_identity(environ)
+    require_trusted_identity(environ)
     route = (method, path)
     if route in PUBLIC_SAAS_GENERIC:
         return
-if route in PUBLIC_SAAS_OWNER_SCOPED:
+    if route in PUBLIC_SAAS_OWNER_SCOPED:
         require_tenant_scoped_data_plane()
         return
-    # Any route not explicitly classified remains fail-closed.
-
-
+    # Authentication alone is not tenant isolation. The remaining stateful
+    # endpoints still use process-local/global service state, so exposing them
+    # in public SaaS mode would create a cross-tenant data boundary violation.
+    raise PublicSaaSNotReady("endpoint ainda não possui armazenamento tenant/subject-scoped; SaaS público bloqueado")
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
