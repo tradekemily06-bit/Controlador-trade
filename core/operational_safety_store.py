@@ -11,6 +11,13 @@ from .file_lock import exclusive_file_lock
 from .kill_switch import KillSwitch, KillSwitchState
 
 
+MAX_SAFETY_FILE_BYTES = 4 * 1024 * 1024
+MAX_SAFETY_AUDIT_RECORDS = 10_000
+MAX_SAFETY_EXECUTION_AUDIT_RECORDS = 10_000
+MAX_SAFETY_IDENTIFIER_LENGTH = 256
+MAX_SAFETY_MESSAGE_LENGTH = 4_096
+
+
 class OperationalSafetyStore:
     """Persists validated operational audit and kill-switch state atomically."""
 
@@ -91,7 +98,7 @@ class OperationalSafetyStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
-            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+            temporary.write_bytes(encoded)
             with temporary.open("r+b") as handle:
                 handle.flush()
                 os.fsync(handle.fileno())
