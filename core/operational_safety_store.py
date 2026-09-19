@@ -96,6 +96,9 @@ class OperationalSafetyStore:
 
     def _write_payload(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > MAX_SAFETY_FILE_BYTES:
+            raise ValueError("estado de segurança excede o limite permitido.")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
             temporary.write_bytes(encoded)
