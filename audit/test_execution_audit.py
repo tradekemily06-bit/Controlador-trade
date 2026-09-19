@@ -68,3 +68,14 @@ def test_persisted_invalid_execution_state_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError):
         ExecutionAuditLog(OperationalSafetyStore(path))
+
+
+def test_audit_rejects_invalid_request_id():
+    with pytest.raises(ValueError):
+        ExecutionAuditEvent("bad id", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "evento")
+
+
+def test_audit_rejects_future_timestamp():
+    from datetime import timedelta
+    with pytest.raises(ValueError):
+        ExecutionAuditEvent("req-31", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc) + timedelta(minutes=1), "evento")
