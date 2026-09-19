@@ -176,8 +176,8 @@ def test_invalid_reconciliation_does_not_poison_gateway_configuration(tmp_path: 
     gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
     with pytest.raises(ValueError, match="evidence_id"):
         gateway.reconcile_unknown_with_evidence("missing", executed=True, evidence_id="", evidence_source="broker")
-    # The failed precondition must not permanently lock the gateway's lifecycle.
-    gateway.set_operational_barrier_provider(lambda: GlobalOperationalBarrier())
+    # The failed precondition must not poison the already-bound lifecycle.
+    assert gateway._global_barrier_error() is None
 
 
 
