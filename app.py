@@ -61,7 +61,6 @@ ADMIN_ONLY_SAAS_MUTATIONS = {"/api/learning/sources/validate", "/api/learning/so
 # the service data plane. Any other stateful SaaS endpoint is fail-closed until
 # its storage path is tenant/subject scoped end-to-end.
 PUBLIC_SAAS_OWNER_SCOPED = {
-    ("GET", "/api/preferences"),
     ("GET", "/api/memory"),
     ("GET", "/api/statistics"),
     ("POST", "/api/analyze"),
