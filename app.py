@@ -54,9 +54,6 @@ else:
     )
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
-PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
-PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/psychology/status", "/api/saas/status"}
-ADMIN_ONLY_SAAS_MUTATIONS = {"/api/learning/sources/validate", "/api/learning/sources/admit"}
 # Only these API paths currently propagate the trusted subject/tenant into
 # the service data plane. Any other stateful SaaS endpoint is fail-closed until
 # its storage path is tenant/subject scoped end-to-end.
@@ -153,8 +150,6 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
     if route in PUBLIC_SAAS_GENERIC:
         return
     if route in PUBLIC_SAAS_OWNER_SCOPED:
-        if method == "POST" and path in ADMIN_ONLY_SAAS_MUTATIONS:
-            require_role(identity, "admin")
         require_tenant_scoped_data_plane()
         return
     # Authentication alone is not tenant isolation. The remaining stateful
