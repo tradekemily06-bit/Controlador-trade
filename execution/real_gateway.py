@@ -79,6 +79,18 @@ class RealExecutionGateway:
                 )
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
+        uncertain_ids = self._ledger.uncertain_request_ids()
+        if uncertain_ids:
+            if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+                )
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "há execução REAL em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+            )
+
         try:
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
