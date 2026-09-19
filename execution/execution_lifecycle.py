@@ -139,10 +139,11 @@ class ExecutionLifecycleStore:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
+        records = [self._records[key] for key in sorted(self._records)]
         temporary.write_text(
             json.dumps(
                 [{"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                 for r in self.records()],
+                 for r in records],
                 ensure_ascii=False, indent=2, sort_keys=True,
             ),
             encoding="utf-8",
