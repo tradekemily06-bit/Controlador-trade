@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 
 try:
     import fcntl
@@ -37,7 +38,7 @@ class RuntimeCheckpointStore:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
-                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
                 temporary.write_text(
                     json.dumps(
                         {
