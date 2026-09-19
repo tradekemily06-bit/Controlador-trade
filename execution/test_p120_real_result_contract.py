@@ -323,3 +323,25 @@ def test_real_gateway_blocks_on_persisted_kill_switch_at_final_boundary(tmp_path
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
     assert ledger.status("persisted-kill-switch") is ExecutionLedgerStatus.REJECTED
+
+
+def test_pre_dispatch_persistence_race_does_not_project_rejected_over_accepted_ledger(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+    from execution.real_gateway import RealExecutionGateway
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("race-accepted")
+    lifecycle.put(ExecutionLifecycleRecord("race-accepted", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "pending"))
+    ledger.mark_accepted("race-accepted")
+
+    gateway = RealExecutionGateway.__new__(RealExecutionGateway)
+    gateway._ledger = ledger
+    gateway._lifecycle = lifecycle
+    ok = gateway._mark_not_dispatched("race-accepted", "blocked before dispatch")
+
+    assert ok is True
+    assert ledger.status("race-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("race-accepted").state is ExecutionLifecycleState.ACCEPTED
