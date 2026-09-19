@@ -20,9 +20,6 @@ def test_adapter_execute_has_single_production_call_site():
         relative = path.relative_to(root)
         if path.name.startswith("test_"):
             continue
-        if relative.as_posix() == "execution/adapter_gateway.py":
-            continue
-
         tree = ast.parse(path.read_text(encoding="utf-8"))
 
         for node in ast.walk(tree):
