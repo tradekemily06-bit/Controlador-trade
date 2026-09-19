@@ -290,6 +290,26 @@ class BrokerAdapterGateway:
         except Exception as exc:
             return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
 
+        # The call above may run arbitrary adapter/transport code. If that code
+        # mutates the pinned REAL adapter identity/capability before returning,
+        # its result cannot safely become terminal local authority. Treat the
+        # broker outcome as UNKNOWN rather than trusting a possibly compromised
+        # post-dispatch result.
+        if expected_adapter is not None:
+            current_id = getattr(adapter, "adapter_id", None)
+            if (
+                adapter is not expected_adapter
+                or not isinstance(current_id, str)
+                or not isinstance(expected_adapter_id, str)
+                or current_id.strip().lower() != expected_adapter_id.strip().lower()
+                or getattr(adapter, "supports_real_execution", False) is not True
+            ):
+                return AdapterExecutionResult(
+                    False,
+                    "capacidade do adapter REAL mudou após o dispatch; resultado não confiável; estado UNKNOWN.",
+                    None,
+                )
+
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
         if type(result.accepted) is not bool:
