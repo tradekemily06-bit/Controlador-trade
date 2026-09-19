@@ -73,14 +73,30 @@ def locked_path(path: str | Path) -> Iterator[Path]:
 def read_json(path: str | Path, default: object) -> object:
     """Read one JSON file without a check-then-open filesystem race."""
     target = Path(path)
+    read_fd = -1
     try:
-        with target.open("rb") as handle:
+        flags = os.O_RDONLY
+        # Refuse a symlink at the final state-file component on platforms
+        # that expose O_NOFOLLOW. This closes the remaining final-component
+        # substitution window for durable reads instead of merely checking
+        # Path.is_symlink() before opening.
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        read_fd = os.open(target, flags)
+        with os.fdopen(read_fd, "rb") as handle:
+            read_fd = -1
             raw = handle.read(MAX_JSON_BYTES + 1)
         if len(raw) > MAX_JSON_BYTES:
             raise ValueError("arquivo JSON durável grande demais.")
         return json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return default
+    finally:
+        if read_fd != -1:
+            try:
+                os.close(read_fd)
+            except OSError:
+                pass
 
 
 def atomic_write_json(path: str | Path, payload: object) -> None:
