@@ -56,8 +56,8 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, "broker inválido.")
         try:
             adapter = self._registry.get(broker)
-        except BrokerRegistryError as exc:
-            return AdapterExecutionResult(False, str(exc))
+        except BrokerRegistryError:
+            return AdapterExecutionResult(False, "broker/adapter não registrado.")
         try:
             available = bool(adapter.is_available())
         except Exception:
@@ -67,6 +67,8 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception:
+            # Never expose adapter exception text: broker SDKs can embed URLs,
+            # account data, request payloads or authentication material.
             return AdapterExecutionResult(False, "adapter falhou; execução não confirmada.")
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
