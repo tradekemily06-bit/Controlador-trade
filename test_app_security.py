@@ -59,10 +59,10 @@ class AppSecurityTests(unittest.TestCase):
         try:
             SECURITY.limit = 1
             first, _, _ = self.request("/api/health", remote="192.0.2.10")
-            blocked, _, _ = self.request("/api/health", remote="192.0.2.12")
+            blocked, _, _ = self.request("/api/health", remote="192.0.2.10")
             other, _, _ = self.request("/api/health", remote="192.0.2.11")
             self.assertEqual(first, "200 OK")
-            self.assertEqual(blocked, "200 OK")
+            self.assertEqual(blocked, "429 Too Many Requests")
             self.assertEqual(other, "200 OK")
         finally:
             SECURITY.limit = old_limit
