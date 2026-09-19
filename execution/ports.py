@@ -27,6 +27,10 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    # False means the adapter could not prove a definitive outcome (for
+    # example, a timeout/transport ambiguity after a submission attempt).
+    # Such a result must enter UNKNOWN rather than being treated as REJECTED.
+    outcome_final: bool = True
 
 
 class ExecutionPort(Protocol):
