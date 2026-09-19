@@ -12,7 +12,7 @@ from execution.real_runtime import build_real_execution_runtime
 
 def test_real_runtime_requires_persisted_safety_state(tmp_path: Path):
     registry = BrokerRegistry()
-    auth = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    auth = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True, "acct-1", "sess-1")
     with pytest.raises(RuntimeError, match="estado de segurança REAL ausente"):
         build_real_execution_runtime(tmp_path, registry, auth)
 
@@ -28,7 +28,7 @@ def test_real_runtime_uses_persisted_kill_switch_instance(tmp_path: Path):
     store.save_kill_switch(kill_switch)
 
     registry = BrokerRegistry()
-    auth = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    auth = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True, "acct-1", "sess-1")
     runtime = build_real_execution_runtime(root, registry, auth)
 
     assert runtime.kill_switch is runtime.gateway._kill_switch
