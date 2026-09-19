@@ -382,3 +382,24 @@ def test_recovery_ignore_request_id_rejects_noncanonical_identity(tmp_path):
     recovery = make_coordinator(tmp_path)
     with pytest.raises(ValueError, match="ignore_request_id"):
         recovery.assess(ignore_request_id=" req ")
+
+
+
+def test_ignore_request_id_does_not_hide_terminal_lifecycle_vs_reserved_ledger_inconsistency(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("race-request")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "race-request",
+        ExecutionLifecycleState.ACCEPTED,
+        datetime.now(timezone.utc),
+        "contradictory terminal projection",
+    ))
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    assessment = recovery.assess(ignore_request_id="race-request")
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
