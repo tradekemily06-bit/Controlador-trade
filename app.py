@@ -16,7 +16,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
-from security.http_identity import PublicSaaSNotReady, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
+from security.http_identity import PublicSaaSNotReady, clear_trusted_identity, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -169,8 +169,9 @@ def _learning_source_for_request(source_id: str):
 
 def application(environ, start_response):
     request_id = SECURITY.request_id(); path = environ.get("PATH_INFO", "/"); method = environ.get("REQUEST_METHOD", "GET").upper()
-    if not SECURITY.allow(environ): return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
     try:
+        if not SECURITY.allow(environ):
+            return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
         _authorize_public_saas_request(environ, path, method)
         identity = require_trusted_identity(environ) if saas_public_mode() else None
         owner_kwargs = {"subject_id": identity.subject_id, "tenant_id": identity.tenant_id} if identity is not None else {}
@@ -238,6 +239,10 @@ def application(environ, start_response):
     except PermissionError: return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Acesso negado", "request_id": request_id}, request_id, environ)
     except (ValueError, KeyError, TypeError, RuntimeError): return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
     except Exception as exc: return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
+    finally:
+        # WSGI workers can serve multiple users sequentially. Never let a
+        # trusted identity survive into the next request on the same worker.
+        clear_trusted_identity()
 
 
 def run() -> None:
