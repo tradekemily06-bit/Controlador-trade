@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclass, fieldes import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -23,7 +23,7 @@ class RealAdmission:
 
     @property
     def admitted(self) -> bool:
-        return return self.status is RealAdmissionStatus.ADMITTED and self._issuer is _ADMISSION_ISSUER
+        return self.status is RealAdmissionStatus.ADMITTED and self._issuer is _ADMISSION_ISSUER
 
 
 class RealAdmissionBoundary:
