@@ -18,6 +18,11 @@ from threading import RLock
 from core.file_lock import exclusive_file_lock
 
 
+MAX_MAINTENANCE_FILE_BYTES = 64 * 1024
+MAX_MAINTENANCE_IDENTIFIER_LENGTH = 256
+MAX_MAINTENANCE_TEXT_LENGTH = 4096
+
+
 class MaintenanceStatus(str, Enum):
     SCHEDULED = "SCHEDULED"
     ACTIVE = "ACTIVE"
@@ -92,6 +97,11 @@ class MaintenanceManager:
         if self._state_path is None or not self._state_path.exists():
             return
         try:
+            stat = self._state_path.lstat()
+            if self._state_path.is_symlink() or not self._state_path.is_file():
+                raise ValueError("maintenance state must be a regular file")
+            if stat.st_size > MAX_MAINTENANCE_FILE_BYTES:
+                raise ValueError("maintenance state exceeds the allowed size")
             payload = json.loads(self._state_path.read_text(encoding="utf-8"))
             current = payload.get("current")
             if current is None:
@@ -123,7 +133,10 @@ class MaintenanceManager:
             "status": current.status.value,
         }}
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        if len(encoded) > MAX_MAINTENANCE_FILE_BYTES:
+            raise ValueError("maintenance state exceeds the allowed size")
+        temporary.write_bytes(encoded)
         with temporary.open("r+b") as handle:
             handle.flush()
             os.fsync(handle.fileno())
@@ -143,6 +156,8 @@ class MaintenanceManager:
                 raise RuntimeError("maintenance state is corrupt; recovery is required before scheduling")
             if not maintenance_id.strip() or not title.strip() or not message.strip():
                 raise ValueError("maintenance identity, title and message are required")
+            if len(maintenance_id.strip()) > MAX_MAINTENANCE_IDENTIFIER_LENGTH or len(title.strip()) > MAX_MAINTENANCE_TEXT_LENGTH or len(message.strip()) > MAX_MAINTENANCE_TEXT_LENGTH:
+                raise ValueError("maintenance identity or text exceeds the allowed size")
             start = _utc(starts_at)
             if duration_minutes < 1:
                 raise ValueError("duration_minutes must be greater than zero")
