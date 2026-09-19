@@ -30,6 +30,8 @@ class SafeRemoteMT5Executor:
         self._bridge = bridge
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "ponte MT5 remota aceita somente DEMO.")
 
