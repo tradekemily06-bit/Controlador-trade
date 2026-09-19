@@ -5,7 +5,7 @@ import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
-from core.p121_external_order_reconciliation import ExternalOrderObservation
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderQueryPort
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -142,15 +142,18 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem REAL aceita, mas persistência falhou.", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
-        """Reconcile only from broker-correlated terminal evidence; never resubmits."""
+    def reconcile_unknown(self, request_id: str, *, query_port: ExternalOrderQueryPort) -> None:
+        """Query the broker read-only, then reconcile; never accepts caller-forged evidence."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        if not isinstance(query_port, ExternalOrderQueryPort):
+            raise ValueError("query_port externo obrigatório.")
+        observation = query_port.query_order_by_request_id(request_id)
         if not isinstance(observation, ExternalOrderObservation):
-            raise ValueError("observação externa obrigatória.")
+            raise ValueError("consulta externa retornou observação inválida.")
         if observation.request_id != request_id:
             raise ValueError("request_id da observação difere da requisição.")
         self._ledger.reconcile_observation(request_id, observation)
