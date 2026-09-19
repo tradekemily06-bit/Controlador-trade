@@ -3,6 +3,7 @@ from pathlib import Path
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operation_memory import OperationMemory
+from core.operational_safety_store import OperationalSafetyStore
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
