@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, MT5AdapterError
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -136,10 +138,10 @@ def test_invalid_price_is_blocked():
     assert fake.sent == []
 
 
-def test_missing_external_id_is_not_confirmed():
+def test_missing_external_id_is_fail_closed_and_explicitly_uncertain():
     fake = FakeMT5(external_id=False)
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
 
-    assert result.accepted is False
-    assert result.external_id is None
+    with pytest.raises(MT5AdapterError, match="identificador externo"):
+        ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+
     assert len(fake.sent) == 1
