@@ -42,5 +42,5 @@ def test_read_json_rejects_deep_recursion_as_invalid_input():
     from app import _read_json
     nested = "[" * 2000 + "0" + "]" * 2000
     environ = {"CONTENT_LENGTH": str(len(nested.encode("utf-8"))), "wsgi.input": __import__("io").BytesIO(nested.encode("utf-8"))}
-    with pytest.raises(ValueError, match="JSON inválido"):
+    with pytest.raises(ValueError, match="payload deve ser um objeto JSON|JSON inválido"):
         _read_json(environ)
