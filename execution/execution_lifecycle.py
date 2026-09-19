@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
+
+from core.request_identity import REQUEST_ID_PATTERN, validate_request_id
 
 try:
     import fcntl
@@ -31,7 +32,6 @@ class ExecutionLifecycleRecord:
 
 
 class ExecutionLifecycleStore:
-    REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
     """Durable execution state; writes are serialized and atomic."""
 
     def __init__(self, path: str | Path) -> None:
@@ -68,8 +68,7 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not ExecutionLifecycleStore.REQUEST_ID_PATTERN.fullmatch(record.request_id):
-            raise ValueError("request_id inválido.")
+        validate_request_id(record.request_id)
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
         if not isinstance(record.updated_at, datetime) or record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
