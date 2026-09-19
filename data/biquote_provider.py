@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,20 +19,29 @@ class BiQuoteProvider(MarketDataProvider):
 
     BASE_URL = "https://biquote.io/api"
     TIMEFRAMES = {"1m", "5m", "15m", "30m", "1h", "4h", "1d"}
+    _SYMBOL_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9._-]{0,31}$")
 
     def __init__(self, timeout_seconds: float = 10.0) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
         self._timeout = timeout_seconds
 
+    @classmethod
+    def _safe_symbol(cls, symbol: str) -> str:
+        normalized = symbol.strip().upper()
+        if not cls._SYMBOL_PATTERN.fullmatch(normalized):
+            raise ValueError("unsupported BiQuote symbol format")
+        return normalized
+
     def fetch(self, request: MarketDataRequest) -> list[Candle]:
         if request.timeframe not in self.TIMEFRAMES:
             raise ValueError(f"unsupported BiQuote timeframe: {request.timeframe}")
+        symbol = self._safe_symbol(request.symbol)
 
         query = urlencode(
             {"interval": request.timeframe, "limit": min(request.limit + 1, 1000)}
         )
-        url = f"{self.BASE_URL}/{request.symbol.upper()}/ohlc?{query}"
+        url = f"{self.BASE_URL}/{symbol}/ohlc?{query}"
         http_request = Request(url, headers={"Accept": "application/json"})
         with urlopen(http_request, timeout=self._timeout) as response:
             payload = json.load(response)
