@@ -13,6 +13,9 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class MissingExternalIdAdapter:
+    adapter_id = "adapter"
+
+
     def is_available(self):
         return True
 
