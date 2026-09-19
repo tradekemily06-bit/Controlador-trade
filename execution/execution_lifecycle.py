@@ -61,13 +61,13 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
+        if not isinstance(record.request_id, str) or not record.request_id.strip() or len(record.request_id.strip()) > 128:
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
         if not isinstance(record.updated_at, datetime):
             raise ValueError("timestamp inválido.")
-        if not isinstance(record.message, str):
+        if not isinstance(record.message, str) or len(record.message) > 4096:
             raise ValueError("mensagem inválida.")
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
@@ -75,15 +75,21 @@ class ExecutionLifecycleStore:
 
         def mutation() -> None:
             previous = self._records.get(record.request_id)
-            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            if previous is not None:
+                if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                if previous.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+                    raise ValueError("estado terminal não pode ser sobrescrito.")
+                if previous.state is ExecutionLifecycleState.PENDING and record.state is ExecutionLifecycleState.PENDING:
+                    raise ValueError("execução PENDING já existe.")
             self._records[record.request_id] = record
 
         self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
+            raise ValueError("request_id inválido.")
+        self._load()
         return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
@@ -96,6 +102,8 @@ class ExecutionLifecycleStore:
             current = self._records.get(request_id)
             if current is None:
                 raise ValueError("execução não encontrada.")
+            if current.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                raise ValueError("somente PENDING ou UNKNOWN pode ser reconciliado.")
             result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
             self._validate(result)
             self._records[request_id] = result
@@ -105,6 +113,7 @@ class ExecutionLifecycleStore:
         return result
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
