@@ -2,7 +2,7 @@ from pathlib import Path
 
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p112_real_execution_contract import RealExecutionAuthorization, RealExecutionAuthorizationBoundary
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
@@ -46,7 +46,7 @@ class UnknownAdapter:
 
 
 def _authorization():
-    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
+    return RealExecutionAuthorizationBoundary().issue(authorization_id="auth", audit_id="a111", broker_id="fake", adapter_id="fake-adapter", explicitly_enabled=True, real_execution_allowed=True)
 
 
 def _admission(auth):
@@ -132,7 +132,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
-    auth = RealExecutionAuthorization("a", "audit", "fake", "adapter", False, False)
+    auth = RealExecutionAuthorizationBoundary().issue(authorization_id="a", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=False, real_execution_allowed=False)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
