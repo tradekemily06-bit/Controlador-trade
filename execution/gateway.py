@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import math
 
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
@@ -90,13 +91,13 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução com segurança.")
 
         try:
             result = self._executor.execute(request)
         except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
+            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
@@ -111,14 +112,14 @@ class ExecutionGateway:
             try:
                 self._ledger.record(request_id)
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
+                self._mark_unknown(request_id, event_time, "execução aceita, mas ledger não foi persistido.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência falhou; estado UNKNOWN.", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
+                self._mark_unknown(request_id, event_time, "execução aceita, mas ciclo não foi persistido.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN.", result)
         self._processed_request_ids.add(request_id)
 
         recorded_operation = None
@@ -141,18 +142,18 @@ class ExecutionGateway:
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return "request_id não pode ser vazio."
+        if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
+            return "request_id inválido."
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
         if request.mode is not ExecutionMode.DEMO:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
-            return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if not isinstance(request.symbol, str) or not request.symbol.strip() or len(request.symbol.strip()) > 64:
+            return "Símbolo inválido."
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool) or not math.isfinite(float(request.amount)) or request.amount <= 0:
+            return "Valor da execução deve ser positivo e finito."
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0 or request.duration_seconds > 86_400:
+            return "Duração inválida."
         return None
