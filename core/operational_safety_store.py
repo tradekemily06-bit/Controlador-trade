@@ -76,12 +76,12 @@ class OperationalSafetyStore:
         return {"request_id": request_id, "state": state, "timestamp": timestamp, "message": message}
 
     def _read_payload_unlocked(self) -> dict[str, object]:
-        if not self.path.exists():
-            return {"audit": [], "kill_switch": {}, "execution_audit": []}
         try:
-            payload = read_json(self.path, {})
+            payload = read_json(self.path, None)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
+        if payload is None:
+            return {"audit": [], "kill_switch": {}, "execution_audit": []}
         if not isinstance(payload, dict):
             raise ValueError("estado de segurança deve ser um objeto.")
         return payload
@@ -320,8 +320,6 @@ class OperationalSafetyStore:
         audit, kill_switch = DecisionAudit(), KillSwitch()
         try:
             with locked_path(self.path):
-                if not self.path.exists():
-                    return audit, kill_switch
                 payload = self._read_payload_unlocked()
                 audit = self._audit_from_payload(payload)
                 kill_switch_data = self._normalize_kill_switch(payload.get("kill_switch", {}))
