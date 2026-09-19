@@ -47,10 +47,13 @@ class ExecutionLifecycleStore:
             return
         try:
             stat = self.path.lstat()
-            if self.path.is_symlink() or not self.path.is_file():
-                raise ValueError("ciclo de execução deve ser um arquivo regular.")
-            if stat.st_size > MAX_LIFECYCLE_FILE_BYTES:
-                raise ValueError("ciclo de execução excede o limite permitido.")
+        except OSError as exc:
+            raise ValueError("ciclo de execução persistido inválido.") from exc
+        if self.path.is_symlink() or not self.path.is_file():
+            raise ValueError("ciclo de execução deve ser um arquivo regular.")
+        if stat.st_size > MAX_LIFECYCLE_FILE_BYTES:
+            raise ValueError("ciclo de execução excede o limite permitido.")
+        try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
