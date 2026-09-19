@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,8 @@ class RealExecutionAuthorization:
     real_execution_allowed: bool = False
     account_id: str | None = None
     session_id: str | None = None
+    issued_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(minutes=5))
 
     def __post_init__(self) -> None:
         for name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
@@ -25,6 +28,12 @@ class RealExecutionAuthorization:
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} inválido.")
+        for name in ("issued_at", "expires_at"):
+            value = getattr(self, name)
+            if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{name} deve ser timezone-aware.")
+        if self.expires_at <= self.issued_at:
+            raise ValueError("expires_at deve ser posterior a issued_at.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
 
@@ -35,4 +44,5 @@ class RealExecutionAuthorization:
             and self.real_execution_allowed
             and bool(self.account_id)
             and bool(self.session_id)
+            and datetime.now(timezone.utc) < self.expires_at
         )
