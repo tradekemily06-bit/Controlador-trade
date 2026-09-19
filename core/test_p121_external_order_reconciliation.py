@@ -30,7 +30,7 @@ def test_not_executed_is_terminal():
 @pytest.mark.parametrize("status", [ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN])
 def test_ambiguous_external_status_does_not_close_reconciliation(status):
     result = ExternalOrderReconciliationBoundary().reconcile(
-        "ext-3", ExternalOrderObservation("ext-3", status, "not final"),
+        "ext-3", ExternalOrderObservation("ext-3", status, "not final", datetime.now(timezone.utc)),
     )
     assert result.reconciled is False
 
@@ -39,7 +39,7 @@ def test_external_id_mismatch_fails_closed():
     with pytest.raises(ValueError):
         ExternalOrderReconciliationBoundary().reconcile(
             "ext-4",
-            ExternalOrderObservation("other", ExternalOrderStatus.EXECUTED, "filled"),
+            ExternalOrderObservation("other", ExternalOrderStatus.EXECUTED, "filled", datetime.now(timezone.utc)),
         )
 
 
@@ -47,5 +47,5 @@ def test_invalid_external_id_fails_closed():
     with pytest.raises(ValueError):
         ExternalOrderReconciliationBoundary().reconcile(
             " ",
-            ExternalOrderObservation("ext", ExternalOrderStatus.UNKNOWN, "unknown"),
+            ExternalOrderObservation("ext", ExternalOrderStatus.UNKNOWN, "unknown", datetime.now(timezone.utc)),
         )
