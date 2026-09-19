@@ -9,6 +9,7 @@ from enum import Enum
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.request_identity import validate_request_id
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
@@ -58,6 +59,10 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
         event_time = timestamp or datetime.now(timezone.utc)
+        if event_time.tzinfo is None or event_time.utcoffset() is None:
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "timestamp deve ser timezone-aware.")
+        if event_time > datetime.now(timezone.utc):
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "timestamp não pode estar no futuro.")
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
@@ -135,12 +140,16 @@ class ExecutionGateway:
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return "request_id não pode ser vazio."
+        try:
+            validate_request_id(request_id)
+        except ValueError:
+            return "request_id inválido."
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
-        if not isinstance(request.request_id, str) or not request.request_id.strip():
-            return "request.request_id não pode ser vazio."
+        try:
+            validate_request_id(request.request_id)
+        except ValueError:
+            return "request.request_id inválido."
         if request.request_id != request_id:
             return "request_id externo deve ser idêntico ao request.request_id."
         if request.mode is not ExecutionMode.DEMO:
