@@ -130,3 +130,23 @@ def test_demo_adapter_rejects_malformed_broker_result():
 
     assert result.accepted is False
     assert transport.orders
+
+
+def test_ctrader_demo_rejects_noncanonical_request_id_before_transport():
+    transport = FakeDemoTransport()
+    adapter = CTraderDemoAdapter(transport)
+    forged = request()
+    forged = ExecutionRequest(
+        forged.symbol,
+        forged.signal,
+        forged.amount,
+        forged.duration_seconds,
+        forged.mode,
+        " ctrader-1 ",
+    )
+
+    result = adapter.execute(forged)
+
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert transport.orders == []
