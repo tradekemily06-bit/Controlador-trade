@@ -334,17 +334,12 @@ class RealExecutionGateway:
                                         evidence_id: str, evidence_source: str) -> None:
         if not isinstance(evidence_id, str) or not evidence_id.strip():
             raise ValueError("evidência externa exige evidence_id")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id da reconciliação é obrigatório")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
             raise ValueError("evidence_source da evidência externa é obrigatório")
-        verifier = self._reconciliation_evidence_verifier
-        if verifier is None:
-            raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
-                with self._configuration_lock:
-                    if self._reconciliation_started:
-                        raise RuntimeError("reconciliação REAL já iniciou neste gateway")
-                    self._reconciliation_started = True
                 status = self._ledger.status(request_id)
                 if status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                     raise ValueError("request_id não está em estado incerto reconciliável.")
