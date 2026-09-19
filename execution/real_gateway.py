@@ -208,7 +208,16 @@ class RealExecutionGateway:
         # UNKNOWN (reconciliation required), even when other durable state also
         # makes the runtime globally non-resumable. Never let a global recovery
         # block hide the request's own non-replayable uncertainty.
-        current_status = self._ledger.status(request_id)
+        try:
+            current_status = self._ledger.status(request_id)
+        except (OSError, ValueError) as exc:
+            # A durable-authority read failure is itself a safety failure.
+            # Never continue toward reservation or broker dispatch when the
+            # idempotency ledger cannot be read reliably.
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                f"autoridade REAL indisponível; broker não chamado: {exc}",
+            )
         if current_status is not None:
             self._processed_request_ids.add(request_id)
             if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
@@ -242,7 +251,15 @@ class RealExecutionGateway:
                 )
 
         if self._lifecycle is not None:
-            existing_lifecycle = self._lifecycle.get(request_id)
+            try:
+                existing_lifecycle = self._lifecycle.get(request_id)
+            except (OSError, ValueError) as exc:
+                # A lifecycle read failure must fail closed before reservation;
+                # otherwise a hidden pending/unknown projection could be bypassed.
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    f"lifecycle REAL indisponível; broker não chamado: {exc}",
+                )
             if existing_lifecycle is not None:
                 if existing_lifecycle.state in (
                     ExecutionLifecycleState.PENDING,
