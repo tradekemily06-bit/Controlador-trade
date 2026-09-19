@@ -97,16 +97,16 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    p119 = RealReleaseClosureBoundary().close(
+        release_id="release", p116_verified=p116.verified, p117_admitted=p117.admitted,
+        p118_available=True, multi_broker_boundary=True,
+    )
     result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety, release=p119)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
     observation = RealMonitoringBoundary().observe(observation_id="obs", request_id="req", result=result.execution)
     assert observation.status is RealOutcomeStatus.ACCEPTED
-    p119 = RealReleaseClosureBoundary().close(
-        release_id="release", p116_verified=p116.verified, p117_admitted=p117.admitted,
-        p118_available=True, multi_broker_boundary=True,
-    )
     assert p119.state is RealReleaseState.RELEASED
 
 
@@ -156,7 +156,8 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
+    release = RealReleaseClosureBoundary().close(release_id="unknown-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
