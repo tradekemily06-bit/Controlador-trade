@@ -101,7 +101,11 @@ def atomic_write_json(path: str | Path, payload: object) -> None:
                 os.close(temporary_fd)
             except OSError:
                 pass
+        # Cleanup is best-effort. Once os.replace() succeeds, a cleanup
+        # failure must never turn a committed durable state into an apparent
+        # write failure for the caller. Conversely, when replace fails, the
+        # temporary file must not be allowed to mask the original failure.
         try:
             temporary.unlink()
-        except FileNotFoundError:
+        except OSError:
             pass
