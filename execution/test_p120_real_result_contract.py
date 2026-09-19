@@ -38,6 +38,26 @@ def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, 
     )
 
 
+def test_real_gateway_requires_durable_safety_store(tmp_path: Path):
+    registry = BrokerRegistry()
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    with pytest.raises(ValueError, match="safety_store"):
+        RealExecutionGateway(
+            BrokerAdapterGateway(registry),
+            ledger,
+            lifecycle=lifecycle,
+            recovery=recovery,
+            kill_switch=KillSwitch(),
+        )
+
+
 def test_real_gateway_requires_durable_lifecycle_and_recovery(tmp_path: Path):
     registry = BrokerRegistry()
     ledger = ExecutionLedger(tmp_path / "ledger.json")
