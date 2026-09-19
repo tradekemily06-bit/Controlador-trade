@@ -189,10 +189,10 @@ class ExecutionLedger:
             if normalized in self._external_ids.values() and existing != normalized:
                 raise ValueError("external_id já está associado a outro request_id.")
             current = self._states[request_id]
-            if current is ExecutionLedgerStatus.REJECTED:
-                raise ValueError("estado REJECTED não pode receber external_id após rejeição definitiva.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
-                raise ValueError(f"estado inválido para vínculo de external_id: {current.value}.")
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError(
+                    f"external_id só pode ser vinculado enquanto o request está RESERVED/UNKNOWN; encontrado {current.value}."
+                )
             self._external_ids[request_id] = normalized
 
         self._mutate_locked(mutation)
