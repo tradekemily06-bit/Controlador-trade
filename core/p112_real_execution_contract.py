@@ -32,8 +32,13 @@ class RealExecutionAuthorization:
             value = getattr(self, name)
             if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
                 raise ValueError(f"{name} deve ser timezone-aware.")
+        now = datetime.now(timezone.utc)
         if self.expires_at <= self.issued_at:
             raise ValueError("expires_at deve ser posterior a issued_at.")
+        if self.issued_at > now + timedelta(seconds=30):
+            raise ValueError("issued_at não pode estar significativamente no futuro.")
+        if self.expires_at - self.issued_at > timedelta(minutes=5):
+            raise ValueError("autorização REAL não pode exceder 5 minutos.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
 
