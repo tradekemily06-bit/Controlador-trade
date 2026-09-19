@@ -87,6 +87,38 @@ class ExecutionLedger:
             if observed_at.tzinfo is None or observed_at.utcoffset() is None or observed_at > datetime.now(timezone.utc):
                 raise ValueError("timestamp de reconciliação inválido.")
             reconciliation[request_id] = {key: raw_observation[key] for key in required}
+        for binding_key, request_id in bindings.items():
+            try:
+                decoded = json.loads(binding_key)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("binding externo inválido.") from exc
+            if (
+                not isinstance(decoded, list)
+                or len(decoded) != 3
+                or any(not isinstance(value, str) or not value.strip() for value in decoded)
+            ):
+                raise ValueError("binding externo inválido.")
+
+        bindings_by_request: dict[str, int] = {}
+        for request_id in bindings.values():
+            bindings_by_request[request_id] = bindings_by_request.get(request_id, 0) + 1
+
+        for request_id, state in states.items():
+            evidence = reconciliation.get(request_id)
+            if state is ExecutionLedgerStatus.ACCEPTED and bindings_by_request.get(request_id, 0) < 1:
+                raise ValueError("ledger aceito sem identidade externa vinculada.")
+            if state in (
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                if evidence is None:
+                    raise ValueError("estado reconciliado sem evidência persistida.")
+                expected = "EXECUTED" if state is ExecutionLedgerStatus.RECONCILED_EXECUTED else "NOT_EXECUTED"
+                if evidence["status"] != expected:
+                    raise ValueError("estado reconciliado diverge da evidência persistida.")
+                if bindings_by_request.get(request_id, 0) < 1:
+                    raise ValueError("estado reconciliado sem identidade externa vinculada.")
+
         return states, bindings, reconciliation
 
     @staticmethod
