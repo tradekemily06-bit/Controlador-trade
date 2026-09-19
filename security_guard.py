@@ -81,6 +81,11 @@ class SecurityGuard:
             ("Permissions-Policy", "camera=(), microphone=(), geolocation=()"),
             ("Content-Security-Policy", f"default-src 'self'; script-src {script_policy}; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"),
             ("Cache-Control", "no-store"),
+            *(
+                [("Strict-Transport-Security", "max-age=31536000; includeSubDomains")]
+                if __import__("os").environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"}
+                else []
+            ),
         ]
 
 
