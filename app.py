@@ -57,13 +57,7 @@ ONBOARDING = EcosystemOnboarding()
 # Only these API paths currently propagate the trusted subject/tenant into
 # the service data plane. Any other stateful SaaS endpoint is fail-closed until
 # its storage path is tenant/subject scoped end-to-end.
-PUBLIC_SAAS_OWNER_SCOPED = {
-    ("GET", "/api/memory"),
-    ("GET", "/api/statistics"),
-    ("POST", "/api/analyze"),
-    ("POST", "/api/replay"),
-    ("POST", "/api/outcome"),
-}
+PUBLIC_SAAS_OWNER_SCOPED: set[tuple[str, str]] = set()
 PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/health"),
     ("GET", "/api/status"),
@@ -73,6 +67,11 @@ PUBLIC_SAAS_GENERIC = {
     ("GET", "/api/connections"),
 }
 PUBLIC_SAAS_BLOCKED = {
+    ("GET", "/api/memory"),
+    ("GET", "/api/statistics"),
+    ("POST", "/api/analyze"),
+    ("POST", "/api/replay"),
+    ("POST", "/api/outcome"),
     ("GET", "/api/learning"),
     ("GET", "/api/learning/resources"),
     ("GET", "/api/learning/sources"),
@@ -170,15 +169,14 @@ def _authorize_public_saas_request(environ, path: str, method: str) -> None:
         return
     identity = require_trusted_identity(environ)
     route = (method, path)
+    if route in PUBLIC_SAAS_BLOCKED:
+        raise PublicSaaSNotReady("endpoint ainda não possui armazenamento tenant/subject-scoped; SaaS público bloqueado")
     if route in PUBLIC_SAAS_GENERIC:
         return
-    if route in PUBLIC_SAAS_OWNER_SCOPED:
+if route in PUBLIC_SAAS_OWNER_SCOPED:
         require_tenant_scoped_data_plane()
         return
-    # Authentication alone is not tenant isolation. The remaining stateful
-    # endpoints still use process-local/global service state, so exposing them
-    # in public SaaS mode would create a cross-tenant data boundary violation.
-    raise PublicSaaSNotReady("endpoint ainda não possui armazenamento tenant/subject-scoped; SaaS público bloqueado")
+    # Any route not explicitly classified remains fail-closed.
 
 
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
