@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 class ExternalOrderStatus(str, Enum):
@@ -20,6 +20,7 @@ class ExternalOrderObservation:
     request_id: str | None = None
 
 
+@runtime_checkable
 class ExternalOrderQueryPort(Protocol):
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         ...
