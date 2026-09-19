@@ -56,7 +56,7 @@ class ExecutionLedger:
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in raw_states.items():
-            if not isinstance(request_id, str) or not request_id.strip():
+            if not isinstance(request_id, str) or not ExecutionLedger.REQUEST_ID_PATTERN.fullmatch(request_id):
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
@@ -193,7 +193,7 @@ class ExecutionLedger:
     @staticmethod
     def _validate_id(request_id: str) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+            raise ValueError("request_id inválido.")
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
         self._validate_id(request_id)
