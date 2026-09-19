@@ -285,3 +285,32 @@ def test_gateway_rejected_terminal_persistence_failure_blocks_restart(tmp_path):
     ).assess()
     assert recovery.state is RecoveryState.REQUIRES_RECONCILIATION
     assert recovery.can_resume is False
+
+
+def test_gateway_non_final_executor_result_is_unknown(tmp_path):
+    class AmbiguousExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=True,
+                message="aceite não definitivo",
+                external_id="DEMO-AMBIGUOUS",
+                outcome_final=False,
+            )
+
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    gateway = ExecutionGateway(
+        AmbiguousExecutor(),
+        KillSwitch(),
+        ledger=ExecutionLedger(ledger_path),
+        lifecycle=ExecutionLifecycleStore(lifecycle_path),
+    )
+
+    result = gateway.execute("req-non-final", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution is not None
+    assert result.execution.outcome_final is False
+    assert ExecutionLedger(ledger_path).status("req-non-final") is ExecutionLedgerStatus.UNKNOWN
+    assert ExecutionLedger(ledger_path).external_id("req-non-final") == "DEMO-AMBIGUOUS"
+    assert ExecutionLifecycleStore(lifecycle_path).get("req-non-final").state is ExecutionLifecycleState.UNKNOWN
