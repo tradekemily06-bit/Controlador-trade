@@ -4,6 +4,7 @@ import pytest
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
@@ -92,3 +93,45 @@ def test_ledger_rejects_external_id_reuse(tmp_path):
     ledger.reserve("req-2")
     with pytest.raises(ValueError):
         ledger.mark_accepted("req-2", "BROKER-123")
+
+def test_ledger_rejects_acceptance_without_external_id(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-no-external")
+    with pytest.raises(ValueError, match="external_id obrigatório"):
+        ledger.mark_accepted("req-no-external", None)
+
+
+def test_ledger_reconciles_only_from_request_bound_terminal_observation(tmp_path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-reconcile")
+    ledger.mark_unknown("req-reconcile")
+    ledger.reconcile_observation(
+        "req-reconcile",
+        ExternalOrderObservation("BROKER-9", ExternalOrderStatus.EXECUTED, "filled", request_id="req-reconcile"),
+    )
+    restored = ExecutionLedger(path)
+    assert restored.status("req-reconcile") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert restored.external_id("req-reconcile") == "BROKER-9"
+
+
+def test_ledger_reconciliation_rejects_external_id_mismatch(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-mismatch")
+    ledger.mark_accepted("req-mismatch", "BROKER-10")
+    with pytest.raises(ValueError):
+        ledger.reconcile_observation(
+            "req-mismatch",
+            ExternalOrderObservation("BROKER-11", ExternalOrderStatus.EXECUTED, "wrong", request_id="req-mismatch"),
+        )
+
+
+def test_ledger_reconciliation_rejects_nonterminal_observation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-pending")
+    ledger.mark_unknown("req-pending")
+    with pytest.raises(ValueError, match="não é terminal"):
+        ledger.reconcile_observation(
+            "req-pending",
+            ExternalOrderObservation(None, ExternalOrderStatus.PENDING, "still pending", request_id="req-pending"),
+        )
