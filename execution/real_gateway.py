@@ -331,13 +331,11 @@ class RealExecutionGateway:
 
         if lifecycle.state is not desired_lifecycle:
             if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
-                self._lifecycle.put(
-                    ExecutionLifecycleRecord(
-                        request_id,
-                        desired_lifecycle,
-                        now,
-                        "ciclo sincronizado após janela de crash entre Ledger e Lifecycle.",
-                    )
+                self._lifecycle.reconcile_pending(
+                    request_id,
+                    desired_lifecycle,
+                    updated_at=now,
+                    message="ciclo sincronizado após janela de crash entre Ledger e Lifecycle.",
                 )
             else:
                 self._lifecycle.reconcile(
