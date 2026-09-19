@@ -119,8 +119,15 @@ def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: 
 
 
 def _read_json(environ) -> dict:
+    raw_content_length = environ.get("CONTENT_LENGTH")
+    transfer_encoding = str(environ.get("HTTP_TRANSFER_ENCODING") or "").strip().lower()
+    # This WSGI reader is deliberately bounded by Content-Length. Do not fall
+    # back to an unbounded read for chunked/unknown-length bodies.
+    if transfer_encoding:
+        if transfer_encoding != "identity" or raw_content_length not in (None, "", "0"):
+            raise ValueError("Entrada inválida: transferência de payload não suportada")
     try:
-        length = int(environ.get("CONTENT_LENGTH") or "0")
+        length = int(raw_content_length or "0")
     except (TypeError, ValueError) as exc:
         raise ValueError("Entrada inválida: content-length inválido") from exc
     if length < 0 or length > MAX_BODY_BYTES:
