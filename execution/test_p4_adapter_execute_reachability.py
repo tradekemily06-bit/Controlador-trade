@@ -30,12 +30,20 @@ def test_adapter_execute_has_single_production_call_site():
 
             receiver = node.func.value
             receiver_name = None
+            chained_registry_get = (
+                isinstance(receiver, ast.Call)
+                and isinstance(receiver.func, ast.Attribute)
+                and receiver.func.attr == "get"
+            )
             if isinstance(receiver, ast.Name):
                 receiver_name = receiver.id
             elif isinstance(receiver, ast.Attribute):
                 receiver_name = receiver.attr
 
-            if receiver_name and "adapter" in receiver_name.lower():
+            if (
+                (receiver_name and "adapter" in receiver_name.lower())
+                or chained_registry_get
+            ):
                 site = f"{relative}:{node.lineno}"
                 violations.append(site)
                 if relative.as_posix() == "execution/adapter_gateway.py":
