@@ -28,6 +28,12 @@ class BrokerAdapterGateway:
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
+    def adapter_id(self, broker: str) -> str | None:
+        try:
+            return self._registry.adapter_id(broker)
+        except BrokerRegistryError:
+            return None
+
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         """Generic/DEMO dispatch. REAL is rejected at this boundary."""
         if not isinstance(request, ExecutionRequest):
