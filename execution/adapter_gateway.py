@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class AdapterGatewayError(RuntimeError):
     """Raised when an adapter cannot safely receive an execution request."""
+
+
+# Private capability used only by RealExecutionGateway to cross the REAL adapter
+# boundary. The public DEMO/generic gateway must never forward a REAL request.
+_REAL_DISPATCH_CAPABILITY = object()
 
 
 @dataclass(frozen=True)
@@ -18,12 +23,37 @@ class AdapterExecutionResult:
 
 
 class BrokerAdapterGateway:
-    """Thin broker boundary; it never contains trading or signal logic."""
+    """Broker boundary with an explicit split between generic/DEMO and REAL dispatch."""
 
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+        """Generic/DEMO dispatch. REAL is rejected at this boundary."""
+        if not isinstance(request, ExecutionRequest):
+            return AdapterExecutionResult(False, "request de execução inválido.")
+        if request.mode is ExecutionMode.REAL:
+            return AdapterExecutionResult(
+                False,
+                "execução REAL exige a fronteira RealExecutionGateway.",
+            )
+        return self._dispatch(broker, request)
+
+    def execute_real(
+        self,
+        broker: str,
+        request: ExecutionRequest,
+        *,
+        capability: object,
+    ) -> AdapterExecutionResult:
+        """REAL-only dispatch; callable only with the private gateway capability."""
+        if capability is not _REAL_DISPATCH_CAPABILITY:
+            return AdapterExecutionResult(False, "capacidade de despacho REAL inválida.")
+        if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
+            return AdapterExecutionResult(False, "request REAL obrigatório na fronteira de despacho REAL.")
+        return self._dispatch(broker, request)
+
+    def _dispatch(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
