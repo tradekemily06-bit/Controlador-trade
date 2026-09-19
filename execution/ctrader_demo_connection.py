@@ -116,6 +116,7 @@ class CTraderDemoConnection:
         self._client_factory = client_factory
         self._client: CTraderClient | None = None
         self._account_id: int | None = None
+        self._pending_account_id: int | None = None
 
     @property
     def account_id(self) -> int | None:
@@ -161,10 +162,22 @@ class CTraderDemoConnection:
         request = ProtoOAAccountAuthReq()
         request.ctidTraderAccountId = account_id
         request.accessToken = self._tokens.access_token
+        # Building the auth request is not proof that the broker accepted the
+        # account. Keep it pending until the actual account-auth response is
+        # positively validated.
+        self._pending_account_id = account_id
+        return request
+
+    def confirm_account_authenticated(self, account_id: int) -> None:
+        """Bind identity only after the broker confirms account authentication."""
+        if not isinstance(account_id, int) or isinstance(account_id, bool) or account_id <= 0:
+            raise ValueError("account_id inválido")
+        if self._pending_account_id != account_id:
+            raise ValueError("conta confirmada não corresponde à autenticação pendente")
         self._account_id = account_id
+        self._pending_account_id = None
         if isinstance(self._tokens, InMemoryTokenProvider):
             self._tokens.bind_account(account_id)
-        return request
 
     def new_client_message_id(self) -> str:
         return uuid.uuid4().hex
@@ -173,3 +186,5 @@ class CTraderDemoConnection:
         if self._client is not None:
             self._client.disconnect()
             self._client = None
+        self._account_id = None
+        self._pending_account_id = None
