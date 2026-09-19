@@ -5,6 +5,7 @@ import hmac
 import os
 import secrets
 import time
+import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 
@@ -30,6 +31,7 @@ class SecurityGuard:
         self.limit = limit
         self.window = window
         self._buckets: dict[str, _Bucket] = defaultdict(lambda: _Bucket(deque()))
+        self._rate_lock = threading.RLock()
 
     def request_id(self) -> str:
         return secrets.token_hex(16)
@@ -50,6 +52,13 @@ class SecurityGuard:
             return raw.lower() == "localhost"
 
     def requires_remote_auth(self, environ) -> bool:
+        if os.environ.get("CONTROLADOR_REQUIRE_API_TOKEN", "").strip().lower() in {"1", "true", "yes"}:
+            return True
+        # A reverse proxy may make every peer appear as loopback. Treat common
+        # forwarding headers as an explicit signal that this is no longer a
+        # direct local-client boundary; token auth then becomes mandatory.
+        if environ.get("HTTP_FORWARDED") or environ.get("HTTP_X_FORWARDED_FOR") or environ.get("HTTP_X_FORWARDED_HOST"):
+            return True
         return not self._is_loopback(environ)
 
     def authorize(self, environ) -> bool:
@@ -83,16 +92,17 @@ class SecurityGuard:
     def allow(self, environ, now: float | None = None) -> bool:
         current = time.monotonic() if now is None else now
         cutoff = current - self.window
-        self._prune(cutoff)
-        key = self.client_key(environ)
-        bucket = self._buckets[key]
-        while bucket.timestamps and bucket.timestamps[0] <= cutoff:
-            bucket.timestamps.popleft()
-        if len(bucket.timestamps) >= self.limit:
-            return False
-        bucket.timestamps.append(current)
-        self._bound_clients()
-        return True
+        with self._rate_lock:
+            self._prune(cutoff)
+            key = self.client_key(environ)
+            bucket = self._buckets[key]
+            while bucket.timestamps and bucket.timestamps[0] <= cutoff:
+                bucket.timestamps.popleft()
+            if len(bucket.timestamps) >= self.limit:
+                return False
+            bucket.timestamps.append(current)
+            self._bound_clients()
+            return True
 
     @staticmethod
     def headers(request_id: str, script_nonce: str | None = None) -> list[tuple[str, str]]:
