@@ -91,7 +91,7 @@ class OperationalSafetyStore:
             if not self.path.is_file() or self.path.is_symlink():
                 raise ValueError("estado de segurança deve ser um arquivo regular.")
             if stat.st_size > MAX_SAFETY_FILE_BYTES:
-                raise ValueError("estado de segurança excede o limite permitido.")
+                raise ValueError("estado de segurança inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
