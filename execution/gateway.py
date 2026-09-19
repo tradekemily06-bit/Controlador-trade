@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -185,18 +186,29 @@ class ExecutionGateway:
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return "request_id não pode ser vazio."
-        if not isinstance(request, ExecutionRequest):
+        if type(request_id) is not str or not request_id.strip() or request_id != request_id.strip():
+            return "request_id inválido ou não canônico."
+        if type(request) is not ExecutionRequest:
             return "requisição de execução inválida."
+        if request.request_id != request_id:
+            return "request_id externo e request.request_id precisam coincidir."
         if request.mode is not ExecutionMode.DEMO:
             return "esta etapa aceita somente execução DEMO."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if type(request.symbol) is not str or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if (
+            not isinstance(request.amount, (int, float))
+            or isinstance(request.amount, bool)
+            or not math.isfinite(float(request.amount))
+            or request.amount <= 0
+        ):
+            return "Valor da execução deve ser um número finito positivo."
+        if (
+            not isinstance(request.duration_seconds, int)
+            or isinstance(request.duration_seconds, bool)
+            or request.duration_seconds <= 0
+        ):
+            return "Duração deve ser um inteiro positivo."
         return None
