@@ -53,6 +53,30 @@ class AppSecurityTests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertIn(b"Entrada inv\xc3\xa1lida", body)
 
+
+    def test_explicit_cross_site_state_change_is_blocked(self):
+        body = b"{}"
+        captured = {}
+
+        def start_response(status, headers):
+            captured["status"] = status
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/api/preferences",
+            "QUERY_STRING": "",
+            "CONTENT_TYPE": "application/json",
+            "CONTENT_LENGTH": str(len(body)),
+            "REMOTE_ADDR": "192.0.2.10",
+            "wsgi.input": io.BytesIO(body),
+            "HTTP_AUTHORIZATION": "Bearer test-token",
+            "HTTP_SEC_FETCH_SITE": "cross-site",
+            "HTTP_ORIGIN": "https://attacker.example",
+            "HTTP_HOST": "127.0.0.1:8000",
+        }
+        application(environ, start_response)
+        self.assertEqual(captured["status"], "403 Forbidden")
+
     def test_rate_limit_is_per_client(self):
         from app import SECURITY
         old_limit = SECURITY.limit
