@@ -101,9 +101,21 @@ class RealExecutionGateway:
             ):
                 return False
 
+        # The durable ledger remains the authority if a concurrent recovery
+        # worker resolved the request while this pre-dispatch stop was being
+        # persisted. Never project REJECTED from an already-accepted ledger:
+        # doing so would manufacture a cross-store terminal contradiction.
+        target_lifecycle = (
+            ExecutionLifecycleState.ACCEPTED
+            if durable_status in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            )
+            else ExecutionLifecycleState.REJECTED
+        )
         record = ExecutionLifecycleRecord(
             request_id,
-            ExecutionLifecycleState.REJECTED,
+            target_lifecycle,
             datetime.now(timezone.utc),
             message,
         )
@@ -131,7 +143,14 @@ class RealExecutionGateway:
                     and current.state is ExecutionLifecycleState.REJECTED
                 ):
                     return True
-                return False
+                # A transient PENDING/UNKNOWN projection can still be repaired
+                # to the ledger's terminal authority. A conflicting terminal
+                # projection must never be overwritten.
+                if current.state in (
+                    ExecutionLifecycleState.ACCEPTED,
+                    ExecutionLifecycleState.REJECTED,
+                ):
+                    return False
             self._lifecycle.put(record)
         except (OSError, ValueError):
             try:
