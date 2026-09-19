@@ -24,7 +24,12 @@ class BrokerAdapterGateway:
     """Defense-in-depth broker boundary with explicit REAL authorization handoff."""
 
     def __init__(self, registry: BrokerRegistry) -> None:
+        if not isinstance(registry, BrokerRegistry):
+            raise ValueError("registry inválido.")
         self._registry = registry
+
+    def adapter_id(self, broker: str) -> str:
+        return self._registry.adapter_id(broker)
 
     @staticmethod
     def _validate(request: ExecutionRequest) -> str | None:
