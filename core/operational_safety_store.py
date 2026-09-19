@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -91,9 +92,13 @@ class OperationalSafetyStore:
         return payload
 
     def _mutate_locked(self, mutation) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, flags, 0o600)
+        with os.fdopen(lock_fd, "a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -103,12 +108,21 @@ class OperationalSafetyStore:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def _atomic_write(self, payload: dict[str, object]) -> None:
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
 
     def save(self, audit: DecisionAudit, kill_switch: KillSwitch) -> None:
         if not isinstance(audit, DecisionAudit):
