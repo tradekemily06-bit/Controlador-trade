@@ -553,3 +553,37 @@ def test_reconcile_repairs_ledger_rejected_lifecycle_pending_crash_window(tmp_pa
 
     assert ledger.status("crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
     assert lifecycle.get("crash-rejected").state is ExecutionLifecycleState.REJECTED
+
+
+def test_real_adapter_exception_is_unknown_not_rejected(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = UnknownAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="exception-unknown",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="adapter-timeout",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("adapter-timeout") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("adapter-timeout").state is ExecutionLifecycleState.UNKNOWN
+    assert adapter.calls == 1
