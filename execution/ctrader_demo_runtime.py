@@ -25,17 +25,24 @@ def exchange_authorization_code(
     if not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
 
-    query = urlencode({
+    # OAuth secrets must not be placed in URLs: URLs can leak through logs,
+    # proxies, browser history and tracing systems. Send the token exchange as
+    # an HTTPS POST body instead.
+    body = urlencode({
         "grant_type": "authorization_code",
         "code": authorization_code,
         "redirect_uri": redirect_uri,
         "client_id": credentials.client_id,
         "client_secret": credentials.client_secret,
-    })
+    }).encode("utf-8")
     request = Request(
-        f"{CTRADER_TOKEN_URL}?{query}",
-        headers={"Accept": "application/json"},
-        method="GET",
+        CTRADER_TOKEN_URL,
+        data=body,
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
     )
     with urlopen(request, timeout=15) as response:
         payload = json.loads(response.read().decode("utf-8"))
