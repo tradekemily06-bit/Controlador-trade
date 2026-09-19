@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +26,8 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
             json.dumps(
                 {
                     "session_id": checkpoint.session_id,
@@ -39,6 +41,7 @@ class RuntimeCheckpointStore:
             ),
             encoding="utf-8",
         )
+        os.replace(temporary, self.path)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
