@@ -143,3 +143,16 @@ def test_missing_external_id_is_not_confirmed():
     assert result.accepted is False
     assert result.external_id is None
     assert len(fake.sent) == 1
+
+
+def test_configured_symbol_cannot_override_request_symbol():
+    fake = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(symbol="GBPUSD"),
+        mt5_module=fake,
+    )
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert fake.sent == []
