@@ -60,7 +60,7 @@ def test_rejected_execution_is_not_recorded(tmp_path: Path):
 def test_invalid_ledger_fails_closed(tmp_path: Path):
     path = tmp_path / "ledger.json"
     path.write_text('{"invalid": true}', encoding="utf-8")
-    with pytest.raises(ValueError, match="constante JSON não permitida"):
+    with pytest.raises(ValueError, match="ledger de execução inválido"):
         ExecutionLedger(path)
 
 
@@ -130,5 +130,5 @@ def test_ledger_rejects_noncanonical_request_id_and_json_nonfinite_constants(tmp
     with pytest.raises(ValueError, match="canônico"):
         ledger.reserve(" req-1 ")
     path.write_text('{"req-1": {"status": "RESERVED", "external_id": NaN}}', encoding="utf-8")
-    with pytest.raises(ValueError, match="ledger de execução inválido"):
+    with pytest.raises(ValueError, match="constante JSON não permitida"):
         ExecutionLedger(path)
