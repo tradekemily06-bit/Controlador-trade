@@ -14,6 +14,7 @@ def test_adapter_execute_has_single_production_call_site():
 
     root = Path(__file__).resolve().parents[1]
     violations: list[str] = []
+    sanctioned_sites: list[str] = []
 
     for path in root.rglob("*.py"):
         relative = path.relative_to(root)
@@ -38,6 +39,10 @@ def test_adapter_execute_has_single_production_call_site():
                 receiver_name = receiver.attr
 
             if receiver_name and "adapter" in receiver_name.lower():
-                violations.append(f"{relative}:{node.lineno}")
+                site = f"{relative}:{node.lineno}"
+                violations.append(site)
+                if relative.as_posix() == "execution/adapter_gateway.py":
+                    sanctioned_sites.append(site)
 
-    assert violations == []
+    assert violations == sanctioned_sites
+    assert len(sanctioned_sites) == 1
