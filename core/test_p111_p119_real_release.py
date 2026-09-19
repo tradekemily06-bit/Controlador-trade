@@ -307,6 +307,37 @@ def test_real_authority_objects_cannot_be_forged_as_active():
     assert forged_safety.ready is False
 
 
+def test_real_gateway_rejects_duck_typed_authority_objects(tmp_path: Path):
+    class Forged:
+        active = True
+        admitted = True
+        ready = True
+        released = True
+        broker_id = "fake"
+        adapter_id = "fake-adapter"
+
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+    )
+    forged = Forged()
+    result = gateway.execute(
+        broker="fake",
+        request_id="forged-authority",
+        request=_request(),
+        authorization=forged,
+        admission=forged,
+        safety=forged,
+        release=forged,
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
 def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
