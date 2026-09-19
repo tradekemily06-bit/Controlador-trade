@@ -21,6 +21,7 @@ from core.file_lock import exclusive_file_lock
 MAX_MAINTENANCE_FILE_BYTES = 64 * 1024
 MAX_MAINTENANCE_IDENTIFIER_LENGTH = 256
 MAX_MAINTENANCE_TEXT_LENGTH = 4096
+MAX_MAINTENANCE_DURATION_MINUTES = 7 * 24 * 60
 
 
 class MaintenanceStatus(str, Enum):
@@ -122,7 +123,14 @@ class MaintenanceManager:
     def _save(self) -> None:
         if self._state_path is None:
             return
-        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        parent = self._state_path.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        if parent.resolve(strict=True) != parent.absolute():
+            raise OSError("maintenance state directory must not be a symlink")
+        if self._state_path.exists():
+            stat = self._state_path.lstat()
+            if self._state_path.is_symlink() or not self._state_path.is_file():
+                raise OSError("maintenance state must be a regular file")
         current = self._current
         payload = {"current": None if current is None else {
             "maintenance_id": current.maintenance_id,
@@ -132,15 +140,32 @@ class MaintenanceManager:
             "ends_at": current.ends_at.isoformat(),
             "status": current.status.value,
         }}
-        temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
+        temporary = parent / f".{self._state_path.name}.tmp"
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         if len(encoded) > MAX_MAINTENANCE_FILE_BYTES:
             raise ValueError("maintenance state exceeds the allowed size")
-        temporary.write_bytes(encoded)
-        with temporary.open("r+b") as handle:
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, self._state_path)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
+        try:
+            fd = os.open(temporary, flags, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                fd = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self._state_path)
+            _fsync_directory(parent)
+        except FileExistsError as exc:
+            raise RuntimeError("maintenance temporary state already exists") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
         self._state_corrupt = False
 
     def _with_process_lock(self):
@@ -159,8 +184,10 @@ class MaintenanceManager:
             if len(maintenance_id.strip()) > MAX_MAINTENANCE_IDENTIFIER_LENGTH or len(title.strip()) > MAX_MAINTENANCE_TEXT_LENGTH or len(message.strip()) > MAX_MAINTENANCE_TEXT_LENGTH:
                 raise ValueError("maintenance identity or text exceeds the allowed size")
             start = _utc(starts_at)
-            if duration_minutes < 1:
-                raise ValueError("duration_minutes must be greater than zero")
+            if isinstance(duration_minutes, bool) or not isinstance(duration_minutes, int):
+                raise ValueError("duration_minutes must be an integer")
+            if duration_minutes < 1 or duration_minutes > MAX_MAINTENANCE_DURATION_MINUTES:
+                raise ValueError("duration_minutes exceeds the allowed range")
             current = _utc(now or datetime.now(timezone.utc))
             if start <= current:
                 raise ValueError("maintenance must be scheduled before it starts")
@@ -226,3 +253,11 @@ class _NoOpLock:
 
     def __exit__(self, exc_type, exc, tb):
         return False
+
+def _fsync_directory(path: Path) -> None:
+    """Persist an atomic state replacement before reporting success."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
