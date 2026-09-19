@@ -76,6 +76,7 @@ class RealExecutionGateway:
         """
         try:
             self._ledger.mark_rejected(request_id)
+            durable_status = ExecutionLedgerStatus.REJECTED
         except (OSError, ValueError):
             # A persistence call can fail after committing, or a concurrent
             # recovery worker can have already resolved this request. Re-read
