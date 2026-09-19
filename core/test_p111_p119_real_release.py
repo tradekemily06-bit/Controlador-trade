@@ -192,7 +192,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path), ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
@@ -202,6 +202,45 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert adapter.calls == 0
     gateway.reconcile_unknown("crashed", executed=False)
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_real_reservation_creates_pending_lifecycle_before_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = UnknownAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle_path = tmp_path / "lifecycle.json"
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        ExecutionLifecycleStore(lifecycle_path),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="pending-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="pending-1",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    record = ExecutionLifecycleStore(lifecycle_path).get("pending-1")
+    assert record is not None
+    assert record.state is ExecutionLifecycleState.UNKNOWN
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
