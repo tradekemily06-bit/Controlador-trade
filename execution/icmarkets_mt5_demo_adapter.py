@@ -92,6 +92,8 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
