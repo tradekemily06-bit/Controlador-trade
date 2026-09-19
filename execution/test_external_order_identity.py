@@ -12,6 +12,7 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from execution.p124_broker_session import BrokerSessionObservation, BrokerSessionStatus
 
 
 class ExternalIdAdapter:
@@ -32,7 +33,7 @@ def _request(request_id: str) -> ExecutionRequest:
 
 
 def _auth() -> RealExecutionAuthorization:
-    return RealExecutionAuthorization("auth", "audit", "fake", "adapter-1", True, True)
+    return RealExecutionAuthorization("auth", "audit", "fake", "adapter-1", True, True, "acct-1", "sess-1")
 
 
 def _admit_and_safety():
@@ -88,7 +89,7 @@ def test_real_gateway_collision_becomes_unknown_without_resubmission(tmp_path: P
 
     result = gateway.execute(
         broker="fake", request_id="new-request", request=_request("new-request"),
-        authorization=auth, admission=admission, safety=safety,
+        authorization=auth, admission=admission, safety=safety, session=BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "ok", "acct-1", "sess-1"),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN
