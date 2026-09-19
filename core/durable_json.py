@@ -61,10 +61,12 @@ def locked_path(path: str | Path) -> Iterator[Path]:
 
 
 def read_json(path: str | Path, default: object) -> object:
+    """Read one JSON file without a check-then-open filesystem race."""
     target = Path(path)
-    if not target.exists():
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except FileNotFoundError:
         return default
-    return json.loads(target.read_text(encoding="utf-8"))
 
 
 def atomic_write_json(path: str | Path, payload: object) -> None:
