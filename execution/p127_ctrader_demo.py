@@ -28,6 +28,7 @@ class CTraderDemoAdapter:
     """Fail-closed DEMO-only adapter boundary for cTrader Open API."""
 
     endpoint = CTRADER_DEMO_ENDPOINT
+    adapter_id = "ctrader-demo-v1"
 
     def __init__(self, transport: CTraderDemoTransport) -> None:
         if transport is None:
