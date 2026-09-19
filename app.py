@@ -130,7 +130,7 @@ def _read_json(environ) -> dict:
         raise ValueError("Entrada inválida: payload excede o limite permitido")
     try:
         data = json.loads(raw or b"{}")
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("Entrada inválida: JSON inválido") from exc
     if not isinstance(data, dict):
         raise ValueError("Entrada inválida: payload deve ser um objeto JSON")
@@ -145,7 +145,7 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
         raise ValueError("maximum deve ser maior que zero")
     if not isinstance(default, int) or isinstance(default, bool) or default < 1 or default > maximum:
         raise ValueError("default de limit inválido")
-    values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("limit")
+    values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True, max_num_fields=256).get("limit")
     if not values or values[-1] == "":
         return default
     try:
