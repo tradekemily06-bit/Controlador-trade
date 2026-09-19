@@ -56,6 +56,9 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > 128:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        embedded_request_id = request.request_id if isinstance(request, ExecutionRequest) else None
+        if embedded_request_id is not None and embedded_request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id da requisição difere do request_id operacional.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
