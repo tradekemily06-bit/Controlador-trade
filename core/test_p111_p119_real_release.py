@@ -246,9 +246,9 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     try:
         gateway.reconcile_unknown("unknown-2", observation=ExternalOrderObservation("EXT-UNKNOWN", ExternalOrderStatus.EXECUTED, "test"))
     except ValueError as exc:
-        assert "lifecycle" in str(exc)
+        assert "external_id durável" in str(exc)
     else:
-        raise AssertionError("REAL reconciliation must require durable external evidence")
+        raise AssertionError("REAL reconciliation must require exact durable external identity")
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
 
 
