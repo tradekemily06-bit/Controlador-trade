@@ -192,7 +192,7 @@ class ExecutionLedger:
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
-        if not isinstance(request_id, str) or not request_id.strip():
+        if not isinstance(request_id, str) or not REQUEST_ID_PATTERN.fullmatch(request_id):
             raise ValueError("request_id inválido.")
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
