@@ -117,8 +117,7 @@ class ExecutionLifecycleStore:
         self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        validate_request_id(request_id)
         self._load()
         return self._records.get(request_id)
 
