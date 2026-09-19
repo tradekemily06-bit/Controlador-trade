@@ -65,7 +65,7 @@ def test_accepted_without_ledger_requires_reconciliation(tmp_path):
 def test_ledger_only_terminal_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     coordinator.execution_ledger.reserve("req-1")
-    coordinator.execution_ledger.mark_accepted("req-1")
+    coordinator.execution_ledger.mark_accepted("req-1", broker="fake", adapter="adapter-1", external_id="order-1")
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
