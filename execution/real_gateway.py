@@ -41,6 +41,13 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._kill_switch = kill_switch
+        self._persistence_fault = False
+
+    @staticmethod
+    def _safe_adapter_message(execution: ExecutionResult | None) -> str:
+        if execution is None:
+            return "resultado REAL não confirmado."
+        return "ordem REAL aceita." if execution.accepted else "ordem REAL rejeitada pelo adapter."
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -63,6 +70,8 @@ class RealExecutionGateway:
             validate_request_id(request_id)
         except ValueError:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if self._persistence_fault:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "persistência REAL em estado de falha; novas execuções bloqueadas até recuperação.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if session is None:
@@ -117,14 +126,16 @@ class RealExecutionGateway:
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
-                        pass
+                        self._persistence_fault = True
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, "falha de persistência após resultado REAL incerto; novas execuções bloqueadas.")
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL incerto após falha no boundary do adapter; reconciliação explícita necessária.")
 
                 if result.execution is None:
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
-                        pass
+                        self._persistence_fault = True
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, "falha de persistência após resultado REAL incerto; novas execuções bloqueadas.")
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL sem execução confirmável; reconciliação explícita necessária.")
 
                 if not result.execution.accepted:
@@ -132,7 +143,7 @@ class RealExecutionGateway:
                         self._ledger.mark_rejected(request_id)
                     except (OSError, ValueError):
                         return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem rejeitada, mas persistência do estado falhou; reconciliação necessária.", result.execution)
-                    return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
+                    return RealGatewayResult(RealGatewayStatus.REJECTED, self._safe_adapter_message(result.execution), result.execution)
 
                 if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
                     try:
@@ -152,9 +163,10 @@ class RealExecutionGateway:
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
-                        pass
+                        self._persistence_fault = True
+                        return RealGatewayResult(RealGatewayStatus.BLOCKED, "falha de persistência após aceite REAL; novas execuções bloqueadas.", result.execution)
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem REAL aceita, mas identidade/estado não pôde ser confirmado; reconciliação explícita necessária.", result.execution)
-                return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+                return RealGatewayResult(RealGatewayStatus.ADMITTED, self._safe_adapter_message(result.execution), result.execution)
         except RuntimeError:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
 
