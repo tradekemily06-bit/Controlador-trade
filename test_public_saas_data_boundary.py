@@ -67,7 +67,7 @@ def test_public_saas_does_not_expose_global_state_after_identity_is_trusted(monk
     for path in ("/api/memory", "/api/statistics", "/api/preferences"):
         status, payload = call(path, trusted=True)
         assert status == "503 Service Unavailable", (path, status, payload)
-        assert "tenant-scoped data plane" in payload["error"]
+        assert "tenant/subject-scoped" in payload["error"]
 
     for path in ("/api/status", "/api/news", "/api/connections", "/api/saas/status"):
         status, payload = call(path, trusted=True)
