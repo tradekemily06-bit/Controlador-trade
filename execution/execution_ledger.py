@@ -123,11 +123,15 @@ class ExecutionLedger:
         self._validate_id(request_id)
 
         def mutation() -> None:
-            if self._states.get(request_id) not in (
+            current = self._states.get(request_id)
+            allowed = (
                 ExecutionLedgerStatus.UNKNOWN,
                 ExecutionLedgerStatus.RESERVED,
-            ):
-                raise ValueError("request_id não está em estado incerto reconciliável.")
+                ExecutionLedgerStatus.ACCEPTED if executed else ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            )
+            if current not in allowed:
+                raise ValueError("request_id não está em estado reconciliável.")
             self._states[request_id] = (
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
