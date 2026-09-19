@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from core.models import Signal
+from core.kill_switch import KillSwitch
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
@@ -158,6 +159,31 @@ def test_real_authorization_is_explicit():
         pass
     else:
         raise AssertionError("REAL must require explicit enablement")
+
+
+def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
+    adapter = FakeAdapter()
+    registry = BrokerRegistry()
+    registry.register("fake", adapter)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    kill_switch = KillSwitch()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        kill_switch=kill_switch,
+    )
+
+    kill_switch.activate("emergency stop after safety snapshot")
+    result = gateway.execute(
+        broker="fake", request_id="kill-live",
+        request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="kill-live"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
 
 
 def test_real_safety_fails_closed():
