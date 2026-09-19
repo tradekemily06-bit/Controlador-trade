@@ -1,14 +1,11 @@
-FROM python:3.12-slim
+FROM python:3.12.14-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
 
 WORKDIR /app
-
-COPY requirements.txt ./
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
 ENV PORT=7860
 
 RUN addgroup --system app && adduser --system --ingroup app app \
