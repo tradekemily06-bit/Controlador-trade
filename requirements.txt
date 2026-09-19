@@ -1,1 +1,2 @@
 pytest
+gunicorn==26.2.0
