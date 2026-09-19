@@ -8,7 +8,7 @@ from security_guard import MAX_BODY_BYTES
 
 
 class AppSecurityTests(unittest.TestCase):
-    def request(self, path, method="GET", payload=None, remote="test-client"):
+    def request(self, path, method="GET", payload=None, remote="test-client", trusted_identity=None, spoofed_identity=None):
         body = b"" if payload is None else json.dumps(payload).encode("utf-8")
         captured = {}
 
@@ -25,6 +25,16 @@ class AppSecurityTests(unittest.TestCase):
             "REMOTE_ADDR": remote,
             "wsgi.input": io.BytesIO(body),
         }
+        if trusted_identity:
+            subject, tenant, role = trusted_identity
+            environ["controlador.trusted_subject_id"] = subject
+            environ["controlador.trusted_tenant_id"] = tenant
+            environ["controlador.trusted_role"] = role
+        if spoofed_identity:
+            subject, tenant, role = spoofed_identity
+            environ["HTTP_X_TRUSTED_SUBJECT_ID"] = subject
+            environ["HTTP_X_TRUSTED_TENANT_ID"] = tenant
+            environ["HTTP_X_TRUSTED_ROLE"] = role
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
 
@@ -40,7 +50,7 @@ class AppSecurityTests(unittest.TestCase):
         payload = {"value": "x" * (MAX_BODY_BYTES + 1)}
         status, _, body = self.request("/api/analyze", method="POST", payload=payload)
         self.assertEqual(status, "400 Bad Request")
-        self.assertIn(b"Entrada inv\xc3\xa1lida", body)
+        self.assertIn(b"Entrada invÃ¡lida", body)
 
     def test_oversized_path_is_bounded_in_audit_and_does_not_break_response(self):
         path = "/api/" + ("x" * (MAX_SECURITY_PATH_LENGTH + 500))
@@ -61,6 +71,60 @@ class AppSecurityTests(unittest.TestCase):
         finally:
             SECURITY.limit = old_limit
             SECURITY._buckets.clear()
+
+    def test_public_saas_requires_server_trusted_identity(self, monkeypatch=None):
+        import os
+        old = os.environ.get("CONTROLADOR_SAAS_PUBLIC")
+        os.environ["CONTROLADOR_SAAS_PUBLIC"] = "1"
+        try:
+            status, _, body = self.request("/api/memory")
+            self.assertEqual(status, "403 Forbidden")
+            self.assertIn(b"Acesso negado", body)
+        finally:
+            if old is None:
+                os.environ.pop("CONTROLADOR_SAAS_PUBLIC", None)
+            else:
+                os.environ["CONTROLADOR_SAAS_PUBLIC"] = old
+
+    def test_public_saas_ignores_browser_controlled_identity_headers(self):
+        import os
+        old = os.environ.get("CONTROLADOR_SAAS_PUBLIC")
+        os.environ["CONTROLADOR_SAAS_PUBLIC"] = "1"
+        try:
+            status, _, body = self.request(
+                "/api/memory",
+                spoofed_identity=("attacker", "attacker-tenant", "admin"),
+            )
+            self.assertEqual(status, "403 Forbidden")
+            self.assertIn(b"Acesso negado", body)
+        finally:
+            if old is None:
+                os.environ.pop("CONTROLADOR_SAAS_PUBLIC", None)
+            else:
+                os.environ["CONTROLADOR_SAAS_PUBLIC"] = old
+
+    def test_public_saas_owner_route_fails_closed_without_durable_provider(self):
+        import os
+        old_public = os.environ.get("CONTROLADOR_SAAS_PUBLIC")
+        old_provider = os.environ.get("CONTROLADOR_PRODUCTION_STORE")
+        os.environ["CONTROLADOR_SAAS_PUBLIC"] = "1"
+        os.environ["CONTROLADOR_PRODUCTION_STORE"] = ""
+        try:
+            status, _, body = self.request(
+                "/api/memory",
+                trusted_identity=("user-1", "tenant-1", "user"),
+            )
+            self.assertEqual(status, "503 Service Unavailable")
+            self.assertIn(b"SaaS", body)
+        finally:
+            if old_public is None:
+                os.environ.pop("CONTROLADOR_SAAS_PUBLIC", None)
+            else:
+                os.environ["CONTROLADOR_SAAS_PUBLIC"] = old_public
+            if old_provider is None:
+                os.environ.pop("CONTROLADOR_PRODUCTION_STORE", None)
+            else:
+                os.environ["CONTROLADOR_PRODUCTION_STORE"] = old_provider
 
 
 if __name__ == "__main__":
