@@ -136,10 +136,10 @@ class ExecutionGateway:
             elif current.state is not ExecutionLifecycleState.UNKNOWN:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
         except (OSError, ValueError):
-            # The original operation is already ambiguous. If the safety state
-            # itself cannot be persisted, do not fabricate a terminal result.
-            # The caller still receives a non-accepted outcome.
-            return
+            # Never silently downgrade a persistence failure: the caller must
+            # remain in an ambiguous/non-accepted state and observability should
+            # be able to distinguish "UNKNOWN persisted" from "UNKNOWN could not
+            # be persisted".
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
