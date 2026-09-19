@@ -29,6 +29,7 @@ class ExecutionLedger:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
+        self._external_bindings: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -38,29 +39,51 @@ class ExecutionLedger:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
-        self._states = self._decode(payload)
+        self._states, self._external_bindings = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
-            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}
+            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
+        raw_states = payload.get("states", payload)
+        raw_bindings = payload.get("external_bindings", {})
+        if not isinstance(raw_states, dict) or not isinstance(raw_bindings, dict):
+            raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
-        for request_id, raw_status in payload.items():
+        for request_id, raw_status in raw_states.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
             except ValueError as exc:
                 raise ValueError("ledger de execução inválido.") from exc
-        return states
+        bindings: dict[str, str] = {}
+        for binding_key, request_id in raw_bindings.items():
+            if not isinstance(binding_key, str) or not binding_key.strip():
+                raise ValueError("binding externo inválido.")
+            if not isinstance(request_id, str) or not request_id.strip() or request_id not in states:
+                raise ValueError("binding externo inválido.")
+            bindings[binding_key] = request_id
+        return states, bindings
+
+    @staticmethod
+    def _binding_key(broker: str, adapter: str, external_id: str) -> str:
+        if not all(isinstance(value, str) and value.strip() for value in (broker, adapter, external_id)):
+            raise ValueError("identidade externa inválida.")
+        return json.dumps([broker.strip().casefold(), adapter.strip().casefold(), external_id.strip()], ensure_ascii=False, separators=(",", ":"))
+
+    def external_binding(self, *, broker: str, adapter: str, external_id: str) -> str | None:
+        key = self._binding_key(broker, adapter, external_id)
+        self._load()
+        return self._external_bindings.get(key)
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        payload = {key: self._states[key].value for key in sorted(self._states)}
+        payload = {"states": {key: self._states[key].value for key in sorted(self._states)}, "external_bindings": {key: self._external_bindings[key] for key in sorted(self._external_bindings)}}
         fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
         temporary = Path(temporary_name)
         try:
@@ -123,8 +146,21 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+    def mark_accepted(self, request_id: str, *, broker: str, adapter: str, external_id: str) -> None:
+        self._validate_id(request_id)
+        key = self._binding_key(broker, adapter, external_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("request_id não está em estado aceito para confirmação.")
+            owner = self._external_bindings.get(key)
+            if owner is not None and owner != request_id:
+                raise ValueError("external order identity já está vinculada a outro request_id.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            self._external_bindings[key] = request_id
+
+        self._mutate_locked(mutation)
 
     def mark_rejected(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.REJECTED)
