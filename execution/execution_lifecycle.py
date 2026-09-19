@@ -186,6 +186,34 @@ class ExecutionLifecycleStore:
         assert result is not None
         return result
 
+    def reconcile_pending(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+        """Close the Ledger-terminal -> Lifecycle-PENDING crash window.
+
+        This is intentionally separate from reconcile(): callers must prove the
+        Ledger transition first and the REAL gateway holds the shared
+        execution coordination lock while performing both mutations.
+        """
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reconciliação PENDING exige estado ACCEPTED ou REJECTED.")
+        if not isinstance(updated_at, datetime):
+            raise ValueError("timestamp inválido.")
+        result: ExecutionLifecycleRecord | None = None
+
+        def mutation() -> None:
+            nonlocal result
+            current = self._records.get(request_id)
+            if current is None:
+                raise ValueError("execução não encontrada.")
+            if current.state is not ExecutionLifecycleState.PENDING:
+                raise ValueError("reconciliação PENDING exige estado PENDING.")
+            result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+            self._validate(result)
+            self._records[request_id] = result
+
+        self._mutate_locked(mutation)
+        assert result is not None
+        return result
+
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         self._load()
         return tuple(self._records[key] for key in sorted(self._records))
