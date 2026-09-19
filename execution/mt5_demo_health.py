@@ -27,7 +27,7 @@ def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
             return MT5DemoHealth(False, False, "conta MT5 não confirmada como DEMO")
         return MT5DemoHealth(True, True, "MT5 DEMO disponível")
     except Exception as exc:
-        return MT5DemoHealth(False, False, f"falha no preflight MT5: {exc}")
+        return MT5DemoHealth(False, False, f"falha no preflight MT5.")
     finally:
         try:
             mt5.shutdown()
