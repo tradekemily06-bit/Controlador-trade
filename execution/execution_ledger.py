@@ -44,6 +44,8 @@ class ExecutionLedger:
             self._execution_context = {}
             return
         try:
+            if self.path.stat().st_size > MAX_LEDGER_FILE_BYTES:
+                raise ValueError("ledger de execução excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
@@ -70,6 +72,8 @@ class ExecutionLedger:
             if not isinstance(states_payload, dict) or not isinstance(evidence_payload, dict) or not isinstance(context_payload, dict):
                 raise ValueError("ledger de execução inválido.")
 
+        if isinstance(states_payload, dict) and len(states_payload) > MAX_LEDGER_RECORDS:
+            raise ValueError("ledger de execução excede o limite permitido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in states_payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
@@ -124,7 +128,10 @@ class ExecutionLedger:
             "reconciliation_evidence": {key: self._reconciliation_evidence[key] for key in sorted(self._reconciliation_evidence)},
             "execution_context": {key: self._execution_context[key] for key in sorted(self._execution_context)},
         }
-        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        encoded = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+        if len(encoded) > MAX_LEDGER_FILE_BYTES:
+            raise ValueError("ledger de execução excede o limite permitido.")
+        temporary.write_bytes(encoded)
         with temporary.open("rb") as handle:
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
