@@ -67,3 +67,21 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_unknown_cannot_jump_to_terminal_without_reconciliation(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+    with pytest.raises(ValueError, match="UNKNOWN exige reconciliação explícita"):
+        ledger.mark_accepted("req-unknown")
+    with pytest.raises(ValueError, match="UNKNOWN exige reconciliação explícita"):
+        ledger.mark_rejected("req-unknown")
+
+
+def test_terminal_ledger_state_is_immutable(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-terminal")
+    ledger.mark_accepted("req-terminal")
+    with pytest.raises(ValueError, match="transição terminal inválida"):
+        ledger.mark_rejected("req-terminal")
