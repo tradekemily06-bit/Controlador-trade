@@ -86,7 +86,6 @@ class ExecutionLedger:
                     raise ValueError("ledger de execução inválido; external_id duplicado.")
                 if states[request_id] in (
                     ExecutionLedgerStatus.REJECTED,
-                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
                 ):
                     raise ValueError(
                         "ledger de execução inválido; estado não executado não pode possuir external_id."
@@ -200,7 +199,6 @@ class ExecutionLedger:
             current = self._states[request_id]
             if current in (
                 ExecutionLedgerStatus.REJECTED,
-                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
             ):
                 raise ValueError(
                     "estado não executado não pode receber external_id."
