@@ -407,3 +407,39 @@ def test_real_gateway_fails_closed_when_lifecycle_read_is_unavailable(tmp_path, 
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
+
+class NonDefinitiveRejectionAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(
+            False,
+            "sem confirmação após tentativa de envio",
+            None,
+            outcome_final=False,
+        )
+
+
+def test_non_definitive_negative_result_is_unknown_not_rejected(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", NonDefinitiveRejectionAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(tmp_path, registry, ledger)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+
+    result = gateway.execute(
+        broker="fake", request_id="non-definitive-rejection", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("non-definitive-rejection") is ExecutionLedgerStatus.UNKNOWN
