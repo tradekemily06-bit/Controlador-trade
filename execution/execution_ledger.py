@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 
@@ -32,6 +33,7 @@ class ExecutionLedger:
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._external_bindings: dict[str, str] = {}
+        self._reconciliation: dict[str, dict[str, str]] = {}
         self._load()
 
     def _load(self) -> None:
@@ -41,19 +43,20 @@ class ExecutionLedger:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
-        self._states, self._external_bindings = self._decode(payload)
+        self._states, self._external_bindings, self._reconciliation = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, dict[str, str]]]:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not REQUEST_ID_PATTERN.fullmatch(item) for item in payload):
                 raise ValueError("ledger de execução inválido.")
-            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}
+            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}, {}
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         raw_states = payload.get("states", payload)
         raw_bindings = payload.get("external_bindings", {})
-        if not isinstance(raw_states, dict) or not isinstance(raw_bindings, dict):
+        raw_reconciliation = payload.get("reconciliation", {})
+        if not isinstance(raw_states, dict) or not isinstance(raw_bindings, dict) or not isinstance(raw_reconciliation, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in raw_states.items():
@@ -70,7 +73,21 @@ class ExecutionLedger:
             if not isinstance(request_id, str) or not request_id.strip() or request_id not in states:
                 raise ValueError("binding externo inválido.")
             bindings[binding_key] = request_id
-        return states, bindings
+        reconciliation: dict[str, dict[str, str]] = {}
+        for request_id, raw_observation in raw_reconciliation.items():
+            if request_id not in states or not isinstance(raw_observation, dict):
+                raise ValueError("reconciliação persistida inválida.")
+            required = ("external_id", "broker", "adapter", "status", "observed_at", "source")
+            if any(not isinstance(raw_observation.get(key), str) or not raw_observation[key].strip() for key in required):
+                raise ValueError("reconciliação persistida inválida.")
+            try:
+                observed_at = datetime.fromisoformat(raw_observation["observed_at"])
+            except ValueError as exc:
+                raise ValueError("timestamp de reconciliação inválido.") from exc
+            if observed_at.tzinfo is None or observed_at.utcoffset() is None or observed_at > datetime.now(timezone.utc):
+                raise ValueError("timestamp de reconciliação inválido.")
+            reconciliation[request_id] = {key: raw_observation[key] for key in required}
+        return states, bindings, reconciliation
 
     @staticmethod
     def _binding_key(broker: str, adapter: str, external_id: str) -> str:
@@ -85,7 +102,7 @@ class ExecutionLedger:
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        payload = {"states": {key: self._states[key].value for key in sorted(self._states)}, "external_bindings": {key: self._external_bindings[key] for key in sorted(self._external_bindings)}}
+        payload = {"states": {key: self._states[key].value for key in sorted(self._states)}, "external_bindings": {key: self._external_bindings[key] for key in sorted(self._external_bindings)}, "reconciliation": {key: self._reconciliation[key] for key in sorted(self._reconciliation)}}
         fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
         temporary = Path(temporary_name)
         try:
@@ -169,6 +186,57 @@ class ExecutionLedger:
 
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+
+    def reconcile_with_evidence(
+        self,
+        request_id: str,
+        *,
+        broker: str,
+        adapter: str,
+        external_id: str,
+        status: str,
+        observed_at: datetime,
+        source: str,
+    ) -> None:
+        """Finalize uncertain REAL state only from explicit external evidence."""
+        self._validate_id(request_id)
+        values = (broker, adapter, external_id, status, source)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("evidência de reconciliação inválida.")
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("observed_at deve ser timezone-aware.")
+        if observed_at > datetime.now(timezone.utc):
+            raise ValueError("observed_at não pode estar no futuro.")
+        status = status.strip().upper()
+        if status not in ("EXECUTED", "NOT_EXECUTED"):
+            raise ValueError("status de reconciliação inválido.")
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                raise ValueError("request_id não está em estado incerto reconciliável.")
+            binding = self._binding_key(broker, adapter, external_id)
+            owner = self._external_bindings.get(binding)
+            if status == "EXECUTED" and owner != request_id:
+                raise ValueError("evidência EXECUTED não está vinculada ao request_id.")
+            if status == "NOT_EXECUTED" and owner is not None and owner != request_id:
+                raise ValueError("evidência externa pertence a outro request_id.")
+            previous = self._reconciliation.get(request_id)
+            if previous is not None:
+                previous_at = datetime.fromisoformat(previous["observed_at"])
+                if observed_at < previous_at:
+                    raise ValueError("observação antiga não pode sobrescrever evidência mais nova.")
+            self._reconciliation[request_id] = {
+                "external_id": external_id.strip(),
+                "broker": broker.strip(),
+                "adapter": adapter.strip(),
+                "status": status,
+                "observed_at": observed_at.astimezone(timezone.utc).isoformat(),
+                "source": source.strip(),
+            }
+            self._states[request_id] = ExecutionLedgerStatus.RECONCILED_EXECUTED if status == "EXECUTED" else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+        self._mutate_locked(mutation)
 
     def reconcile(self, request_id: str, *, executed: bool) -> None:
         self._validate_id(request_id)
