@@ -147,7 +147,15 @@ class ICMarketsMT5DemoAdapter:
 
             result = mt5.order_send(payload)
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                # No response is not proof of rejection: the terminal may have
+                # accepted the request before the transport failed. Keep this
+                # explicitly non-final so an eventual REAL path cannot replay it.
+                return ExecutionResult(
+                    False,
+                    f"order_send sem confirmação: {self._last_error(mt5)}",
+                    None,
+                    outcome_final=False,
+                )
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
