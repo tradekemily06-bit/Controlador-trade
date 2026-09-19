@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -23,6 +23,7 @@ class RecoveryAssessment:
     pending_request_ids: tuple[str, ...]
     unknown_request_ids: tuple[str, ...]
     message: str
+    inconsistent_request_ids: tuple[str, ...] = ()
 
     @property
     def can_resume(self) -> bool:
@@ -57,14 +58,35 @@ class RecoveryCoordinator:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
-            ledger_ids = set(self.execution_ledger.records())
+            ledger_states = {
+                request_id: self.execution_ledger.status(request_id)
+                for request_id in self.execution_ledger.records()
+            }
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        inconsistent: set[str] = set()
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        for record in lifecycle:
+            ledger_status = ledger_states.get(record.request_id)
+            if record.state is ExecutionLifecycleState.ACCEPTED and ledger_status is not ExecutionLedgerStatus.ACCEPTED:
+                inconsistent.add(record.request_id)
+            elif record.state is ExecutionLifecycleState.PENDING and ledger_status is not None:
+                inconsistent.add(record.request_id)
+            elif record.state is ExecutionLifecycleState.UNKNOWN and ledger_status not in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+            ):
+                inconsistent.add(record.request_id)
+
+        for request_id, ledger_status in ledger_states.items():
+            if ledger_status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                record = next((item for item in lifecycle if item.request_id == request_id), None)
+                if record is None or record.state is not ExecutionLifecycleState.UNKNOWN:
+                    inconsistent.add(request_id)
+
         if unknown or pending or inconsistent:
             details = []
             if unknown:
@@ -72,13 +94,14 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Ledger/Lifecycle divergentes requerem reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
                 pending,
                 unknown,
                 "; ".join(details),
+                tuple(sorted(inconsistent)),
             )
 
         state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
