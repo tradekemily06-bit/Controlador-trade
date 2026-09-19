@@ -191,7 +191,7 @@ class ExecutionLedger:
             current = self._states[request_id]
             if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError(
-                    f"external_id só pode ser vinculado enquanto o request está RESERVED/UNKNOWN; encontrado {current.value}."
+                    f"request já está em estado definitivo/não executado ({current.value}); external_id não pode ser vinculado."
                 )
             self._external_ids[request_id] = normalized
 
