@@ -243,6 +243,21 @@ class RealExecutionGateway:
                     final_recovery = self._recovery.assess(ignore_request_id=request_id)
                     if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
                         message = f"execução REAL bloqueada no limite final pelo estado de recovery: {final_recovery.state.value}."
+                        # Recovery may have resolved this exact request while the
+                        # gateway was evaluating the snapshot. If the durable
+                        # execution authority is already terminal, never attempt to
+                        # rewrite it as REJECTED; simply refuse dispatch.
+                        try:
+                            current_status = self._ledger.status(request_id)
+                        except (OSError, ValueError):
+                            current_status = None
+                        if current_status in (
+                            ExecutionLedgerStatus.ACCEPTED,
+                            ExecutionLedgerStatus.REJECTED,
+                            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                        ):
+                            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"{message} autoridade já resolvida como {current_status.value}; broker não chamado.")
                         if self._mark_not_dispatched(request_id, message):
                             return RealGatewayResult(RealGatewayStatus.BLOCKED, message)
                         return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"{message} persistência do bloqueio terminal falhou.")
