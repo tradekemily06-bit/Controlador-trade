@@ -89,3 +89,20 @@ def test_persistent_audit_rejects_symlink_database(tmp_path):
     link.symlink_to(target)
     with pytest.raises(RuntimeError, match="durable security audit storage"):
         SecurityAudit(database_path=str(link), require_durable=True)
+
+
+def test_persistent_audit_rejects_symlinked_database_directory(tmp_path):
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    linked_dir = tmp_path / "linked"
+    linked_dir.symlink_to(real_dir, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="durable security audit storage"):
+        SecurityAudit(database_path=str(linked_dir / "audit.sqlite"), require_durable=True)
+
+
+def test_persistent_audit_uses_delete_journal_mode(tmp_path):
+    database = tmp_path / "audit.sqlite"
+    SecurityAudit(database_path=str(database), require_durable=True)
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "delete"
