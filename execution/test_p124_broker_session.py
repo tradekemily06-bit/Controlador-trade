@@ -33,3 +33,22 @@ def test_invalid_observation_fails_closed():
         BrokerSessionBoundary.validate(None)
     with pytest.raises(ValueError):
         BrokerSessionBoundary.validate(BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, " "))
+
+
+def test_authenticated_session_requires_account_and_session_identity():
+    with pytest.raises(ValueError, match="account_id e session_id"):
+        BrokerSessionBoundary.validate(
+            BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "ok")
+        )
+
+
+def test_authenticated_session_rejects_partial_identity():
+    with pytest.raises(ValueError, match="account_id e session_id"):
+        BrokerSessionBoundary.validate(
+            BrokerSessionObservation(
+                BrokerSessionStatus.AUTHENTICATED,
+                "ok",
+                account_id="acct-1",
+                session_id=None,
+            )
+        )
