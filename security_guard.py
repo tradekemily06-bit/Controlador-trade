@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ipaddress
+import hmac
+import os
 import secrets
 import time
 from collections import defaultdict, deque
@@ -38,6 +41,28 @@ class SecurityGuard:
 
     def script_nonce(self) -> str:
         return secrets.token_urlsafe(24)
+
+    def _is_loopback(self, environ) -> bool:
+        raw = str(environ.get("REMOTE_ADDR") or "").strip()
+        try:
+            return ipaddress.ip_address(raw).is_loopback
+        except ValueError:
+            return raw in {"localhost", "::1"}
+
+    def requires_remote_auth(self, environ) -> bool:
+        return not self._is_loopback(environ)
+
+    def authorize(self, environ) -> bool:
+        if not self.requires_remote_auth(environ):
+            return True
+        expected = os.environ.get("CONTROLADOR_API_TOKEN", "").strip()
+        if not expected:
+            return False
+        provided = str(environ.get("HTTP_AUTHORIZATION", ""))
+        if not provided.startswith("Bearer "):
+            return False
+        token = provided[7:].strip()
+        return bool(token) and hmac.compare_digest(token, expected)
 
     def client_key(self, environ) -> str:
         # Reverse proxies must be configured explicitly before trusting forwarded IPs.
