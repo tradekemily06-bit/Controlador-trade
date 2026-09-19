@@ -342,6 +342,41 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_gateway_rejects_request_id_mismatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="request-id-mismatch",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    request = ExecutionRequest(
+        "TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="other-id"
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="canonical-id",
+        request=request,
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
 def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     class UnidentifiedAdapter(FakeAdapter):
         adapter_id = None
