@@ -224,7 +224,14 @@ class RealExecutionGateway:
                 # A crash can occur after ledger admission but before lifecycle
                 # publication. Materialize the missing lifecycle uncertainty now,
                 # without ever reopening the broker-dispatch path.
-                if self._lifecycle.get(request_id) is None:
+                try:
+                    lifecycle_exists = self._lifecycle.get(request_id) is not None
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(
+                        RealGatewayStatus.BLOCKED,
+                        f"lifecycle REAL indisponível; broker não chamado: {exc}",
+                    )
+                if not lifecycle_exists:
                     try:
                         self._lifecycle.put(
                             ExecutionLifecycleRecord(
