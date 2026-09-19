@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from core.models import Signal
-from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.p112_real_execution_contract import RealExecutionAuthorizationBoundary
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
 from core.p119_release_closure import RealReleaseClosureBoundary
@@ -25,7 +25,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorizationBoundary().issue(authorization_id="auth", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=True, real_execution_allowed=True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
