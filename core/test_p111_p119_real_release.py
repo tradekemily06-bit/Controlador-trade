@@ -232,3 +232,33 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_gateway_rejects_request_id_mismatch_before_reservation(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="embedded-id")
+    result = gateway.execute(broker="fake", request_id="operation-id", request=request, authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.REJECTED
+    assert ledger.status("operation-id") is None
+    assert adapter.calls == 0
+
+
+def test_real_gateway_rejects_boolean_amount(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, True, 60, ExecutionMode.REAL)
+    result = gateway.execute(broker="fake", request_id="bool-amount", request=malformed, authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
