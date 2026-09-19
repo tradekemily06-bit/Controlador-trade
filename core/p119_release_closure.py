@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+_RELEASE_ISSUER = object()
 
 
 class RealReleaseState(str, Enum):
@@ -15,10 +18,15 @@ class RealReleaseClosure:
     state: RealReleaseState
     baseline: str
     reasons: tuple[str, ...]
+    _issuer: object = field(default=None, repr=False, compare=False)
 
     @property
     def released(self) -> bool:
-        return self.state is RealReleaseState.RELEASED
+        return self.state is RealReleaseState.RELEASED and self._issuer is _RELEASE_ISSUER
+
+    @property
+    def issued_by_boundary(self) -> bool:
+        return self._issuer is _RELEASE_ISSUER
 
 
 class RealReleaseClosureBoundary:
@@ -36,4 +44,4 @@ class RealReleaseClosureBoundary:
             if not ok:
                 reasons.append(label)
         state = RealReleaseState.RELEASED if not reasons else RealReleaseState.BLOCKED
-        return RealReleaseClosure(release_id, state, "P111-P119", tuple(reasons))
+        return RealReleaseClosure(release_id, state, "P111-P119", tuple(reasons), _RELEASE_ISSUER)
