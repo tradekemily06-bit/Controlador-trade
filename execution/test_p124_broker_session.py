@@ -9,7 +9,7 @@ from execution.p124_broker_session import (
 
 def test_only_authenticated_session_is_usable():
     assert BrokerSessionBoundary.is_usable(
-        BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "ok")
+        BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "ok", "acct-1", "sess-1")
     ) is True
 
 
