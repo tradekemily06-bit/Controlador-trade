@@ -45,7 +45,7 @@ def test_checkpoint_rejects_oversized_identifier(tmp_path):
 def test_checkpoint_rejects_oversized_persisted_file(tmp_path):
     path = tmp_path / "checkpoint.json"
     path.write_bytes(b"x" * (64 * 1024 + 1))
-    with pytest.raises(ValueError, match="checkpoint de runtime inválido"):
+    with pytest.raises(ValueError, match="excede o limite permitido"):
         RuntimeCheckpointStore(path).load()
 
 
