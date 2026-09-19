@@ -93,8 +93,19 @@ class ExecutionLifecycleStore:
 
         def mutation() -> None:
             previous = self._records.get(record.request_id)
-            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            if previous is None:
+                if record.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("execução nova deve iniciar em PENDING ou UNKNOWN.")
+            elif previous.state is ExecutionLifecycleState.UNKNOWN:
+                if record.state is not ExecutionLifecycleState.UNKNOWN:
+                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            elif previous.state is ExecutionLifecycleState.PENDING:
+                if record.state is ExecutionLifecycleState.PENDING:
+                    raise ValueError("execução PENDING já existe; reserva duplicada recusada.")
+                if record.state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("transição de PENDING inválida.")
+            else:
+                raise ValueError("estado terminal não pode ser sobrescrito.")
             self._records[record.request_id] = record
 
         self._mutate_locked(mutation)
