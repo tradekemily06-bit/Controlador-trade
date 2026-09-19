@@ -10,26 +10,21 @@ from typing import Iterator
 
 try:
     import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
+except ImportError:
     fcntl = None
 
 MAX_JSON_BYTES = 16 * 1024 * 1024
 
 try:
     import msvcrt
-except ImportError:  # pragma: no cover - Unix fallback
+except ImportError:
     msvcrt = None
 
-
-# msvcrt byte-range locks are process-safe, but concurrent threads in the same
-# Windows process can still contend on the same lock byte. Keep a process-local
-# gate as well so read/modify/write operations remain serialized on Windows.
 _WINDOWS_LOCK = threading.RLock()
 
 
 @contextmanager
 def locked_path(path: str | Path) -> Iterator[Path]:
-    """Serialize durable read/modify/write operations for one JSON state file."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     lock_path = target.with_name(f".{target.name}.lock")
@@ -80,15 +75,10 @@ def locked_path(path: str | Path) -> Iterator[Path]:
 
 
 def read_json(path: str | Path, default: object) -> object:
-    """Read one JSON file without a check-then-open filesystem race."""
     target = Path(path)
     read_fd = -1
     try:
         flags = os.O_RDONLY
-        # Refuse a symlink at the final state-file component on platforms
-        # that expose O_NOFOLLOW. This closes the remaining final-component
-        # substitution window for durable reads instead of merely checking
-        # Path.is_symlink() before opening.
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         read_fd = os.open(target, flags)
@@ -109,7 +99,7 @@ def read_json(path: str | Path, default: object) -> object:
 
 
 def atomic_write_json(path: str | Path, payload: object) -> None:
-    """Write JSON atomically and durably; readers see old or new state, never a partial file."""
+    """Atomically persist JSON and report post-replace durability ambiguity."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary_fd, temporary_name = tempfile.mkstemp(
@@ -129,25 +119,20 @@ def atomic_write_json(path: str | Path, payload: object) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary, target)
         if hasattr(os, "O_DIRECTORY"):
+            directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
             try:
-                directory_fd = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
-            except OSError:
-                directory_fd = None
-            if directory_fd is not None:
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                # After replace(), failure here means the new bytes are visible
+                # but durability of the directory entry is not proven. Report
+                # that ambiguity to callers so execution paths fail closed.
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         if temporary_fd != -1:
             try:
                 os.close(temporary_fd)
             except OSError:
                 pass
-        # Cleanup is best-effort. Once os.replace() succeeds, a cleanup
-        # failure must never turn a committed durable state into an apparent
-        # write failure for the caller. Conversely, when replace fails, the
-        # temporary file must not be allowed to mask the original failure.
         try:
             temporary.unlink()
         except OSError:
