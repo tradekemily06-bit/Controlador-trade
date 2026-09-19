@@ -106,10 +106,13 @@ class ICMarketsMT5DemoAdapter:
             if account is None or not self._is_demo_account(account, mt5):
                 return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
 
-            symbol = self.config.symbol or request.symbol
-            if not isinstance(symbol, str) or not symbol.strip():
+            requested_symbol = request.symbol.strip() if isinstance(request.symbol, str) else ""
+            configured_symbol = self.config.symbol.strip() if isinstance(self.config.symbol, str) else ""
+            if configured_symbol and requested_symbol and configured_symbol != requested_symbol:
+                return ExecutionResult(False, "símbolo configurado diverge do símbolo da solicitação; ordem bloqueada.")
+            symbol = configured_symbol or requested_symbol
+            if not symbol:
                 return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
-            symbol = symbol.strip()
             if not mt5.symbol_select(symbol, True):
                 return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
 
