@@ -119,6 +119,25 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
+    def reserve_exclusive(self, request_id: str) -> None:
+        """Atomically reserve a REAL request only when no other request is uncertain."""
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            if request_id in self._states:
+                raise ValueError("request_id já possui estado; replay REAL recusado.")
+            uncertain = tuple(
+                rid
+                for rid, status in self._states.items()
+                if rid != request_id
+                and status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+            )
+            if uncertain:
+                raise ValueError("há outra execução REAL em estado incerto.")
+            self._states[request_id] = ExecutionLedgerStatus.RESERVED
+
+        self._mutate_locked(mutation)
+
     def record(self, request_id: str) -> None:
         """Backward-compatible terminal record for existing DEMO infrastructure."""
         self._validate_id(request_id)
