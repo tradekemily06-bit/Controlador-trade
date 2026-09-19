@@ -96,7 +96,7 @@ class RealExecutionGateway:
             )
 
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve_exclusive(request_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança.")
