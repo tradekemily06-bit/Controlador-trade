@@ -10,6 +10,7 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from execution.p124_broker_session import BrokerSessionObservation, BrokerSessionStatus
 
 
 class MissingExternalIdAdapter:
@@ -25,7 +26,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, KillSwitch())
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True, "acct-1", "sess-1")
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -40,7 +41,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
-        authorization=authorization, admission=admission, safety=safety,
+        authorization=authorization, admission=admission, safety=safety, session=BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "ok", "acct-1", "sess-1"),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN
