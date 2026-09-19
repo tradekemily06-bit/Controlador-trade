@@ -133,6 +133,17 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        # A request already recorded in an uncertain state must report UNKNOWN
+        # for that same request_id. Only genuinely new requests are blocked by
+        # unrelated recovery debt elsewhere in the execution stores.
+        current_status = self._ledger.status(request_id)
+        if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+            )
+        if current_status is not None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
         if not self._recovery_safe():
             return RealGatewayResult(
                 RealGatewayStatus.BLOCKED,
@@ -150,15 +161,6 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL sem identidade registrada.")
         if registered_adapter_id.strip() != authorization.adapter_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter da requisição difere da autorização.")
-
-        current_status = self._ledger.status(request_id)
-        if current_status is not None:
-            if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
-                )
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
             self._ledger.reserve(request_id)
@@ -328,6 +330,11 @@ class RealExecutionGateway:
         # redispatch the broker request.
         if ledger_status is not desired_ledger:
             self._ledger.reconcile(request_id, executed=executed)
+            # The transition above is now durable. Use the post-reconciliation
+            # state when deciding whether the Lifecycle PENDING crash window can
+            # be closed; using the stale pre-repair state would reject a valid
+            # terminal-Ledger/PENDING-Lifecycle repair.
+            ledger_status = desired_ledger
 
         if lifecycle.state is not desired_lifecycle:
             if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
