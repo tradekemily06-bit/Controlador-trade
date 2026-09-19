@@ -33,6 +33,6 @@ class SafeRemoteMT5Executor:
 
         health = self._bridge.health()
         if not health.available or not health.demo_account:
-            return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
+            return ExecutionResult(False, "ponte MT5 bloqueada; health remoto não autoriza execução.")
 
         return self._bridge.execute_demo(request)
