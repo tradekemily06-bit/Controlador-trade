@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,23 +26,32 @@ class RuntimeCheckpointStore:
 
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        payload = json.dumps(
+            {
+                "session_id": checkpoint.session_id,
+                "last_cycle": checkpoint.last_cycle,
+                "last_request_id": checkpoint.last_request_id,
+                "updated_at": checkpoint.updated_at.isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
         )
-        os.replace(temporary, self.path)
+        fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
