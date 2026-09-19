@@ -34,3 +34,14 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def test_checkpoint_write_is_atomic_and_reloadable(tmp_path):
+    from datetime import datetime, timezone
+    from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
+
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    checkpoint = RuntimeCheckpoint("session-1", 7, "req-7", datetime.now(timezone.utc))
+    store.save(checkpoint)
+    assert store.load() == checkpoint
