@@ -89,7 +89,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
         try:
-            result = self._gateway.execute_real(\n                broker, request, capability=_REAL_DISPATCH_CAPABILITY\n            )
+            result = self._gateway.execute_real(
+                broker, request, capability=_REAL_DISPATCH_CAPABILITY
+            )
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
