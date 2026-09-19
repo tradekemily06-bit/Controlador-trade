@@ -66,3 +66,128 @@ class ExecutionLifecycleStore:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
     @staticmethod
+    def _validate(record: ExecutionLifecycleRecord) -> None:
+        if not isinstance(record.request_id, str) or not record.request_id.strip() or record.request_id != record.request_id.strip():
+            raise ValueError("request_id inválido.")
+        if not isinstance(record.state, ExecutionLifecycleState):
+            raise ValueError("estado de execução inválido.")
+        if not isinstance(record.updated_at, datetime):
+            raise ValueError("timestamp inválido.")
+        if record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
+            raise ValueError("timestamp de ciclo deve usar timezone.")
+        if not isinstance(record.message, str):
+            raise ValueError("mensagem inválida.")
+
+    def put(self, record: ExecutionLifecycleRecord) -> None:
+        self._validate(record)
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                previous = self._records.get(record.request_id)
+                # Lifecycle is a durable projection, not execution authority.
+                # Recovery tests and restart repair may legitimately restore an
+                # already-observed terminal/UNKNOWN projection. REAL dispatch still
+                # requires the Ledger reservation/terminal authority, so this does
+                # not create a broker-admission bypass.
+                if previous is not None:
+                    if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                        raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                    if previous.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED) and record.state is not previous.state:
+                        raise ValueError("estado terminal não pode ser alterado sem reconciliação explícita.")
+                    previous_aware = previous.updated_at.tzinfo is not None and previous.updated_at.utcoffset() is not None
+                    current_aware = record.updated_at.tzinfo is not None and record.updated_at.utcoffset() is not None
+                    if previous_aware != current_aware:
+                        raise ValueError("timestamps de ciclo devem usar o mesmo regime de timezone.")
+                    if record.updated_at < previous.updated_at:
+                        raise ValueError("registro de ciclo obsoleto não pode regredir o timestamp persistido.")
+                self._records[record.request_id] = record
+                self._save_unlocked()
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir o ciclo de execução.") from exc
+
+    def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
+        if not isinstance(request_id, str) or not request_id.strip() or request_id != request_id.strip():
+            raise ValueError("request_id não pode ser vazio.")
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                return self._records.get(request_id)
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError("ciclo de execução persistido inválido.") from exc
+
+    def repair_terminal(self, record: ExecutionLifecycleRecord) -> ExecutionLifecycleRecord:
+        """Create a missing lifecycle projection from an already terminal authority."""
+        self._validate(record)
+        if record.state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reparo terminal exige ACCEPTED ou REJECTED.")
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                current = self._records.get(record.request_id)
+                if current is not None:
+                    if current.state is record.state:
+                        return current
+                    raise ValueError("lifecycle terminal diverge do estado solicitado.")
+                self._records[record.request_id] = record
+                self._save_unlocked()
+                return record
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir o reparo terminal.") from exc
+
+    def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                current = self._records.get(request_id)
+                if current is None:
+                    raise ValueError("execução não encontrada.")
+                if current.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("somente estados PENDING/UNKNOWN podem ser reconciliados.")
+                record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+                self._validate(record)
+                previous_aware = current.updated_at.tzinfo is not None and current.updated_at.utcoffset() is not None
+                current_aware = record.updated_at.tzinfo is not None and record.updated_at.utcoffset() is not None
+                if previous_aware != current_aware:
+                    raise ValueError("timestamps de ciclo devem usar o mesmo regime de timezone.")
+                if record.updated_at < current.updated_at:
+                    raise ValueError("reconciliação obsoleta não pode regredir o timestamp persistido.")
+                self._records[request_id] = record
+                self._save_unlocked()
+                return record
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise OSError("não foi possível persistir a reconciliação.") from exc
+
+    def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        try:
+            with locked_path(self.path):
+                self._load_unlocked()
+                return tuple(self._records[key] for key in sorted(self._records))
+        except ValueError:
+            raise
+        except OSError as exc:
+            raise ValueError("ciclo de execução persistido inválido.") from exc
+
+    def _save_unlocked(self) -> None:
+        payload = [
+            {
+                "request_id": r.request_id,
+                "state": r.state.value,
+                "updated_at": r.updated_at.isoformat(),
+                "message": r.message,
+            }
+            for r in self.records_unlocked()
+        ]
+        atomic_write_json(self.path, payload)
+
+    def records_unlocked(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        return tuple(self._records[key] for key in sorted(self._records))
