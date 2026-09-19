@@ -58,3 +58,17 @@ def test_session_rejects_expired_token():
     observation = session.check_session()
 
     assert observation.status is BrokerSessionStatus.EXPIRED
+
+
+def test_oauth_redirect_uri_rejects_http_embedded_credentials_and_fragments():
+    invalid = (
+        "http://example.test/callback",
+        "https://user:pass@example.test/callback",
+        "https://example.test/callback#fragment",
+    )
+    for redirect_uri in invalid:
+        try:
+            CTraderOAuthConfig(client_id="39411", redirect_uri=redirect_uri)
+        except ValueError:
+            continue
+        raise AssertionError(f"unsafe redirect URI accepted: {redirect_uri}")
