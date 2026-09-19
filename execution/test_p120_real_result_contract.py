@@ -345,3 +345,65 @@ def test_pre_dispatch_persistence_race_does_not_project_rejected_over_accepted_l
     assert ok is True
     assert ledger.status("race-accepted") is ExecutionLedgerStatus.ACCEPTED
     assert lifecycle.get("race-accepted").state is ExecutionLifecycleState.ACCEPTED
+
+def test_real_gateway_fails_closed_when_ledger_read_is_unavailable(tmp_path, monkeypatch):
+    registry = BrokerRegistry()
+    adapter = PersistedKillSwitchAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(tmp_path, registry, ledger)
+
+    def broken_status(_request_id):
+        raise OSError("ledger indisponível")
+
+    monkeypatch.setattr(ledger, "status", broken_status)
+
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+
+    result = gateway.execute(
+        broker="fake", request_id="ledger-read-failure", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_fails_closed_when_lifecycle_read_is_unavailable(tmp_path, monkeypatch):
+    registry = BrokerRegistry()
+    adapter = PersistedKillSwitchAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = _gateway(tmp_path, registry, ledger, lifecycle=lifecycle)
+
+    def broken_get(_request_id):
+        raise OSError("lifecycle indisponível")
+
+    monkeypatch.setattr(lifecycle, "get", broken_get)
+
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True, market_healthy=True,
+        recovery_safe=True, risk_approved=True, broker_available=True,
+    )
+
+    result = gateway.execute(
+        broker="fake", request_id="lifecycle-read-failure", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
