@@ -65,6 +65,7 @@ def real_gateway(registry, ledger_path: Path):
         lifecycle=lifecycle,
         recovery=recovery,
         kill_switch=KillSwitch(),
+        safety_store=OperationalSafetyStore(ledger_path.with_name("operational-safety.json")),
     )
 
 
