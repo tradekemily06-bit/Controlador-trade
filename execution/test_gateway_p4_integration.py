@@ -188,7 +188,7 @@ def test_gateway_blocks_if_recovery_becomes_uncertain_after_reservation(tmp_path
     assert ledger.status("racing-worker") is ExecutionLedgerStatus.RESERVED
 
 
-def test_gateway_lifecycle_admission_failure_persists_unknown_in_both_authorities(tmp_path, monkeypatch):
+def test_gateway_lifecycle_admission_failure_persists_rejected_in_both_authorities(tmp_path, monkeypatch):
     ledger_path = tmp_path / "ledger.json"
     lifecycle_path = tmp_path / "lifecycle.json"
     ledger = ExecutionLedger(ledger_path)
@@ -213,7 +213,7 @@ def test_gateway_lifecycle_admission_failure_persists_unknown_in_both_authoritie
 
     assert result.status is GatewayStatus.BLOCKED
     assert ledger.status("lifecycle-admission-failure") is ExecutionLedgerStatus.REJECTED
-    assert lifecycle.get("lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
+    assert lifecycle.get("lifecycle-admission-failure").state is ExecutionLifecycleState.REJECTED
 
 
 def test_gateway_reconciliation_race_after_final_recovery_check_never_dispatches(tmp_path, monkeypatch):
