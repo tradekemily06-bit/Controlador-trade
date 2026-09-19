@@ -121,7 +121,8 @@ def application(environ, start_response):
             if session is None:
                 status = HTTPStatus.SERVICE_UNAVAILABLE if not AUTH.ready else HTTPStatus.UNAUTHORIZED
                 return _json_response(start_response, status, {"error": "autenticação recusada", "request_id": request_id}, request_id, environ)
-            headers = [("Set-Cookie", f"ct_session={session.token_hash}; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict")]
+            cookie_secure = "; Secure" if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"} else ""
+            headers = [("Set-Cookie", f"ct_session={session.token_hash}; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict{cookie_secure}")]
             body = json.dumps({"authenticated": True, "username": session.username, "csrf_token": session.csrf_token, "request_id": request_id}).encode("utf-8")
             headers.extend([("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))])
             headers.extend(SECURITY.headers(request_id))
@@ -149,7 +150,8 @@ def application(environ, start_response):
             raw_cookie = str(environ.get("HTTP_COOKIE", ""))
             token = next((part.split("=", 1)[1] for part in raw_cookie.split(";") if part.strip().startswith("ct_session=") and "=" in part), "")
             AUTH.logout(token.strip())
-            headers = [("Set-Cookie", "ct_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict")]
+            cookie_secure = "; Secure" if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "").strip().lower() in {"1", "true", "yes"} else ""
+            headers = [("Set-Cookie", f"ct_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict{cookie_secure}")]
             body = json.dumps({"authenticated": False, "request_id": request_id}).encode("utf-8")
             headers.extend([("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))])
             headers.extend(SECURITY.headers(request_id))
