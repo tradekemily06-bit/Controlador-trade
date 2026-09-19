@@ -45,7 +45,7 @@ class RealExecutionGateway:
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip() or len(request.symbol.strip()) > 64:
             return False
-        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool) or not math.isfinite(float(request.amount)) or request.amount <= 0:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0 or request.duration_seconds > 86_400:
             return False
@@ -82,11 +82,8 @@ class RealExecutionGateway:
         try:
             self._ledger.reserve(request_id)
             self._processed_request_ids.add(request_id)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança.")
-
-        if request.request_id is not None and request.request_id != request_id:
-            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id da requisição difere do request_id da operação.")
 
         dispatch_request = replace(request, request_id=request_id)
         try:
