@@ -80,6 +80,8 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.") from exc
             if external_id is not None:
                 normalized_external_id = external_id.strip()
+                if states[request_id] is ExecutionLedgerStatus.REJECTED:
+                    raise ValueError("ledger de execução inválido; REJECTED não pode possuir external_id.")
                 if normalized_external_id in external_ids.values():
                     raise ValueError("ledger de execução inválido; external_id duplicado.")
                 external_ids[request_id] = normalized_external_id
