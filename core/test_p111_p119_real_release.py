@@ -171,6 +171,16 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
         gateway.reconcile_unknown("missing", executed=True)
 
 
+def test_invalid_reconciliation_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="evidence_id"):
+        gateway.reconcile_unknown_with_evidence("missing", executed=True, evidence_id="", evidence_source="broker")
+    # The failed precondition must not permanently lock the gateway's lifecycle.
+    gateway.set_operational_barrier_provider(lambda: GlobalOperationalBarrier())
+
+
+
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
     path = tmp_path / "ledger.json"; ExecutionLedger(path).reserve("crashed")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
