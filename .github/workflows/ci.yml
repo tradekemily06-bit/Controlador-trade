@@ -109,3 +109,4 @@ jobs:
         run: python -m pytest -q core/test_p3_durable_persistence.py execution/test_p3_real_concurrency.py
 
 # P5 audit synchronization marker
+# P5 validation rerun
