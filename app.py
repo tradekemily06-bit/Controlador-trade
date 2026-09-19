@@ -15,7 +15,7 @@ from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5De
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
-from security_audit import AUDIT
+from security_audit import AUDIT, MAX_SECURITY_PATH_LENGTH
 from security.http_identity import PublicSaaSNotReady, clear_trusted_identity, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
@@ -100,7 +100,7 @@ PUBLIC_SAAS_BLOCKED = {
 
 
 def _audit(environ, request_id: str, status: int) -> None:
-    AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/")), status=status, client_key=SECURITY.client_key(environ))
+    AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/"))[:MAX_SECURITY_PATH_LENGTH], status=status, client_key=SECURITY.client_key(environ))
 
 
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
