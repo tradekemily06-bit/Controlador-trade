@@ -10,6 +10,7 @@ from execution.ctrader_demo_connection import (
     InMemoryTokenProvider,
     CTraderDemoConnection,
 )
+from execution.p128_ctrader_demo_auth import _validate_ctrader_redirect_uri
 
 CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
 
@@ -24,6 +25,7 @@ def exchange_authorization_code(
         raise ValueError("authorization_code obrigatório")
     if not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
+    _validate_ctrader_redirect_uri(redirect_uri)
 
     query = urlencode({
         "grant_type": "authorization_code",
