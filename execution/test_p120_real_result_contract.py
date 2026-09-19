@@ -1,4 +1,5 @@
 from core.kill_switch import KillSwitch
+from core.operational_safety_store import OperationalSafetyStore
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
-def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None, lifecycle: ExecutionLifecycleStore | None = None) -> RealExecutionGateway:
+def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, *, kill_switch: KillSwitch | None = None, lifecycle: ExecutionLifecycleStore | None = None, safety_store: OperationalSafetyStore | None = None) -> RealExecutionGateway:
     lifecycle = lifecycle or ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json")
     recovery = RecoveryCoordinator(
         checkpoint_store=RuntimeCheckpointStore(tmp_path / "runtime-checkpoint.json"),
@@ -33,6 +34,7 @@ def _gateway(tmp_path: Path, registry: BrokerRegistry, ledger: ExecutionLedger, 
         lifecycle=lifecycle,
         recovery=recovery,
         kill_switch=kill_switch or KillSwitch(),
+        safety_store=safety_store,
     )
 
 
@@ -280,3 +282,44 @@ def test_live_kill_switch_overrides_stale_ready_report_at_real_boundary(tmp_path
     assert second.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
     assert ledger.status("live-switch-2") is ExecutionLedgerStatus.REJECTED
+
+
+class PersistedKillSwitchAdapter:
+    def __init__(self):
+        self.calls = 0
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "must not be called", "EXT-PERSISTED-BLOCK")
+
+
+def test_real_gateway_blocks_on_persisted_kill_switch_at_final_boundary(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = PersistedKillSwitchAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    safety_store = OperationalSafetyStore(tmp_path / "safety.json")
+    persisted = KillSwitch()
+    persisted.activate("durable emergency stop")
+    safety_store.save_kill_switch(persisted)
+    gateway = _gateway(tmp_path, registry, ledger, safety_store=safety_store)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True,
+    )
+    result = gateway.execute(
+        broker="fake", request_id="persisted-kill-switch", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("persisted-kill-switch") is ExecutionLedgerStatus.REJECTED
