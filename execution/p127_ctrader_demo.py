@@ -67,8 +67,8 @@ class CTraderDemoAdapter:
             or request.duration_seconds <= 0
         ):
             return ExecutionResult(False, "duration_seconds inválido")
-        if not isinstance(request.request_id, str) or not request.request_id.strip():
-            return ExecutionResult(False, "request_id obrigatório para execução DEMO")
+        if not isinstance(request.request_id, str) or not request.request_id.strip() or request.request_id != request.request_id.strip():
+            return ExecutionResult(False, "request_id inválido ou não canônico para execução DEMO")
         if not self.is_available():
             return ExecutionResult(False, "transporte cTrader DEMO indisponível")
 
