@@ -67,3 +67,11 @@ def test_request_bound_reconciliation_keeps_ambiguous_status_nonterminal():
     observation = ExternalOrderObservation(None, ExternalOrderStatus.PENDING, "still pending", request_id="req-7")
     result = ExternalOrderReconciliationBoundary().reconcile_for_request("req-7", observation)
     assert result.reconciled is False
+
+
+def test_external_reconciliation_rejects_missing_external_id_for_external_lookup():
+    with pytest.raises(ValueError, match="external_id da observação"):
+        ExternalOrderReconciliationBoundary().reconcile(
+            "ext-8",
+            ExternalOrderObservation(None, ExternalOrderStatus.EXECUTED, "filled"),
+        )
