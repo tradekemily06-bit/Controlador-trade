@@ -10,10 +10,8 @@ class FakeAdapter:
         self.result = result or ExecutionResult(True, "ok", "FAKE-1")
         self.error = error
         self.calls = 0
-
     def is_available(self):
         return self.available
-
     def execute(self, request):
         self.calls += 1
         if self.error:
@@ -21,8 +19,8 @@ class FakeAdapter:
         return self.result
 
 
-def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def request(mode=ExecutionMode.DEMO):
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, mode, "req-1")
 
 
 def gateway_with(adapter):
@@ -33,18 +31,14 @@ def gateway_with(adapter):
 
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert adapter.calls == 0
 
 
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
@@ -53,9 +47,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
 
 def test_adapter_gateway_handles_adapter_exception_fail_closed():
     adapter = FakeAdapter(error=True)
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert result.execution is None
     assert adapter.calls == 1
@@ -63,9 +55,7 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
 
 def test_adapter_gateway_rejects_invalid_adapter_result():
     adapter = FakeAdapter(result="invalid")
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert result.execution is None
 
@@ -73,8 +63,20 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
-
     result = gateway.execute("missing", request())
-
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_requires_explicit_real_handoff():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", request(ExecutionMode.REAL))
+    assert result.accepted is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_allows_real_only_with_explicit_handoff():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", request(ExecutionMode.REAL), allow_real=True)
+    assert result.accepted is True
+    assert adapter.calls == 1

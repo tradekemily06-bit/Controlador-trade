@@ -1,4 +1,5 @@
 import io
+import os
 import unittest
 
 from security_guard import MAX_BODY_BYTES, MAX_TRACKED_CLIENTS, SecurityGuard
@@ -12,6 +13,57 @@ class SecurityGuardTests(unittest.TestCase):
         self.assertTrue(guard.allow(env, now=101))
         self.assertFalse(guard.allow(env, now=102))
         self.assertTrue(guard.allow(env, now=161))
+
+    def test_non_loopback_requires_explicit_bearer_token(self):
+        guard = SecurityGuard()
+        env = {"REMOTE_ADDR": "10.0.0.1"}
+        old = os.environ.pop("CONTROLADOR_API_TOKEN", None)
+        try:
+            self.assertFalse(guard.authorize(env))
+            os.environ["CONTROLADOR_API_TOKEN"] = "secret-token"
+            self.assertFalse(guard.authorize(env))
+            env["HTTP_AUTHORIZATION"] = "Bearer wrong"
+            self.assertFalse(guard.authorize(env))
+            env["HTTP_AUTHORIZATION"] = "Bearer secret-token"
+            self.assertTrue(guard.authorize(env))
+        finally:
+            if old is None:
+                os.environ.pop("CONTROLADOR_API_TOKEN", None)
+            else:
+                os.environ["CONTROLADOR_API_TOKEN"] = old
+
+    def test_forwarded_loopback_requires_token(self):
+        guard = SecurityGuard()
+        env = {"REMOTE_ADDR": "127.0.0.1", "HTTP_X_FORWARDED_FOR": "198.51.100.20"}
+        old = os.environ.pop("CONTROLADOR_API_TOKEN", None)
+        try:
+            self.assertFalse(guard.authorize(env))
+            os.environ["CONTROLADOR_API_TOKEN"] = "secret-token"
+            env["HTTP_AUTHORIZATION"] = "Bearer secret-token"
+            self.assertTrue(guard.authorize(env))
+        finally:
+            if old is None:
+                os.environ.pop("CONTROLADOR_API_TOKEN", None)
+            else:
+                os.environ["CONTROLADOR_API_TOKEN"] = old
+
+    def test_explicit_token_mode_protects_loopback(self):
+        guard = SecurityGuard()
+        env = {"REMOTE_ADDR": "127.0.0.1"}
+        old = os.environ.pop("CONTROLADOR_REQUIRE_API_TOKEN", None)
+        try:
+            os.environ["CONTROLADOR_REQUIRE_API_TOKEN"] = "1"
+            self.assertFalse(guard.authorize(env))
+        finally:
+            if old is None:
+                os.environ.pop("CONTROLADOR_REQUIRE_API_TOKEN", None)
+            else:
+                os.environ["CONTROLADOR_REQUIRE_API_TOKEN"] = old
+
+    def test_loopback_does_not_require_remote_token(self):
+        guard = SecurityGuard()
+        self.assertTrue(guard.authorize({"REMOTE_ADDR": "127.0.0.1"}))
+        self.assertTrue(guard.authorize({"REMOTE_ADDR": "::1"}))
 
     def test_clients_are_isolated(self):
         guard = SecurityGuard(limit=1, window=60)

@@ -48,3 +48,31 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_pending_cannot_be_reserved_twice(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now, "started"))
+    with pytest.raises(ValueError, match="reserva duplicada"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now, "started again"))
+
+
+def test_terminal_state_cannot_be_overwritten(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now, "started"))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
+    with pytest.raises(ValueError, match="terminal"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now, "rewritten"))
+
+
+def test_lifecycle_rejects_future_timestamp():
+    from datetime import datetime, timedelta, timezone
+    future = datetime.now(timezone.utc) + timedelta(minutes=1)
+    with pytest.raises(ValueError, match="timestamp não pode estar no futuro"):
+        ExecutionLifecycleStore("/tmp/unused")._validate(
+            ExecutionLifecycleRecord("req-future", ExecutionLifecycleState.PENDING, future, "")
+        )

@@ -72,3 +72,37 @@ def test_connection_uses_demo_endpoint_and_runtime_credentials():
     assert connection.endpoint == ("demo.ctraderapi.com", 5035)
     assert client.connected is True
     assert created[0][0:2] == ("client", "secret")
+
+
+def test_account_identity_is_bound_only_after_broker_confirmation():
+    provider = InMemoryTokenProvider()
+    provider.set_token("runtime-token", 60)
+    connection = CTraderDemoConnection(
+        CTraderCredentials("client", "secret"), provider, lambda _id, _secret: FakeClient()
+    )
+
+    request = connection.account_auth_request(123)
+    assert request.ctidTraderAccountId == 123
+    assert connection.account_id is None
+    assert provider.snapshot().account_id is None
+
+    connection.confirm_account_authenticated(123)
+    assert connection.account_id == 123
+    assert provider.snapshot().account_id == "123"
+
+
+def test_account_confirmation_cannot_bind_unrequested_account():
+    provider = InMemoryTokenProvider()
+    provider.set_token("runtime-token", 60)
+    connection = CTraderDemoConnection(
+        CTraderCredentials("client", "secret"), provider, lambda _id, _secret: FakeClient()
+    )
+    connection.account_auth_request(123)
+
+    try:
+        connection.confirm_account_authenticated(456)
+        assert False, "conta não solicitada não deveria ser vinculada"
+    except ValueError as exc:
+        assert "não corresponde" in str(exc)
+    assert connection.account_id is None
+    assert provider.snapshot().account_id is None

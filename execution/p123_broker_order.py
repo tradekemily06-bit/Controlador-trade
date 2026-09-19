@@ -5,6 +5,7 @@ from enum import Enum
 import math
 
 from core.models import Signal
+from core.request_identity import validate_request_id
 
 
 class BrokerOrderSide(str, Enum):
@@ -21,8 +22,7 @@ class BrokerOrderRequest:
     duration_seconds: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_id, str) or not self.request_id.strip():
-            raise ValueError("request_id inválido")
+        validate_request_id(self.request_id)
         if not isinstance(self.symbol, str) or not self.symbol.strip():
             raise ValueError("symbol inválido")
         if not isinstance(self.side, BrokerOrderSide):

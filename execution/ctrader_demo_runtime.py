@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from execution.ctrader_demo_connection import (
@@ -37,8 +38,19 @@ def exchange_authorization_code(
         headers={"Accept": "application/json"},
         method="GET",
     )
-    with urlopen(request, timeout=15) as response:
-        payload = json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        # cTrader documents client_secret as a query parameter for this GET.
+        # Never propagate the HTTP error object because its string form may
+        # contain the complete URL, including the secret.
+        raise RuntimeError(f"cTrader OAuth HTTP error ({exc.code})") from None
+    except URLError:
+        # Avoid exposing the request URL through a transport exception.
+        raise RuntimeError("cTrader OAuth transport error") from None
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise RuntimeError("cTrader OAuth returned invalid JSON") from None
 
     if payload.get("errorCode"):
         raise RuntimeError(

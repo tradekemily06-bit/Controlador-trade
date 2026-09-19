@@ -54,9 +54,52 @@ def test_pending_requires_verification(tmp_path):
 def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
-    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    (tmp_path / "lifecycle.json").write_text(
+        '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
+        encoding="utf-8",
+    )
+    result = make_coordinator(tmp_path).assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+
+
+def test_ledger_only_terminal_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_accepted("req-1", broker="fake", adapter="adapter-1", external_id="order-1")
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_ledger_and_lifecycle_terminal_mismatch_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_rejected("req-1")
+    (tmp_path / "lifecycle.json").write_text(
+        '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
+        encoding="utf-8",
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_matching_terminal_ledger_and_lifecycle_can_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_accepted(
+        "req-1", broker="fake", adapter="adapter-1", external_id="order-1"
+    )
+    (tmp_path / "lifecycle.json").write_text(
+        '[{"request_id":"req-1","state":"ACCEPTED","updated_at":"' + now.isoformat() + '"}]',
+        encoding="utf-8",
+    )
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-1", now))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
 
 
 def test_invalid_checkpoint_fails_closed(tmp_path):

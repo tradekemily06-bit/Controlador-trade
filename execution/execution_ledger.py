@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+
+from core.request_identity import REQUEST_ID_PATTERN, validate_request_id
 
 try:
     import fcntl
@@ -28,50 +32,165 @@ class ExecutionLedger:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
+        self._external_bindings: dict[str, str] = {}
+        self._reconciliation: dict[str, dict[str, str]] = {}
         self._load()
 
+    @staticmethod
+    def _reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("ledger de execução contém chaves JSON duplicadas.")
+            result[key] = value
+        return result
+
     def _load(self) -> None:
+        if self.path.is_symlink():
+            raise ValueError("ledger de execução não pode ser um link simbólico.")
         if not self.path.exists():
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(self.path, flags)
+            try:
+                with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                    payload = json.load(stream, object_pairs_hook=self._reject_duplicate_keys, parse_constant=self._reject_non_finite)
+                fd = None
+            finally:
+                if fd is not None:
+                    os.close(fd)
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
-        self._states = self._decode(payload)
+        self._states, self._external_bindings, self._reconciliation = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, dict[str, str]]]:
         if isinstance(payload, list):
-            if any(not isinstance(item, str) or not item.strip() for item in payload):
+            if any(not isinstance(item, str) or not REQUEST_ID_PATTERN.fullmatch(item) for item in payload):
                 raise ValueError("ledger de execução inválido.")
-            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}
+            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}, {}
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
+        raw_states = payload.get("states", payload)
+        raw_bindings = payload.get("external_bindings", {})
+        raw_reconciliation = payload.get("reconciliation", {})
+        if not isinstance(raw_states, dict) or not isinstance(raw_bindings, dict) or not isinstance(raw_reconciliation, dict):
+            raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
-        for request_id, raw_status in payload.items():
-            if not isinstance(request_id, str) or not request_id.strip():
+        for request_id, raw_status in raw_states.items():
+            if not isinstance(request_id, str) or not REQUEST_ID_PATTERN.fullmatch(request_id):
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
             except ValueError as exc:
                 raise ValueError("ledger de execução inválido.") from exc
-        return states
+        bindings: dict[str, str] = {}
+        for binding_key, request_id in raw_bindings.items():
+            if not isinstance(binding_key, str) or not binding_key.strip():
+                raise ValueError("binding externo inválido.")
+            if not isinstance(request_id, str) or not request_id.strip() or request_id not in states:
+                raise ValueError("binding externo inválido.")
+            bindings[binding_key] = request_id
+        reconciliation: dict[str, dict[str, str]] = {}
+        for request_id, raw_observation in raw_reconciliation.items():
+            if request_id not in states or not isinstance(raw_observation, dict):
+                raise ValueError("reconciliação persistida inválida.")
+            required = ("external_id", "broker", "adapter", "status", "observed_at", "source")
+            if any(not isinstance(raw_observation.get(key), str) or not raw_observation[key].strip() for key in required):
+                raise ValueError("reconciliação persistida inválida.")
+            try:
+                observed_at = datetime.fromisoformat(raw_observation["observed_at"])
+            except ValueError as exc:
+                raise ValueError("timestamp de reconciliação inválido.") from exc
+            if observed_at.tzinfo is None or observed_at.utcoffset() is None or observed_at > datetime.now(timezone.utc):
+                raise ValueError("timestamp de reconciliação inválido.")
+            reconciliation[request_id] = {key: raw_observation[key] for key in required}
+        for binding_key, request_id in bindings.items():
+            try:
+                decoded = json.loads(binding_key)
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("binding externo inválido.") from exc
+            if (
+                not isinstance(decoded, list)
+                or len(decoded) != 3
+                or any(not isinstance(value, str) or not value.strip() for value in decoded)
+            ):
+                raise ValueError("binding externo inválido.")
+
+        bindings_by_request: dict[str, int] = {}
+        for request_id in bindings.values():
+            bindings_by_request[request_id] = bindings_by_request.get(request_id, 0) + 1
+
+        for request_id, state in states.items():
+            evidence = reconciliation.get(request_id)
+            if state in (
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                if evidence is None:
+                    raise ValueError("estado reconciliado sem evidência persistida.")
+                expected = "EXECUTED" if state is ExecutionLedgerStatus.RECONCILED_EXECUTED else "NOT_EXECUTED"
+                if evidence["status"] != expected:
+                    raise ValueError("estado reconciliado diverge da evidência persistida.")
+                if bindings_by_request.get(request_id, 0) < 1:
+                    raise ValueError("estado reconciliado sem identidade externa vinculada.")
+
+        return states, bindings, reconciliation
+
+    @staticmethod
+    def _binding_key(broker: str, adapter: str, external_id: str) -> str:
+        values = (broker, adapter, external_id)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("identidade externa inválida.")
+        if any(len(value.strip()) > 256 or any(ord(ch) < 32 for ch in value) for value in values):
+            raise ValueError("identidade externa inválida.")
+        return json.dumps([broker.strip().casefold(), adapter.strip().casefold(), external_id.strip()], ensure_ascii=False, separators=(",", ":"))
+
+    def external_binding(self, *, broker: str, adapter: str, external_id: str) -> str | None:
+        key = self._binding_key(broker, adapter, external_id)
+        self._load()
+        return self._external_bindings.get(key)
 
     def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        payload = {key: self._states[key].value for key in sorted(self._states)}
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        payload = {"states": {key: self._states[key].value for key in sorted(self._states)}, "external_bindings": {key: self._external_bindings[key] for key in sorted(self._external_bindings)}, "reconciliation": {key: self._reconciliation[key] for key in sorted(self._reconciliation)}}
+        fd, temporary_name = tempfile.mkstemp(prefix=f".{self.path.name}.", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, ensure_ascii=False, indent=2))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                # Some filesystems/platforms do not support directory fsync;
+                # the file itself was already fsynced before replacement.
+                pass
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
+        lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, flags, 0o600)
+        with os.fdopen(lock_fd, "a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -110,8 +229,21 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+    def mark_accepted(self, request_id: str, *, broker: str, adapter: str, external_id: str) -> None:
+        self._validate_id(request_id)
+        key = self._binding_key(broker, adapter, external_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("request_id não está em estado aceito para confirmação.")
+            owner = self._external_bindings.get(key)
+            if owner is not None and owner != request_id:
+                raise ValueError("external order identity já está vinculada a outro request_id.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            self._external_bindings[key] = request_id
+
+        self._mutate_locked(mutation)
 
     def mark_rejected(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.REJECTED)
@@ -119,22 +251,66 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> None:
+    def reconcile_with_evidence(
+        self,
+        request_id: str,
+        *,
+        broker: str,
+        adapter: str,
+        external_id: str,
+        status: str,
+        observed_at: datetime,
+        source: str,
+    ) -> None:
+        """Finalize uncertain REAL state only from explicit external evidence."""
         self._validate_id(request_id)
+        values = (broker, adapter, external_id, status, source)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("evidência de reconciliação inválida.")
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("observed_at deve ser timezone-aware.")
+        if observed_at > datetime.now(timezone.utc):
+            raise ValueError("observed_at não pode estar no futuro.")
+        status = status.strip().upper()
+        if status not in ("EXECUTED", "NOT_EXECUTED"):
+            raise ValueError("status de reconciliação inválido.")
 
         def mutation() -> None:
-            if self._states.get(request_id) not in (
-                ExecutionLedgerStatus.UNKNOWN,
-                ExecutionLedgerStatus.RESERVED,
-            ):
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
-            self._states[request_id] = (
-                ExecutionLedgerStatus.RECONCILED_EXECUTED
-                if executed
-                else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-            )
+            binding = self._binding_key(broker, adapter, external_id)
+            owner = self._external_bindings.get(binding)
+            if owner is not None and owner != request_id:
+                raise ValueError("evidência externa pertence a outro request_id.")
+            self._external_bindings[binding] = request_id
+            previous = self._reconciliation.get(request_id)
+            if previous is not None:
+                previous_at = datetime.fromisoformat(previous["observed_at"])
+                if observed_at < previous_at:
+                    raise ValueError("observação antiga não pode sobrescrever evidência mais nova.")
+                if observed_at == previous_at:
+                    candidate = (external_id.strip(), broker.strip(), adapter.strip(), status, source.strip())
+                    previous_evidence = (previous["external_id"], previous["broker"], previous["adapter"], previous["status"], previous["source"])
+                    if candidate != previous_evidence:
+                        raise ValueError("evidências conflitantes com o mesmo timestamp; reconciliação bloqueada.")
+            self._reconciliation[request_id] = {
+                "external_id": external_id.strip(),
+                "broker": broker.strip(),
+                "adapter": adapter.strip(),
+                "status": status,
+                "observed_at": observed_at.astimezone(timezone.utc).isoformat(),
+                "source": source.strip(),
+            }
+            self._states[request_id] = ExecutionLedgerStatus.RECONCILED_EXECUTED if status == "EXECUTED" else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
         self._mutate_locked(mutation)
+
+    def reconcile(self, request_id: str, *, executed: bool) -> None:
+        """Legacy API intentionally disabled: REAL reconciliation needs evidence."""
+        self._validate_id(request_id)
+        raise ValueError("reconciliação REAL exige evidência externa explícita.")
+
 
     def records(self) -> tuple[str, ...]:
         self._load()
@@ -142,8 +318,7 @@ class ExecutionLedger:
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        validate_request_id(request_id)
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
         self._validate_id(request_id)

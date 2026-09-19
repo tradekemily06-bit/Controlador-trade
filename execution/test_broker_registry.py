@@ -68,3 +68,19 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_exposes_authoritative_adapter_identity():
+    registry = BrokerRegistry()
+    registry.register("broker", FakeAdapter(), adapter_id="adapter-v1")
+
+    assert registry.adapter_id("broker") == "adapter-v1"
+    assert registry.info()[0].adapter_id == "adapter-v1"
+
+
+def test_registry_rejects_duplicate_adapter_identity():
+    registry = BrokerRegistry()
+    registry.register("broker-a", FakeAdapter(), adapter_id="adapter-v1")
+
+    with pytest.raises(BrokerRegistryError):
+        registry.register("broker-b", FakeAdapter(), adapter_id="adapter-v1")

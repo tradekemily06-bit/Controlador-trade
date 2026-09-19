@@ -17,6 +17,8 @@ class BrokerSessionStatus(str, Enum):
 class BrokerSessionObservation:
     status: BrokerSessionStatus
     message: str
+    account_id: str | None = None
+    session_id: str | None = None
 
 
 class BrokerSessionPort(Protocol):
@@ -27,7 +29,7 @@ class BrokerSessionPort(Protocol):
 
 
 class BrokerSessionBoundary:
-    """Read-only session admission; only AUTHENTICATED is usable."""
+    """Read-only session admission; only AUTHENTICATED + bound identity is usable."""
 
     @staticmethod
     def validate(observation: BrokerSessionObservation) -> BrokerSessionObservation:
@@ -37,9 +39,25 @@ class BrokerSessionBoundary:
             raise ValueError("status de sessão inválido")
         if not isinstance(observation.message, str) or not observation.message.strip():
             raise ValueError("mensagem de sessão inválida")
+        if observation.account_id is not None and (
+            not isinstance(observation.account_id, str) or not observation.account_id.strip()
+        ):
+            raise ValueError("account_id de sessão inválido")
+        if observation.session_id is not None and (
+            not isinstance(observation.session_id, str) or not observation.session_id.strip()
+        ):
+            raise ValueError("session_id de sessão inválido")
+        if observation.status is BrokerSessionStatus.AUTHENTICATED and (
+            not observation.account_id or not observation.session_id
+        ):
+            raise ValueError("sessão autenticada exige account_id e session_id")
         return observation
 
     @classmethod
     def is_usable(cls, observation: BrokerSessionObservation) -> bool:
         validated = cls.validate(observation)
-        return validated.status is BrokerSessionStatus.AUTHENTICATED
+        return (
+            validated.status is BrokerSessionStatus.AUTHENTICATED
+            and bool(validated.account_id)
+            and bool(validated.session_id)
+        )

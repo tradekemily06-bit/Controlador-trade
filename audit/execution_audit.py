@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
+
+from core.request_identity import validate_request_id
 
 from core.operational_safety_store import OperationalSafetyStore
 from execution.execution_lifecycle import ExecutionLifecycleState
@@ -15,12 +17,13 @@ class ExecutionAuditEvent:
     message: str
 
     def __post_init__(self) -> None:
-        if not isinstance(self.request_id, str) or not self.request_id.strip():
-            raise ValueError("request_id é obrigatório.")
+        validate_request_id(self.request_id)
         if not isinstance(self.state, ExecutionLifecycleState):
             raise ValueError("estado inválido.")
-        if not isinstance(self.timestamp, datetime):
-            raise ValueError("timestamp inválido.")
+        if not isinstance(self.timestamp, datetime) or self.timestamp.tzinfo is None or self.timestamp.utcoffset() is None:
+            raise ValueError("timestamp deve ser timezone-aware.")
+        if self.timestamp > datetime.now(timezone.utc):
+            raise ValueError("timestamp não pode estar no futuro.")
         if not isinstance(self.message, str) or not self.message.strip():
             raise ValueError("message é obrigatório.")
 

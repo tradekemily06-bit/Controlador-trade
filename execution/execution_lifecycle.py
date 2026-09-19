@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
+
+from core.request_identity import REQUEST_ID_PATTERN, validate_request_id
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -23,7 +32,7 @@ class ExecutionLifecycleRecord:
 
 
 class ExecutionLifecycleStore:
-    """Durable execution state; UNKNOWN is terminal until explicitly reconciled."""
+    """Durable execution state; writes are serialized and atomic."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -32,13 +41,35 @@ class ExecutionLifecycleStore:
         self._records: dict[str, ExecutionLifecycleRecord] = {}
         self._load()
 
+    @staticmethod
+    def _reject_duplicate_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("ciclo de execução contém chaves JSON duplicadas.")
+            result[key] = value
+        return result
+
     def _load(self) -> None:
+        if self.path.is_symlink():
+            raise ValueError("ciclo de execução não pode ser um link simbólico.")
         if not self.path.exists():
             return
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = os.open(self.path, flags)
+            try:
+                with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                    payload = json.load(stream, object_pairs_hook=self._reject_duplicate_keys, parse_constant=self._reject_non_finite)
+                fd = None
+            finally:
+                if fd is not None:
+                    os.close(fd)
             if not isinstance(payload, list):
                 raise ValueError
+            records: dict[str, ExecutionLifecycleRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -49,55 +80,114 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
-                self._records[record.request_id] = record
+                if record.request_id in records:
+                    raise ValueError("request_id duplicado no lifecycle.")
+                records[record.request_id] = record
+            self._records = records
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
-            raise ValueError("request_id inválido.")
+        validate_request_id(record.request_id)
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if not isinstance(record.updated_at, datetime) or record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
+            raise ValueError("timestamp deve ser timezone-aware.")
+        if record.updated_at > datetime.now(timezone.utc):
+            raise ValueError("timestamp não pode estar no futuro.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
+    def _mutate_locked(self, mutation):
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        flags = os.O_CREAT | os.O_RDWR
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        lock_fd = os.open(lock_path, flags, 0o600)
+        with os.fdopen(lock_fd, "a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self._load()
+                mutation()
+                self._save()
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        previous = self._records.get(record.request_id)
-        if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+
+        def mutation() -> None:
+            previous = self._records.get(record.request_id)
+            if previous is None:
+                if record.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("execução nova deve iniciar em PENDING ou UNKNOWN.")
+            elif previous.state is ExecutionLifecycleState.UNKNOWN:
+                if record.state is not ExecutionLifecycleState.UNKNOWN:
+                    raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            elif previous.state is ExecutionLifecycleState.PENDING:
+                if record.state is ExecutionLifecycleState.PENDING:
+                    raise ValueError("execução PENDING já existe; reserva duplicada recusada.")
+                if record.state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN):
+                    raise ValueError("transição de PENDING inválida.")
+            else:
+                raise ValueError("estado terminal não pode ser sobrescrito.")
+            self._records[record.request_id] = record
+
+        self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        validate_request_id(request_id)
+        self._load()
         return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("execução não encontrada.")
-        record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
-        self._validate(record)
-        self._records[request_id] = record
-        self._save()
-        return record
+        self._validate(ExecutionLifecycleRecord(request_id, state, updated_at, message))
+
+        def mutation() -> None:
+            current = self._records.get(request_id)
+            if current is None:
+                raise ValueError("execução não encontrada.")
+            if current.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("somente UNKNOWN pode ser reconciliado explicitamente.")
+            self._records[request_id] = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+
+        self._mutate_locked(mutation)
+        return self.get(request_id)  # type: ignore[return-value]
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
-            ], ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        records = [self._records[key] for key in sorted(self._records)]
+        payload = json.dumps([{"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message} for r in records], ensure_ascii=False, indent=2, sort_keys=True)
+        fd, temporary_name = tempfile.mkstemp(prefix="." + self.path.name + ".", suffix=".tmp", dir=self.path.parent)
+        temporary = Path(temporary_name)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+        except Exception:
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
+            raise
