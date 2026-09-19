@@ -109,6 +109,8 @@ def application(environ, start_response):
     request_id = SECURITY.request_id()
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
+    if not SECURITY.authorize(environ):
+        return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Autorização HTTP obrigatória para clientes não locais", "request_id": request_id}, request_id, environ)
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
