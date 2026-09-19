@@ -71,3 +71,18 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+def test_safety_store_rejects_oversized_persisted_file(tmp_path):
+    path = tmp_path / "safety.json"
+    path.write_bytes(b"x" * (4 * 1024 * 1024 + 1))
+    with pytest.raises(ValueError, match="estado de segurança inválido"):
+        OperationalSafetyStore(path).load()
+
+
+def test_safety_store_rejects_excessive_audit_records(tmp_path):
+    path = tmp_path / "safety.json"
+    import json
+    path.write_text(json.dumps({"audit": [{}] * 10001, "kill_switch": {}, "execution_audit": []}), encoding="utf-8")
+    with pytest.raises(ValueError, match="estado de segurança inválido"):
+        OperationalSafetyStore(path).load()
