@@ -17,6 +17,7 @@ def request() -> ExecutionRequest:
         amount=10.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="req-001",
     )
 
 
@@ -50,8 +51,9 @@ def test_rejected_execution_is_not_recorded(tmp_path: Path):
         amount=-1.0,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="invalid-req",
     )
-    result = gateway.execute("req-001", invalid)
+    result = gateway.execute("invalid-req", invalid)
     assert result.status is GatewayStatus.INVALID_REQUEST
     assert ExecutionLedger(path).records() == ()
 
@@ -65,5 +67,5 @@ def test_invalid_ledger_fails_closed(tmp_path: Path):
 
 def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    with pytest.raises(ValueError, match="request_id não pode ser vazio"):
+    with pytest.raises(ValueError, match="request_id inválido"):
         ledger.contains(" ")

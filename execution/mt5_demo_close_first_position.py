@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import MetaTrader5 as mt5
 
 MAGIC = 2609001
@@ -7,6 +9,9 @@ SYMBOL = "EURUSD"
 
 
 def main() -> None:
+    if os.environ.get("CONTROLADOR_ALLOW_DEMO_ORDER_SEND", "").strip().lower() not in {"1", "true", "yes"}:
+        print("BLOQUEADO: order_send DEMO exige opt-in explícito de runtime.")
+        return
     if not mt5.initialize():
         print(f"MT5 indisponível: {mt5.last_error()}")
         return

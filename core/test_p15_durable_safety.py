@@ -59,6 +59,31 @@ def test_kill_switch_deactivation_is_persistent(tmp_path):
     assert restored.can_execute() is True
 
 
+def test_stale_audit_save_cannot_clear_newer_kill_switch(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    stale = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    first.activate_kill_switch("bloqueio novo")
+    stale.record_decision(snapshot(), timestamp=datetime(2026, 9, 9, 2, 1, tzinfo=timezone.utc))
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "bloqueio novo"
+
+
+def test_kill_switch_update_preserves_existing_audit(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    recorder = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    record = recorder.record_decision(snapshot(), timestamp=datetime(2026, 9, 9, 2, 2, tzinfo=timezone.utc))
+    recorder.activate_kill_switch("bloqueio")
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.audit.records() == (record,)
+    assert restored.kill_switch.state.enabled is True
+
+
 def test_invalid_safety_state_fails_closed(tmp_path):
     path = tmp_path / "operations.json"
     safety_path = tmp_path / "safety.json"

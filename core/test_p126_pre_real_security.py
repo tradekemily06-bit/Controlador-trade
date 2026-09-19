@@ -24,7 +24,7 @@ def test_pre_real_checklist_passes_with_safe_defaults():
 
 def test_authenticated_session_does_not_pass_pre_real_gate():
     config = RuntimeConfig("EURUSD", "1m", 10, 60)
-    session = BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "connected")
+    session = BrokerSessionObservation(BrokerSessionStatus.AUTHENTICATED, "connected", "acct-1", "sess-1")
     request = BrokerOrderBoundary.from_signal(
         request_id="p126-auth", symbol="EURUSD", signal=Signal.COMPRA, amount=10, duration_seconds=60
     )

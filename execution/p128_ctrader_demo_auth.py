@@ -55,6 +55,8 @@ class CTraderTokenSnapshot:
     expires_in: int
     has_access_token: bool
     has_refresh_token: bool
+    account_id: str | None = None
+    session_id: str | None = None
 
 
 class CTraderTokenProvider(Protocol):
@@ -76,7 +78,7 @@ class CTraderDemoSession(BrokerSessionPort):
         except Exception as exc:
             return BrokerSessionObservation(
                 BrokerSessionStatus.UNAVAILABLE,
-                f"falha ao consultar sessão cTrader DEMO: {exc}",
+                f"falha ao consultar sessão cTrader DEMO.",
             )
 
         if not isinstance(snapshot, CTraderTokenSnapshot):
@@ -94,7 +96,14 @@ class CTraderDemoSession(BrokerSessionPort):
                 BrokerSessionStatus.EXPIRED,
                 "access token cTrader DEMO expirado",
             )
+        if not snapshot.account_id or not snapshot.session_id:
+            return BrokerSessionObservation(
+                BrokerSessionStatus.UNKNOWN,
+                "sessão cTrader DEMO autenticada sem identidade de conta/sessão vinculada",
+            )
         return BrokerSessionObservation(
             BrokerSessionStatus.AUTHENTICATED,
             "sessão cTrader DEMO autenticada",
+            account_id=snapshot.account_id,
+            session_id=snapshot.session_id,
         )

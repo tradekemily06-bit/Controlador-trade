@@ -13,15 +13,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.12"
+          python-version: "3.12.14"
+
+      - name: Verify workflow action pinning
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -RhoE 'uses:[[:space:]]+[^@[:space:]]+@[A-Za-z0-9._/-]+' .github/workflows | grep -Ev '@[0-9a-fA-F]{40}$'; then
+            echo "Unpinned GitHub Action reference detected."
+            exit 1
+          fi
 
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest
+        run: python -m pip install --no-cache-dir "pip==26.2.1" -r requirements-dev.txt
 
       - name: Run P1.9 robustness tests
         run: python -m pytest -q core/test_strategy_robustness.py
@@ -31,8 +40,8 @@ jobs:
 
       - name: Dependency security audit
         run: |
-          python -m pip install --upgrade pip-audit
-          python -m pip_audit -r requirements.txt
+          python -m pip_audit -r requirements-dev.txt
+          python -m pip_audit -r requirements-mt5-windows.txt
 
       - name: Compile all Python project surfaces
         run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
@@ -49,11 +58,9 @@ jobs:
             docker rm -f controlador-trade-ci || true
           }
           trap cleanup EXIT
-
-          docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
-
+          docker run -d --name controlador-trade-ci controlador-trade:ci
           for attempt in {1..30}; do
-            if python - <<'PY'
+            if docker exec controlador-trade-ci python - <<'PY'
           import json
           import urllib.request
 
@@ -71,6 +78,5 @@ jobs:
             fi
             sleep 2
           done
-
           echo "Container health endpoint did not become ready."
           exit 1

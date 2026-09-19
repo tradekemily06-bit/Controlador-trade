@@ -25,3 +25,10 @@ Preparar a autenticação do Controlador Trading com o cTrader Open API para a c
 ## Estado atual
 
 O aplicativo `Controlador Trading` precisa estar `Active` antes do fluxo OAuth de trading poder ser concluído. Enquanto estiver `Submitted`, o código apenas prepara a fronteira; não deve tentar contornar a revisão da Spotware.
+
+## Gate adicional de supply chain
+
+- O SDK cTrader não faz parte das dependências de produção auditadas neste momento.
+- A versão atualmente publicada de `ctrader-open-api` traz dependências transitivas antigas que o `pip-audit` identifica com vulnerabilidades conhecidas; por isso, instalar esse SDK manualmente não é considerado uma etapa de liberação.
+- Antes de conectar o transporte cTrader, a integração deve usar uma versão/cliente cuja árvore de dependências seja revisada e passe a auditoria de vulnerabilidades no CI.
+- Até esse gate ser fechado, a boundary permanece `API_PENDING_APPROVAL`/indisponível e não envia ordens.

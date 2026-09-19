@@ -18,6 +18,7 @@ from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
+MAX_REPLAY_CASES = 500
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
@@ -108,6 +109,10 @@ def application(environ, start_response):
     request_id = SECURITY.request_id()
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
+    if not SECURITY.browser_request_safe(environ):
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Requisição cross-site bloqueada", "request_id": request_id}, request_id, environ)
+    if not SECURITY.authorize(environ):
+        return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Autorização HTTP obrigatória para clientes não locais", "request_id": request_id}, request_id, environ)
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
@@ -148,6 +153,8 @@ def application(environ, start_response):
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
                 raise ValueError("cases deve ser uma lista")
+            if len(cases) > MAX_REPLAY_CASES:
+                raise ValueError(f"cases excede o limite de {MAX_REPLAY_CASES}")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50))}, request_id, environ)
@@ -211,6 +218,9 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
+    except Exception:
+        # Never expose unexpected internal/provider exception details through HTTP.
+        return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
 
     headers = [("Content-Type", "text/plain; charset=utf-8")]
     headers.extend(SECURITY.headers(request_id))
@@ -219,10 +229,11 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
-def run(host: str = "0.0.0.0", port: int | None = None) -> None:
+def run(host: str | None = None, port: int | None = None) -> None:
+    selected_host = host or os.environ.get("HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
-        print(f"Controlador Trading em http://{host}:{selected_port}")
+    with make_server(selected_host, selected_port, application) as server:
+        print(f"Controlador Trading em http://{selected_host}:{selected_port}")
         server.serve_forever()
 
 

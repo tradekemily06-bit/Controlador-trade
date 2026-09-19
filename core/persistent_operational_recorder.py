@@ -40,7 +40,7 @@ class PersistentOperationalRecorder:
 
     def _persist_safety(self) -> None:
         if self.safety_store is not None:
-            self.safety_store.save(self.audit, self.kill_switch)
+            self.safety_store.save_audit(self.audit)
 
     @property
     def memory(self):
@@ -79,10 +79,12 @@ class PersistentOperationalRecorder:
 
     def activate_kill_switch(self, reason: str):
         state = self.kill_switch.activate(reason)
-        self._persist_safety()
+        if self.safety_store is not None:
+            self.safety_store.save_kill_switch(self.kill_switch)
         return state
 
     def deactivate_kill_switch(self):
         state = self.kill_switch.deactivate()
-        self._persist_safety()
+        if self.safety_store is not None:
+            self.safety_store.save_kill_switch(self.kill_switch)
         return state

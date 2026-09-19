@@ -47,7 +47,7 @@ def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
             "MT5 DEMO + símbolo + cotação + limites de volume validados",
         )
     except Exception as exc:
-        return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight: {exc}")
+        return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight.")
     finally:
         try:
             mt5.shutdown()
