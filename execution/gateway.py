@@ -82,6 +82,19 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
         if self._lifecycle is not None:
+            blocking_ids = self._lifecycle.blocking_request_ids()
+            if blocking_ids:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    "há execução DEMO pendente/incerta; verificação ou reconciliação obrigatória antes de nova execução.",
+                )
+        if self._ledger is not None and self._ledger.uncertain_request_ids():
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "há execução DEMO incerta no ledger; reconciliação obrigatória antes de nova execução.",
+            )
+
+        if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
