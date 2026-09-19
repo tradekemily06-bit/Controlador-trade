@@ -4,7 +4,7 @@ import pytest
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -24,7 +24,6 @@ def test_ledger_survives_restart(tmp_path: Path):
     path = tmp_path / "ledger.json"
     first = ExecutionLedger(path)
     first.record("req-001")
-
     restored = ExecutionLedger(path)
     assert restored.contains("req-001") is True
     assert restored.records() == ("req-001",)
@@ -35,7 +34,6 @@ def test_gateway_rejects_duplicate_after_restart(tmp_path: Path):
     first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
     accepted = first.execute("req-001", request())
     assert accepted.status is GatewayStatus.ACCEPTED
-
     restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
     duplicate = restored.execute("req-001", request())
     assert duplicate.status is GatewayStatus.DUPLICATE
@@ -65,7 +63,7 @@ def test_invalid_ledger_fails_closed(tmp_path: Path):
 
 def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    with pytest.raises(ValueError, match="request_id não pode ser vazio"):
+    with pytest.raises(ValueError, match="request_id inválido"):
         ledger.contains(" ")
 
 
@@ -74,7 +72,6 @@ def test_ledger_persists_external_id_for_accepted_execution(tmp_path):
     ledger = ExecutionLedger(path)
     ledger.reserve("req-1")
     ledger.mark_accepted("req-1", "BROKER-123")
-
     reloaded = ExecutionLedger(path)
     assert reloaded.status("req-1") is ExecutionLedgerStatus.ACCEPTED
     assert reloaded.external_id("req-1") == "BROKER-123"
@@ -93,6 +90,5 @@ def test_ledger_rejects_external_id_reuse(tmp_path):
     ledger.reserve("req-1")
     ledger.mark_accepted("req-1", "BROKER-123")
     ledger.reserve("req-2")
-    import pytest
     with pytest.raises(ValueError):
         ledger.mark_accepted("req-2", "BROKER-123")
