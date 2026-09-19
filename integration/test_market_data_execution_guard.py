@@ -18,6 +18,7 @@ def _request(symbol: str = "EURUSD") -> ExecutionRequest:
         amount=0.01,
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
+        request_id="market-data-req",
     )
 
 
