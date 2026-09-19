@@ -15,7 +15,6 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security.secure_transport import require_production_request_transport, request_uses_tls
-from security.secure_transport import require_production_request_transport, request_uses_tls
 from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
@@ -39,12 +38,6 @@ def _security_headers(request_id: str, environ, script_nonce: str | None = None)
         headers.append(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
     return headers
 
-
-def _security_headers(request_id: str, environ, script_nonce: str | None = None) -> list[tuple[str, str]]:
-    headers = SECURITY.headers(request_id, script_nonce=script_nonce)
-    if os.environ.get("CONTROLADOR_REQUIRE_HTTPS", "0") == "1" and request_uses_tls(environ):
-        headers.append(("Strict-Transport-Security", "max-age=63072000; includeSubDomains"))
-    return headers
 
 
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
