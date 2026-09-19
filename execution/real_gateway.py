@@ -7,6 +7,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.kill_switch import KillSwitch
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from execution.p124_broker_session import BrokerSessionBoundary, BrokerSessionObservation
 from core.request_identity import validate_request_id
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -58,13 +59,23 @@ class RealExecutionGateway:
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
-                safety: RealSafetyReport) -> RealGatewayResult:
+                safety: RealSafetyReport, session: BrokerSessionObservation | None = None) -> RealGatewayResult:
         try:
             validate_request_id(request_id)
         except ValueError:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
+        if session is None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL autenticada e vinculada à conta é obrigatória.")
+        try:
+            session = BrokerSessionBoundary.validate(session)
+        except ValueError:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL inválida.")
+        if not BrokerSessionBoundary.is_usable(session):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL não está autenticada.")
+        if session.account_id != authorization.account_id or session.session_id != authorization.session_id:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL não corresponde à autorização ativa.")
         if not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
