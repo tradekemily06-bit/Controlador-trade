@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -62,13 +62,24 @@ class RecoveryCoordinator:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
+        ledger_uncertain = {
+            request_id
+            for request_id in ledger_ids
+            if self.execution_ledger.status(request_id)
+            in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+        }
+        unknown = tuple(sorted(lifecycle_unknown | ledger_uncertain))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+        ]
         if unknown or pending or inconsistent:
             details = []
             if unknown:
-                details.append("UNKNOWN requer reconciliação")
+                details.append("UNKNOWN/RESERVED requer reconciliação")
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
