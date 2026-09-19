@@ -69,9 +69,6 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        # Final-boundary TOCTOU defense: serialize the final kill-switch check
-        # with reservation and broker dispatch. Activation cannot slip between
-        # the last safety check and the beginning of an external order.
         try:
             with self._kill_switch.execution_window():
                 if not self._valid_request(request):
@@ -97,37 +94,37 @@ class RealExecutionGateway:
                 try:
                     self._ledger.reserve(request_id)
                     self._processed_request_ids.add(request_id)
-                except (OSError, ValueError) as exc:
-                    return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+                except (OSError, ValueError):
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança; envio bloqueado.")
 
                 try:
                     result = self._gateway.execute(broker, request, allow_real=True)
-                except Exception as exc:
+                except Exception:
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
                         pass
-                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL incerto após falha no boundary do adapter; reconciliação explícita necessária.")
 
                 if result.execution is None:
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
                         pass
-                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, "resultado REAL sem execução confirmável; reconciliação explícita necessária.")
 
                 if not result.execution.accepted:
                     try:
                         self._ledger.mark_rejected(request_id)
-                    except (OSError, ValueError) as exc:
-                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
+                    except (OSError, ValueError):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem rejeitada, mas persistência do estado falhou; reconciliação necessária.", result.execution)
                     return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
 
                 if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
                     try:
                         self._ledger.mark_unknown(request_id)
-                    except (OSError, ValueError) as exc:
-                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
+                    except (OSError, ValueError):
+                        return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id e persistência também falhou; reconciliação necessária.", result.execution)
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
                 try:
@@ -137,12 +134,12 @@ class RealExecutionGateway:
                         adapter=authorization.adapter_id,
                         external_id=result.execution.external_id.strip(),
                     )
-                except (OSError, ValueError) as exc:
+                except (OSError, ValueError):
                     try:
                         self._ledger.mark_unknown(request_id)
                     except (OSError, ValueError):
                         pass
-                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas identidade/estado não pôde ser confirmado: {exc}", result.execution)
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, "ordem REAL aceita, mas identidade/estado não pôde ser confirmado; reconciliação explícita necessária.", result.execution)
                 return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
         except RuntimeError:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
