@@ -1,13 +1,15 @@
 import io
 import json
+import os
 import unittest
+from unittest.mock import patch
 
 from app import application
 from security_guard import MAX_BODY_BYTES
 
 
 class AppSecurityTests(unittest.TestCase):
-    def request(self, path, method="GET", payload=None, remote="test-client"):
+    def request(self, path, method="GET", payload=None, remote="test-client", scheme="http", forwarded_proto=None):
         body = b"" if payload is None else json.dumps(payload).encode("utf-8")
         captured = {}
 
@@ -23,7 +25,10 @@ class AppSecurityTests(unittest.TestCase):
             "CONTENT_LENGTH": str(len(body)),
             "REMOTE_ADDR": remote,
             "wsgi.input": io.BytesIO(body),
+            "wsgi.url_scheme": scheme,
         }
+        if forwarded_proto is not None:
+            environ["HTTP_X_FORWARDED_PROTO"] = forwarded_proto
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
 
@@ -34,6 +39,24 @@ class AppSecurityTests(unittest.TestCase):
         self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
+
+    def test_production_https_requirement_blocks_plain_http(self):
+        with patch.dict(os.environ, {"CONTROLADOR_REQUIRE_HTTPS": "1", "CONTROLADOR_TRUSTED_PROXY_CIDRS": ""}, clear=False):
+            status, _, body = self.request("/api/health", scheme="http")
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertIn(b"transporte seguro", body)
+
+    def test_production_https_allows_direct_tls_and_adds_hsts(self):
+        with patch.dict(os.environ, {"CONTROLADOR_REQUIRE_HTTPS": "1", "CONTROLADOR_TRUSTED_PROXY_CIDRS": ""}, clear=False):
+            status, headers, _ = self.request("/api/health", scheme="https")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(headers["Strict-Transport-Security"], "max-age=63072000; includeSubDomains")
+
+    def test_production_forwarded_https_requires_trusted_proxy(self):
+        with patch.dict(os.environ, {"CONTROLADOR_REQUIRE_HTTPS": "1", "CONTROLADOR_TRUSTED_PROXY_CIDRS": "192.0.2.0/24"}, clear=False):
+            status, headers, _ = self.request("/api/health", remote="192.0.2.10", scheme="http", forwarded_proto="https")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(headers["Strict-Transport-Security"], "max-age=63072000; includeSubDomains")
 
     def test_oversized_json_is_rejected(self):
         payload = {"value": "x" * (MAX_BODY_BYTES + 1)}
