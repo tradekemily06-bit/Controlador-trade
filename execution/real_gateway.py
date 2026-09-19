@@ -69,9 +69,13 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        # Final-boundary TOCTOU defense: a safety snapshot can become stale after assessment.
-        # The live kill switch is checked immediately before ledger reservation/dispatch.
-        if not self._kill_switch.allows_execution():
+        # Final-boundary TOCTOU defense: the kill-switch lock remains held
+        # through reservation and broker dispatch, so activation cannot slip
+        # between the final check and the start of an external order.
+        try:
+            execution_window = self._kill_switch.execution_window()
+            execution_window.__enter__()
+        except RuntimeError:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo na fronteira final de execução REAL.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
@@ -137,7 +141,9 @@ class RealExecutionGateway:
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas identidade/estado não pôde ser confirmado: {exc}", result.execution)
-        return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+        final_result = RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+        execution_window.__exit__(None, None, None)
+        return final_result
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
