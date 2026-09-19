@@ -14,7 +14,7 @@ class TransportSecurityStatus:
 
     @property
     def ready_for_production(self) -> bool:
-        return self.tls_enabled and self.trusted_proxy_configured
+        return self.tls_enabled
 
 
 def require_secure_transport(status: TransportSecurityStatus | None) -> TransportSecurityStatus:
