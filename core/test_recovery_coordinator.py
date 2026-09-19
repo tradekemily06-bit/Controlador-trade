@@ -38,3 +38,21 @@ def test_recovery_detects_ledger_unknown_without_lifecycle(tmp_path):
 def test_recovery_accepts_clean_state(tmp_path):
     coordinator = _coordinator(tmp_path)
     assert coordinator.assess().state is RecoveryState.FRESH
+
+
+def test_recovery_detects_terminal_ledger_without_lifecycle(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-3")
+    coordinator.execution_ledger.mark_accepted("req-3")
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.inconsistent_request_ids == ("req-3",)
+
+
+def test_recovery_detects_lifecycle_without_ledger(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-4", ExecutionLifecycleState.PENDING, now))
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.inconsistent_request_ids == ("req-4",)
