@@ -382,3 +382,35 @@ def test_real_dispatch_pins_execute_callable_before_invocation():
     # final dispatch capture. A third read would expose the swapped callable.
     assert adapter.execute_reads == 2
     assert adapter.calls == 1
+
+
+def test_real_dispatch_fails_closed_if_adapter_mutates_after_dispatch():
+    class PostDispatchMutationAdapter(FakeAdapter):
+        def execute(self, request):
+            self.calls += 1
+            self.supports_real_execution = False
+            return ExecutionResult(True, "accepted", "ext-post-mutation")
+
+    adapter = PostDispatchMutationAdapter()
+    gateway = gateway_with(adapter)
+    capability = gateway._real_dispatch_capability(
+        "fake",
+        expected_adapter_id="fake-adapter",
+        request_id="post-mutation",
+        authorization_id="auth",
+    )
+    assert capability is not None
+    result = gateway._execute_real(
+        "fake",
+        ExecutionRequest(
+            "BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL,
+            request_id="post-mutation",
+        ),
+        capability=capability,
+        request_id="post-mutation",
+        authorization_id="auth",
+    )
+    assert result.accepted is False
+    assert result.execution is None
+    assert "resultado não confiável" in result.message
+    assert adapter.calls == 1
