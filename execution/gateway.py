@@ -75,6 +75,8 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
         with self._request_lock:
+            if self._persistence_fault:
+                return GatewayResult(GatewayStatus.BLOCKED, "persistência de execução em estado de falha; novas execuções bloqueadas.")
             if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
                 return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
@@ -138,7 +140,7 @@ class ExecutionGateway:
     
             return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
     
-        def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> bool:
+    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> bool:
         if self._lifecycle is None:
             return True
         try:
