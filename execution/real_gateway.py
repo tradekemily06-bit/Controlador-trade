@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 
@@ -55,7 +55,10 @@ class RealExecutionGateway:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
-        if not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip():
+        if request.request_id is not None and (
+            not isinstance(request.request_id, str)
+            or request.request_id.strip() != request_id.strip()
+        ):
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -80,6 +83,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id is None:
+            # Bind the canonical ledger identity into the broker-facing request.
+            request = replace(request, request_id=request_id)
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
