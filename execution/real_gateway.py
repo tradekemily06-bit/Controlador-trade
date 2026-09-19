@@ -47,8 +47,9 @@ class RealExecutionGateway:
             raise ValueError("recovery é obrigatório para execução REAL.")
         if not isinstance(kill_switch, KillSwitch):
             raise ValueError("kill_switch é obrigatório para execução REAL.")
-        if safety_store is not None and not isinstance(safety_store, OperationalSafetyStore):
-            raise ValueError("safety_store inválido.")
+        if not isinstance(safety_store, OperationalSafetyStore):
+            raise ValueError("safety_store é obrigatório para execução REAL.")
+
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
