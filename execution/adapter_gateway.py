@@ -76,4 +76,23 @@ class BrokerAdapterGateway:
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.", dispatch_attempted=True)
 
+        # Validate the result contract at the broker boundary. A malformed
+        # adapter result after dispatch is uncertainty, never a safe rejection.
+        if (
+            not isinstance(result.accepted, bool)
+            or not isinstance(result.message, str)
+            or not result.message.strip()
+            or not isinstance(result.outcome_final, bool)
+            or (
+                result.external_id is not None
+                and (not isinstance(result.external_id, str) or not result.external_id.strip())
+            )
+        ):
+            return AdapterExecutionResult(
+                False,
+                "adapter retornou resultado inválido após tentativa de despacho.",
+                execution=None,
+                dispatch_attempted=True,
+            )
+
         return AdapterExecutionResult(result.accepted, result.message, result, dispatch_attempted=True)
