@@ -44,6 +44,9 @@ def test_real_mode_is_always_rejected():
     with pytest.raises(ValueError, match="REAL"):
         RuntimeConfig("EURUSD", "5m", 10, 60, mode=ExecutionMode.REAL)
 
+    with pytest.raises(ValueError, match="REAL"):
+        RuntimeConfig("EURUSD", "5m", 10, 60, mode=ExecutionMode.REAL, real_enabled=True)
+
 
 def test_boolean_numeric_values_are_rejected():
     with pytest.raises(ValueError):
