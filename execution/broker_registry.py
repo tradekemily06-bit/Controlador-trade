@@ -49,10 +49,10 @@ class BrokerRegistry:
         with self._lock:
             if normalized in self._adapters:
                 raise BrokerRegistryError(f"adapter já registrado: {normalized}")
-        if normalized_adapter_id in self._adapter_ids.values():
-            raise BrokerRegistryError(f"adapter_id já registrado: {normalized_adapter_id}")
-        self._adapters[normalized] = adapter
-        self._adapter_ids[normalized] = normalized_adapter_id
+            if normalized_adapter_id in self._adapter_ids.values():
+                raise BrokerRegistryError(f"adapter_id já registrado: {normalized_adapter_id}")
+            self._adapters[normalized] = adapter
+            self._adapter_ids[normalized] = normalized_adapter_id
 
     def _get_for_gateway(self, name: str, *, capability: object) -> BrokerAdapter:
         if capability is not _BROKER_GATEWAY_CAPABILITY:
