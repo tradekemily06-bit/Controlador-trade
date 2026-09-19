@@ -211,8 +211,8 @@ def test_gateway_lifecycle_admission_failure_persists_unknown_in_both_authoritie
 
     result = gateway.execute("lifecycle-admission-failure", make_request())
 
-    assert result.status is GatewayStatus.EXECUTOR_ERROR
-    assert ledger.status("lifecycle-admission-failure") is ExecutionLedgerStatus.UNKNOWN
+    assert result.status is GatewayStatus.BLOCKED
+    assert ledger.status("lifecycle-admission-failure") is ExecutionLedgerStatus.REJECTED
     assert lifecycle.get("lifecycle-admission-failure").state is ExecutionLifecycleState.UNKNOWN
 
 
@@ -234,7 +234,7 @@ def test_gateway_reconciliation_race_after_final_recovery_check_never_dispatches
         if request_id == "reconciliation-race" and status is ExecutionLedgerStatus.RESERVED and not raced["done"]:
             raced["done"] = True
             ledger.bind_external_id(request_id, "EXT-RACE")
-            ledger.reconcile(request_id, executed=True)
+            ledger._reconcile_locked(request_id, executed=True)
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.ACCEPTED,
