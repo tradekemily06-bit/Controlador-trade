@@ -62,7 +62,7 @@ class ExecutionLifecycleStore:
             fd = os.open(self.path, flags)
             try:
                 with os.fdopen(fd, "r", encoding="utf-8") as stream:
-                    payload = json.load(stream, object_pairs_hook=self._reject_duplicate_keys)
+                    payload = json.load(stream, object_pairs_hook=self._reject_duplicate_keys, parse_constant=self._reject_non_finite)
                 fd = None
             finally:
                 if fd is not None:
