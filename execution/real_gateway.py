@@ -41,7 +41,6 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._kill_switch = kill_switch
-        self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -94,17 +93,21 @@ class RealExecutionGateway:
                     return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
                 if broker.strip().lower() != authorization.broker_id.strip().lower():
                     return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+                try:
+                    actual_adapter_id = self._gateway.adapter_id(broker)
+                except Exception:
+                    return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter REAL não está registrado.")
+                if actual_adapter_id.casefold() != authorization.adapter_id.strip().casefold():
+                    return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter da requisição difere da autorização.")
 
                 current_status = self._ledger.status(request_id)
                 if current_status is not None:
-                    self._processed_request_ids.add(request_id)
                     if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
                         return RealGatewayResult(RealGatewayStatus.UNKNOWN, "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.")
                     return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
                 try:
                     self._ledger.reserve(request_id)
-                    self._processed_request_ids.add(request_id)
                 except (OSError, ValueError):
                     return RealGatewayResult(RealGatewayStatus.BLOCKED, "não foi possível reservar request_id com segurança; envio bloqueado.")
 
