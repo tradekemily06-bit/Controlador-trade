@@ -40,31 +40,40 @@ def locked_path(path: str | Path) -> Iterator[Path]:
         lock_flags = os.O_RDWR | os.O_CREAT
         if hasattr(os, "O_NOFOLLOW"):
             lock_flags |= os.O_NOFOLLOW
-        lock_fd = os.open(lock_path, lock_flags, 0o600)
-        if hasattr(os, "fchmod"):
-            try:
-                os.fchmod(lock_fd, 0o600)
-            except OSError:
-                pass
-        with os.fdopen(lock_fd, "r+", encoding="utf-8") as lock_file:
-            if lock_file.seek(0, 2) == 0:
-                lock_file.write("0")
-                lock_file.flush()
-            lock_file.seek(0)
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            elif msvcrt is not None:
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            else:
-                raise OSError("nenhum mecanismo de lock de arquivo suportado neste sistema.")
-            try:
-                yield target
-            finally:
+        lock_fd = -1
+        try:
+            lock_fd = os.open(lock_path, lock_flags, 0o600)
+            if hasattr(os, "fchmod"):
+                try:
+                    os.fchmod(lock_fd, 0o600)
+                except OSError:
+                    pass
+            with os.fdopen(lock_fd, "r+", encoding="utf-8") as lock_file:
+                lock_fd = -1
+                if lock_file.seek(0, 2) == 0:
+                    lock_file.write("0")
+                    lock_file.flush()
+                lock_file.seek(0)
                 if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
                 elif msvcrt is not None:
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                else:
+                    raise OSError("nenhum mecanismo de lock de arquivo suportado neste sistema.")
+                try:
+                    yield target
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    elif msvcrt is not None:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        finally:
+            if lock_fd != -1:
+                try:
+                    os.close(lock_fd)
+                except OSError:
+                    pass
     finally:
         if process_lock is not None:
             process_lock.release()
