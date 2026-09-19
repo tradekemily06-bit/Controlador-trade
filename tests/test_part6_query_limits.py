@@ -31,3 +31,16 @@ def test_query_limit_rejects_oversized_query_string():
 def test_replay_workload_limit_is_explicit():
     from app import MAX_REPLAY_CASES
     assert MAX_REPLAY_CASES == 100
+
+
+def test_query_limit_rejects_excessive_parameter_count():
+    with pytest.raises(ValueError):
+        _query_limit(_environ("&".join(f"x{i}=1" for i in range(257))), 10, maximum=100)
+
+
+def test_read_json_rejects_deep_recursion_as_invalid_input():
+    from app import _read_json
+    nested = "[" * 2000 + "0" + "]" * 2000
+    environ = {"CONTENT_LENGTH": str(len(nested.encode("utf-8"))), "wsgi.input": __import__("io").BytesIO(nested.encode("utf-8"))}
+    with pytest.raises(ValueError, match="JSON inválido"):
+        _read_json(environ)
