@@ -38,13 +38,16 @@ class LocalAuth:
     def __init__(self) -> None:
         self.enabled = (
             os.environ.get("CONTROLADOR_ENV", "development").strip().lower() == "production"
-            or os.environ.get("CONTROLADOR_AUTH_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+            or os.environ.get("CONTROLADOR_AUTH_REQUIRED", "").strip().lower()
+            in {"1", "true", "yes"}
         )
         self.username = os.environ.get("CONTROLADOR_AUTH_USERNAME", "admin").strip()
         self.password_hash = os.environ.get("CONTROLADOR_AUTH_PASSWORD_HASH", "").strip()
         self.session_secret = os.environ.get("CONTROLADOR_SESSION_SECRET", "")
         self._sessions: dict[str, AuthSession] = {}
-        self._login_failures: dict[str, list[float]] = {}\n        self._max_sessions = 1000\n        self._max_failure_clients = 10000
+        self._login_failures: dict[str, list[float]] = {}
+        self._max_sessions = 1000
+        self._max_failure_clients = 10000
 
     @property
     def configured(self) -> bool:
@@ -59,10 +62,22 @@ class LocalAuth:
         if not isinstance(password, str) or len(password) < 12 or len(password) > 256:
             raise ValueError("password must contain 12-256 characters")
         salt = secrets.token_bytes(_SALT_BYTES)
-        digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P)
+        digest = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=salt,
+            n=_SCRYPT_N,
+            r=_SCRYPT_R,
+            p=_SCRYPT_P,
+        )
         return "$".join(
-            (_HASH_PREFIX, str(_SCRYPT_N), str(_SCRYPT_R), str(_SCRYPT_P),
-             base64.urlsafe_b64encode(salt).decode("ascii"), base64.urlsafe_b64encode(digest).decode("ascii"))
+            (
+                _HASH_PREFIX,
+                str(_SCRYPT_N),
+                str(_SCRYPT_R),
+                str(_SCRYPT_P),
+                base64.urlsafe_b64encode(salt).decode("ascii"),
+                base64.urlsafe_b64encode(digest).decode("ascii"),
+            )
         )
 
     @staticmethod
@@ -73,30 +88,49 @@ class LocalAuth:
                 return False
             salt = base64.urlsafe_b64decode(salt_b64.encode("ascii"))
             expected = base64.urlsafe_b64decode(digest_b64.encode("ascii"))
-            actual = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=int(n), r=int(r), p=int(p))
+            actual = hashlib.scrypt(
+                password.encode("utf-8"),
+                salt=salt,
+                n=int(n),
+                r=int(r),
+                p=int(p),
+            )
             return hmac.compare_digest(actual, expected)
         except (ValueError, TypeError):
             return False
 
     def _failure_key(self, client_key: str) -> str:
-        return hmac.new(self.session_secret.encode("utf-8"), client_key.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.new(
+            self.session_secret.encode("utf-8"),
+            client_key.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
 
     def _login_allowed(self, client_key: str, now: float) -> bool:
         key = self._failure_key(client_key)
-        failures = [t for t in self._login_failures.get(key, []) if t > now - _LOGIN_WINDOW_SECONDS]
+        failures = [
+            t
+            for t in self._login_failures.get(key, [])
+            if t > now - _LOGIN_WINDOW_SECONDS
+        ]
         self._login_failures[key] = failures
         return len(failures) < _LOGIN_MAX_FAILURES
 
     def _record_failure(self, client_key: str, now: float) -> None:
         key = self._failure_key(client_key)
-        self._login_failures.setdefault(key, []).append(now)\n        if len(self._login_failures) > self._max_failure_clients:\n            oldest = next(iter(self._login_failures))\n            self._login_failures.pop(oldest, None)
+        self._login_failures.setdefault(key, []).append(now)
+        if len(self._login_failures) > self._max_failure_clients:
+            oldest = next(iter(self._login_failures))
+            self._login_failures.pop(oldest, None)
 
     def login(self, username: str, password: str, client_key: str) -> AuthSession | None:
         if not self.ready or not self.enabled:
             return None
+
         now = time.time()
         if not self._login_allowed(client_key, now):
             return None
+
         valid = (
             isinstance(username, str)
             and hmac.compare_digest(username, self.username)
@@ -106,18 +140,51 @@ class LocalAuth:
         if not valid:
             self._record_failure(client_key, now)
             return None
+
         raw_token = secrets.token_urlsafe(_SESSION_BYTES)
-        token_hash = hmac.new(self.session_secret.encode("utf-8"), raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
-        session = AuthSession(token_hash, self.username, secrets.token_urlsafe(32), now + _SESSION_TTL_SECONDS)
-        self._sessions[token_hash] = session\n        if len(self._sessions) > self._max_sessions:\n            oldest = min(self._sessions, key=lambda key: self._sessions[key].expires_at)\n            self._sessions.pop(oldest, None)
-        return AuthSession(raw_token, session.username, session.csrf_token, session.expires_at)
+        token_hash = hmac.new(
+            self.session_secret.encode("utf-8"),
+            raw_token.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        session = AuthSession(
+            token_hash,
+            self.username,
+            secrets.token_urlsafe(32),
+            now + _SESSION_TTL_SECONDS,
+        )
+        self._sessions[token_hash] = session
+
+        if len(self._sessions) > self._max_sessions:
+            oldest = min(
+                self._sessions,
+                key=lambda key: self._sessions[key].expires_at,
+            )
+            self._sessions.pop(oldest, None)
+
+        return AuthSession(
+            raw_token,
+            session.username,
+            session.csrf_token,
+            session.expires_at,
+        )
 
     def authenticate(self, raw_token: str) -> AuthSession | None:
         if not self.enabled:
-            return AuthSession("", self.username, "", time.time() + _SESSION_TTL_SECONDS)
+            return AuthSession(
+                "",
+                self.username,
+                "",
+                time.time() + _SESSION_TTL_SECONDS,
+            )
         if not self.configured or not raw_token:
             return None
-        token_hash = hmac.new(self.session_secret.encode("utf-8"), raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        token_hash = hmac.new(
+            self.session_secret.encode("utf-8"),
+            raw_token.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
         session = self._sessions.get(token_hash)
         if session is None or session.expires_at <= time.time():
             self._sessions.pop(token_hash, None)
@@ -126,7 +193,11 @@ class LocalAuth:
 
     def logout(self, raw_token: str) -> None:
         if raw_token and self.session_secret:
-            token_hash = hmac.new(self.session_secret.encode("utf-8"), raw_token.encode("utf-8"), hashlib.sha256).hexdigest()
+            token_hash = hmac.new(
+                self.session_secret.encode("utf-8"),
+                raw_token.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
             self._sessions.pop(token_hash, None)
 
     def csrf_valid(self, session: AuthSession, supplied: str) -> bool:
