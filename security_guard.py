@@ -61,6 +61,33 @@ class SecurityGuard:
             return True
         return not self._is_loopback(environ)
 
+    def browser_request_safe(self, environ) -> bool:
+        """Block explicit cross-site state-changing browser requests."""
+        method = str(environ.get("REQUEST_METHOD", "GET")).upper()
+        if method in {"GET", "HEAD", "OPTIONS"}:
+            return True
+        fetch_site = str(environ.get("HTTP_SEC_FETCH_SITE", "")).strip().lower()
+        if fetch_site == "cross-site":
+            return False
+        origin = str(environ.get("HTTP_ORIGIN", "")).strip()
+        if not origin:
+            return True
+        host = str(environ.get("HTTP_HOST", "")).strip()
+        forwarded_host = str(environ.get("HTTP_X_FORWARDED_HOST", "")).split(",")[0].strip()
+        target_host = forwarded_host or host
+        if not target_host:
+            return True
+        try:
+            from urllib.parse import urlsplit
+            source = urlsplit(origin)
+            if source.hostname is None:
+                return False
+            source_port = source.port
+            expected = source.hostname if source_port is None else f"{source.hostname}:{source_port}"
+            return expected.casefold() == target_host.casefold()
+        except ValueError:
+            return False
+
     def authorize(self, environ) -> bool:
         if not self.requires_remote_auth(environ):
             return True
