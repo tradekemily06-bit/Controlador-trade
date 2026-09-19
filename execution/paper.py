@@ -27,6 +27,8 @@ class PaperExecutor:
         self._next_id = 1
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(
                 accepted=False,
