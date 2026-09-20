@@ -70,3 +70,23 @@ def test_report_export_is_deterministic(tmp_path):
 def test_export_rejects_invalid_report():
     with pytest.raises(TypeError):
         OperationalReportExporter.to_json(None)
+
+
+def test_memory_store_rejects_stale_concurrent_writer(tmp_path):
+    path = tmp_path / "memory.json"
+    first = OperationMemoryStore(path)
+    second = OperationMemoryStore(path)
+
+    memory_a = OperationMemory()
+    memory_a.append(make_record(1, "WIN"))
+    memory_b = OperationMemory()
+    memory_b.append(make_record(2, "LOSS"))
+
+    first.load()
+    second.load()
+    first.save(memory_a)
+
+    with pytest.raises(RuntimeError, match="gravação concorrente recusada"):
+        second.save(memory_b)
+
+    assert OperationMemoryStore(path).load().records() == memory_a.records()

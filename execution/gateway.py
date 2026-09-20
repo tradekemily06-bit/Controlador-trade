@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import math
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -69,6 +70,10 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
+        if request.request_id is not None and request.request_id != request_id:
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "request_id do envelope difere do request_id da requisição.")
+        request = replace(request, request_id=request_id)
+
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
         if snapshot is not None and self._recorder is not None:
@@ -92,6 +97,19 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
+        # Reserve before dispatch so any transport ambiguity can be
+        # durably represented as UNKNOWN in both stores.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                try:
+                    if self._lifecycle is not None:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, event_time, f"reserva do ledger falhou: {exc}"))
+                except (OSError, ValueError):
+                    pass
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar request_id antes do executor: {exc}")
+
         try:
             result = self._executor.execute(request)
         except Exception as exc:
@@ -103,8 +121,19 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência do ledger falhou; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
+            self._processed_request_ids.add(request_id)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
@@ -128,6 +157,14 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        # Keep Ledger and Lifecycle uncertainty aligned. A dispatch exception is
+        # not proof of non-execution, so recovery must see the same UNKNOWN
+        # identity in both durable stores and must never replay automatically.
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:
@@ -149,10 +186,12 @@ class ExecutionGateway:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)):
+            return "Valor da execução é inválido."
+        if not math.isfinite(float(request.amount)) or request.amount <= 0:
+            return "Valor da execução deve ser positivo e finito."
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+            return "Duração deve ser um inteiro positivo."
         return None

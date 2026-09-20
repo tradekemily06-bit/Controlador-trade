@@ -44,6 +44,8 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("external_id da observação difere do solicitado.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
+        if not isinstance(observation.message, str) or not observation.message.strip():
+            raise ValueError("mensagem da observação externa inválida.")
 
         return ReconciliationResult(
             external_id=external_id.strip(),

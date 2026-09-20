@@ -1,17 +1,22 @@
 from pathlib import Path
 
+import pytest
+
+from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
-from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
+from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -29,12 +34,37 @@ class FakeAdapter:
         return ExecutionResult(True, "fake real execution accepted", "external-1")
 
 
+class KillSwitchDuringAvailabilityAdapter:
+    def __init__(self, kill_switch):
+        self.kill_switch = kill_switch
+        self.calls = 0
+
+    def is_available(self):
+        self.kill_switch.activate("ativado durante preflight")
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "must never reach external dispatch", "should-not-exist")
+
+
 class NoExternalIdAdapter:
     def is_available(self):
         return True
 
     def execute(self, request):
         return ExecutionResult(True, "accepted but reference missing", None)
+
+
+class FakeOrderQuery:
+    def __init__(self, observation):
+        self.observation = observation
+        self.calls = 0
+
+    def query_order(self, external_id):
+        self.calls += 1
+        assert external_id == self.observation.external_id
+        return self.observation
 
 
 class UnknownAdapter:
@@ -46,7 +76,7 @@ class UnknownAdapter:
 
 
 def _authorization():
-    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
+    return RealExecutionAuthorization("auth", "a111", "fake", "fake", True, True)
 
 
 def _admission(auth):
@@ -96,11 +126,12 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req") == "external-1"
     observation = RealMonitoringBoundary().observe(observation_id="obs", request_id="req", result=result.execution)
     assert observation.status is RealOutcomeStatus.ACCEPTED
     p119 = RealReleaseClosureBoundary().close(
@@ -108,6 +139,62 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
         p118_available=True, multi_broker_boundary=True,
     )
     assert p119.state is RealReleaseState.RELEASED
+
+
+def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    kill_switch = KillSwitch()
+    kill_switch.activate("emergência")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        kill_switch,
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    # Deliberately provide a stale READY snapshot: the live switch must still win.
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="kill-switch-race",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("kill-switch-race") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_real_gateway_rechecks_kill_switch_after_adapter_preflight(tmp_path: Path):
+    registry = BrokerRegistry()
+    kill_switch = KillSwitch()
+    adapter = KillSwitchDuringAvailabilityAdapter(kill_switch)
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        kill_switch,
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake", request_id="kill-switch-preflight", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("kill-switch-preflight") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_authorization_is_explicit():
@@ -131,7 +218,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = RealExecutionAuthorization("a", "audit", "fake", "adapter", False, False)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
@@ -151,14 +238,14 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     adapter = UnknownAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
-    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert second.status == RealGatewayStatus.UNKNOWN
 
@@ -167,13 +254,18 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     registry = BrokerRegistry()
     registry.register("fake", UnknownAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
+    query = FakeOrderQuery(ExternalOrderObservation("external-unknown-2", ExternalOrderStatus.EXECUTED, "broker confirmou execução"))
+    with pytest.raises(ValueError, match="external_id persistido"):
+        gateway.reconcile_unknown("unknown-2", query=query)
+    ledger.bind_external_id("unknown-2", "external-unknown-2")
+    gateway.reconcile_unknown("unknown-2", query=query)
+    assert query.calls == 1
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -183,15 +275,21 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    import pytest
+    with pytest.raises(ValueError, match="external_id persistido"):
+        gateway.reconcile_unknown(
+            "crashed",
+            query=FakeOrderQuery(
+                ExternalOrderObservation("external-crashed", ExternalOrderStatus.NOT_EXECUTED, "not found")
+            ),
+        )
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
@@ -211,7 +309,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
@@ -225,10 +323,204 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", NoExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_gateway_fails_closed_on_malformed_gate_dependencies(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    request = _request()
+
+    result = gateway.execute(
+        broker="fake", request_id="bad-gates", request=request,
+        authorization=object(), admission=object(), safety=object(),
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_crash_after_external_id_binding_never_replays_and_remains_reconcilable(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    original_mark_accepted = ledger.mark_accepted
+
+    def crash_after_binding(request_id, *, external_id):
+        raise OSError("simulated crash between external_id persistence and terminal state")
+
+    ledger.mark_accepted = crash_after_binding
+    result = gateway.execute(
+        broker="fake", request_id="crash-after-bind", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    restored_ledger = ExecutionLedger(ledger_path)
+    assert restored_ledger.status("crash-after-bind") is ExecutionLedgerStatus.RESERVED
+    assert restored_ledger.external_id("crash-after-bind") == "external-1"
+    restored_lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    assert restored_lifecycle.get("crash-after-bind").state.value == "UNKNOWN"
+
+    restored = RealExecutionGateway(
+        BrokerAdapterGateway(registry), restored_ledger, restored_lifecycle, KillSwitch()
+    )
+    second = restored.execute(
+        broker="fake", request_id="crash-after-bind", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert second.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+
+    # The persisted broker identity makes read-only reconciliation possible;
+    # recovery must never submit the order a second time.
+    query = FakeOrderQuery(
+        ExternalOrderObservation("external-1", ExternalOrderStatus.EXECUTED, "broker confirmou execução")
+    )
+    restored.reconcile_unknown("crash-after-bind", query=query)
+    assert query.calls == 1
+    assert ExecutionLedger(ledger_path).status("crash-after-bind") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert adapter.calls == 1
+
+
+def test_real_admission_must_match_authorized_broker(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    safety = _safety(auth)
+
+    # Audit IDs belong to different release-audit stages (for example P111/P116),
+    # so equality with authorization.audit_id is not a valid invariant here.
+    valid_cross_stage_audit = RealAdmission(
+        admission_id="adm-valid",
+        audit_id="a116",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="fake",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake", request_id="admission-cross-stage-audit",
+        request=_request(), authorization=auth,
+        admission=valid_cross_stage_audit, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
+
+    mismatched_broker = RealAdmission(
+        admission_id="adm-mismatch-broker",
+        audit_id="a116",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="other-broker",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake", request_id="admission-broker-mismatch", request=_request(),
+        authorization=auth, admission=mismatched_broker, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 1
+
+
+def test_real_gateway_blocks_adapter_identity_mismatch_before_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="registered-adapter")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = RealExecutionAuthorization("auth", "a111", "fake", "different-adapter", True, True)
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="adapter-mismatch",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is None
+
+def test_real_gateway_rejects_non_trading_signal(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = ExecutionRequest("TEST", Signal.AGUARDAR, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="aguardar-real", request=request,
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("aguardar-real") is None
+
+
+def test_real_gateway_canonicalizes_request_id_before_persistence(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=" req-canonical ")
+
+    result = gateway.execute(
+        broker="fake", request_id="  req-canonical  ", request=request,
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
+    assert ExecutionLedger(tmp_path / "ledger.json").status("req-canonical") is ExecutionLedgerStatus.ACCEPTED
+    assert ExecutionLedger(tmp_path / "ledger.json").status("  req-canonical  ") is None

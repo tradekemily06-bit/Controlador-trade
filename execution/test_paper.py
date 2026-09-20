@@ -9,6 +9,7 @@ def make_request(
     mode: ExecutionMode = ExecutionMode.DEMO,
     amount: float = 10.0,
     duration_seconds: int = 60,
+    request_id: str | None = "paper-test-001",
 ) -> ExecutionRequest:
     return ExecutionRequest(
         symbol="TEST",
@@ -16,6 +17,7 @@ def make_request(
         amount=amount,
         duration_seconds=duration_seconds,
         mode=mode,
+        request_id=request_id,
     )
 
 
@@ -89,3 +91,12 @@ def test_reconciler_handles_empty_history():
     assert result.accepted == 0
     assert result.rejected == 0
     assert result.consistent is True
+
+
+def test_paper_executor_rejects_missing_request_id():
+    executor = PaperExecutor()
+
+    result = executor.execute(make_request(request_id=None))
+
+    assert result.accepted is False
+    assert executor.executions() == ()

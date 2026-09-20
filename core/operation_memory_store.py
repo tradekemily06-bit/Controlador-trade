@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from datetime import datetime
+
+from core.file_lock import exclusive_file_lock
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
@@ -15,6 +18,7 @@ class OperationMemoryStore:
         if path is None:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
+        self._loaded_signature: tuple[dict[str, object], ...] = ()
 
     @staticmethod
     def _serialize(record: OperationMemoryRecord) -> dict[str, object]:
@@ -60,22 +64,41 @@ class OperationMemoryStore:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
         payload = [self._serialize(record) for record in memory.records()]
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        signature = tuple(payload)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            current = self._read_payload_locked()
+            if tuple(current) != self._loaded_signature:
+                raise RuntimeError(
+                    "memória persistida mudou desde a última leitura; gravação concorrente recusada."
+                )
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self.path)
+            self._loaded_signature = signature
 
-    def load(self) -> OperationMemory:
-        memory = OperationMemory()
+    def _read_payload_locked(self) -> list[dict[str, object]]:
         if not self.path.exists():
-            return memory
+            return []
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("arquivo de memória inválido.") from exc
         if not isinstance(payload, list):
             raise ValueError("arquivo de memória deve conter uma lista.")
-        for item in payload:
-            memory.append(self._deserialize(item))
-        return memory
+        return payload
+
+
+    def load(self) -> OperationMemory:
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            memory = OperationMemory()
+            payload = self._read_payload_locked()
+            for item in payload:
+                memory.append(self._deserialize(item))
+            self._loaded_signature = tuple(payload)
+            return memory

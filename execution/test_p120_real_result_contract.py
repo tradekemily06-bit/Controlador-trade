@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
@@ -7,6 +8,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -23,8 +25,8 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -44,3 +46,4 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("missing-external-id").state.name == "UNKNOWN"

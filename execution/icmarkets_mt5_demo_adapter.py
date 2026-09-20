@@ -90,12 +90,22 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "requisição de execução inválida.")
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
-        if not math.isfinite(request.amount) or request.amount <= 0:
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)):
+            return ExecutionResult(False, "volume/amount inválido.")
+        if not math.isfinite(float(request.amount)) or request.amount <= 0:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+            return ExecutionResult(False, "duration_seconds deve ser um inteiro positivo.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id obrigatório para execução DEMO.")
 
         mt5 = self._module()
         if not mt5.initialize():

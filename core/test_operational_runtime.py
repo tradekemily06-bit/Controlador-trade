@@ -46,8 +46,12 @@ def test_pending_runtime_is_visible_and_blocks_operation(tmp_path):
 def test_unknown_runtime_is_critical_to_operation_and_surfaces_id(tmp_path):
     runtime = build_operational_runtime(tmp_path)
     service = EcosystemService(operational_runtime=runtime)
+    now = datetime.now(timezone.utc)
     runtime.execution_lifecycle.put(
-        ExecutionLifecycleRecord("req-unknown", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc))
+        ExecutionLifecycleRecord("req-unknown", ExecutionLifecycleState.PENDING, now)
+    )
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord("req-unknown", ExecutionLifecycleState.UNKNOWN, now)
     )
 
     snapshot = service.operational_observability()

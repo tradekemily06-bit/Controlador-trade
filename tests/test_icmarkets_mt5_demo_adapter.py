@@ -143,3 +143,27 @@ def test_missing_external_id_is_not_confirmed():
     assert result.accepted is False
     assert result.external_id is None
     assert len(fake.sent) == 1
+
+
+def test_invalid_amount_type_is_rejected_before_mt5_send():
+    fake = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request(amount=True))
+
+    assert result.accepted is False
+    assert fake.sent == []
+
+
+def test_invalid_duration_is_rejected_before_mt5_send():
+    fake = FakeMT5()
+    invalid = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=True,
+        mode=ExecutionMode.DEMO,
+        request_id="test-duration",
+    )
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(invalid)
+
+    assert result.accepted is False
+    assert fake.sent == []
