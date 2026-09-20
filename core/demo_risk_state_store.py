@@ -161,9 +161,6 @@ class DemoRiskStateStore:
                 finally:
                     if fd is not None:
                         os.close(fd)
-                with temporary.open("rb") as handle:
-                    handle.flush()
-                    os.fsync(handle.fileno())
                 os.replace(temporary, self.path)
                 try:
                     directory_fd = os.open(self.path.parent, os.O_RDONLY)
