@@ -27,19 +27,33 @@ class KillSwitchState:
 
 
 class KillSwitch:
-    """Fail-safe kill switch, optionally backed by a shared durable state file.
+    """Fail-safe kill switch with optional durable cross-process coordination.
 
-    A path-backed instance is the REAL-process boundary: every read refreshes
-    from durable state and every mutation is serialized with an inter-process
-    lock. The default in-memory mode is retained for DEMO/unit-test callers.
+    Path-backed REAL instances reload durable state on every read. When a
+    coordination lock is configured, activation/deactivation takes that
+    shared REAL barrier before changing state. REAL dispatch holds the same
+    barrier from its final kill-switch check through broker dispatch, so a
+    concurrent stop cannot slip between the check and the irreversible call.
     """
 
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        coordination_lock_path: str | Path | None = None,
+    ) -> None:
         self._path = Path(path) if path is not None else None
+        self._coordination_lock_path = (
+            Path(coordination_lock_path) if coordination_lock_path is not None else None
+        )
         self._state = KillSwitchState()
         if self._path is not None:
             self._validate_path()
             self._load()
+        elif self._coordination_lock_path is not None:
+            raise KillSwitchValidationError(
+                "coordenação do kill switch exige estado persistente."
+            )
 
     def _validate_path(self) -> None:
         if self._path is None:
@@ -47,6 +61,12 @@ class KillSwitch:
         if self._path.name in ("", ".", ".."):
             raise KillSwitchValidationError("caminho do kill switch inválido.")
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        if self._coordination_lock_path is not None:
+            if self._coordination_lock_path.name in ("", ".", ".."):
+                raise KillSwitchValidationError(
+                    "caminho de coordenação do kill switch inválido."
+                )
+            self._coordination_lock_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _lock_path(self) -> Path:
         assert self._path is not None
@@ -119,6 +139,18 @@ class KillSwitch:
         self._state = state
         return state
 
+    def _mutate_persisted(self, state: KillSwitchState) -> KillSwitchState:
+        assert self._path is not None
+        # Lock order is REAL coordination -> kill-switch state lock.
+        # REAL dispatch uses the same coordination barrier while holding the
+        # request lock, then reads the state without taking this state lock.
+        if self._coordination_lock_path is None:
+            with exclusive_file_lock(self._lock_path()):
+                return self._save_locked(state)
+        with exclusive_file_lock(self._coordination_lock_path):
+            with exclusive_file_lock(self._lock_path()):
+                return self._save_locked(state)
+
     @property
     def state(self) -> KillSwitchState:
         if self._path is not None:
@@ -131,8 +163,7 @@ class KillSwitch:
             self._state = state
             return state
         try:
-            with exclusive_file_lock(self._lock_path()):
-                return self._save_locked(state)
+            return self._mutate_persisted(state)
         except OSError as exc:
             raise KillSwitchValidationError(
                 f"não foi possível persistir o kill switch: {exc}"
@@ -144,8 +175,7 @@ class KillSwitch:
             self._state = state
             return state
         try:
-            with exclusive_file_lock(self._lock_path()):
-                return self._save_locked(state)
+            return self._mutate_persisted(state)
         except OSError as exc:
             raise KillSwitchValidationError(
                 f"não foi possível persistir o kill switch: {exc}"
