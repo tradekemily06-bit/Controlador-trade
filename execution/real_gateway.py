@@ -101,6 +101,12 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
+            if not result.dispatch_started:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"execução não iniciada, mas persistência da rejeição falhou: {exc}")
+                return RealGatewayResult(RealGatewayStatus.REJECTED, result.message)
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
