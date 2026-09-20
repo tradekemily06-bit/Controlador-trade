@@ -20,6 +20,7 @@ class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
+    uncertain: bool = False
 
 
 class BrokerAdapterGateway:
@@ -78,9 +79,9 @@ class BrokerAdapterGateway:
         except Exception as exc:
             if preserve_exceptions:
                 raise AdapterGatewayError(f"adapter REAL falhou após o despacho: {exc}") from exc
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}", ExecutionResult(False, f"adapter falhou; resultado externo incerto: {exc}", uncertain=True), True)
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
 
-        return AdapterExecutionResult(result.accepted, result.message, result)
+        return AdapterExecutionResult(result.accepted, result.message, result, result.uncertain)
