@@ -4,6 +4,7 @@ from multiprocessing import Process, Queue
 from pathlib import Path
 
 from core.models import Signal
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
