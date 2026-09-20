@@ -120,7 +120,7 @@ def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
     )
     checkpoint_request_id = store.load().last_request_id
     assert checkpoint_request_id is not None
-    assert checkpoint_request_id.startswith("runtime-session-2-000001-")
+    assert checkpoint_request_id == "runtime-session-2-000001"
 
 
 def test_checkpoint_requires_session_id(tmp_path) -> None:
