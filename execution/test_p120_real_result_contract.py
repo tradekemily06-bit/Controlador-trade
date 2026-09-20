@@ -36,7 +36,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake", authorization_id=auth.authorization_id,
+        broker_available=True, broker_id="fake", authorization_id=authorization.authorization_id,
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
