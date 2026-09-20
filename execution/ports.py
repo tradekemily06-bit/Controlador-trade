@@ -27,6 +27,7 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    ambiguous: bool = False
 
 
 class ExecutionPort(Protocol):
