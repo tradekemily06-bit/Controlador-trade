@@ -115,6 +115,8 @@ class OperationalSafetyStore:
         if len(encoded) > MAX_SAFETY_FILE_BYTES:
             raise ValueError("estado de segurança excede o limite permitido.")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        if temporary.exists():
+            raise RuntimeError("arquivo temporário do estado de segurança já existe")
         try:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
             if hasattr(os, "O_NOFOLLOW"):
