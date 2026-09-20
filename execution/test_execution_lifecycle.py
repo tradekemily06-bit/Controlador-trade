@@ -152,9 +152,8 @@ def test_lifecycle_refuses_symlinked_state_and_stale_temp(tmp_path):
     target.write_text("[]", encoding="utf-8")
     state = tmp_path / "lifecycle.json"
     state.symlink_to(target)
-    store = ExecutionLifecycleStore(state)
     with pytest.raises(ValueError, match="arquivo regular"):
-        store.put(ExecutionLifecycleRecord("req", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+        ExecutionLifecycleStore(state)
 
 def test_lifecycle_refuses_stale_temporary_file(tmp_path):
     from datetime import datetime, timezone
