@@ -232,3 +232,18 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_pre_dispatch_adapter_unavailable_is_not_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter(available=False)
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(broker="fake", request_id="unavailable", request=_request(), authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.REJECTED
+    assert ledger.status("unavailable") is ExecutionLedgerStatus.REJECTED
+    assert adapter.calls == 0
