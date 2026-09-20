@@ -74,6 +74,12 @@ class ExecutionGateway:
                 except (OSError,ValueError): pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR,"executor retornou resultado inválido; execução marcada como UNKNOWN.")
         if result.ambiguous:
+            if self._ledger is not None and result.external_id:
+                try:
+                    self._ledger.bind_external_id(request_id, result.external_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"resultado ambíguo e external_id não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "resultado ambíguo; referência externa não foi persistida.", result)
             self._mark_unknown(request_id, event_time, result.message)
             if self._ledger is not None:
                 try:
