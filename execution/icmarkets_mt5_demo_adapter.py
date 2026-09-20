@@ -176,9 +176,10 @@ class ICMarketsMT5DemoAdapter:
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
 
             if retcode in ambiguous_codes:
+                detail = "MT5 executou parcialmente" if retcode == getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None) else "MT5 retornou estado potencialmente externo/ambíguo"
                 return ExecutionResult(
                     False,
-                    f"MT5 retornou estado potencialmente externo/ambíguo: retcode={retcode}; reconciliação necessária.",
+                    f"{detail}: retcode={retcode}; reconciliação necessária.",
                     str(external_id) if external_id is not None else None,
                     ambiguous=True,
                 )
