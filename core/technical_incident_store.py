@@ -62,26 +62,43 @@ class TechnicalIncidentStore:
 
     def _write(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do incidente técnico não pode ser symlink")
+        if self.path.exists():
+            stat = self.path.lstat()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise OSError("estado de incidente técnico deve ser um arquivo regular")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         if len(encoded) > MAX_INCIDENT_FILE_BYTES:
             raise ValueError("estado de incidente técnico excede o limite permitido")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
         try:
-            temporary.write_bytes(encoded)
-            with temporary.open("r+b") as handle:
-                handle.flush(); os.fsync(handle.fileno())
+            try:
+                fd = os.open(temporary, flags, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    fd = None
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except FileExistsError as exc:
+                raise RuntimeError("arquivo temporário do incidente técnico já existe") from exc
             os.replace(temporary, self.path)
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
             try:
-                directory_fd = os.open(self.path.parent, os.O_RDONLY)
-            except OSError:
-                directory_fd = None
-            if directory_fd is not None:
-                try: os.fsync(directory_fd)
-                finally: os.close(directory_fd)
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
+            if fd is not None:
+                os.close(fd)
             try:
-                if temporary.exists(): temporary.unlink()
-            except OSError: pass
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
     def status(self) -> dict[str, object]:
         with self._lock_local, self._file_lock():
