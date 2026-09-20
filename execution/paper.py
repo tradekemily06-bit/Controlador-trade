@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+
+from core.models import Signal
 from datetime import datetime, timezone
 
 from execution.ports import (
@@ -25,6 +28,10 @@ class PaperExecutor:
         self._next_id = 1
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "requisição de execução inválida.")
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(
                 accepted=False,
@@ -37,13 +44,13 @@ class PaperExecutor:
                 message="Símbolo não pode ser vazio.",
             )
 
-        if request.amount <= 0:
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(float(request.amount)) or request.amount <= 0:
             return ExecutionResult(
                 accepted=False,
                 message="Valor da execução deve ser positivo.",
             )
 
-        if request.duration_seconds <= 0:
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return ExecutionResult(
                 accepted=False,
                 message="Duração deve ser positiva.",
