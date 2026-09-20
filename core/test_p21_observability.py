@@ -55,7 +55,7 @@ def test_unknown_runtime_is_blocked(tmp_path):
 
 def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     monitor, lifecycle, _ = build(tmp_path)
-    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc)))
+    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))\n    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc)))
     health = monitor.assess()
     assert health.state is HealthState.ATTENTION
     assert health.recovery_state is RecoveryState.REQUIRES_RECONCILIATION
