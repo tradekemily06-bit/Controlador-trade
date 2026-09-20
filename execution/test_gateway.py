@@ -174,7 +174,7 @@ def test_gateway_with_ledger_persists_unknown_after_executor_exception(tmp_path)
             raise RuntimeError("falha depois da entrada no executor")
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), ledger=ledger, allow_ephemeral=True)
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), ledger=ledger, lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     result = gateway.execute("req-unknown", request())
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
@@ -217,7 +217,7 @@ def test_gateway_durably_binds_external_id_before_terminal_acceptance(tmp_path):
             return ExecutionResult(True, "accepted", "BROKER-42")
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = ExecutionGateway(ExternalExecutor(), KillSwitch(), ledger=ledger, allow_ephemeral=True)
+    gateway = ExecutionGateway(ExternalExecutor(), KillSwitch(), ledger=ledger, lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
 
     result = gateway.execute("req-external", request())
 
