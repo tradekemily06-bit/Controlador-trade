@@ -75,12 +75,33 @@ class OperationMemoryStore:
             raise ValueError("arquivo de memória excede o limite permitido.")
         with exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock")):
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+                raise OSError("diretório da memória não pode ser symlink")
+            if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+                raise OSError("arquivo de memória deve ser regular")
             temporary = self.path.with_name(f".{self.path.name}.tmp")
             try:
-                temporary.write_bytes(encoded)
-                with temporary.open("rb") as handle:
-                    os.fsync(handle.fileno())
-                os.replace(temporary, self.path)
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                fd = None
+                try:
+                    fd = os.open(temporary, flags, 0o600)
+                    with os.fdopen(fd, "wb") as handle:
+                        fd = None
+                        handle.write(encoded)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(temporary, self.path)
+                except FileExistsError as exc:
+                    raise RuntimeError("arquivo temporário da memória já existe") from exc
+                finally:
+                    if fd is not None:
+                        os.close(fd)
+                    try:
+                        temporary.unlink()
+                    except FileNotFoundError:
+                        pass
                 directory_fd = os.open(self.path.parent, os.O_RDONLY)
                 try:
                     os.fsync(directory_fd)
