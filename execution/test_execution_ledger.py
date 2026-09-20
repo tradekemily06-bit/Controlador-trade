@@ -107,3 +107,13 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+def test_reconcile_not_executed_rejects_external_id(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1")
+
+    with pytest.raises(ValueError, match="NOT_EXECUTED"):
+        ledger.reconcile("req-1", executed=False, external_id="broker-1")
+
+    assert ledger.status("req-1") is ExecutionLedgerStatus.RESERVED
+    assert ledger.external_id("req-1") is None
