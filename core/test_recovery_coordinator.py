@@ -35,6 +35,7 @@ def test_checkpoint_allows_safe_resume(tmp_path):
 def test_unknown_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now, "uncertain"))
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
