@@ -627,9 +627,9 @@ def test_reconcile_repairs_ledger_rejected_lifecycle_pending_crash_window(tmp_pa
         lifecycle,
         KillSwitch(),
     )
-    gateway.reconcile_unknown("crash-rejected", reconciler=FakeReconciler("crash-rejected", executed=False))
+    gateway.recover_lifecycle_from_durable_rejection("crash-rejected")
 
-    assert ledger.status("crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    assert ledger.status("crash-rejected") is ExecutionLedgerStatus.REJECTED
     assert lifecycle.get("crash-rejected").state is ExecutionLifecycleState.REJECTED
 
 
