@@ -12,6 +12,7 @@ from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPAB
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.execution_coordination import ExecutionCoordinationLock
+from execution.real_reconciliation import RealReconciliationPort, validate_observation
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -271,12 +272,31 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile an uncertain request without any replay."""
-        with self._coordination.acquire():
-            self._reconcile_unknown_locked(request_id, executed=executed)
+    def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort) -> None:
+        """Reconcile UNKNOWN/RESERVED from read-only external broker evidence.
 
-    def _reconcile_unknown_locked(self, request_id: str, *, executed: bool) -> None:
+        Reconciliation never redispatches the request. A naked executed=True/False
+        is deliberately not accepted because it is not evidence of broker state.
+        """
+        with self._coordination.acquire():
+            self._reconcile_unknown_locked(request_id, reconciler=reconciler)
+
+    def _reconcile_unknown_locked(
+        self,
+        request_id: str,
+        *,
+        reconciler: RealReconciliationPort,
+    ) -> None:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if reconciler is None or not callable(getattr(reconciler, "lookup", None)):
+            raise ValueError("reconciler REAL somente leitura é obrigatório.")
+
+        observation = reconciler.lookup(request_id)
+        if not validate_observation(request_id, observation):
+            raise ValueError("evidência externa de reconciliação inválida ou contraditória.")
+
+        executed = observation.executed
         ledger_status = self._ledger.status(request_id)
         lifecycle = self._lifecycle.get(request_id)
         desired_ledger = (
@@ -303,15 +323,8 @@ class RealExecutionGateway:
         ):
             raise ValueError("request_id não está em estado reconciliável.")
 
-        now = datetime.now(timezone.utc)
-        if lifecycle is None:
-            # Ledger-only crash window: the external outcome is being reconciled
-            # explicitly. Create the terminal Lifecycle record only after the
-            # Ledger reconciliation below; never invent a PENDING/UNKNOWN record
-            # through the normal put() transition path.
-            lifecycle_missing = True
-        else:
-            lifecycle_missing = False
+        now = observation.observed_at
+        lifecycle_missing = lifecycle is None
 
         if lifecycle is not None and lifecycle.state not in (
             ExecutionLifecycleState.UNKNOWN,
@@ -320,17 +333,8 @@ class RealExecutionGateway:
         ):
             raise ValueError("ciclo de execução não está em estado reconciliável.")
 
-        # A terminal Ledger state is authoritative evidence that the external
-        # side-effect was already classified. A crash can occur after the
-        # Ledger commit but before the Lifecycle commit, leaving PENDING on the
-        # second store. In that case synchronization is safe and must never
-        # redispatch the broker request.
         if ledger_status is not desired_ledger:
             self._ledger.reconcile(request_id, executed=executed)
-            # The transition above is now durable. Use the post-reconciliation
-            # state when deciding whether the Lifecycle PENDING crash window can
-            # be closed; using the stale pre-repair state would reject a valid
-            # terminal-Ledger/PENDING-Lifecycle repair.
             ledger_status = desired_ledger
 
         if lifecycle_missing:
@@ -338,24 +342,36 @@ class RealExecutionGateway:
                 request_id,
                 desired_lifecycle,
                 updated_at=now,
-                message="ciclo criado durante reconciliação de um Ledger sem Lifecycle; nenhum replay permitido.",
+                message=(
+                    "ciclo criado durante reconciliação baseada em evidência externa "
+                    f"somente leitura ({observation.source}); nenhum replay permitido."
+                ),
             )
             return
 
-        if lifecycle.state is not desired_lifecycle:
-            if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
-                self._lifecycle.reconcile_pending(
-                    request_id,
-                    desired_lifecycle,
-                    updated_at=now,
-                    message="ciclo sincronizado após janela de crash entre Ledger e Lifecycle.",
-                )
-            elif lifecycle.state is ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.reconcile(
-                    request_id,
-                    desired_lifecycle,
-                    updated_at=now,
-                    message="reconciliação REAL explícita.",
-                )
-            else:
-                raise ValueError("Ledger e Lifecycle não formam uma combinação reconciliável.")
+        if lifecycle.state is desired_lifecycle:
+            return
+
+        if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
+            self._lifecycle.reconcile_pending(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message=(
+                    "ciclo sincronizado após janela de crash usando evidência externa "
+                    f"somente leitura ({observation.source})."
+                ),
+            )
+        elif lifecycle.state is ExecutionLifecycleState.UNKNOWN:
+            self._lifecycle.reconcile(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message=(
+                    "reconciliação REAL baseada em evidência externa somente leitura "
+                    f"({observation.source})."
+                ),
+            )
+        else:
+            raise ValueError("Ledger e Lifecycle não formam uma combinação reconciliável.")
+
