@@ -48,3 +48,24 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_terminal_states_cannot_be_reopened(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    for state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN):
+        with pytest.raises(ValueError, match="transição"):
+            store.put(ExecutionLifecycleRecord("req-1", state, now))
+
+
+def test_rejected_is_terminal(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="transição"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
