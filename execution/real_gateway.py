@@ -120,6 +120,15 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if result.execution.ambiguous:
+            if result.execution.external_id:
+                try:
+                    self._ledger.bind_external_id(request_id, result.execution.external_id)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        f"resultado REAL ambíguo e external_id não foi persistido: {exc}",
+                        result.execution,
+                    )
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError) as exc:
@@ -151,6 +160,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
+            self._ledger.bind_external_id(request_id, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
