@@ -50,7 +50,7 @@ class AppSecurityTests(unittest.TestCase):
         payload = {"value": "x" * (MAX_BODY_BYTES + 1)}
         status, _, body = self.request("/api/analyze", method="POST", payload=payload)
         self.assertEqual(status, "400 Bad Request")
-        self.assertIn(b"Entrada invÃ¡lida", body)
+        self.assertIn("Entrada inválida".encode("utf-8"), body)
 
     def test_oversized_path_is_bounded_in_audit_and_does_not_break_response(self):
         path = "/api/" + ("x" * (MAX_SECURITY_PATH_LENGTH + 500))
