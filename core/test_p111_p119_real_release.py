@@ -202,7 +202,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     gateway = _gateway(tmp_path, registry, ExecutionLedger(tmp_path / "ledger.json"))
-    auth = RealExecutionAuthorization("a", "audit", "fake", "adapter", False, False)
+    auth = RealExecutionAuthorization("a", "audit", "fake", "fake", False, False)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
