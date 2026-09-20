@@ -238,6 +238,40 @@ def test_uncertain_reconciliation_without_durable_external_id_fails_closed(tmp_p
     assert lifecycle.get(request_id).state is ExecutionLifecycleState.UNKNOWN
 
 
+def test_locked_reconciliation_requires_external_identity_after_state_snapshot(tmp_path, monkeypatch):
+    ledger, lifecycle = build(tmp_path)
+    request_id = "req-locked-no-bound-id"
+    now = datetime.now(timezone.utc)
+    ledger.reserve(request_id)
+    ledger.mark_unknown(request_id)
+    lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
+
+    coordinator = ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle)
+    original_external_id = ledger.external_id
+    calls = {"count": 0}
+
+    def disappear_after_snapshot(request):
+        calls["count"] += 1
+        # First read is the pre-lock snapshot; subsequent reads simulate the
+        # identity still being absent when the durable locks are actually held.
+        if calls["count"] == 1:
+            return original_external_id(request)
+        return None
+
+    monkeypatch.setattr(ledger, "external_id", disappear_after_snapshot)
+
+    with pytest.raises(ValueError, match="external_id durável ausente"):
+        coordinator.reconcile(
+            request_id,
+            "ext-unproven-locked",
+            ExternalOrderObservation("ext-unproven-locked", ExternalOrderStatus.EXECUTED, "filled"),
+            updated_at=now,
+        )
+
+    assert ledger.status(request_id) is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get(request_id).state is ExecutionLifecycleState.UNKNOWN
+
+
 def test_terminal_ledger_with_bound_external_id_rejects_foreign_external_fact(tmp_path):
     ledger, lifecycle = build(tmp_path)
     request_id = "req-terminal-bound"
