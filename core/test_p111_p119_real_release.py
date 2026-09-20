@@ -112,6 +112,37 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert p119.state is RealReleaseState.RELEASED
 
 
+def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    kill_switch = KillSwitch()
+    kill_switch.activate("emergência")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        kill_switch,
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    # Deliberately provide a stale READY snapshot: the live switch must still win.
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="kill-switch-race",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("kill-switch-race") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
 def test_real_authorization_is_explicit():
     try:
         RealExecutionAuthorization("a", "audit", "broker", "adapter", False, True)
