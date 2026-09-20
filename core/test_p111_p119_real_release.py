@@ -165,7 +165,7 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
 
 def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", UnknownAdapter())
+    registry.register("fake", UnknownAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     auth = _authorization()
