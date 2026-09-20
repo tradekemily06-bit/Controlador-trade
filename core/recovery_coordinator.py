@@ -53,6 +53,53 @@ class RecoveryCoordinator:
         self.execution_ledger = execution_ledger
         self.memory = memory
 
+    def repair_terminal_divergence(self) -> tuple[str, ...]:
+        """Repair only lifecycle states that can be reconstructed from a terminal ledger.
+
+        This is an explicit recovery action, never an execution action. It does not
+        query or resubmit a broker order and refuses unresolved/mismatched states.
+        """
+        lifecycle_by_id = self.lifecycle_store.snapshot()
+        ledger_states = self.execution_ledger.snapshot()
+        repaired: list[str] = []
+        now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+        for request_id, ledger_state in ledger_states.items():
+            if ledger_state not in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                continue
+            current = lifecycle_by_id.get(request_id)
+            if current is not None and current.state in (
+                ExecutionLifecycleState.ACCEPTED,
+                ExecutionLifecycleState.REJECTED,
+            ):
+                if (
+                    (ledger_state in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED)
+                     and current.state is ExecutionLifecycleState.ACCEPTED)
+                    or
+                    (ledger_state in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED)
+                     and current.state is ExecutionLifecycleState.REJECTED)
+                ):
+                    continue
+                raise ValueError(f"divergência terminal irreconciliável para {request_id}.")
+            if ledger_state in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
+                if not self.execution_ledger.external_id(request_id):
+                    raise ValueError(f"ledger terminal aceito sem external_id para {request_id}.")
+                target = ExecutionLifecycleState.ACCEPTED
+            else:
+                target = ExecutionLifecycleState.REJECTED
+            self.lifecycle_store.repair_from_durable_terminal(
+                request_id,
+                target,
+                updated_at=now,
+                message="lifecycle reconstruído a partir do estado terminal durável do ledger",
+            )
+            repaired.append(request_id)
+        return tuple(sorted(repaired))
+
     def assess(self) -> RecoveryAssessment:
         try:
             checkpoint = self.checkpoint_store.load()
