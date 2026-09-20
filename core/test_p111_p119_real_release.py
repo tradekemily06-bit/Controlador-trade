@@ -396,6 +396,35 @@ def test_real_accepted_ledger_can_recover_lifecycle_after_crash(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_rejection_can_recover_lifecycle_after_crash(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+
+    ledger.reserve("recover-rejected")
+    ledger.mark_rejected("recover-rejected")
+    lifecycle.put(ExecutionLifecycleRecord("recover-rejected", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "crash before lifecycle terminal write"))
+
+    gateway.recover_lifecycle_from_durable_rejection("recover-rejected")
+    assert ledger.status("recover-rejected") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("recover-rejected").state is ExecutionLifecycleState.REJECTED
+    assert registry.get("fake").calls == 0
+
+
+def test_real_rejection_recovery_repairs_missing_lifecycle_without_external_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle, KillSwitch())
+
+    ledger.reserve("missing-rejected")
+    ledger.mark_rejected("missing-rejected")
+
+    gateway.recover_lifecycle_from_durable_rejection("missing-rejected")
+    assert lifecycle.get("missing-rejected").state is ExecutionLifecycleState.REJECTED
+
+
 def test_real_acceptance_persists_lifecycle_terminal_state(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
