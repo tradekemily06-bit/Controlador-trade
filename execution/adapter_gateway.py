@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import weakref
 
-from core.p121_external_order_reconciliation import ExternalOrderQueryPort
+from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderRequestQueryPort
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -66,6 +66,29 @@ class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
+
+
+class _RealRequestQueryCapability:
+    def __init__(self, registry: BrokerRegistry, broker: str, adapter: object, adapter_id: str) -> None:
+        self._registry, self._broker, self._adapter, self._adapter_id = registry, broker, adapter, adapter_id
+
+    def _valid(self) -> bool:
+        try:
+            registered = self._registry.get(self._broker)
+        except BrokerRegistryError:
+            return False
+        return (registered is self._adapter and getattr(self._adapter, "supports_real_execution", False) is True
+                and isinstance(getattr(self._adapter, "adapter_id", None), str)
+                and self._adapter.adapter_id.strip().lower() == self._adapter_id.strip().lower()
+                and isinstance(self._adapter, ExternalOrderRequestQueryPort))
+
+    def query_order_by_request_id(self, request_id: str):
+        if not self._valid():
+            raise ValueError("capacidade de consulta por request_id mudou; reconciliação bloqueada.")
+        result = self._adapter.query_order_by_request_id(request_id)
+        if not self._valid():
+            raise ValueError("capacidade de consulta por request_id mudou durante a consulta; reconciliação bloqueada.")
+        return result
 
 
 class BrokerAdapterGateway:
@@ -211,6 +234,22 @@ class BrokerAdapterGateway:
         if not isinstance(adapter, ExternalOrderQueryPort):
             return None
         return _RealQueryCapability(self._registry, broker, adapter, adapter_id.strip())
+
+    def real_request_query_port(self, broker: str, *, expected_adapter_id: str) -> ExternalOrderRequestQueryPort | None:
+        if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
+            return None
+        try:
+            adapter = self._registry.get(broker)
+        except BrokerRegistryError:
+            return None
+        if getattr(adapter, "supports_real_execution", False) is not True:
+            return None
+        adapter_id = getattr(adapter, "adapter_id", None)
+        if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
+            return None
+        if not callable(getattr(adapter, "query_order_by_request_id", None)) or not isinstance(adapter, ExternalOrderRequestQueryPort):
+            return None
+        return _RealRequestQueryCapability(self._registry, broker, adapter, adapter_id.strip())
 
     def _dispatch(
         self,
