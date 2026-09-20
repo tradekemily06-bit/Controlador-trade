@@ -57,22 +57,47 @@ class RecoveryCoordinator:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
-            ledger_ids = set(self.execution_ledger.records())
+            ledger_ids = self.execution_ledger.records()
+            ledger_states = {request_id: self.execution_ledger.status(request_id) for request_id in ledger_ids}
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
-        pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+        pending_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.PENDING}
+        unknown_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.UNKNOWN}
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        ledger_uncertain = {
+            request_id
+            for request_id, state in ledger_states.items()
+            if state is not None and state.value in {"RESERVED", "UNKNOWN"}
+        }
+        ledger_terminal = {
+            request_id
+            for request_id, state in ledger_states.items()
+            if state is not None and state.value in {"ACCEPTED", "REJECTED"}
+        }
+
+        inconsistent = set()
+        inconsistent.update(record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.ACCEPTED and ledger_states.get(record.request_id) is None)
+        inconsistent.update(record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.REJECTED and ledger_states.get(record.request_id) is None)
+        inconsistent.update(ledger_terminal - set(lifecycle_by_id))
+        inconsistent.update(
+            request_id
+            for request_id in ledger_uncertain
+            if lifecycle_by_id.get(request_id) is None
+            or lifecycle_by_id[request_id].state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN)
+        )
+
+        pending = tuple(sorted(pending_ids))
+        unknown = tuple(sorted(unknown_ids | ledger_uncertain))
         if unknown or pending or inconsistent:
             details = []
             if unknown:
-                details.append("UNKNOWN requer reconciliação")
+                details.append("UNKNOWN/RESERVED requer reconciliação")
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("ledger e lifecycle divergentes")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
