@@ -166,11 +166,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
+    def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str | None = None) -> None:
         """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
