@@ -264,8 +264,16 @@ class ExecutionLedger:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-                raise ValueError(f"transição inválida de {current.value} para {status.value}.")
+            allowed_sources = (
+                (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+                if status is ExecutionLedgerStatus.UNKNOWN
+                else (ExecutionLedgerStatus.RESERVED,)
+            )
+            if current not in allowed_sources:
+                raise ValueError(
+                    f"transição inválida de {current.value} para {status.value}; "
+                    "estado UNKNOWN só pode sair por reconcile()."
+                )
             self._states[request_id] = status
 
         self._mutate_locked(mutation)
