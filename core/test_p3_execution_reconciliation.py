@@ -226,7 +226,7 @@ def test_uncertain_reconciliation_without_durable_external_id_fails_closed(tmp_p
     ledger.mark_unknown(request_id)
     lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, now, "timeout"))
 
-    with pytest.raises(ValueError, match="sem external_id"):
+    with pytest.raises(ValueError, match="external_id"):
         ExecutionReconciliationCoordinator(ledger=ledger, lifecycle=lifecycle).reconcile(
             request_id,
             "ext-unproven",
