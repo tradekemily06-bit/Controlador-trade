@@ -27,6 +27,14 @@ def test_unknown_blocks_implicit_transition(tmp_path):
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
 
 
+def test_snapshot_is_lock_consistent(tmp_path: Path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    snapshot = store.snapshot()
+    assert snapshot["req-1"].state is ExecutionLifecycleState.PENDING
+
+
 def test_new_cycle_cannot_start_terminal_or_unknown(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
