@@ -45,14 +45,8 @@ def main() -> None:
         if check is None or getattr(check, "retcode", 0) != 0:
             print("FECHAMENTO BLOQUEADO: order_check não aprovado.")
             return
-        result = mt5.order_send(request)
-        print(f"CLOSE_ORDER_RESULT={result}")
-        if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
-            print("FECHAMENTO NÃO CONFIRMADO pelo MT5.")
-            return
-        remaining = mt5.positions_get(symbol=SYMBOL) or ()
-        remaining_ours = [p for p in remaining if getattr(p, "magic", None) == MAGIC]
-        print(f"CLOSE_CONFIRMED=True; REMAINING_CONTROLADOR_POSITIONS={len(remaining_ours)}; DEMO_ONLY=True; REAL=False")
+        print("FECHAMENTO NÃO EXECUTADO: este utilitário é somente leitura e não chama order_send().")
+        print("USE_THE_EXECUTION_GATEWAY=True; DEMO_ONLY=True; REAL=False")
     finally:
         mt5.shutdown()
 
