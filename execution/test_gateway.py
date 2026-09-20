@@ -249,3 +249,13 @@ def test_gateway_does_not_downgrade_durable_acceptance_when_lifecycle_persist_fa
     assert lifecycle.get("req-lifecycle-crash").state is ExecutionLifecycleState.PENDING
 
 
+
+def test_gateway_requires_durable_state_by_default():
+    try:
+        ExecutionGateway(PaperExecutor(), KillSwitch())
+    except ValueError as exc:
+        assert "estado durável" in str(exc)
+    else:
+        raise AssertionError("gateway de produção não pode operar sem Ledger + Lifecycle")
+
+
