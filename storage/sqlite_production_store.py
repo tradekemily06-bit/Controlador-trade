@@ -28,8 +28,13 @@ class SQLiteProductionStore:
 
     def _reject_symlinked_database(self) -> None:
         try:
-            if self._path.is_symlink():
-                raise RuntimeError("production database cannot be a symbolic link")
+            parent = self._path.parent
+            if parent.resolve(strict=True) != parent.absolute():
+                raise RuntimeError("production database directory cannot be a symbolic link")
+            if self._path.exists():
+                stat = self._path.lstat()
+                if self._path.is_symlink() or not self._path.is_file():
+                    raise RuntimeError("production database must be a regular file")
         except OSError as exc:
             raise RuntimeError("production database could not be inspected") from exc
 
