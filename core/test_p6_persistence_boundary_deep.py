@@ -98,3 +98,22 @@ def test_decision_store_rejects_symlinked_parent(tmp_path):
     parent = _symlinked_parent(tmp_path)
     with pytest.raises(RuntimeError):
         DecisionStore(str(parent / "decisions.db"))
+
+
+from core.technical_incident_store import TechnicalIncidentStore
+from datetime import datetime, timezone
+
+
+def test_technical_incident_rejects_symlinked_parent(tmp_path):
+    parent = _symlinked_parent(tmp_path)
+    store = TechnicalIncidentStore(parent / "incident.json")
+    with pytest.raises(RuntimeError):
+        store.open("incident-1", "test", now=datetime.now(timezone.utc))
+
+
+def test_technical_incident_refuses_stale_temp(tmp_path):
+    state = tmp_path / "incident.json"
+    (tmp_path / ".incident.json.tmp").write_text("stale")
+    store = TechnicalIncidentStore(state)
+    with pytest.raises(RuntimeError):
+        store.open("incident-1", "test", now=datetime.now(timezone.utc))
