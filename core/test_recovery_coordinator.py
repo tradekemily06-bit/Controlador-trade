@@ -55,6 +55,7 @@ def test_pending_requires_verification(tmp_path):
 def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
@@ -74,6 +75,30 @@ def test_ledger_terminal_without_lifecycle_is_reconciliation_required(tmp_path):
     coordinator.execution_ledger.reserve("req-ledger")
     coordinator.execution_ledger.mark_rejected("req-ledger")
     result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+
+
+def test_terminal_state_mismatch_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.PENDING, now))
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_rejected("req-mismatch")
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.ACCEPTED, now))
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "divergentes" in result.message
+
+
+def test_reconciled_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+
+    result = coordinator.assess()
+
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
