@@ -23,7 +23,8 @@ def request() -> ExecutionRequest:
 def test_ledger_survives_restart(tmp_path: Path):
     path = tmp_path / "ledger.json"
     first = ExecutionLedger(path)
-    first.record("req-001")
+    first.reserve("req-001")
+    first.mark_accepted("req-001")
 
     restored = ExecutionLedger(path)
     assert restored.contains("req-001") is True
