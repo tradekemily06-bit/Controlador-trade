@@ -22,6 +22,7 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from execution.real_execution_locks import RealExecutionLocks
 
 
 class FakeAdapter:
@@ -185,7 +186,10 @@ def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    kill_switch = KillSwitch()
+    kill_switch = KillSwitch(
+        tmp_path / "real-kill-switch.json",
+        coordination_lock_path=RealExecutionLocks(tmp_path / "ledger.json").global_lock_path,
+    )
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(registry),
         ExecutionLedger(tmp_path / "ledger.json"),
