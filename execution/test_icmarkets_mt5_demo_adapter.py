@@ -56,9 +56,9 @@ class FakeMT5:
         return (1, "fake error")
 
 
-def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA):
+def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA, symbol="EURUSD"):
     return ExecutionRequest(
-        symbol="EURUSD",
+        symbol=symbol,
         signal=signal,
         amount=0.01,
         duration_seconds=60,
@@ -122,7 +122,9 @@ def test_demo_adapter_blocks_configured_symbol_substitution():
     result = adapter.execute(request(symbol="GBPUSD"))
     assert result.accepted is False
     assert "difere" in result.message
-    assert not any(call[0] == "order_send" for call in mt5.calls)
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
+    )
 
 
 def test_demo_adapter_blocks_invalid_signal():
@@ -132,4 +134,6 @@ def test_demo_adapter_blocks_invalid_signal():
     result = adapter.execute(malformed)
     assert result.accepted is False
     assert "sinal" in result.message
-    assert not any(call[0] == "order_send" for call in mt5.calls)
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
+    )
