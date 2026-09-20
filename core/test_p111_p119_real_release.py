@@ -587,3 +587,130 @@ def test_real_adapter_exception_is_unknown_not_rejected(tmp_path: Path):
     assert ledger.status("adapter-timeout") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("adapter-timeout").state is ExecutionLifecycleState.UNKNOWN
     assert adapter.calls == 1
+
+
+def test_real_accept_persist_crash_keeps_request_uncertain_until_reconciliation(tmp_path: Path):
+    class FailOnTerminalLifecycleStore(ExecutionLifecycleStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.calls = 0
+
+        def put(self, record):
+            self.calls += 1
+            if self.calls == 2:
+                raise OSError("simulated lifecycle persistence crash")
+            return super().put(record)
+
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = FailOnTerminalLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="persist-crash-accepted",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="persist-crash-accepted",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("persist-crash-accepted").state is ExecutionLifecycleState.PENDING
+    assert adapter.calls == 1
+
+    blocked = gateway.execute(
+        broker="fake",
+        request_id="new-after-crash",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert blocked.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 1
+
+    gateway.reconcile_unknown("persist-crash-accepted", executed=True)
+    assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("persist-crash-accepted").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(tmp_path: Path):
+    class RejectingAdapter(FakeAdapter):
+        def execute(self, request):
+            self.calls += 1
+            return ExecutionResult(False, "broker rejeitou", None)
+
+    class FailOnTerminalLifecycleStore(ExecutionLifecycleStore):
+        def __init__(self, path):
+            super().__init__(path)
+            self.calls = 0
+
+        def put(self, record):
+            self.calls += 1
+            if self.calls == 2:
+                raise OSError("simulated lifecycle persistence crash")
+            return super().put(record)
+
+    registry = BrokerRegistry()
+    adapter = RejectingAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = FailOnTerminalLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="persist-crash-rejected",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="persist-crash-rejected",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.PENDING
+    assert adapter.calls == 1
+
+    blocked = gateway.execute(
+        broker="fake",
+        request_id="new-after-reject-crash",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert blocked.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 1
+
+    gateway.reconcile_unknown("persist-crash-rejected", executed=False)
+    assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.REJECTED
