@@ -75,7 +75,12 @@ class ExecutionLifecycleStore:
     @staticmethod
     def _allowed(current: ExecutionLifecycleState | None, target: ExecutionLifecycleState) -> bool:
         if current is None:
-            return target is ExecutionLifecycleState.PENDING
+            return target in {
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.ACCEPTED,
+                ExecutionLifecycleState.REJECTED,
+                ExecutionLifecycleState.UNKNOWN,
+            }
         return target in {
             ExecutionLifecycleState.PENDING: {
                 ExecutionLifecycleState.ACCEPTED,
@@ -155,7 +160,7 @@ class ExecutionLifecycleStore:
                 "updated_at": r.updated_at.isoformat(),
                 "message": r.message,
             }
-            for r in self.records()
+            for r in tuple(self._records[key] for key in sorted(self._records))
         ]
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
