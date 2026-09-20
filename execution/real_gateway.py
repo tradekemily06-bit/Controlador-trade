@@ -217,8 +217,7 @@ class RealExecutionGateway:
                         ExecutionLifecycleState.UNKNOWN,
                         datetime.now(timezone.utc),
                         f"resultado REAL incerto: {type(exc).__name__}: {exc}",
-                    )
-                )
+                    )                )
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
@@ -351,6 +350,40 @@ class RealExecutionGateway:
     ) -> None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
+        ledger_status = self._ledger.status(request_id)
+        lifecycle = self._lifecycle.get(request_id)
+
+        # A durable local rejection is already conclusive evidence that this
+        # gateway did not authorize a dispatch. Repairing only the local
+        # Lifecycle must not depend on a broker query that can fail or lie.
+        if ledger_status in (
+            ExecutionLedgerStatus.REJECTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.REJECTED:
+                return
+            if lifecycle is not None and lifecycle.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("ciclo de execução não está em estado reconciliável.")
+            message = "Lifecycle reparado a partir de rejeição durável local; nenhum dispatch ou consulta externa necessária."
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id,
+                    ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                )
+            else:
+                self._lifecycle.reconcile_pending(
+                    request_id,
+                    ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                )
+            return
+
         if reconciler is None or not callable(getattr(reconciler, "lookup", None)):
             raise ValueError("reconciler REAL somente leitura é obrigatório.")
 
@@ -441,4 +474,3 @@ class RealExecutionGateway:
             )
         else:
             raise ValueError("Ledger e Lifecycle não formam uma combinação reconciliável.")
-
