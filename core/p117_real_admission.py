@@ -15,10 +15,11 @@ class RealAdmission:
     audit_id: str
     status: RealAdmissionStatus
     broker_id: str
+    authorization_id: str
     reasons: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        for name in ("admission_id", "audit_id", "broker_id"):
+        for name in ("admission_id", "audit_id", "broker_id", "authorization_id"):
             value = getattr(self, name)
             if type(value) is not str or not value.strip() or value != value.strip():
                 raise ValueError(f"{name} inválido.")
@@ -41,11 +42,12 @@ class RealAdmission:
 class RealAdmissionBoundary:
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
-              broker_available: bool, broker_id: str) -> RealAdmission:
+              broker_available: bool, broker_id: str, authorization_id: str) -> RealAdmission:
         for name, value in (
             ("admission_id", admission_id),
             ("audit_id", audit_id),
             ("broker_id", broker_id),
+            ("authorization_id", authorization_id),
         ):
             if type(value) is not str or not value.strip():
                 raise ValueError(f"{name} é obrigatório.")
@@ -62,4 +64,4 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id.strip(), audit_id.strip(), status, broker_id.strip(), tuple(reasons))
+        return RealAdmission(admission_id.strip(), audit_id.strip(), status, broker_id.strip(), authorization_id.strip(), tuple(reasons))
