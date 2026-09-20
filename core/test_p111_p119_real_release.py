@@ -714,3 +714,20 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
     gateway.reconcile_unknown("persist-crash-rejected", executed=False)
     assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
     assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.REJECTED
+
+
+def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_dispatch(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("ledger-only")
+    ledger.mark_unknown("ledger-only")
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+    )
+    gateway.reconcile_unknown("ledger-only", executed=True)
+
+    assert ledger.status("ledger-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
