@@ -49,22 +49,24 @@ class RuntimeCheckpointStore:
 
 
     def load(self) -> RuntimeCheckpoint | None:
-        if not self.path.exists():
-            return None
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                raise ValueError
-            checkpoint = RuntimeCheckpoint(
-                session_id=data["session_id"],
-                last_cycle=data["last_cycle"],
-                last_request_id=data.get("last_request_id"),
-                updated_at=datetime.fromisoformat(data["updated_at"]),
-            )
-            self._validate(checkpoint)
-            return checkpoint
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise ValueError("checkpoint de runtime inválido.") from exc
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            if not self.path.exists():
+                return None
+            try:
+                data = json.loads(self.path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError
+                checkpoint = RuntimeCheckpoint(
+                    session_id=data["session_id"],
+                    last_cycle=data["last_cycle"],
+                    last_request_id=data.get("last_request_id"),
+                    updated_at=datetime.fromisoformat(data["updated_at"]),
+                )
+                self._validate(checkpoint)
+                return checkpoint
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+                raise ValueError("checkpoint de runtime inválido.") from exc
 
     @staticmethod
     def _validate(checkpoint: RuntimeCheckpoint) -> None:
