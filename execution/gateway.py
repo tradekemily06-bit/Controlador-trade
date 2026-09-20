@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -157,7 +158,6 @@ class ExecutionGateway:
             return "Símbolo não pode ser vazio."
         if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)):
             return "Valor da execução é inválido."
-        import math
         if not math.isfinite(float(request.amount)) or request.amount <= 0:
             return "Valor da execução deve ser positivo e finito."
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
