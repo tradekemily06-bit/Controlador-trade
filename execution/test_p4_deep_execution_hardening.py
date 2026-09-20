@@ -32,6 +32,7 @@ from execution.execution_lifecycle import (
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_composition import build_real_execution_gateway
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from execution.real_execution_locks import RealExecutionLocks
 
 
 class FakeAdapter:
@@ -1438,3 +1439,29 @@ def test_real_composition_rejects_nonpersistent_kill_switch(tmp_path):
             registry=registry,
             kill_switch=KillSwitch(),
         )
+
+
+def test_real_gateway_rejects_in_memory_kill_switch_side_door(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "execution-ledger.json")
+
+    with pytest.raises(ValueError, match="kill switch persistente"):
+        RealExecutionGateway(
+            BrokerAdapterGateway(registry),
+            ledger,
+            ExecutionLifecycleStore(tmp_path / "execution-lifecycle.json"),
+            KillSwitch(),
+        )
+
+
+def test_real_composition_binds_kill_switch_to_same_global_execution_barrier(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = build_real_execution_gateway(root=tmp_path, registry=registry)
+
+    expected = RealExecutionLocks(tmp_path / "execution-ledger.json").global_lock_path
+    kill_switch = gateway._kill_switch
+
+    assert kill_switch._path == tmp_path / "real-kill-switch.json"
+    assert kill_switch._coordination_lock_path == expected
