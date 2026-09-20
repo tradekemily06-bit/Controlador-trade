@@ -117,6 +117,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req") == "external-1"
     observation = RealMonitoringBoundary().observe(observation_id="obs", request_id="req", result=result.execution)
     assert observation.status is RealOutcomeStatus.ACCEPTED
     p119 = RealReleaseClosureBoundary().close(
