@@ -59,8 +59,8 @@ class RecoveryCoordinator:
             lifecycle_by_id = self.lifecycle_store.snapshot()
             ledger_states = self.execution_ledger.snapshot()
             lifecycle = tuple(lifecycle_by_id.values())
-        except ValueError as exc:
-            return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
+        except (OSError, ValueError) as exc:
+            return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido ou inacessível: {type(exc).__name__}: {exc}")
 
         pending_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.PENDING}
         unknown_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.UNKNOWN}
