@@ -42,8 +42,13 @@ class SQLiteScopedStateStore:
 
     def _reject_symlinked_database(self) -> None:
         try:
-            if self.database_path.is_symlink():
-                raise RuntimeError("scoped state database cannot be a symbolic link")
+            parent = self.database_path.parent
+            if parent.resolve(strict=True) != parent.absolute():
+                raise RuntimeError("scoped state database directory cannot be a symbolic link")
+            if self.database_path.exists():
+                stat = self.database_path.lstat()
+                if self.database_path.is_symlink() or not self.database_path.is_file():
+                    raise RuntimeError("scoped state database must be a regular file")
         except OSError as exc:
             raise RuntimeError("scoped state database could not be inspected") from exc
 
