@@ -556,6 +556,30 @@ def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_recover_durable_rejection_repairs_pending_lifecycle_without_broker_query(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("durable-reject")
+    ledger.mark_rejected("durable-reject")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "durable-reject",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "crash before lifecycle terminal write",
+        )
+    )
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+    )
+    gateway.recover_lifecycle_from_durable_rejection("durable-reject")
+    assert ledger.status("durable-reject") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("durable-reject").state is ExecutionLifecycleState.REJECTED
+
+
 def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
