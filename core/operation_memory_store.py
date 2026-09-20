@@ -5,10 +5,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.file_lock import exclusive_file_lock
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
@@ -67,11 +64,7 @@ class OperationMemoryStore:
             raise TypeError("memory deve ser OperationMemory.")
         payload = [self._serialize(record) for record in memory.records()]
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
+        with exclusive_file_lock(lock_path):
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 temporary = self.path.with_name(f".{self.path.name}.tmp")
                 temporary.write_text(
@@ -79,9 +72,7 @@ class OperationMemoryStore:
                     encoding="utf-8",
                 )
                 os.replace(temporary, self.path)
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
 
     def load(self) -> OperationMemory:
         memory = OperationMemory()
