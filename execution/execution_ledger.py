@@ -113,12 +113,19 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def record(self, request_id: str) -> None:
-        """Backward-compatible terminal record for existing DEMO infrastructure."""
+        """Legacy compatibility path; only upgrades an existing reservation.
+
+        A terminal ACCEPTED state must never be created from an unseen request,
+        because that would bypass the reservation barrier.
+        """
         self._validate_id(request_id)
 
         def mutation() -> None:
             if request_id not in self._states:
-                self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+                raise ValueError("request_id não foi reservado; record() não pode criar aceite fora da barreira.")
+            if self._states[request_id] not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("record() não pode alterar estado terminal.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
 
         self._mutate_locked(mutation)
 
