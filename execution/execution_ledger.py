@@ -48,11 +48,13 @@ class ExecutionLedger:
         try:
             stat = self.path.lstat()
             if self.path.is_symlink() or not self.path.is_file():
-                raise ValueError("ledger de execução deve ser um arquivo regular.")
+                raise OSError("ledger de execução deve ser um arquivo regular.")
             if stat.st_size > MAX_LEDGER_FILE_BYTES:
                 raise ValueError("ledger de execução inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        except OSError:
+            raise
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states, self._reconciliation_evidence, self._execution_context = self._decode(payload)
 
