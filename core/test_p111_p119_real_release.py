@@ -174,6 +174,35 @@ def test_real_gateway_rechecks_live_kill_switch_at_dispatch_boundary(tmp_path: P
     assert ledger.status("kill-live") is None
 
 
+def test_real_gateway_blocks_if_kill_switch_activates_after_admission(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    kill_switch = KillSwitch()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, kill_switch)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    original_put = lifecycle.put
+
+    def activate_before_dispatch(record):
+        original_put(record)
+        if record.state is ExecutionLifecycleState.PENDING:
+            kill_switch.activate("emergência durante preparação")
+
+    lifecycle.put = activate_before_dispatch
+    result = gateway.execute(
+        broker="fake", request_id="kill-race", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("kill-race") is ExecutionLedgerStatus.REJECTED
+
+
 def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = UnknownAdapter()
