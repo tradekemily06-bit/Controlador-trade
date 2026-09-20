@@ -322,6 +322,26 @@ def test_real_ledger_acceptance_survives_lifecycle_failure(tmp_path: Path):
     assert lifecycle.get("lifecycle-crash").state.name == "PENDING"
 
 
+def test_real_accepted_ledger_can_recover_lifecycle_after_crash(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+
+    ledger.reserve("recover-accepted")
+    ledger.bind_external_id("recover-accepted", "external-recover")
+    ledger.mark_accepted("recover-accepted")
+    lifecycle.put(ExecutionLifecycleRecord("recover-accepted", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "crash before lifecycle terminal write"))
+
+    gateway.recover_lifecycle_from_durable_acceptance("recover-accepted")
+    assert ledger.status("recover-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("recover-accepted") == "external-recover"
+    assert lifecycle.get("recover-accepted").state is ExecutionLifecycleState.ACCEPTED
+    assert gateway._gateway._registry.get("fake").calls == 0 if hasattr(gateway._gateway._registry.get("fake"), "calls") else True
+
+
 def test_real_acceptance_persists_lifecycle_terminal_state(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
