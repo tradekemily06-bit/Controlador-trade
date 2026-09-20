@@ -89,7 +89,7 @@ def test_gateway_fails_closed_when_executor_raises():
         def execute(self, _request):
             raise RuntimeError("falha simulada")
 
-    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch())
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request())
     retry = gateway.execute("req-1", request())
@@ -103,7 +103,7 @@ def test_gateway_rejects_invalid_executor_result():
         def execute(self, _request):
             return "not-an-execution-result"
 
-    gateway = ExecutionGateway(InvalidExecutor(), KillSwitch())
+    gateway = ExecutionGateway(InvalidExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request())
 
@@ -124,7 +124,7 @@ def test_executor_rejection_is_not_reported_as_accepted():
         def execute(self, _request):
             return ExecutionResult(accepted=False, message="rejeitado")
 
-    gateway = ExecutionGateway(RejectingExecutor(), KillSwitch())
+    gateway = ExecutionGateway(RejectingExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request())
 
@@ -161,7 +161,7 @@ def test_gateway_rejects_non_finite_amount():
 
 def test_gateway_with_ledger_reserves_before_dispatch_and_marks_acceptance(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger, lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     result = gateway.execute("req-ledger", request())
     assert result.status is GatewayStatus.ACCEPTED
     assert ledger.status("req-ledger") is ExecutionLedgerStatus.ACCEPTED
@@ -173,7 +173,7 @@ def test_gateway_with_ledger_persists_unknown_after_executor_exception(tmp_path)
             raise RuntimeError("falha depois da entrada no executor")
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), ledger=ledger)
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), ledger=ledger, allow_ephemeral=True)
     result = gateway.execute("req-unknown", request())
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
@@ -216,7 +216,7 @@ def test_gateway_durably_binds_external_id_before_terminal_acceptance(tmp_path):
             return ExecutionResult(True, "accepted", "BROKER-42")
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = ExecutionGateway(ExternalExecutor(), KillSwitch(), ledger=ledger)
+    gateway = ExecutionGateway(ExternalExecutor(), KillSwitch(), ledger=ledger, allow_ephemeral=True)
 
     result = gateway.execute("req-external", request())
 
