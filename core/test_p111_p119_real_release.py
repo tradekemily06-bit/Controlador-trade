@@ -151,6 +151,29 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_gateway_rechecks_live_kill_switch_at_dispatch_boundary(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    kill_switch = KillSwitch()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, kill_switch)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    kill_switch.activate("emergência antes do dispatch")
+
+    result = gateway.execute(
+        broker="fake", request_id="kill-live", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("kill-live") is None
+
+
 def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = UnknownAdapter()
