@@ -68,7 +68,7 @@ def senior_context(quality=SeniorContextQuality.COMPLETE):
 
 def make_coordinator():
     executor = FakeExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=KillSwitch()))
     return DemoExecutionCoordinator(readiness=readiness, gateway=gateway), executor
 
