@@ -260,3 +260,13 @@ def test_gateway_requires_durable_state_by_default():
         raise AssertionError("gateway de produção não pode operar sem Ledger + Lifecycle")
 
 
+
+def test_execution_result_rejects_accepted_and_ambiguous_combination():
+    try:
+        ExecutionResult(True, "contraditório", "EXT-1", ambiguous=True)
+    except ValueError as exc:
+        assert "aceito e ambíguo" in str(exc)
+    else:
+        raise AssertionError("resultado aceito+ambíguo deveria ser impossível")
+
+
