@@ -195,6 +195,32 @@ class ExecutionLifecycleStore:
         assert result is not None
         return result
 
+    def reconcile_missing(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+        """Create the terminal Lifecycle record for a Ledger-only crash window.
+
+        This is permitted only when the Ledger has already been independently
+        reconciled. It never creates a dispatchable PENDING state.
+        """
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reconciliação ausente exige estado ACCEPTED ou REJECTED.")
+        if not isinstance(updated_at, datetime):
+            raise ValueError("timestamp inválido.")
+        result: ExecutionLifecycleRecord | None = None
+
+        def mutation() -> None:
+            nonlocal result
+            if request_id in self._records:
+                raise ValueError("execução já possui registro de Lifecycle.")
+            result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+            self._validate(result)
+            self._records[request_id] = result
+
+        self._mutate_locked(mutation)
+        assert result is not None
+        return result
+
     def reconcile_pending(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         """Close the Ledger-terminal -> Lifecycle-PENDING crash window.
 
