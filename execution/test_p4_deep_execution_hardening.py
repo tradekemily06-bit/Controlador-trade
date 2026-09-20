@@ -1033,10 +1033,12 @@ def test_real_boundary_rejects_overridable_policy_context_subclasses(tmp_path):
         audit_id="audit",
         status=RealAdmissionStatus.BLOCKED,
         broker_id="fake",
+        authorization_id="auth",
         reasons=("blocked",),
     )
     malicious_safety = MaliciousSafetyReport(
         state=RealSafetyState.BLOCKED,
+        authorization_id="auth",
         reasons=("blocked",),
     )
 
