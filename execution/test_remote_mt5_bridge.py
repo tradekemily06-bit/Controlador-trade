@@ -19,8 +19,6 @@ class FakeBridge:
 
 
 def request(mode: ExecutionMode = ExecutionMode.DEMO) -> ExecutionRequest:
-    from core.models import Signal
-
     return ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
