@@ -1,6 +1,7 @@
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -156,3 +157,25 @@ def test_gateway_rejects_non_finite_amount():
     invalid = ExecutionRequest("BTCUSD", Signal.COMPRA, float("nan"), 60, ExecutionMode.DEMO)
     result = gateway.execute("req-nan", invalid)
     assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_with_ledger_reserves_before_dispatch_and_marks_acceptance(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+    result = gateway.execute("req-ledger", request())
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.status("req-ledger") is ExecutionLedgerStatus.ACCEPTED
+
+
+def test_gateway_with_ledger_persists_unknown_after_executor_exception(tmp_path):
+    class BrokenExecutor:
+        def execute(self, _request):
+            raise RuntimeError("falha depois da entrada no executor")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(BrokenExecutor(), KillSwitch(), ledger=ledger)
+    result = gateway.execute("req-unknown", request())
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
+    retry = gateway.execute("req-unknown", request())
+    assert retry.status is GatewayStatus.DUPLICATE
