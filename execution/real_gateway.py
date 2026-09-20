@@ -81,6 +81,7 @@ class RealExecutionGateway:
             raise ValueError(
                 "REAL exige kill switch coordenado pela mesma barreira global de execução."
             )
+        self._kill_switch = kill_switch
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
