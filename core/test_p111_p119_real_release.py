@@ -1,5 +1,6 @@
 import pytest
 from pathlib import Path
+from datetime import datetime, timezone
 
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
@@ -13,7 +14,7 @@ from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseSta
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
@@ -327,8 +328,8 @@ def test_real_accepted_ledger_can_recover_lifecycle_after_crash(tmp_path: Path):
     registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    adapter = registry.get("fake")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
-    auth = _authorization()
 
     ledger.reserve("recover-accepted")
     ledger.bind_external_id("recover-accepted", "external-recover")
@@ -339,7 +340,7 @@ def test_real_accepted_ledger_can_recover_lifecycle_after_crash(tmp_path: Path):
     assert ledger.status("recover-accepted") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_id("recover-accepted") == "external-recover"
     assert lifecycle.get("recover-accepted").state is ExecutionLifecycleState.ACCEPTED
-    assert gateway._gateway._registry.get("fake").calls == 0 if hasattr(gateway._gateway._registry.get("fake"), "calls") else True
+    assert adapter.calls == 0
 
 
 def test_real_acceptance_persists_lifecycle_terminal_state(tmp_path: Path):
