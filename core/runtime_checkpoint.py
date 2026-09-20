@@ -33,11 +33,11 @@ class RuntimeCheckpointStore:
             temporary = self.path.with_name(f".{self.path.name}.tmp")
             temporary.write_text(
                 json.dumps(
-                        {
-                            "session_id": checkpoint.session_id,
-                            "last_cycle": checkpoint.last_cycle,
-                            "last_request_id": checkpoint.last_request_id,
-                            "updated_at": checkpoint.updated_at.isoformat(),
+                    {
+                        "session_id": checkpoint.session_id,
+                        "last_cycle": checkpoint.last_cycle,
+                        "last_request_id": checkpoint.last_request_id,
+                        "updated_at": checkpoint.updated_at.isoformat(),
                         },
                         ensure_ascii=False,
                         indent=2,
