@@ -30,6 +30,12 @@ class BrokerAdapterGateway:
             return AdapterExecutionResult(False, "REAL só pode atravessar a fronteira RealExecutionGateway.")
         return self._dispatch(broker, request)
 
+    def adapter_id(self, broker: str) -> str | None:
+        try:
+            return self._registry.adapter_id(broker)
+        except BrokerRegistryError:
+            return None
+
     def _execute_real(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         """Internal REAL dispatch used only after RealExecutionGateway admission."""
         if not isinstance(request, ExecutionRequest) or request.mode is not ExecutionMode.REAL:
