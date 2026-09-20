@@ -789,8 +789,9 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert blocked.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
-    gateway.reconcile_unknown("persist-crash-rejected", reconciler=FakeReconciler("persist-crash-rejected", executed=False))
-    assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    # Durable local rejection is conclusive; recovery must repair only Lifecycle.
+    gateway.recover_lifecycle_from_durable_rejection("persist-crash-rejected")
+    assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.REJECTED
     assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.REJECTED
 
 
