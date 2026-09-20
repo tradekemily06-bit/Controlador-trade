@@ -7,6 +7,7 @@ from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.real_execution_locks import RealExecutionLockError, RealExecutionLocks
 
 
 class RecoveryState(str, Enum):
@@ -52,8 +53,23 @@ class RecoveryCoordinator:
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
         self.memory = memory
+        self._real_locks = RealExecutionLocks(execution_ledger.path)
 
     def assess(self) -> RecoveryAssessment:
+        """Assess a coherent durable snapshot while REAL mutation is quiesced."""
+        try:
+            with self._real_locks.acquire_global():
+                return self._assess_locked()
+        except RealExecutionLockError as exc:
+            return RecoveryAssessment(
+                RecoveryState.INVALID,
+                None,
+                (),
+                (),
+                f"não foi possível adquirir a barreira global REAL para recuperação: {exc}",
+            )
+
+    def _assess_locked(self) -> RecoveryAssessment:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
