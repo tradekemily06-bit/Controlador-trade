@@ -43,6 +43,19 @@ class RealExecutionLocks:
             with self._file_lock(request_path):
                 yield
 
+    @contextmanager
+    def acquire_global(self) -> Iterator[None]:
+        """Hold the global REAL lock without claiming a request.
+        
+        Recovery/health code uses this barrier to take a coherent durable
+        snapshot while no REAL execution or reconciliation can mutate the
+        Ledger/Lifecycle pair concurrently.
+        """
+        if fcntl is None and msvcrt is None:
+            raise RealExecutionLockError("REAL exige lock interprocesso suportado pelo sistema.")
+        with self._file_lock(self._global_path):
+            yield
+
     @staticmethod
     @contextmanager
     def _file_lock(path: Path) -> Iterator[None]:
