@@ -9,6 +9,7 @@ def make_request(
     mode: ExecutionMode = ExecutionMode.DEMO,
     amount: float = 10.0,
     duration_seconds: int = 60,
+    request_id: str | None = "paper-test-001",
 ) -> ExecutionRequest:
     return ExecutionRequest(
         symbol="TEST",
@@ -16,6 +17,7 @@ def make_request(
         amount=amount,
         duration_seconds=duration_seconds,
         mode=mode,
+        request_id=request_id,
     )
 
 
