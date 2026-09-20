@@ -78,7 +78,7 @@ class ExecutionLedger:
             raise ValueError("ledger de execução excede o limite permitido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         for request_id, raw_status in states_payload.items():
-            if not isinstance(request_id, str) or not request_id.strip():
+            if not isinstance(request_id, str) or not request_id.strip() or len(request_id.strip()) > MAX_IDENTIFIER_LENGTH:
                 raise ValueError("ledger de execução inválido.")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
@@ -94,7 +94,12 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.")
             evidence_id = raw_evidence.get("evidence_id")
             evidence_source = raw_evidence.get("evidence_source")
-            if not isinstance(evidence_id, str) or not evidence_id.strip() or not isinstance(evidence_source, str) or not evidence_source.strip():
+            if (
+                not isinstance(evidence_id, str) or not evidence_id.strip()
+                or not isinstance(evidence_source, str) or not evidence_source.strip()
+                or len(evidence_id.strip()) > MAX_IDENTIFIER_LENGTH
+                or len(evidence_source.strip()) > MAX_IDENTIFIER_LENGTH
+            ):
                 raise ValueError("ledger de execução inválido.")
             normalized_evidence_id = evidence_id.strip()
             if normalized_evidence_id in seen_evidence_ids:
@@ -110,9 +115,17 @@ class ExecutionLedger:
             broker_id = raw_context.get("broker_id")
             symbol = raw_context.get("symbol")
             external_id = raw_context.get("external_id")
-            if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip():
+            if (
+                not isinstance(broker_id, str) or not broker_id.strip()
+                or not isinstance(symbol, str) or not symbol.strip()
+                or len(broker_id.strip()) > MAX_IDENTIFIER_LENGTH
+                or len(symbol.strip()) > MAX_IDENTIFIER_LENGTH
+            ):
                 raise ValueError("ledger de execução inválido.")
-            if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
+            if external_id is not None and (
+                not isinstance(external_id, str) or not external_id.strip()
+                or len(external_id.strip()) > MAX_IDENTIFIER_LENGTH
+            ):
                 raise ValueError("ledger de execução inválido.")
             normalized_external_id = external_id.strip() if isinstance(external_id, str) else None
             if normalized_external_id is not None:
