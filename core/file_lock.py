@@ -20,7 +20,17 @@ def exclusive_file_lock(path: str | Path) -> Iterator[None]:
     if the platform cannot provide an OS-level advisory lock, fail closed.
     """
     lock_path = Path(path)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_parent = lock_path.parent
+    lock_parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if lock_parent.resolve(strict=True) != lock_parent.absolute():
+            raise RuntimeError("diretório do lock operacional não pode ser symlink")
+        if lock_path.exists():
+            stat = lock_path.lstat()
+            if lock_path.is_symlink() or not lock_path.is_file():
+                raise RuntimeError("arquivo de lock operacional deve ser regular")
+    except OSError as exc:
+        raise RuntimeError("não foi possível validar o lock operacional") from exc
     if fcntl is None:
         raise RuntimeError("cross-process file locking is unavailable on this platform")
     flags = os.O_CREAT | os.O_RDWR
