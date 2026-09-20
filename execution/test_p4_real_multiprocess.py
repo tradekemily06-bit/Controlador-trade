@@ -65,6 +65,7 @@ def _admission():
         safety_ready=True,
         broker_available=True,
         broker_id="fake",
+        authorization_id="auth",
     )
 
 
@@ -76,6 +77,7 @@ def _safety():
         recovery_safe=True,
         risk_approved=True,
         broker_available=True,
+        authorization_id="auth",
     )
 
 
