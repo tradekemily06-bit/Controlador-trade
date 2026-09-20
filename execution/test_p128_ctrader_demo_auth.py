@@ -83,3 +83,12 @@ def test_oauth_inputs_have_bounded_size():
         exchange_authorization_code(credentials, "x" * 4097, "https://example.test/callback")
     with __import__("pytest").raises(ValueError, match="redirect_uri"):
         exchange_authorization_code(credentials, "code", "https://example.test/" + "x" * 2048)
+
+
+def test_oauth_token_exchange_redirects_are_rejected():
+    from execution.ctrader_demo_runtime import _RejectRedirects
+    import pytest
+
+    handler = _RejectRedirects()
+    with pytest.raises(RuntimeError, match="redirected unexpectedly"):
+        handler.redirect_request(None, None, 302, "Found", {}, "https://attacker.example/token")
