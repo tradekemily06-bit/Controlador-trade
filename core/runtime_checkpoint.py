@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from core.file_lock import exclusive_file_lock
+
 
 @dataclass(frozen=True)
 class RuntimeCheckpoint:
