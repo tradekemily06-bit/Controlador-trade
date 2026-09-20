@@ -27,6 +27,10 @@ class BrokerAdapterGateway:
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
+    def adapter_id(self, broker: str) -> str:
+        """Return the stable identity of the adapter selected for a broker."""
+        return self._registry.adapter_id(broker)
+
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         """Public adapter path is DEMO-only; REAL requires the dedicated gateway."""
         if request.mode is ExecutionMode.REAL:
