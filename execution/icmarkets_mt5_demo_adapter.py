@@ -170,7 +170,23 @@ class ICMarketsMT5DemoAdapter:
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
-            if success_code is None or retcode != success_code:
+            if success_code is None:
+                return ExecutionResult(False, "MT5 não expôs TRADE_RETCODE_DONE; confirmação bloqueada.", uncertain=True)
+
+            ambiguous_codes = {
+                getattr(mt5, "TRADE_RETCODE_PLACED", -1),
+                getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", -1),
+                getattr(mt5, "TRADE_RETCODE_TIMEOUT", -1),
+                getattr(mt5, "TRADE_RETCODE_ORDER_CHANGED", -1),
+                getattr(mt5, "TRADE_RETCODE_LOCKED", -1),
+            }
+            if retcode in ambiguous_codes:
+                return ExecutionResult(
+                    False,
+                    f"MT5 retornou estado potencialmente externo/ambíguo: retcode={retcode}; reconciliação necessária.",
+                    uncertain=True,
+                )
+            if retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
