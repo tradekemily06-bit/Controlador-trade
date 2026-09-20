@@ -107,13 +107,17 @@ class ExecutionLedger:
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
-        self._load()
-        return self._states.get(request_id)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return self._states.get(request_id)
 
     def external_id(self, request_id: str) -> str | None:
         self._validate_id(request_id)
-        self._load()
-        return self._external_ids.get(request_id)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return self._external_ids.get(request_id)
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -196,8 +200,10 @@ class ExecutionLedger:
             return dict(self._states)
 
     def records(self) -> tuple[str, ...]:
-        self._load()
-        return tuple(sorted(self._states))
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return tuple(sorted(self._states))
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
