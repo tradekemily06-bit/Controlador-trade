@@ -69,6 +69,8 @@ class TechnicalIncidentStore:
             if self.path.is_symlink() or not self.path.is_file():
                 raise OSError("estado de incidente técnico deve ser um arquivo regular")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        if temporary.exists():
+            raise RuntimeError("arquivo temporário do incidente técnico já existe")
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
         if len(encoded) > MAX_INCIDENT_FILE_BYTES:
             raise ValueError("estado de incidente técnico excede o limite permitido")
