@@ -117,3 +117,27 @@ def test_technical_incident_refuses_stale_temp(tmp_path):
     store = TechnicalIncidentStore(state)
     with pytest.raises(RuntimeError):
         store.open("incident-1", "test", now=datetime.now(timezone.utc))
+
+
+
+def test_sqlite_paths_are_revalidated_after_initialization(tmp_path):
+    from security_audit import SecurityAudit
+    from analysis.decision_store import DecisionStore
+
+    decision_path = tmp_path / "decision.db"
+    decision_store = DecisionStore(str(decision_path))
+    target = tmp_path / "decision-target.db"
+    target.write_bytes(decision_path.read_bytes())
+    decision_path.unlink()
+    decision_path.symlink_to(target)
+    with pytest.raises(RuntimeError):
+        decision_store.load()
+
+    audit_path = tmp_path / "audit.db"
+    audit = SecurityAudit(database_path=str(audit_path), require_durable=True)
+    audit_target = tmp_path / "audit-target.db"
+    audit_target.write_bytes(audit_path.read_bytes())
+    audit_path.unlink()
+    audit_path.symlink_to(audit_target)
+    with pytest.raises(RuntimeError):
+        audit.record(request_id="r", method="GET", path="/", status=200, client_key="client")
