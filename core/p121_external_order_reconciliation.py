@@ -17,6 +17,11 @@ class ExternalOrderObservation:
     external_id: str
     status: ExternalOrderStatus
     message: str
+    # Optional for external-id queries; mandatory and correlated by the
+    # request-id recovery path. Keeping it optional preserves the existing
+    # external-id query contract while allowing recovery to prove that the
+    # broker observation belongs to the requested client-order reference.
+    request_id: str | None = None
 
 
 @runtime_checkable
