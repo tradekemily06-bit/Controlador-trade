@@ -54,7 +54,7 @@ class RealExecutionGateway:
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
-        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return False
@@ -160,7 +160,11 @@ class RealExecutionGateway:
         try:
             current = self._lifecycle.get(request_id)
             if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                self._lifecycle.reconstruct_unknown(
+                    request_id,
+                    updated_at=timestamp,
+                    message=message,
+                )
             elif current.state is ExecutionLifecycleState.PENDING:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
         except (OSError, ValueError):
