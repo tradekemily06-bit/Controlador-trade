@@ -129,3 +129,22 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_executor_exception_marks_ledger_and_lifecycle_unknown(tmp_path):
+    class FailingExecutor:
+        def execute(self, request):
+            raise RuntimeError("transport lost")
+
+    from core.kill_switch import KillSwitch
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+    from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(FailingExecutor(), KillSwitch(), ledger=ledger, lifecycle=lifecycle)
+    result = gateway.execute("req-uncertain", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-uncertain") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("req-uncertain").state is ExecutionLifecycleState.UNKNOWN
