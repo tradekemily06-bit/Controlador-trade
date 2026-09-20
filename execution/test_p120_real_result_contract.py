@@ -17,6 +17,9 @@ class MissingExternalIdAdapter:
     def query_order_by_request_id(self, request_id):
         raise ValueError("no broker evidence")
 
+    def query_order(self, external_id):
+        raise ValueError("no broker evidence")
+
     def is_available(self):
         return True
 
