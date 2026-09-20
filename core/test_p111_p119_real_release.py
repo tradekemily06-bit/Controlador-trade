@@ -16,7 +16,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
-from execution.real_reconciliation import RealReconciliationObservation
+from execution.real_reconciliation import RealReconciliationEvidenceBoundary, RealReconciliationObservation
 
 
 class FakeAdapter:
@@ -69,7 +69,7 @@ class FakeReconciler:
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
         self.calls += 1
-        return RealReconciliationObservation(
+        return RealReconciliationEvidenceBoundary().issue(
             request_id=request_id,
             executed=self.executed,
             external_id=self.external_id if self.executed else None,
