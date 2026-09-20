@@ -183,6 +183,17 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
             "unknown-2",
             observation=ExternalOrderObservation("reconciled-fake-2", ExternalOrderStatus.PENDING, "still pending"),
         )
+    # A terminal broker observation is only usable when its external identity
+    # is already durably bound to this request. A caller cannot invent a new
+    # external_id and thereby turn UNKNOWN into ACCEPTED.
+    with pytest.raises(ValueError, match="external_id durável"):
+        gateway.reconcile_unknown(
+            "unknown-2",
+            observation=ExternalOrderObservation("reconciled-fake-2", ExternalOrderStatus.EXECUTED, "broker confirmed execution"),
+        )
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
+
+    ledger.bind_external_id("unknown-2", "reconciled-fake-2")
     gateway.reconcile_unknown(
         "unknown-2",
         observation=ExternalOrderObservation("reconciled-fake-2", ExternalOrderStatus.EXECUTED, "broker confirmed execution"),
@@ -203,8 +214,15 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", observation=ExternalOrderObservation("crashed", ExternalOrderStatus.NOT_EXECUTED, "pre-dispatch crash confirmed"))
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    # RESERVED has no durable broker identity. After a crash the system cannot
+    # prove whether dispatch happened, so it must remain blocked rather than
+    # accepting a caller-supplied external identity as evidence.
+    with pytest.raises(ValueError, match="external_id durável"):
+        gateway.reconcile_unknown(
+            "crashed",
+            observation=ExternalOrderObservation("crashed", ExternalOrderStatus.NOT_EXECUTED, "pre-dispatch crash confirmed"),
+        )
+    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RESERVED
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
