@@ -21,6 +21,9 @@ class FakeAdapter:
     def query_order_by_request_id(self, request_id):
         return None
 
+    def query_order(self, external_id):
+        return None
+
     def execute(self, request):
         self.calls += 1
         if self.error:
