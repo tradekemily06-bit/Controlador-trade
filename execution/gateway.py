@@ -133,6 +133,14 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        # Keep Ledger and Lifecycle uncertainty aligned. A dispatch exception is
+        # not proof of non-execution, so recovery must see the same UNKNOWN
+        # identity in both durable stores and must never replay automatically.
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:
