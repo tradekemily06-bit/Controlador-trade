@@ -5,15 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
-
-try:
-    import msvcrt
-except ImportError:  # pragma: no cover
-    msvcrt = None
+from core.file_lock import exclusive_file_lock
 
 
 class RealExecutionLockError(RuntimeError):
@@ -52,6 +44,13 @@ class RealExecutionLocks:
 
     @staticmethod
     @contextmanager
+    def _file_lock(path: Path) -> Iterator[None]:
+        try:
+            with exclusive_file_lock(path):
+                yield
+        except OSError as exc:
+            raise RealExecutionLockError(str(exc)) from exc
+
     def _file_lock(path: Path) -> Iterator[None]:
         with path.open("a+b") as handle:
             if fcntl is not None:
