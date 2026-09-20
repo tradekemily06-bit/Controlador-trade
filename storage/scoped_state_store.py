@@ -72,7 +72,14 @@ class SQLiteScopedStateStore:
 
     @classmethod
     def _namespace(cls, namespace: str) -> str:
-        return cls._component(namespace, "namespace", maximum=MAX_NAMESPACE_LENGTH)
+        if not isinstance(namespace, str):
+            raise ValueError("namespace must be a string")
+        normalized = namespace.strip()
+        if not normalized:
+            raise ValueError("namespace is required")
+        if len(normalized) > MAX_NAMESPACE_LENGTH:
+            raise ValueError("namespace exceeds the maximum length")
+        return normalized
 
     def _connect(self) -> sqlite3.Connection:
         self._reject_symlinked_database()
