@@ -171,6 +171,8 @@ class ExecutionLifecycleStore:
         if len(encoded) > MAX_LIFECYCLE_FILE_BYTES:
             raise ValueError("ciclo de execução excede o limite permitido.")
         temporary = self.path.with_name(f".{self.path.name}.tmp")
+        if temporary.exists():
+            raise RuntimeError("arquivo temporário do ciclo de execução já existe")
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
