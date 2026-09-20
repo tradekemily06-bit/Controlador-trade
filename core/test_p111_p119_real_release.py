@@ -70,7 +70,10 @@ class NoExternalIdAdapter:
         return ExecutionResult(True, "accepted but reference missing", None)
 
 
-class UnknownAdapter:
+class     def query_order(self, external_id):
+        raise ValueError("no broker evidence")
+
+:
     supports_real_execution = True
     adapter_id = "fake-adapter"
 
