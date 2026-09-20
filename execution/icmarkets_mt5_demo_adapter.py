@@ -164,7 +164,14 @@ class ICMarketsMT5DemoAdapter:
             if check is None or getattr(check, "retcode", 0) != 0:
                 return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
 
-            result = mt5.order_send(payload)
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                return ExecutionResult(
+                    False,
+                    f"order_send falhou após despacho potencial; resultado externo incerto: {type(exc).__name__}: {exc}",
+                    uncertain=True,
+                )
             if result is None:
                 return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
 
