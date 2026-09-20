@@ -59,6 +59,23 @@ def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
+def test_ledger_unknown_without_lifecycle_is_reconciliation_required(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-ledger")
+    coordinator.execution_ledger.mark_unknown("req-ledger")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.unknown_request_ids == ("req-ledger",)
+
+
+def test_ledger_terminal_without_lifecycle_is_reconciliation_required(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-ledger")
+    coordinator.execution_ledger.mark_rejected("req-ledger")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+
+
 def test_invalid_checkpoint_fails_closed(tmp_path):
     coordinator = make_coordinator(tmp_path)
     (tmp_path / "checkpoint.json").write_text("{bad", encoding="utf-8")
