@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -64,7 +64,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
-        if request.request_id != request_id:
+        if request.request_id is None:
+            request = replace(request, request_id=request_id)
+        elif request.request_id != request_id:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id externo difere do request_id interno.")
         if admission.broker_id.strip().lower() != broker.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da admissão difere do broker da execução.")
