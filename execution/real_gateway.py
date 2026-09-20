@@ -63,10 +63,24 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
-        if kill_switch is not None and type(kill_switch) is not KillSwitch:
-            raise ValueError("kill_switch inválido.")
-        self._kill_switch = kill_switch or KillSwitch()
         self._locks = RealExecutionLocks(ledger.path)
+        expected_coordination_path = self._locks.global_lock_path
+        if kill_switch is None:
+            # Even direct low-level construction must fail into the same
+            # durable/shared REAL kill-switch boundary as the sanctioned
+            # composition function; there must be no in-memory REAL side door.
+            kill_switch = KillSwitch(
+                ledger.path.parent / "real-kill-switch.json",
+                coordination_lock_path=expected_coordination_path,
+            )
+        elif type(kill_switch) is not KillSwitch:
+            raise ValueError("kill_switch inválido.")
+        elif getattr(kill_switch, "_path", None) is None:
+            raise ValueError("REAL exige kill switch persistente e compartilhado.")
+        elif getattr(kill_switch, "_coordination_lock_path", None) != expected_coordination_path:
+            raise ValueError(
+                "REAL exige kill switch coordenado pela mesma barreira global de execução."
+            )
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
