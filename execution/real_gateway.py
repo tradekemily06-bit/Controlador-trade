@@ -305,18 +305,15 @@ class RealExecutionGateway:
 
         now = datetime.now(timezone.utc)
         if lifecycle is None:
-            # Crash window: ledger exists but lifecycle was never persisted.
-            # Reconciliation may reconstruct only an UNKNOWN marker; it never
-            # treats the missing record as permission to dispatch.
-            lifecycle = ExecutionLifecycleRecord(
-                request_id,
-                ExecutionLifecycleState.UNKNOWN,
-                now,
-                "estado reconstruído durante reconciliação explícita; nenhum replay permitido.",
-            )
-            self._lifecycle.put(lifecycle)
+            # Ledger-only crash window: the external outcome is being reconciled
+            # explicitly. Create the terminal Lifecycle record only after the
+            # Ledger reconciliation below; never invent a PENDING/UNKNOWN record
+            # through the normal put() transition path.
+            lifecycle_missing = True
+        else:
+            lifecycle_missing = False
 
-        if lifecycle.state not in (
+        if lifecycle is not None and lifecycle.state not in (
             ExecutionLifecycleState.UNKNOWN,
             ExecutionLifecycleState.PENDING,
             desired_lifecycle,
@@ -335,6 +332,15 @@ class RealExecutionGateway:
             # be closed; using the stale pre-repair state would reject a valid
             # terminal-Ledger/PENDING-Lifecycle repair.
             ledger_status = desired_ledger
+
+        if lifecycle_missing:
+            self._lifecycle.reconcile_missing(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message="ciclo criado durante reconciliação de um Ledger sem Lifecycle; nenhum replay permitido.",
+            )
+            return
 
         if lifecycle.state is not desired_lifecycle:
             if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
