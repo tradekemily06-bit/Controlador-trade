@@ -21,23 +21,27 @@ class ExecutionLedgerStatus(str, Enum):
 
 
 class ExecutionLedger:
-    """Persistent request state for restart-safe REAL execution idempotency."""
+    """Persistent request state and broker reference for restart-safe execution."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
+        self._external_ids: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
         if not self.path.exists():
+            self._states = {}
+            self._external_ids = {}
             return
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states = self._decode(payload)
+        self._external_ids = self._decode_external_ids(payload)
 
     @staticmethod
     def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
@@ -51,16 +55,42 @@ class ExecutionLedger:
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
+            if isinstance(raw_status, dict):
+                raw_status = raw_status.get("status")
             try:
                 states[request_id] = ExecutionLedgerStatus(raw_status)
-            except ValueError as exc:
+            except (TypeError, ValueError) as exc:
                 raise ValueError("ledger de execução inválido.") from exc
         return states
+
+    @staticmethod
+    def _decode_external_ids(payload: object) -> dict[str, str]:
+        if not isinstance(payload, dict):
+            return {}
+        external_ids: dict[str, str] = {}
+        for request_id, raw_status in payload.items():
+            if not isinstance(raw_status, dict):
+                continue
+            external_id = raw_status.get("external_id")
+            if external_id is None:
+                continue
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("ledger de execução inválido.")
+            external_ids[request_id] = external_id.strip()
+        return external_ids
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        payload = {key: self._states[key].value for key in sorted(self._states)}
+        payload = {}
+        for key in sorted(self._states):
+            status = self._states[key].value
+            external_id = self._external_ids.get(key)
+            payload[key] = (
+                {"status": status, "external_id": external_id}
+                if external_id is not None
+                else status
+            )
         with temporary.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.flush()
@@ -73,16 +103,16 @@ class ExecutionLedger:
             finally:
                 os.close(directory_fd)
         except OSError:
-            # Some platforms/filesystems do not permit directory fsync; the
-            # atomic replace above still prevents torn JSON writes.
             pass
 
     def _mutate_locked(self, mutation) -> None:
-        """Serialize read/modify/write so two processes cannot reserve the same ID."""
+        """Serialize lifecycle read/modify/write so processes cannot lose updates."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         if fcntl is None:
-            raise OSError("ledger multi-process lock não suportado neste sistema; execução bloqueada por segurança.")
+            raise OSError(
+                "ledger multi-process lock não suportado neste sistema; execução bloqueada por segurança."
+            )
         with lock_path.open("a+", encoding="utf-8") as lock_file:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
@@ -90,13 +120,17 @@ class ExecutionLedger:
                 mutation()
                 self._write()
             finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
         self._load()
         return self._states.get(request_id)
+
+    def external_id(self, request_id: str) -> str | None:
+        self._validate_id(request_id)
+        self._load()
+        return self._external_ids.get(request_id)
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -112,11 +146,6 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def record(self, request_id: str) -> None:
-        """Legacy compatibility path; only upgrades an existing reservation.
-
-        A terminal ACCEPTED state must never be created from an unseen request,
-        because that would bypass the reservation barrier.
-        """
         self._validate_id(request_id)
 
         def mutation() -> None:
@@ -125,6 +154,35 @@ class ExecutionLedger:
             if self._states[request_id] not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError("record() não pode alterar estado terminal.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+
+        self._mutate_locked(mutation)
+
+    def bind_external_id(self, request_id: str, external_id: str) -> None:
+        self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido.")
+
+        normalized = external_id.strip()
+
+        def mutation() -> None:
+            if request_id not in self._states:
+                raise ValueError("request_id não foi reservado.")
+            if self._states[request_id] not in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+                ExecutionLedgerStatus.ACCEPTED,
+            ):
+                raise ValueError("external_id não pode ser vinculado a estado terminal rejeitado.")
+            owner = next(
+                (rid for rid, value in self._external_ids.items() if value == normalized and rid != request_id),
+                None,
+            )
+            if owner is not None:
+                raise ValueError("external_id já está vinculado a outro request_id.")
+            existing = self._external_ids.get(request_id)
+            if existing is not None and existing != normalized:
+                raise ValueError("request_id já possui external_id diferente.")
+            self._external_ids[request_id] = normalized
 
         self._mutate_locked(mutation)
 
