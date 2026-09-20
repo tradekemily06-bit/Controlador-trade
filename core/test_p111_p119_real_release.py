@@ -16,6 +16,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 
 
 class FakeAdapter:
@@ -175,9 +176,17 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    with pytest.raises(ValueError, match="external_id durável"):
-        gateway.reconcile_unknown("unknown-2", executed=True)
-    gateway.reconcile_unknown("unknown-2", executed=True, external_id="reconciled-fake-2")
+    with pytest.raises(ValueError, match="observação externa obrigatória"):
+        gateway.reconcile_unknown("unknown-2", observation=None)
+    with pytest.raises(ValueError, match="ainda não é conclusiva"):
+        gateway.reconcile_unknown(
+            "unknown-2",
+            observation=ExternalOrderObservation("reconciled-fake-2", ExternalOrderStatus.PENDING, "still pending"),
+        )
+    gateway.reconcile_unknown(
+        "unknown-2",
+        observation=ExternalOrderObservation("reconciled-fake-2", ExternalOrderStatus.EXECUTED, "broker confirmed execution"),
+    )
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -194,7 +203,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
+    gateway.reconcile_unknown("crashed", observation=ExternalOrderObservation("crashed", ExternalOrderStatus.NOT_EXECUTED, "pre-dispatch crash confirmed"))
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
