@@ -140,7 +140,7 @@ def test_coordinator_blocks_missing_senior_context():
 
 
 def test_coordinator_integrates_with_demo_gateway():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
     coordinator = ExecutionCoordinator(gateway)
     orchestration = executable_orchestration()
     plan = coordinator.build_plan(
