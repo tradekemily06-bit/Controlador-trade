@@ -87,6 +87,18 @@ def test_ledger_without_lifecycle_requires_reconciliation(tmp_path):
     assert result.inconsistent_request_ids == ("req-ledger",)
 
 
+def test_accepted_without_external_reference_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-no-ref", ExecutionLifecycleState.PENDING, now))
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-no-ref", ExecutionLifecycleState.ACCEPTED, now))
+    coordinator.execution_ledger.reserve("req-no-ref")
+    coordinator.execution_ledger.mark_accepted("req-no-ref")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.inconsistent_request_ids == ("req-no-ref",)
+
+
 def test_accepted_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
