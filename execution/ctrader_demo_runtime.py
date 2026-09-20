@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from execution.ctrader_demo_connection import (
     CTraderCredentials,
@@ -14,6 +14,13 @@ from execution.p128_ctrader_demo_auth import _validate_ctrader_redirect_uri
 
 CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
 MAX_TOKEN_RESPONSE_BYTES = 64 * 1024
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    """OAuth token exchange must never forward credentials to another host."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RuntimeError("cTrader OAuth token endpoint redirected unexpectedly")
 
 
 def exchange_authorization_code(
@@ -46,7 +53,8 @@ def exchange_authorization_code(
         headers={"Accept": "application/json"},
         method="GET",
     )
-    with urlopen(request, timeout=15) as response:
+    opener = build_opener(_RejectRedirects)
+    with opener.open(request, timeout=15) as response:
         raw = response.read(MAX_TOKEN_RESPONSE_BYTES + 1)
         if len(raw) > MAX_TOKEN_RESPONSE_BYTES:
             raise ValueError("cTrader token response exceeds the allowed size")
