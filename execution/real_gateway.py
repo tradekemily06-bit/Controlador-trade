@@ -64,6 +64,10 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._valid_request(request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id externo difere do request_id interno.")
+        if admission.broker_id.strip().lower() != broker.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da admissão difere do broker da execução.")
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
