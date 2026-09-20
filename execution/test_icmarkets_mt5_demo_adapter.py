@@ -111,3 +111,25 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_demo_adapter_blocks_configured_symbol_substitution():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        config=ICMarketsMT5DemoConfig(symbol="EURUSD"),
+        mt5_module=mt5,
+    )
+    result = adapter.execute(request(symbol="GBPUSD"))
+    assert result.accepted is False
+    assert "difere" in result.message
+    assert not any(call[0] == "order_send" for call in mt5.calls)
+
+
+def test_demo_adapter_blocks_invalid_signal():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    malformed = request(signal=object())
+    result = adapter.execute(malformed)
+    assert result.accepted is False
+    assert "sinal" in result.message
+    assert not any(call[0] == "order_send" for call in mt5.calls)
