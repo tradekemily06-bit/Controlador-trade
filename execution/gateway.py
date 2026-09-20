@@ -73,6 +73,22 @@ class ExecutionGateway:
                 try: self._ledger.mark_unknown(request_id)
                 except (OSError,ValueError): pass
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR,"executor retornou resultado inválido; execução marcada como UNKNOWN.")
+        if result.ambiguous:
+            self._mark_unknown(request_id, event_time, result.message)
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError) as exc:
+                    return GatewayResult(
+                        GatewayStatus.EXECUTOR_ERROR,
+                        f"resultado ambíguo, mas estado UNKNOWN não foi persistido: {exc}",
+                        result,
+                    )
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                f"resultado ambíguo; reconciliação explícita necessária: {result.message}",
+                result,
+            )
         if not result.accepted:
             if self._ledger is not None:
                 try: self._ledger.mark_rejected(request_id)
