@@ -305,6 +305,35 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
+    def recover_lifecycle_from_durable_rejection(self, request_id: str) -> None:
+        """Repair Lifecycle from durable local rejection without external I/O or replay."""
+        with self._coordination.acquire():
+            current = self._ledger.status(request_id)
+            if current not in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                raise ValueError("Ledger não contém rejeição durável recuperável.")
+            lifecycle = self._lifecycle.get(request_id)
+            if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.REJECTED:
+                return
+            if lifecycle is not None and lifecycle.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("Lifecycle não está em estado recuperável.")
+            message = "Lifecycle recuperado a partir da rejeição durável do Ledger; nenhum dispatch adicional permitido."
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id, ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc), message=message,
+                )
+            else:
+                self._lifecycle.reconcile_pending(
+                    request_id, ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc), message=message,
+                )
+
     def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort) -> None:
         """Reconcile UNKNOWN/RESERVED from read-only external broker evidence.
 
