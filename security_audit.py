@@ -162,7 +162,7 @@ class SecurityAudit:
                         "SELECT timestamp, request_id, method, path, status, client_hash FROM security_events ORDER BY id ASC"
                     ).fetchall()
                 return [asdict(SecurityEvent(*row)) for row in rows]
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError, RuntimeError) as exc:
                 if self._require_durable:
                     raise RuntimeError("durable security audit read failed") from exc
         if self._require_durable:
