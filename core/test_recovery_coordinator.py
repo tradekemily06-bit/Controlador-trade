@@ -118,3 +118,17 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_persistence_access_error_fails_closed(tmp_path, monkeypatch):
+    coordinator = make_coordinator(tmp_path)
+
+    def unavailable_snapshot():
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(coordinator.lifecycle_store, "snapshot", unavailable_snapshot)
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.INVALID
+    assert result.can_resume is False
