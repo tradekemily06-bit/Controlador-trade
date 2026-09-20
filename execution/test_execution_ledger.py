@@ -117,3 +117,16 @@ def test_reconcile_not_executed_rejects_external_id(tmp_path):
 
     assert ledger.status("req-1") is ExecutionLedgerStatus.RESERVED
     assert ledger.external_id("req-1") is None
+
+
+def test_status_external_id_and_records_reload_under_lock(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    reader = ExecutionLedger(path)
+    writer = ExecutionLedger(path)
+
+    writer.reserve("req-1")
+    assert reader.status("req-1") is ExecutionLedgerStatus.RESERVED
+    assert reader.records() == ("req-1",)
+
+    writer.bind_external_id("req-1", "broker-1")
+    assert reader.external_id("req-1") == "broker-1"
