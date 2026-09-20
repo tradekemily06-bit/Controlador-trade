@@ -138,6 +138,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req") == "external-1"
     assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("req").state is ExecutionLifecycleState.ACCEPTED
     observation = RealMonitoringBoundary().observe(observation_id="obs", request_id="req", result=result.execution)
     assert observation.status is RealOutcomeStatus.ACCEPTED
@@ -211,8 +212,13 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     release = RealReleaseClosureBoundary().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("UNKNOWN sem identidade externa não pode ser promovido por ID fornecido pelo reconciliador")
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -747,9 +753,13 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
         ledger,
         lifecycle,
     )
-    gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
-
-    assert ledger.status("ledger-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
+    assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
 
 
