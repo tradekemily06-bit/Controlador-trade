@@ -5,10 +5,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.runtime_checkpoint import process_file_lock
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -108,19 +105,10 @@ class ExecutionLedger:
     def _mutate_locked(self, mutation) -> None:
         """Serialize lifecycle read/modify/write so processes cannot lose updates."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        if fcntl is None:
-            raise OSError(
-                "ledger multi-process lock não suportado neste sistema; execução bloqueada por segurança."
-            )
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
-                mutation()
-                self._write()
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with process_file_lock(lock_path):
+            self._load()
+            mutation()
+            self._write()
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
