@@ -26,7 +26,7 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{this.path.name}.tmp")
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = json.dumps(
             {
                 "session_id": checkpoint.session_id,
