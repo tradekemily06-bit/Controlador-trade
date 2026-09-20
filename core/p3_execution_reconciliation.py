@@ -115,7 +115,7 @@ class ExecutionReconciliationCoordinator:
         if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
             if bound_external_id is None:
                 raise ValueError(
-                    "request_id incerto sem external_id durável; reconciliação externa segura indisponível."
+                    "external_id durável ausente; reconciliação externa segura indisponível."
                 )
             if bound_external_id != result.external_id:
                 raise ValueError(
