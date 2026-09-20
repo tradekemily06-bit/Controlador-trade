@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 
@@ -61,6 +61,11 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(request, ExecutionRequest):
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if request.request_id is not None and request.request_id != request_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id do envelope difere do request_id da requisição.")
+        request = replace(request, request_id=request_id)
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
