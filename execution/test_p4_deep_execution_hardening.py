@@ -1389,6 +1389,34 @@ def test_recovery_does_not_retry_when_request_reference_is_pending(tmp_path):
     assert ledger.status("crash-pending") is ExecutionLedgerStatus.RESERVED
 
 
+def test_request_reference_query_rejects_malformed_status_instead_of_misclassifying_execution(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-malformed-status", "EXECUTED", "accepted before crash",
+            "malformed-status",
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("malformed-status")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "malformed-status", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+
+    with pytest.raises(ValueError, match="status externo inválido"):
+        gw.reconcile_unknown(
+            "malformed-status",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+
+    assert adapter.request_query_calls == 1
+    assert ledger.status("malformed-status") is ExecutionLedgerStatus.RESERVED
+    assert lifecycle.get("malformed-status").state is ExecutionLifecycleState.PENDING
+
+
 def test_request_reference_query_rejects_broker_observation_for_another_request(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
