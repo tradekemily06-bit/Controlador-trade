@@ -99,3 +99,12 @@ def test_adapter_gateway_preserves_uncertain_adapter_outcome():
     assert result.uncertain is True
     assert result.execution is not None
     assert result.execution.uncertain is True
+
+
+def test_execution_result_rejects_accepted_and_uncertain_combination():
+    try:
+        ExecutionResult(True, "contradictory", "external-1", True)
+    except ValueError as exc:
+        assert "aceito e incerto" in str(exc)
+    else:
+        raise AssertionError("accepted+uncertain deve ser impossível")
