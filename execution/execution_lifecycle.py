@@ -187,7 +187,7 @@ class ExecutionLifecycleStore:
                     "updated_at": record.updated_at.isoformat(),
                     "message": record.message,
                 }
-                for record in self.records()
+                for record in (self._records[k] for k in sorted(self._records))
             ],
             ensure_ascii=False,
             indent=2,
