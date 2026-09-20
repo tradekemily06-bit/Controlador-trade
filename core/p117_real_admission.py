@@ -17,6 +17,22 @@ class RealAdmission:
     broker_id: str
     reasons: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        for name in ("admission_id", "audit_id", "broker_id"):
+            value = getattr(self, name)
+            if type(value) is not str or not value.strip() or value != value.strip():
+                raise ValueError(f"{name} inválido.")
+        if not isinstance(self.status, RealAdmissionStatus):
+            raise ValueError("status de admissão REAL inválido.")
+        if not isinstance(self.reasons, tuple) or any(
+            type(reason) is not str or not reason.strip() for reason in self.reasons
+        ):
+            raise ValueError("reasons da admissão REAL inválidos.")
+        if self.status is RealAdmissionStatus.ADMITTED and self.reasons:
+            raise ValueError("admissão REAL ADMITTED não pode carregar motivos de bloqueio.")
+        if self.status is RealAdmissionStatus.BLOCKED and not self.reasons:
+            raise ValueError("admissão REAL BLOCKED precisa registrar o motivo do bloqueio.")
+
     @property
     def admitted(self) -> bool:
         return self.status is RealAdmissionStatus.ADMITTED
