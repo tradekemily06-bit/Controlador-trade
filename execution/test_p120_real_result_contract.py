@@ -102,7 +102,7 @@ def test_pre_dispatch_adapter_block_is_terminal_not_unknown(tmp_path: Path):
     registry.register("fake", UnavailableAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = _gateway(tmp_path, registry, ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -138,7 +138,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = _gateway(tmp_path, registry, ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -173,7 +173,7 @@ def test_adapter_transport_failure_is_unknown_not_rejected(tmp_path: Path):
     registry.register("fake", FailingAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = _gateway(tmp_path, registry, ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -208,7 +208,7 @@ def test_rejected_response_with_external_id_is_unknown_and_reconcilable(tmp_path
     registry.register("fake", RejectedWithExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = _gateway(tmp_path, registry, ledger)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
@@ -252,7 +252,7 @@ def test_live_kill_switch_overrides_stale_ready_report_at_real_boundary(tmp_path
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = _gateway(tmp_path, registry, ledger, kill_switch=kill_switch)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
