@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 
+from core.kill_switch import KillSwitch
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -30,16 +31,19 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore, kill_switch: KillSwitch) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         if not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle é obrigatório para execução REAL.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._kill_switch = kill_switch
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -96,6 +100,16 @@ class RealExecutionGateway:
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+
+        # Re-check the live kill switch immediately before external dispatch.
+        if not self._kill_switch.allows_execution():
+            reason = self._kill_switch.state.reason or "kill switch ativo"
+            try:
+                self._ledger.reconcile(request_id, executed=False)
+                self._lifecycle.reconcile(request_id, ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc), message=f"execução não enviada: {reason}")
+            except (OSError, ValueError):
+                self._mark_lifecycle_unknown(request_id, timestamp, f"kill switch bloqueou antes do dispatch, mas a persistência falhou: {reason}")
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"execução REAL bloqueada pelo kill switch: {reason}")
 
         try:
             result = self._gateway.execute(broker, request)
