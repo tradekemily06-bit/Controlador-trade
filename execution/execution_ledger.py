@@ -61,17 +61,29 @@ class ExecutionLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = {key: self._states[key].value for key in sorted(self._states)}
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        try:
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            # Some platforms/filesystems do not permit directory fsync; the
+            # atomic replace above still prevents torn JSON writes.
+            pass
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
+        if fcntl is None:
+            raise OSError("ledger multi-process lock não suportado neste sistema; execução bloqueada por segurança.")
+        with lock_path.open("a+", encoding="utf-8"):
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
