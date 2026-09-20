@@ -208,3 +208,17 @@ def test_gateway_persists_ambiguous_result_as_unknown(tmp_path):
     assert result.execution.ambiguous is True
     assert ledger.status("req-partial") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("req-partial").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_gateway_durably_binds_external_id_before_terminal_acceptance(tmp_path):
+    class ExternalExecutor:
+        def execute(self, _request):
+            return ExecutionResult(True, "accepted", "BROKER-42")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(ExternalExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-external", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.external_id("req-external") == "BROKER-42"
