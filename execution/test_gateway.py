@@ -222,3 +222,30 @@ def test_gateway_durably_binds_external_id_before_terminal_acceptance(tmp_path):
 
     assert result.status is GatewayStatus.ACCEPTED
     assert ledger.external_id("req-external") == "BROKER-42"
+
+def test_gateway_does_not_downgrade_durable_acceptance_when_lifecycle_persist_fails(tmp_path):
+    from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+
+    class FailingLifecycle(ExecutionLifecycleStore):
+        def put(self, record):
+            if record.state is ExecutionLifecycleState.ACCEPTED:
+                raise OSError("falha de persistência do lifecycle")
+            return super().put(record)
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = FailingLifecycle(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-lifecycle-crash", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-lifecycle-crash") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req-lifecycle-crash") == "PAPER-000001"
+    assert lifecycle.get("req-lifecycle-crash").state is ExecutionLifecycleState.PENDING
+
+
