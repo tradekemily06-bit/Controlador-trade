@@ -7,10 +7,7 @@ from enum import Enum
 from pathlib import Path
 from datetime import datetime
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.runtime_checkpoint import process_file_lock
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -103,20 +100,10 @@ class ExecutionLifecycleStore:
     def _mutate_locked(self, mutation) -> None:
         """Serialize lifecycle read/modify/write across processes."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        if fcntl is None:
-            raise OSError(
-                "lifecycle multi-process lock não suportado neste sistema; "
-                "execução bloqueada por segurança."
-            )
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
-                mutation()
-                self._save()
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with process_file_lock(lock_path):
+            self._load()
+            mutation()
+            self._save()
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
