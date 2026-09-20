@@ -119,6 +119,21 @@ class RealExecutionGateway:
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
+        if result.execution.ambiguous:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"resultado REAL ambíguo e persistência do UNKNOWN falhou: {exc}",
+                    result.execution,
+                )
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"resultado REAL ambíguo; reconciliação explícita necessária: {result.execution.message}",
+                result.execution,
+            )
+
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
