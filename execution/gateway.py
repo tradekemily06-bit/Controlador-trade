@@ -104,6 +104,12 @@ class ExecutionGateway:
                 except (OSError,ValueError) as exc: return GatewayResult(GatewayStatus.EXECUTOR_ERROR,f"execução rejeitada, mas persistência do ciclo falhou: {exc}",result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED,result.message,result)
         if self._ledger is not None:
+            if result.external_id:
+                try:
+                    self._ledger.bind_external_id(request_id, result.external_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id,event_time,f"execução aceita, mas external_id não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR,f"execução aceita, mas referência externa não foi persistida: {exc}",result)
             try: self._ledger.mark_accepted(request_id)
             except (OSError,ValueError) as exc:
                 self._mark_unknown(request_id,event_time,f"execução aceita, mas ledger não foi persistido: {exc}")
