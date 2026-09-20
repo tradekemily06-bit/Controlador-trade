@@ -142,3 +142,28 @@ def test_dependencies_are_required(tmp_path):
             lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
         )
+
+
+def test_recovery_uses_same_dispatch_coordination_lock(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    import core.recovery_coordinator as module
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+    )
+    observed = []
+
+    @contextmanager
+    def fake_lock(path):
+        observed.append(path)
+        yield
+
+    monkeypatch.setattr(module, "exclusive_file_lock", fake_lock)
+    coordinator.assess()
+
+    assert observed == [ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")]
