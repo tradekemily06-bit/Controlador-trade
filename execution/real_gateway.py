@@ -68,6 +68,12 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not isinstance(request, ExecutionRequest):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        if not isinstance(authorization, RealExecutionAuthorization):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inválida.")
+        if not isinstance(admission, RealAdmission):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL inválida.")
+        if not isinstance(safety, RealSafetyReport):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL inválida.")
         if request.request_id is not None and request.request_id != request_id:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id do envelope difere do request_id da requisição.")
         request = replace(request, request_id=request_id)
