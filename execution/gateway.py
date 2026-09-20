@@ -123,9 +123,15 @@ class ExecutionGateway:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR,f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}",result)
         if self._lifecycle is not None:
             try: self._lifecycle.put(ExecutionLifecycleRecord(request_id,ExecutionLifecycleState.ACCEPTED,event_time,result.message))
-            except (OSError,ValueError) as exc:
-                self._mark_unknown(request_id,event_time,f"execução aceita, mas ciclo não foi persistido: {exc}")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR,f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}",result)
+            except (OSError, ValueError) as exc:
+                # The Ledger already contains a durable ACCEPTED + external_id.
+                # Never downgrade that fact to UNKNOWN: the broker may already
+                # have the operation, and recovery must repair the Lifecycle.
+                return GatewayResult(
+                    GatewayStatus.EXECUTOR_ERROR,
+                    f"execução aceita e registrada no Ledger, mas o Lifecycle não foi persistido; recuperação necessária: {exc}",
+                    result,
+                )
         self._processed_request_ids.add(request_id)
         recorded_operation=None
         if snapshot is not None and self._recorder is not None: recorded_operation=self._recorder.record_operation(snapshot,timestamp=event_time,entry_conditions=entry_conditions,audit_record=audit_record)
