@@ -149,3 +149,10 @@ def test_gateway_rejects_conflicting_internal_request_id():
     result = gateway.execute("req-outer", conflicting)
     assert result.status is GatewayStatus.INVALID_REQUEST
     assert "difere" in result.message
+
+
+def test_gateway_rejects_non_finite_amount():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    invalid = ExecutionRequest("BTCUSD", Signal.COMPRA, float("nan"), 60, ExecutionMode.DEMO)
+    result = gateway.execute("req-nan", invalid)
+    assert result.status is GatewayStatus.INVALID_REQUEST
