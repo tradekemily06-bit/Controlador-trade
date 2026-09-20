@@ -91,7 +91,7 @@ def test_unknown_cannot_be_resolved_without_reconciliation(tmp_path: Path):
     ledger.mark_unknown("req-unknown")
 
     with pytest.raises(ValueError, match="UNKNOWN"):
-        ledger.mark_accepted("req-unknown")
+        ledger.mark_accepted("req-unknown", external_id="should-not-accept")
     with pytest.raises(ValueError, match="UNKNOWN"):
         ledger.mark_rejected("req-unknown")
 
