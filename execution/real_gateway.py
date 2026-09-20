@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import math
 
 from core.kill_switch import KillSwitch
-from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
+from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -174,22 +174,28 @@ class RealExecutionGateway:
         except (OSError, ValueError):
             pass
 
-    def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
-        """Reconcile an uncertain execution only from authoritative external evidence."""
-        if not isinstance(observation, ExternalOrderObservation):
-            raise ValueError("observação externa obrigatória para reconciliação.")
-        boundary = ExternalOrderReconciliationBoundary()
-        result = boundary.reconcile(observation.external_id, observation)
-        if not result.reconciled:
-            raise ValueError("ordem externa ainda não possui estado terminal reconciliável.")
+    def reconcile_unknown(self, request_id: str, *, query: ExternalOrderQueryPort) -> None:
+        """Reconcile uncertainty by querying the broker for the persisted external identity."""
+        if query is None or not callable(getattr(query, "query_order", None)):
+            raise ValueError("consulta externa obrigatória para reconciliação.")
 
         current = self._ledger.status(request_id)
         if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
             raise ValueError("request_id não está em estado incerto reconciliável.")
 
-        stored_external_id = self._ledger.external_id(request_id)
-        if stored_external_id is not None and stored_external_id != result.external_id:
-            raise ValueError("external_id externo difere da identidade persistida do request_id.")
+        external_id = self._ledger.external_id(request_id)
+        if not external_id:
+            raise ValueError("request_id incerto ainda não possui external_id persistido; replay é proibido.")
+
+        try:
+            observation = query.query_order(external_id)
+        except Exception as exc:
+            raise ValueError(f"consulta externa falhou; estado permanece incerto: {type(exc).__name__}") from exc
+
+        boundary = ExternalOrderReconciliationBoundary()
+        result = boundary.reconcile(external_id, observation)
+        if not result.reconciled:
+            raise ValueError("ordem externa ainda não possui estado terminal reconciliável.")
 
         timestamp = datetime.now(timezone.utc)
         lifecycle_current = self._lifecycle.get(request_id)
