@@ -63,6 +63,28 @@ def test_snapshot_is_lock_consistent(tmp_path: Path):
     assert snapshot["req-1"] is ExecutionLedgerStatus.RESERVED
 
 
+
+def test_external_id_is_durable_and_unique(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-1")
+    ledger.bind_external_id("req-1", "broker-123")
+    assert ExecutionLedger(path).external_id("req-1") == "broker-123"
+    ledger.mark_accepted("req-1", external_id="broker-123")
+    with pytest.raises(ValueError, match="outro request_id"):
+        other = ExecutionLedger(path)
+        other.reserve("req-2")
+        other.bind_external_id("req-2", "broker-123")
+
+
+def test_external_id_cannot_change_for_same_request(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1")
+    ledger.bind_external_id("req-1", "broker-123")
+    with pytest.raises(ValueError, match="external_id diferente"):
+        ledger.bind_external_id("req-1", "broker-456")
+
+
 def test_unknown_cannot_be_resolved_without_reconciliation(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-unknown")
