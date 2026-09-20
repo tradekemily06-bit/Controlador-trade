@@ -147,7 +147,7 @@ class SecurityAudit:
                         "DELETE FROM security_events WHERE id NOT IN (SELECT id FROM security_events ORDER BY id DESC LIMIT ?)",
                         (self.max_events,),
                     )
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError, RuntimeError) as exc:
                 if self._require_durable:
                     raise RuntimeError("durable security audit write failed") from exc
                 self._events.append(event)
