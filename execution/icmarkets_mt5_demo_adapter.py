@@ -155,10 +155,20 @@ class ICMarketsMT5DemoAdapter:
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
+            partial_code = getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None)
+            external_id = getattr(result, "order", None) or getattr(result, "deal", None)
+
+            if partial_code is not None and retcode == partial_code:
+                return ExecutionResult(
+                    False,
+                    "MT5 executou apenas parte da ordem; reconciliação explícita necessária.",
+                    str(external_id) if external_id is not None else None,
+                    ambiguous=True,
+                )
+
             if success_code is None or retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
-            external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
                 return ExecutionResult(
                     False,
