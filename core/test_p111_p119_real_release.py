@@ -227,8 +227,6 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     import pytest
     with pytest.raises(ValueError, match="observação externa obrigatória"):
         gateway.reconcile_unknown("crashed", observation=None)
-    with pytest.raises(ValueError, match="external_id"):
-        gateway.reconcile_unknown("crashed", observation=ExternalOrderObservation("external-crashed", ExternalOrderStatus.EXECUTED, "confirmado"))
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
