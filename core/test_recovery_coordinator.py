@@ -95,7 +95,7 @@ def test_terminal_state_mismatch_requires_reconciliation(tmp_path):
 def test_reconciled_ledger_without_lifecycle_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     coordinator.execution_ledger.reserve("req-reconciled")
-    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True, external_id="broker-reconciled")
 
     result = coordinator.assess()
 
