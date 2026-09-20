@@ -6,6 +6,7 @@ from core.operation_memory import OperationMemory
 from core.operation_memory_store import OperationMemoryStore
 from core.operational_safety_store import OperationalSafetyStore
 from core.demo_risk_state_store import DemoRiskStateStore
+from core.operational_state import OperationalState
 from execution.execution_ledger import ExecutionLedger
 from storage.scoped_state_store import SQLiteScopedStateStore
 from storage.sqlite_production_store import SQLiteProductionStore
@@ -78,7 +79,7 @@ def test_demo_risk_rejects_symlinked_parent(tmp_path):
     parent = _symlinked_parent(tmp_path)
     store = DemoRiskStateStore(parent / "risk.json")
     with pytest.raises(OSError):
-        store.replace(object(), source="reconciliation")
+        store.replace(OperationalState(trades_today=0, consecutive_losses=0), source="reconciliation")
 
 
 def test_scoped_state_rejects_symlinked_parent(tmp_path):
