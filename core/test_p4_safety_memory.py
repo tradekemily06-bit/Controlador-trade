@@ -119,3 +119,35 @@ def test_kill_switch_is_fail_safe_and_independent():
 def test_kill_switch_requires_reason_when_active():
     with pytest.raises(KillSwitchValidationError):
         KillSwitch().activate("")
+
+
+def test_persistent_kill_switch_is_shared_between_instances(tmp_path):
+    path = tmp_path / "real-kill-switch.json"
+    first = KillSwitch(path)
+    second = KillSwitch(path)
+
+    first.activate("emergência global")
+
+    assert second.allows_execution() is False
+    assert second.state.reason == "emergência global"
+
+    second.deactivate()
+    assert first.allows_execution() is True
+
+
+def test_persistent_kill_switch_fails_closed_on_corrupt_state(tmp_path):
+    path = tmp_path / "real-kill-switch.json"
+    path.write_text('{"enabled": "yes"}', encoding="utf-8")
+
+    with pytest.raises(KillSwitchValidationError):
+        KillSwitch(path)
+
+
+def test_persistent_kill_switch_observes_activation_after_construction(tmp_path):
+    path = tmp_path / "real-kill-switch.json"
+    first = KillSwitch(path)
+    second = KillSwitch(path)
+
+    assert first.allows_execution() is True
+    second.activate("stop after startup")
+    assert first.allows_execution() is False
