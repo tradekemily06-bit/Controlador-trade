@@ -29,6 +29,16 @@ class ExecutionResult:
     external_id: str | None = None
     uncertain: bool = False
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.accepted, bool) or not isinstance(self.uncertain, bool):
+            raise ValueError("accepted/uncertain devem ser booleanos.")
+        if self.accepted and self.uncertain:
+            raise ValueError("resultado não pode ser aceito e incerto simultaneamente.")
+        if not isinstance(self.message, str) or not self.message.strip():
+            raise ValueError("message é obrigatório.")
+        if self.external_id is not None and (not isinstance(self.external_id, str) or not self.external_id.strip()):
+            raise ValueError("external_id inválido.")
+
 
 class ExecutionPort(Protocol):
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
