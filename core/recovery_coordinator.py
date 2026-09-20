@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -76,11 +76,33 @@ class RecoveryCoordinator:
             for request_id, state in ledger_states.items()
             if state is not None and state.value in {"ACCEPTED", "REJECTED"}
         }
+        ledger_reconciled = {
+            request_id
+            for request_id, state in ledger_states.items()
+            if state is not None and state.value in {"RECONCILED_EXECUTED", "RECONCILED_NOT_EXECUTED"}
+        }
 
         inconsistent = set()
-        inconsistent.update(record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.ACCEPTED and ledger_states.get(record.request_id) is None)
-        inconsistent.update(record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.REJECTED and ledger_states.get(record.request_id) is None)
+        inconsistent.update(
+            record.request_id
+            for record in lifecycle
+            if record.state is ExecutionLifecycleState.ACCEPTED
+            and ledger_states.get(record.request_id) not in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            )
+        )
+        inconsistent.update(
+            record.request_id
+            for record in lifecycle
+            if record.state is ExecutionLifecycleState.REJECTED
+            and ledger_states.get(record.request_id) not in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            )
+        )
         inconsistent.update(ledger_terminal - set(lifecycle_by_id))
+        inconsistent.update(ledger_reconciled - set(lifecycle_by_id))
         inconsistent.update(
             request_id
             for request_id in ledger_uncertain
