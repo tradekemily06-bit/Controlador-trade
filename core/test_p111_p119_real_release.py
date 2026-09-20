@@ -224,6 +224,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
+        authorization_id="auth",
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=False, kill_switch_clear=True,
@@ -355,7 +356,8 @@ def test_real_admission_rejects_non_boolean_prerequisite():
             admission_id="adm", audit_id="audit", audit_verified="yes",
             authorization_active=True, safety_ready=True,
             broker_available=True, broker_id="fake",
-        )
+        authorization_id="auth",
+    )
 
 
 def test_real_safety_gate_rejects_non_boolean_prerequisite():
@@ -365,7 +367,8 @@ def test_real_safety_gate_rejects_non_boolean_prerequisite():
             authorization_active=True, kill_switch_clear=True,
             market_healthy=True, recovery_safe=True,
             risk_approved=True, broker_available="yes",
-        )
+        authorization_id="auth",
+    )
 
 
 def test_real_gateway_rejects_noncanonical_request_id(tmp_path):
@@ -381,6 +384,7 @@ def test_real_gateway_rejects_noncanonical_request_id(tmp_path):
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
         broker_available=True, broker_id="fake",
+        authorization_id="auth",
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
@@ -449,7 +453,8 @@ def test_real_admission_rejects_non_string_identifiers():
             admission_id=123, audit_id="audit", audit_verified=True,
             authorization_active=True, safety_ready=True,
             broker_available=True, broker_id="fake",
-        )
+        authorization_id="auth",
+    )
 
 
 def test_kill_switch_rejects_non_string_reason():
