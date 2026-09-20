@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import math
 
 from core.kill_switch import KillSwitch
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -173,34 +174,44 @@ class RealExecutionGateway:
         except (OSError, ValueError):
             pass
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the external order."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
+    def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
+        """Reconcile an uncertain execution only from authoritative external evidence."""
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("observação externa obrigatória para reconciliação.")
+        boundary = ExternalOrderReconciliationBoundary()
+        result = boundary.reconcile(observation.external_id, observation)
+        if not result.reconciled:
+            raise ValueError("ordem externa ainda não possui estado terminal reconciliável.")
+
+        current = self._ledger.status(request_id)
+        if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
             raise ValueError("request_id não está em estado incerto reconciliável.")
 
-        # Recovery may find a ledger-only RESERVED/UNKNOWN record after a crash
-        # between the two durable stores. Materialize UNKNOWN in lifecycle first
-        # so the lifecycle side can never silently disappear while the ledger is
-        # being reconciled. This still never re-submits the external order.
-        current = self._lifecycle.get(request_id)
+        stored_external_id = self._ledger.external_id(request_id)
+        if stored_external_id is not None and stored_external_id != result.external_id:
+            raise ValueError("external_id externo difere da identidade persistida do request_id.")
+
         timestamp = datetime.now(timezone.utc)
-        if current is None:
+        lifecycle_current = self._lifecycle.get(request_id)
+        if lifecycle_current is None:
             self._lifecycle.reconstruct_unknown(
                 request_id,
                 updated_at=timestamp,
                 message="estado reconstruído durante reconciliação explícita",
             )
-        elif current.state not in (ExecutionLifecycleState.UNKNOWN, ExecutionLifecycleState.PENDING):
+        elif lifecycle_current.state not in (ExecutionLifecycleState.UNKNOWN, ExecutionLifecycleState.PENDING):
             raise ValueError("lifecycle não está em estado reconciliável.")
 
-        self._ledger.reconcile(request_id, executed=executed)
+        executed = result.status is ExternalOrderStatus.EXECUTED
+        self._ledger.reconcile(
+            request_id,
+            executed=executed,
+            external_id=result.external_id,
+        )
         state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
         self._lifecycle.reconcile(
             request_id,
             state,
             updated_at=datetime.now(timezone.utc),
-            message="reconciliação explícita concluída",
+            message=result.message,
         )
