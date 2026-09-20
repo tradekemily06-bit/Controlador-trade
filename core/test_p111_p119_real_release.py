@@ -264,3 +264,47 @@ def test_real_gateway_rejects_authorization_for_different_registered_adapter(tmp
     result = gateway.execute(broker="fake", request_id="wrong-adapter", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
     assert ledger.status("wrong-adapter") is None
+
+
+def test_real_ledger_acceptance_survives_lifecycle_failure(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    original_put = lifecycle.put
+
+    def fail_after_pending(record):
+        if record.state.name == "ACCEPTED":
+            raise OSError("simulated lifecycle crash")
+        return original_put(record)
+
+    lifecycle.put = fail_after_pending
+    result = gateway.execute(
+        broker="fake", request_id="lifecycle-crash",
+        request=_request(), authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("lifecycle-crash") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("lifecycle-crash") == "external-1"
+    assert lifecycle.get("lifecycle-crash").state.name == "PENDING"
+
+
+def test_real_acceptance_persists_lifecycle_terminal_state(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    result = gateway.execute(
+        broker="fake", request_id="lifecycle-ok", request=_request(),
+        authorization=auth, admission=_admission(auth), safety=_safety(auth),
+    )
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert lifecycle.get("lifecycle-ok").state.name == "ACCEPTED"
