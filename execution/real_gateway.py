@@ -138,6 +138,10 @@ class RealExecutionGateway:
                     RealGatewayStatus.REJECTED,
                     f"campo {field_name} da autorização REAL é inválido.",
                 )
+        if admission.authorization_id != authorization.authorization_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "admissão REAL não pertence à autorização fornecida.")
+        if safety.authorization_id != authorization.authorization_id:
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "barreira de segurança REAL não pertence à autorização fornecida.")
         if not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
