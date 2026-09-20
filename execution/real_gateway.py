@@ -8,6 +8,8 @@ from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+from datetime import datetime, timezone
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -28,13 +30,16 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -97,13 +102,27 @@ class RealExecutionGateway:
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
 
+        event_time = datetime.now(timezone.utc)
         try:
-            result = self._gateway.execute(broker, request)
-        except Exception as exc:
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id, ExecutionLifecycleState.PENDING, event_time, "execução REAL iniciada"
+                )
+            )
+        except (OSError, ValueError) as exc:
             try:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"reserva REAL persistida, mas Lifecycle PENDING falhou; reconciliação necessária: {exc}",
+            )
+
+        try:
+            result = self._gateway.execute(broker, request)
+        except Exception as exc:
+            self._mark_uncertain(request_id, event_time, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
@@ -113,10 +132,7 @@ class RealExecutionGateway:
                 except (OSError, ValueError) as exc:
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"execução não iniciada, mas persistência da rejeição falhou: {exc}")
                 return RealGatewayResult(RealGatewayStatus.REJECTED, result.message)
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
+            self._mark_uncertain(request_id, event_time, result.message)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if result.execution.ambiguous:
@@ -130,7 +146,7 @@ class RealExecutionGateway:
                         result.execution,
                     )
             try:
-                self._ledger.mark_unknown(request_id)
+                self._mark_uncertain(request_id, event_time, result.execution.message)
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(
                     RealGatewayStatus.UNKNOWN,
@@ -146,6 +162,11 @@ class RealExecutionGateway:
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id, ExecutionLifecycleState.REJECTED, event_time, result.execution.message
+                    )
+                )
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
@@ -154,7 +175,7 @@ class RealExecutionGateway:
         # ambiguous: the external order may exist but cannot be safely reconciled.
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
-                self._ledger.mark_unknown(request_id)
+                self._mark_uncertain(request_id, event_time, "aceite REAL sem external_id")
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
@@ -162,15 +183,47 @@ class RealExecutionGateway:
         try:
             self._ledger.bind_external_id(request_id, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.execution.message
+                )
+            )
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"ordem REAL aceita e Ledger persistido, mas Lifecycle não foi persistido; recuperação necessária: {exc}",
+                result.execution,
+            )
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
+    def _mark_uncertain(self, request_id: str, timestamp: datetime, message: str) -> None:
+        self._ledger.mark_unknown(request_id)
+        self._lifecycle.put(
+            ExecutionLifecycleRecord(
+                request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message
+            )
+        )
+
     def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str | None = None) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
+        """Explicitly reconcile uncertain state; never resubmits the order."""
+        current = self._ledger.status(request_id)
+        if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        lifecycle = self._lifecycle.get(request_id)
+        if lifecycle is not None and lifecycle.state not in (
+            ExecutionLifecycleState.UNKNOWN,
+            ExecutionLifecycleState.PENDING,
+        ):
+            raise ValueError("Lifecycle não está em estado incerto reconciliável.")
         self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
+        try:
+            self._lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message="reconciliação REAL explícita",
+            )
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                f"Ledger reconciliado, mas Lifecycle não foi reconciliado; recuperação necessária: {exc}"
+            ) from exc
