@@ -149,7 +149,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted(request_id, external_id=result.execution.external_id.strip())
             self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, timestamp, result.execution.message))
         except (OSError, ValueError) as exc:
             self._mark_lifecycle_unknown(request_id, timestamp, f"ordem REAL aceita, mas persistência falhou: {exc}")
