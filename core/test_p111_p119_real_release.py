@@ -367,7 +367,7 @@ def test_real_crash_after_external_id_binding_never_replays_and_remains_reconcil
     assert adapter.calls == 1
 
 
-def test_real_admission_must_match_authorization_audit_and_broker(tmp_path: Path):
+def test_real_admission_must_match_authorized_broker(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
@@ -377,23 +377,26 @@ def test_real_admission_must_match_authorization_audit_and_broker(tmp_path: Path
     auth = _authorization()
     safety = _safety(auth)
 
-    mismatched_audit = RealAdmission(
-        admission_id="adm-mismatch",
-        audit_id="different-audit",
+    # Audit IDs belong to different release-audit stages (for example P111/P116),
+    # so equality with authorization.audit_id is not a valid invariant here.
+    valid_cross_stage_audit = RealAdmission(
+        admission_id="adm-valid",
+        audit_id="a116",
         status=RealAdmissionStatus.ADMITTED,
         broker_id="fake",
         reasons=(),
     )
     result = gateway.execute(
-        broker="fake", request_id="admission-audit-mismatch", request=_request(),
-        authorization=auth, admission=mismatched_audit, safety=safety,
+        broker="fake", request_id="admission-cross-stage-audit",
+        request=_request(), authorization=auth,
+        admission=valid_cross_stage_audit, safety=safety,
     )
-    assert result.status == RealGatewayStatus.BLOCKED
-    assert adapter.calls == 0
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
 
     mismatched_broker = RealAdmission(
         admission_id="adm-mismatch-broker",
-        audit_id=auth.audit_id,
+        audit_id="a116",
         status=RealAdmissionStatus.ADMITTED,
         broker_id="other-broker",
         reasons=(),
@@ -403,4 +406,5 @@ def test_real_admission_must_match_authorization_audit_and_broker(tmp_path: Path
         authorization=auth, admission=mismatched_broker, safety=safety,
     )
     assert result.status == RealGatewayStatus.BLOCKED
-    assert adapter.calls == 0
+    assert adapter.calls == 1
+
