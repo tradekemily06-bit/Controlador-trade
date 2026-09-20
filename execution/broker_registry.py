@@ -13,6 +13,7 @@ class BrokerRegistryError(ValueError):
 @dataclass(frozen=True)
 class BrokerAdapterInfo:
     name: str
+    adapter_id: str
     available: bool
 
 
@@ -21,21 +22,33 @@ class BrokerRegistry:
 
     def __init__(self) -> None:
         self._adapters: dict[str, BrokerAdapter] = {}
+        self._adapter_ids: dict[str, str] = {}
 
-    def register(self, name: str, adapter: BrokerAdapter) -> None:
+    def register(self, name: str, adapter: BrokerAdapter, *, adapter_id: str | None = None) -> None:
         normalized = self._normalize_name(name)
+        identity = self._normalize_identity(adapter_id if adapter_id is not None else normalized)
         if normalized in self._adapters:
             raise BrokerRegistryError(f"adapter já registrado: {normalized}")
+        if identity in self._adapter_ids.values():
+            raise BrokerRegistryError(f"adapter_id já registrado: {identity}")
         if not callable(getattr(adapter, "execute", None)):
             raise BrokerRegistryError("adapter deve implementar execute().")
         if not callable(getattr(adapter, "is_available", None)):
             raise BrokerRegistryError("adapter deve implementar is_available().")
         self._adapters[normalized] = adapter
+        self._adapter_ids[normalized] = identity
 
     def get(self, name: str) -> BrokerAdapter:
         normalized = self._normalize_name(name)
         try:
             return self._adapters[normalized]
+        except KeyError as exc:
+            raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
+
+    def adapter_id(self, name: str) -> str:
+        normalized = self._normalize_name(name)
+        try:
+            return self._adapter_ids[normalized]
         except KeyError as exc:
             raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
 
@@ -45,7 +58,11 @@ class BrokerRegistry:
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
-            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()))
+            BrokerAdapterInfo(
+                name=name,
+                adapter_id=self._adapter_ids[name],
+                available=bool(adapter.is_available()),
+            )
             for name, adapter in self._adapters.items()
         )
 
@@ -60,3 +77,9 @@ class BrokerRegistry:
         if not isinstance(name, str) or not name.strip():
             raise BrokerRegistryError("nome do adapter não pode ser vazio.")
         return name.strip().lower()
+
+    @staticmethod
+    def _normalize_identity(adapter_id: str) -> str:
+        if not isinstance(adapter_id, str) or not adapter_id.strip():
+            raise BrokerRegistryError("adapter_id não pode ser vazio.")
+        return adapter_id.strip().lower()
