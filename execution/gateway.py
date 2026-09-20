@@ -27,7 +27,15 @@ class GatewayResult:
 
 class ExecutionGateway:
     """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
-    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder|None=None, ledger: ExecutionLedger|None=None, lifecycle: ExecutionLifecycleStore|None=None)->None:
+    def __init__(self, executor: ExecutionPort, kill_switch: KillSwitch, recorder: P4OperationalRecorder|None=None, ledger: ExecutionLedger|None=None, lifecycle: ExecutionLifecycleStore|None=None, allow_ephemeral: bool=False)->None:
+        self._allow_ephemeral = bool(allow_ephemeral)
+        if (ledger is None) != (lifecycle is None):
+            raise ValueError("Ledger e Lifecycle devem ser fornecidos juntos.")
+        if ledger is None and not getattr(self, "_allow_ephemeral", False):
+            # Production execution must always have durable anti-replay and lifecycle state.
+            raise ValueError(
+                "execução sem estado durável bloqueada; forneça Ledger + Lifecycle."
+            )
         if executor is None: raise ValueError("executor é obrigatório.")
         if kill_switch is None: raise ValueError("kill_switch é obrigatório.")
         self._executor=executor; self._kill_switch=kill_switch; self._recorder=recorder; self._ledger=ledger; self._lifecycle=lifecycle
