@@ -133,8 +133,15 @@ class ExecutionLedger:
         self._validate_id(request_id)
 
         def mutation() -> None:
-            if request_id not in self._states:
+            current = self._states.get(request_id)
+            if current is None:
                 self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            elif current is ExecutionLedgerStatus.RESERVED:
+                # DEMO/PAPER path: reserve before dispatch, then terminalize
+                # locally without requiring a broker external_id.
+                self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            else:
+                raise ValueError(f"transição DEMO inválida de {current.value} para ACCEPTED.")
 
         self._mutate_locked(mutation)
 
