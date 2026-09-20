@@ -7,11 +7,6 @@ from enum import Enum
 from pathlib import Path
 from datetime import datetime
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
-
 
 class ExecutionLifecycleState(str, Enum):
     PENDING = "PENDING"
@@ -92,18 +87,12 @@ class ExecutionLifecycleStore:
 
     def _mutate_locked(self, mutation):
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
+        with exclusive_file_lock(lock_path):
                 self._load()
                 result = mutation()
                 self._save()
                 return result
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
