@@ -149,6 +149,9 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
+            # Persist the broker identity before terminal state. If the process dies
+            # after this point, recovery can query the exact external order without replay.
+            self._ledger.bind_external_id(request_id, result.execution.external_id.strip())
             self._ledger.mark_accepted(request_id, external_id=result.execution.external_id.strip())
             self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, timestamp, result.execution.message))
         except (OSError, ValueError) as exc:
