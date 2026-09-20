@@ -5,6 +5,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from core.file_lock import exclusive_file_lock
+
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .kill_switch import KillSwitch, KillSwitchState
