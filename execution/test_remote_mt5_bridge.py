@@ -67,3 +67,20 @@ def test_remote_bridge_rejects_forged_duck_typed_demo_health():
     result = executor.execute(request(ExecutionMode.DEMO))
     assert result.accepted is False
     assert bridge.calls == 0
+
+
+def test_remote_bridge_blocks_missing_request_id():
+    bridge = FakeBridge(BridgeHealth(True, True, "ok"))
+    executor = SafeRemoteMT5Executor(bridge)
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id=None,
+    )
+    result = executor.execute(request)
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert bridge.executions == []
