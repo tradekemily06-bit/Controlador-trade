@@ -4,7 +4,8 @@ import pytest
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
-from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLedgerStatus
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest
@@ -33,18 +34,18 @@ def test_ledger_survives_restart(tmp_path: Path):
 
 def test_gateway_rejects_duplicate_after_restart(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), allow_ephemeral=True)
+    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     accepted = first.execute("req-001", request())
     assert accepted.status is GatewayStatus.ACCEPTED
 
-    restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), allow_ephemeral=True)
+    restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     duplicate = restored.execute("req-001", request())
     assert duplicate.status is GatewayStatus.DUPLICATE
 
 
 def test_rejected_execution_is_not_recorded(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), lifecycle=ExecutionLifecycleStore(tmp_path / "lifecycle.json"))
     invalid = ExecutionRequest(
         symbol="TEST",
         signal=Signal.COMPRA,
