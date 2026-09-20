@@ -69,7 +69,7 @@ class OperationMemoryStore:
             temporary = self.path.with_name(f".{self.path.name}.tmp")
             temporary.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-                    encoding="utf-8",
+                encoding="utf-8",
                 )
             os.replace(temporary, self.path)
 
