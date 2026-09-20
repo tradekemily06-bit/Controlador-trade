@@ -177,6 +177,8 @@ class ExecutionLedger:
                 raise ValueError("request_id não está em estado incerto reconciliável.")
             if executed and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("execução reconciliada exige external_id.")
+            if not executed and external_id is not None:
+                raise ValueError("reconciliação NOT_EXECUTED não pode associar external_id.")
             if external_id is not None:
                 self._bind_external_id(request_id, external_id)
             self._states[request_id] = (
