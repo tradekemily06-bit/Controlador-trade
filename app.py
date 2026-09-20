@@ -291,7 +291,9 @@ def application(environ, start_response):
             content_type = "text/html; charset=utf-8" if candidate.suffix == ".html" else "text/javascript; charset=utf-8" if candidate.suffix == ".js" else "text/css; charset=utf-8" if candidate.suffix == ".css" else "application/octet-stream"
             return _file_response(start_response, candidate, content_type, request_id, environ)
         return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-    except PublicSaaSNotReady: return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Serviço SaaS indisponível", "request_id": request_id}, request_id, environ)
+    except PublicSaaSNotReady as exc:
+        message = str(exc).strip()[:256] or "tenant/subject-scoped SaaS data plane is unavailable"
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": message, "request_id": request_id}, request_id, environ)
     except PermissionError: return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Acesso negado", "request_id": request_id}, request_id, environ)
     except (ValueError, KeyError, TypeError, RuntimeError): return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
     except Exception as exc: return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
