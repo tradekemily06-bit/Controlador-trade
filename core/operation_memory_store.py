@@ -75,15 +75,17 @@ class OperationMemoryStore:
 
 
     def load(self) -> OperationMemory:
-        memory = OperationMemory()
-        if not self.path.exists():
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            memory = OperationMemory()
+            if not self.path.exists():
+                return memory
+            try:
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("arquivo de memória inválido.") from exc
+            if not isinstance(payload, list):
+                raise ValueError("arquivo de memória deve conter uma lista.")
+            for item in payload:
+                memory.append(self._deserialize(item))
             return memory
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("arquivo de memória inválido.") from exc
-        if not isinstance(payload, list):
-            raise ValueError("arquivo de memória deve conter uma lista.")
-        for item in payload:
-            memory.append(self._deserialize(item))
-        return memory
