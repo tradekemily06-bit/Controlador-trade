@@ -91,3 +91,12 @@ def test_reconciler_handles_empty_history():
     assert result.accepted == 0
     assert result.rejected == 0
     assert result.consistent is True
+
+
+def test_paper_executor_rejects_missing_request_id():
+    executor = PaperExecutor()
+
+    result = executor.execute(make_request(request_id=None))
+
+    assert result.accepted is False
+    assert executor.executions() == ()
