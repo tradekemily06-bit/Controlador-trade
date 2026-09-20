@@ -547,6 +547,7 @@ def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_pa
             "pending before crash",
         )
     )
+    ledger.bind_external_id("crash-accepted", "external-reconciled")
     ledger.mark_accepted("crash-accepted")
 
     gateway = RealExecutionGateway(
@@ -767,7 +768,7 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
     else:
         raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
     assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
+    assert lifecycle.get("ledger-only") is None
 
 
 def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
