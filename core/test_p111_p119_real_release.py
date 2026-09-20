@@ -34,6 +34,20 @@ class FakeAdapter:
         return ExecutionResult(True, "fake real execution accepted", "external-1")
 
 
+class KillSwitchDuringAvailabilityAdapter:
+    def __init__(self, kill_switch):
+        self.kill_switch = kill_switch
+        self.calls = 0
+
+    def is_available(self):
+        self.kill_switch.activate("ativado durante preflight")
+        return True
+
+    def execute(self, request):
+        self.calls += 1
+        return ExecutionResult(True, "must never reach external dispatch", "should-not-exist")
+
+
 class NoExternalIdAdapter:
     def is_available(self):
         return True
@@ -156,6 +170,31 @@ def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
     assert ExecutionLedger(tmp_path / "ledger.json").status("kill-switch-race") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+
+
+def test_real_gateway_rechecks_kill_switch_after_adapter_preflight(tmp_path: Path):
+    registry = BrokerRegistry()
+    kill_switch = KillSwitch()
+    adapter = KillSwitchDuringAvailabilityAdapter(kill_switch)
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        kill_switch,
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake", request_id="kill-switch-preflight", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("kill-switch-preflight") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_authorization_is_explicit():
