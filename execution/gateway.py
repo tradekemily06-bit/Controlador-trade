@@ -122,6 +122,15 @@ class ExecutionGateway:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
+        # Accepted without an external broker reference is not safely auditable.
+        if not isinstance(result.external_id, str) or not result.external_id.strip():
+            self._mark_unknown(request_id, event_time, "execução aceita sem external_id; confirmação externa insuficiente")
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                "execução aceita sem external_id; estado UNKNOWN até reconciliação.",
+                result,
+            )
+
         if self._ledger is not None:
             try:
                 self._ledger.record(request_id)
