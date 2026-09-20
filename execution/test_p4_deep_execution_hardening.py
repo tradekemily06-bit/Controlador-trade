@@ -1465,3 +1465,46 @@ def test_real_composition_binds_kill_switch_to_same_global_execution_barrier(tmp
 
     assert kill_switch._path == tmp_path / "real-kill-switch.json"
     assert kill_switch._coordination_lock_path == expected
+
+
+def test_real_admission_artifact_rejects_inconsistent_manual_construction():
+    with pytest.raises(ValueError, match="ADMITTED"):
+        RealAdmission(
+            admission_id="adm",
+            audit_id="audit",
+            status=RealAdmissionStatus.ADMITTED,
+            broker_id="fake",
+            reasons=("forged blocked reason",),
+        )
+    with pytest.raises(ValueError, match="BLOCKED"):
+        RealAdmission(
+            admission_id="adm",
+            audit_id="audit",
+            status=RealAdmissionStatus.BLOCKED,
+            broker_id="fake",
+            reasons=(),
+        )
+
+
+def test_real_safety_artifact_rejects_inconsistent_manual_construction():
+    with pytest.raises(ValueError, match="READY"):
+        RealSafetyReport(
+            state=RealSafetyState.READY,
+            reasons=("forged blocked reason",),
+        )
+    with pytest.raises(ValueError, match="BLOCKED"):
+        RealSafetyReport(
+            state=RealSafetyState.BLOCKED,
+            reasons=(),
+        )
+
+
+def test_real_authorization_rejects_noncanonical_identity_fields():
+    with pytest.raises(ValueError, match="canônico"):
+        RealExecutionAuthorization(
+            " auth", "audit", "fake", "adapter", True, True
+        )
+    with pytest.raises(ValueError, match="canônico"):
+        RealExecutionAuthorization(
+            "auth", "audit", "fake", "adapter ", True, True
+        )
