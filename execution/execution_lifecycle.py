@@ -75,12 +75,7 @@ class ExecutionLifecycleStore:
     @staticmethod
     def _allowed(current: ExecutionLifecycleState | None, target: ExecutionLifecycleState) -> bool:
         if current is None:
-            return target in {
-                ExecutionLifecycleState.PENDING,
-                ExecutionLifecycleState.ACCEPTED,
-                ExecutionLifecycleState.REJECTED,
-                ExecutionLifecycleState.UNKNOWN,
-            }
+            return target is ExecutionLifecycleState.PENDING
         return target in {
             ExecutionLifecycleState.PENDING: {
                 ExecutionLifecycleState.ACCEPTED,
@@ -121,6 +116,30 @@ class ExecutionLifecycleStore:
             raise ValueError("request_id não pode ser vazio.")
         self._load()
         return self._records.get(request_id)
+
+    def reconstruct_unknown(
+        self,
+        request_id: str,
+        *,
+        updated_at: datetime,
+        message: str = "",
+    ) -> ExecutionLifecycleRecord:
+        """Rebuild UNKNOWN after recovery finds an uncertain ledger-only request."""
+        record = ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, updated_at, message)
+        self._validate(record)
+
+        def mutation() -> ExecutionLifecycleRecord:
+            current = self._records.get(request_id)
+            if current is not None:
+                if current.state is ExecutionLifecycleState.UNKNOWN:
+                    return current
+                if current.state is not ExecutionLifecycleState.PENDING:
+                    raise ValueError("lifecycle não está em estado reconstruível.")
+                raise ValueError("PENDING existente exige transição normal para UNKNOWN.")
+            self._records[request_id] = record
+            return record
+
+        return self._mutate_locked(mutation)
 
     def reconcile(
         self,
