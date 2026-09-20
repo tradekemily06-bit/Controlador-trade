@@ -317,9 +317,20 @@ class RealExecutionGateway:
             self._ledger.attach_external_id(request_id, external_id)
             self._ledger.mark_accepted(request_id, external_id=external_id)
         except (OSError, ValueError) as exc:
+            # The broker-side effect already happened. If local persistence
+            # fails, never attempt a compensating replay. Keep the request
+            # explicitly UNKNOWN when possible so the next recovery pass
+            # knows that broker-side reconciliation is mandatory.
+            persistence_warning = self._mark_unknown(
+                request_id,
+                f"ordem REAL aceita, mas persistência do ledger falhou: {exc}",
+            )
+            message = f"ordem REAL aceita, mas persistência do ledger falhou: {exc}"
+            if persistence_warning:
+                message = f"{message}; persistência do estado incerto também falhou: {persistence_warning}"
             return RealGatewayResult(
                 RealGatewayStatus.UNKNOWN,
-                f"ordem REAL aceita, mas persistência do ledger falhou: {exc}",
+                message,
                 execution,
             )
 
