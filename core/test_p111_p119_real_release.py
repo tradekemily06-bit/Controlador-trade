@@ -94,7 +94,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert p117.status is RealAdmissionStatus.ADMITTED
     registry = BrokerRegistry()
     adapter = FakeAdapter()
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
@@ -247,3 +247,16 @@ def test_real_pre_dispatch_adapter_unavailable_is_not_unknown(tmp_path: Path):
     assert result.status == RealGatewayStatus.REJECTED
     assert ledger.status("unavailable") is ExecutionLedgerStatus.REJECTED
     assert adapter.calls == 0
+
+
+def test_real_gateway_rejects_authorization_for_different_registered_adapter(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter(), adapter_id="actual-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(broker="fake", request_id="wrong-adapter", request=_request(), authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.REJECTED
+    assert ledger.status("wrong-adapter") is None
