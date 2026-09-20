@@ -62,4 +62,16 @@ class SafeRemoteMT5Executor:
         if not self._valid_demo_health(health):
             return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
 
-        return self._bridge.execute_demo(request)
+        try:
+            result = self._bridge.execute_demo(request)
+        except Exception as exc:
+            return ExecutionResult(
+                False,
+                f"ponte MT5 falhou após despacho potencial; resultado incerto: {type(exc).__name__}: {exc}",
+                uncertain=True,
+            )
+        if not isinstance(result, ExecutionResult):
+            return ExecutionResult(False, "ponte MT5 retornou resultado inválido; estado externo incerto.", uncertain=True)
+        if result.accepted and (not isinstance(result.external_id, str) or not result.external_id.strip()):
+            return ExecutionResult(False, "ponte MT5 aceitou sem external_id; estado externo incerto.", uncertain=True)
+        return result
