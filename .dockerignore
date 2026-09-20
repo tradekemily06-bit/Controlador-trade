@@ -13,3 +13,7 @@ __pycache__
 *.sqlite3
 *.db
 *.log
+*.pem
+*.key
+*.p12
+*.pfx
