@@ -223,7 +223,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
 
 def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", NoExternalIdAdapter())
+    registry.register("fake", NoExternalIdAdapter(), adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     auth = _authorization()
@@ -237,7 +237,7 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
 def test_real_pre_dispatch_adapter_unavailable_is_not_unknown(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter(available=False)
-    registry.register("fake", adapter)
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     auth = _authorization()
@@ -245,7 +245,7 @@ def test_real_pre_dispatch_adapter_unavailable_is_not_unknown(tmp_path: Path):
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unavailable", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
-    assert ledger.status("unavailable") is ExecutionLedgerStatus.REJECTED
+    assert ledger.status("unavailable") is None
     assert adapter.calls == 0
 
 
