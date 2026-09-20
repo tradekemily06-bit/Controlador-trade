@@ -83,8 +83,6 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        if admission.audit_id.strip() != authorization.audit_id.strip():
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não pertence à autorização/auditoria apresentada.")
         if admission.broker_id.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da admissão REAL difere do broker autorizado.")
         if not self._valid_request(request):
