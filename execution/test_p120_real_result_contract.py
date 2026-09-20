@@ -89,7 +89,7 @@ def test_final_boundary_blocks_reconciled_not_executed(tmp_path: Path):
     ledger._reconcile_locked("terminal-not-executed", executed=False)
     lifecycle.put(ExecutionLifecycleRecord("terminal-not-executed", ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), "reconciled"))
     gateway = _gateway(tmp_path, registry, ledger, lifecycle=lifecycle)
-    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(admission_id="adm", audit_id="audit", audit_verified=True, authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake")
     safety = RealSafetyGate().evaluate(authorization_active=True, kill_switch_clear=True, market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True)
     result = gateway.execute(broker="fake", request_id="terminal-not-executed", request=_request(), authorization=authorization, admission=admission, safety=safety)
