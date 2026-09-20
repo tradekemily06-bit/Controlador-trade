@@ -150,7 +150,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
-            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed"
+            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed", "req"
         )
     )
     registry.register("fake", adapter)
@@ -254,7 +254,7 @@ def test_real_unknown_with_durable_external_id_can_be_reconciled_from_broker_que
     registry = BrokerRegistry()
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
-            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed"
+            "external-2", ExternalOrderStatus.EXECUTED, "broker confirmed", "unknown-2"
         )
     )
     registry.register("fake", adapter)
