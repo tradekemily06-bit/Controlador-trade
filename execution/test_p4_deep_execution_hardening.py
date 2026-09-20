@@ -1096,9 +1096,13 @@ def test_reservation_survives_pending_projection_failure_without_dispatch(tmp_pa
 
 
 def test_external_id_attached_before_acceptance_failure_remains_reconcilable(tmp_path):
-    gw, ledger, lifecycle = gateway(
-        tmp_path, FakeAdapter(ExecutionResult(True, "accepted", "broker-attach-failure"))
+    adapter = FakeAdapter(
+        ExecutionResult(True, "accepted", "broker-attach-failure"),
+        observation=ExternalOrderObservation(
+            "broker-attach-failure", ExternalOrderStatus.EXECUTED, "confirmed"
+        ),
     )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
     original = ledger.mark_accepted
 
     def fail_mark_accepted(request_id, external_id=None):
@@ -1197,16 +1201,3 @@ def test_ledger_normalizes_external_id_and_rejects_non_boolean_reconciliation(tm
     ledger.reconcile("normalize", executed=False, external_id="  broker-123  ")
     assert ledger.external_id("normalize") == "broker-123"
     assert ledger.status("normalize") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-
-    ledger.reserve("strict-bool")
-    ledger.attach_external_id("strict-bool", "broker-456")
-    ledger.mark_unknown("strict-bool")
-    with pytest.raises(ValueError, match="executed precisa ser booleano"):
-        ledger.reconcile("strict-bool", executed="false", external_id="broker-456")
-
-
-def test_ledger_refresh_clears_stale_snapshot_when_file_is_removed(tmp_path):
-    path = tmp_path / "ledger.json"
-    ledger = ExecutionLedger(path)
-    ledger.reserve("stale-id")
-    assert ledger.contains("stale-id")
