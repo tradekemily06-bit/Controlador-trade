@@ -9,11 +9,6 @@ from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .kill_switch import KillSwitch, KillSwitchState
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
-
 
 class OperationalSafetyStore:
     """Persists the validated operational audit, execution audit and kill-switch state."""
@@ -126,11 +121,7 @@ class OperationalSafetyStore:
 
     def _mutate_locked(self, mutator) -> None:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
+        with exclusive_file_lock(lock_path):
                 payload = self._read_payload()
                 updated = mutator(payload)
                 self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,9 +131,7 @@ class OperationalSafetyStore:
                     encoding="utf-8",
                 )
                 os.replace(temporary, self.path)
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         payload = self._read_payload()
