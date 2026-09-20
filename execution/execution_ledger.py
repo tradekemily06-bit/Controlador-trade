@@ -6,15 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
-
-try:
-    import msvcrt
-except ImportError:  # pragma: no cover
-    msvcrt = None
+from core.file_lock import exclusive_file_lock
 
 
 def _unique_json_object(pairs):
@@ -180,33 +172,12 @@ class ExecutionLedger:
                 os.close(directory_fd)
 
     def _mutate_locked(self, mutation) -> None:
-        """Serialize read/modify/write; callers may hold the REAL global lock."""
+        """Serialize read/modify/write with the shared safe lock implementation."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            elif msvcrt is not None:
-                try:
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-                except OSError as exc:
-                    raise OSError("não foi possível adquirir lock do ledger.") from exc
-            else:
-                raise OSError("ledger exige lock interprocesso suportado pelo sistema.")
-            try:
-                self._load()
-                mutation()
-                self._write()
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                elif msvcrt is not None:
-                    try:
-                        lock_file.seek(0)
-                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                    except OSError:
-                        pass
+        with exclusive_file_lock(lock_path):
+            self._load()
+            mutation()
+            self._write()
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
