@@ -162,13 +162,10 @@ class RealExecutionGateway:
         current = self._lifecycle.get(request_id)
         timestamp = datetime.now(timezone.utc)
         if current is None:
-            self._lifecycle.put(
-                ExecutionLifecycleRecord(
-                    request_id,
-                    ExecutionLifecycleState.UNKNOWN,
-                    timestamp,
-                    "estado reconstruído durante reconciliação explícita",
-                )
+            self._lifecycle.reconstruct_unknown(
+                request_id,
+                updated_at=timestamp,
+                message="estado reconstruído durante reconciliação explícita",
             )
         elif current.state not in (ExecutionLifecycleState.UNKNOWN, ExecutionLifecycleState.PENDING):
             raise ValueError("lifecycle não está em estado reconciliável.")
