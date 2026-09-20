@@ -90,6 +90,8 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id obrigatório para execução DEMO.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
@@ -106,10 +108,13 @@ class ICMarketsMT5DemoAdapter:
             if account is None or not self._is_demo_account(account, mt5):
                 return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
 
-            symbol = self.config.symbol or request.symbol
-            if not isinstance(symbol, str) or not symbol.strip():
+            requested_symbol = request.symbol.strip() if isinstance(request.symbol, str) else ""
+            configured_symbol = self.config.symbol.strip() if isinstance(self.config.symbol, str) else None
+            if configured_symbol is not None and configured_symbol != requested_symbol:
+                return ExecutionResult(False, "símbolo configurado difere do símbolo da requisição; ordem bloqueada.")
+            symbol = configured_symbol or requested_symbol
+            if not symbol:
                 return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
-            symbol = symbol.strip()
             if not mt5.symbol_select(symbol, True):
                 return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
 
