@@ -6,6 +6,7 @@ import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p121_external_order_reconciliation import (
+    ExternalOrderObservation,
     ExternalOrderReconciliationBoundary,
     ExternalOrderStatus,
     ExternalOrderRequestQueryPort,
@@ -458,19 +459,24 @@ class RealExecutionGateway:
                     "request_id sem external_id e adapter não oferece consulta broker-backed por referência; reconciliação bloqueada."
                 )
             observation = request_query.query_order_by_request_id(request_id)
-            if not hasattr(observation, "external_id") or not isinstance(observation.external_id, str) or not observation.external_id.strip():
+            # The request-id recovery path is an external trust boundary just
+            # like external-id reconciliation. Do not accept duck-typed or
+            # plain-string status values here: ExternalOrderStatus inherits
+            # from str, so a raw "EXECUTED" could otherwise pass equality checks
+            # and then fail identity checks below, being misclassified as
+            # NOT_EXECUTED. A malformed broker response must remain UNKNOWN.
+            if not isinstance(observation, ExternalOrderObservation):
+                raise ValueError("broker retornou observação externa inválida.")
+            if type(observation.external_id) is not str or not observation.external_id.strip():
                 raise ValueError("broker retornou observação sem external_id para request_id.")
-            if not hasattr(observation, "request_id") or not isinstance(observation.request_id, str) or not observation.request_id.strip():
+            if type(observation.request_id) is not str or not observation.request_id.strip():
                 raise ValueError("broker retornou observação sem request_id correlacionável.")
             if observation.request_id != request_id:
                 raise ValueError("broker retornou observação vinculada a outro request_id.")
-            if observation.status not in (
-                ExternalOrderStatus.EXECUTED,
-                ExternalOrderStatus.NOT_EXECUTED,
-                ExternalOrderStatus.PENDING,
-                ExternalOrderStatus.UNKNOWN,
-            ):
+            if not isinstance(observation.status, ExternalOrderStatus):
                 raise ValueError("broker retornou status externo inválido.")
+            if type(observation.message) is not str or not observation.message.strip():
+                raise ValueError("broker retornou mensagem externa inválida.")
             if observation.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
                 raise ValueError("broker ainda não fornece evidência terminal; reconciliação permanece aberta.")
             observed_id = observation.external_id.strip()
