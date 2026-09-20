@@ -49,3 +49,21 @@ def test_remote_bridge_executes_only_after_demo_health():
     assert result.accepted is True
     assert result.external_id == "demo-1"
     assert bridge.calls == 1
+
+
+def test_remote_bridge_rejects_forged_duck_typed_demo_health():
+    class ForgedHealth:
+        available = True
+        demo_account = True
+        message = "fake"
+
+    class ForgedBridge(FakeBridge):
+        def health(self):
+            return ForgedHealth()
+
+    bridge = ForgedBridge(ForgedHealth())
+    executor = SafeRemoteMT5Executor(bridge)
+    assert executor.is_available() is False
+    result = executor.execute(request(ExecutionMode.DEMO))
+    assert result.accepted is False
+    assert bridge.calls == 0
