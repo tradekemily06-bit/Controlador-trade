@@ -8,6 +8,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p121_external_order_reconciliation import (
     ExternalOrderReconciliationBoundary,
     ExternalOrderStatus,
+    ExternalOrderRequestQueryPort,
 )
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
@@ -416,25 +417,63 @@ class RealExecutionGateway:
 
         external_id = self._ledger.external_id(request_id)
         if external_id is None:
-            raise ValueError(
-                "request_id não possui external_id durável; reconciliação por external_id bloqueada."
+            # Crash window: broker accepted after RESERVED/PENDING but the
+            # process died before external_id reached the Ledger. Recovery may
+            # query only by the same durable request reference that the
+            # sanctioned adapter had to send as its client-order-id.
+            request_query = self._gateway.real_request_query_port(
+                broker,
+                expected_adapter_id=authorization.adapter_id,
             )
-
-        reconciliation = reconciliation_boundary.reconcile(
-            external_id,
-            query_port=query_port,
-        )
-        if not reconciliation.reconciled:
-            raise ValueError(
-                "broker ainda não fornece estado terminal; reconciliação permanece aberta."
+            if request_query is None:
+                raise ValueError(
+                    "request_id sem external_id e adapter não oferece consulta broker-backed por referência; reconciliação bloqueada."
+                )
+            observation = request_query.query_order_by_request_id(request_id)
+            if not hasattr(observation, "external_id") or not isinstance(observation.external_id, str) or not observation.external_id.strip():
+                raise ValueError("broker retornou observação sem external_id para request_id.")
+            if observation.status not in (
+                ExternalOrderStatus.EXECUTED,
+                ExternalOrderStatus.NOT_EXECUTED,
+                ExternalOrderStatus.PENDING,
+                ExternalOrderStatus.UNKNOWN,
+            ):
+                raise ValueError("broker retornou status externo inválido.")
+            if observation.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
+                raise ValueError("broker ainda não fornece evidência terminal; reconciliação permanece aberta.")
+            observed_id = observation.external_id.strip()
+            if observation.status is ExternalOrderStatus.EXECUTED:
+                self._ledger.reconcile(
+                    request_id,
+                    executed=True,
+                    external_id=observed_id,
+                )
+                executed = True
+            else:
+                self._ledger.reconcile(
+                    request_id,
+                    executed=False,
+                    external_id=observed_id,
+                )
+                executed = False
+            reconciliation = None
+        else:
+            reconciliation = reconciliation_boundary.reconcile(
+                external_id,
+                query_port=query_port,
             )
+        if reconciliation is not None:
+            if not reconciliation.reconciled:
+                raise ValueError(
+                    "broker ainda não fornece estado terminal; reconciliação permanece aberta."
+                )
 
-        executed = reconciliation.status is ExternalOrderStatus.EXECUTED
-        self._ledger.reconcile(
-            request_id,
-            executed=executed,
-            external_id=reconciliation.external_id,
-        )
+            executed = reconciliation.status is ExternalOrderStatus.EXECUTED
+            self._ledger.reconcile(
+                request_id,
+                executed=executed,
+                external_id=reconciliation.external_id,
+            )
         if self._lifecycle is not None:
             state = (
                 ExecutionLifecycleState.ACCEPTED
