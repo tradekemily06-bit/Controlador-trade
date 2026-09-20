@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -53,7 +54,7 @@ def test_terminal_states_cannot_be_overwritten(tmp_path):
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
     with pytest.raises(ValueError, match="transição inválida"):
-        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
 
 
 def test_unknown_requires_explicit_reconciliation(tmp_path):
