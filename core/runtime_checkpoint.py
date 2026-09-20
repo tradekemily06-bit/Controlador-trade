@@ -5,11 +5,42 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from contextlib import contextmanager
+from typing import Iterator
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+
+@contextmanager
+def process_file_lock(path: str | Path) -> Iterator[None]:
+    """Cross-platform process lock for local durable state files."""
+    lock_path = Path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if os.name == "nt":
+        import msvcrt
+        with lock_path.open("a+b") as lock_file:
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    try:
+        import fcntl
+    except ImportError as exc:  # pragma: no cover
+        raise OSError("bloqueio de processo não suportado neste sistema.") from exc
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -32,15 +63,8 @@ class RuntimeCheckpointStore:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        if fcntl is None:
-            raise OSError(
-                "checkpoint multi-process lock não suportado neste sistema; "
-                "persistência bloqueada por segurança."
-            )
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                current = self.load()
+        with process_file_lock(lock_path):
+            current = self.load()
                 if current is not None:
                     if (
                         current.session_id == checkpoint.session_id
@@ -78,8 +102,6 @@ class RuntimeCheckpointStore:
                     os.fsync(directory_fd)
                 finally:
                     os.close(directory_fd)
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
