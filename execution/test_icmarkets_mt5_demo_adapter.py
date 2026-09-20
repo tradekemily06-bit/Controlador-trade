@@ -13,6 +13,11 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    TRADE_RETCODE_PLACED = 10008
+    TRADE_RETCODE_DONE_PARTIAL = 10010
+    TRADE_RETCODE_TIMEOUT = 10012
+    TRADE_RETCODE_ORDER_CHANGED = 10023
+    TRADE_RETCODE_LOCKED = 10028
 
     def __init__(self, check_code=0, send_result=True):
         self.check_code = check_code
@@ -159,3 +164,22 @@ def test_demo_adapter_requires_request_id_before_mt5_access():
     assert result.accepted is False
     assert "request_id" in result.message
     assert mt5.calls == []
+
+
+def test_ambiguous_mt5_trade_codes_are_uncertain_not_rejected():
+    for code in (
+        FakeMT5.TRADE_RETCODE_PLACED,
+        FakeMT5.TRADE_RETCODE_DONE_PARTIAL,
+        FakeMT5.TRADE_RETCODE_TIMEOUT,
+        FakeMT5.TRADE_RETCODE_ORDER_CHANGED,
+        FakeMT5.TRADE_RETCODE_LOCKED,
+    ):
+        class AmbiguousMT5(FakeMT5):
+            def order_send(self, payload):
+                self.calls.append(("order_send", payload))
+                return SimpleNamespace(retcode=code, order=123456, deal=654321)
+
+        mt5 = AmbiguousMT5()
+        result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+        assert result.accepted is False
+        assert result.uncertain is True
