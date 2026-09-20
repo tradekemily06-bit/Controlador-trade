@@ -138,6 +138,18 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
+    def bind_external_id(self, request_id: str, external_id: str) -> None:
+        """Durably bind broker identity before terminalizing a REAL result."""
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("external_id só pode ser vinculado a uma execução incerta/reservada.")
+            self._bind_external_id(request_id, external_id)
+
+        self._mutate_locked(mutation)
+
     def mark_accepted(self, request_id: str, *, external_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.ACCEPTED, external_id=external_id)
 
