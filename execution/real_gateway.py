@@ -128,6 +128,22 @@ class RealExecutionGateway:
                 f"reserva REAL persistida, mas Lifecycle PENDING falhou; reconciliação necessária: {exc}",
             )
 
+        # Final live check immediately before entering the broker boundary.
+        # The earlier check protects admission; this one closes the larger TOCTOU
+        # window between reservation/lifecycle persistence and actual dispatch.
+        if not self._kill_switch.allows_execution():
+            try:
+                self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id, ExecutionLifecycleState.REJECTED, event_time,
+                        "kill switch ativado antes do dispatch REAL",
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"kill switch bloqueou o dispatch, mas a rejeição não pôde ser persistida: {exc}")
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado antes do dispatch REAL.")
+
         try:
             result = self._gateway.execute(broker, request)
         except Exception as exc:
