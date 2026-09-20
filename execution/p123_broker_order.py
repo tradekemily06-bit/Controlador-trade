@@ -38,6 +38,7 @@ class BrokerOrderResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    ambiguous: bool = False
 
 
 class BrokerOrderBoundary:
