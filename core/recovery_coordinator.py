@@ -46,7 +46,12 @@ class RecoveryCoordinator:
         for rid,ls in ledger.items():
             if rid not in by_id: bad.add(rid); continue
             rs=by_id[rid].state
-            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN): bad.add(rid)
+            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN): bad.add(rid)
+            # A terminal acceptance without a durable external reference cannot be
+            # safely reconciled after restart. Fail closed instead of declaring the
+            # runtime resumable based only on local state.
+            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED) and not self.execution_ledger.external_id(rid):
+                bad.add(rid)
         if pending or unknown or bad:
             details=[]
             if pending: details.append("PENDING requer verificação")
