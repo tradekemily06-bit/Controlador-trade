@@ -8,6 +8,7 @@ from multiprocessing import Process, Queue
 import pytest
 
 from core.models import Signal
+from core.kill_switch import KillSwitch
 from core.operation_memory import OperationMemory
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyReport, RealSafetyState
@@ -1409,3 +1410,31 @@ def test_request_reference_query_is_pinned_to_real_adapter_identity(tmp_path):
         )
     assert ledger.status("pinned-query") is ExecutionLedgerStatus.RESERVED
     assert adapter.calls == 0
+
+
+def test_real_composition_creates_shared_persistent_kill_switch(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = build_real_execution_gateway(root=tmp_path, registry=registry)
+
+    switch_path = tmp_path / "real-kill-switch.json"
+    assert switch_path.exists()
+
+    switch = KillSwitch(switch_path)
+    switch.activate("global emergency stop")
+
+    result = execute(gateway, "composition-kill")
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert registry.get("fake").calls == 0
+
+
+def test_real_composition_rejects_nonpersistent_kill_switch(tmp_path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+
+    with pytest.raises(ValueError, match="kill switch persistente"):
+        build_real_execution_gateway(
+            root=tmp_path,
+            registry=registry,
+            kill_switch=KillSwitch(),
+        )
