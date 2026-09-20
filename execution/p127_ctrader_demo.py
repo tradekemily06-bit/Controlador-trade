@@ -60,7 +60,9 @@ class CTraderDemoAdapter:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
         except (TypeError, ValueError) as exc:
-            return ExecutionResult(False, f"falha de validação cTrader DEMO: {exc}")
+            # The transport was entered; a malformed/failed response cannot prove
+            # that the broker did not accept the order. Treat it as ambiguous.
+            return ExecutionResult(False, f"resultado cTrader DEMO não pôde ser validado: {exc}", ambiguous=True)
 
         return ExecutionResult(
             accepted=validated.accepted,
