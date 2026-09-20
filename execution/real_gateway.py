@@ -122,17 +122,34 @@ class RealExecutionGateway:
         try:
             result = self._gateway.execute(broker, request)
         except Exception as exc:
-            self._mark_uncertain(request_id, event_time, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+            try:
+                self._mark_uncertain(request_id, event_time, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+            except (OSError, ValueError) as persist_exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"resultado REAL incerto e persistência do estado incompleta; recuperação necessária: {persist_exc}",
+                )
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
             if not result.dispatch_started:
                 try:
                     self._ledger.mark_rejected(request_id)
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id, ExecutionLifecycleState.REJECTED, event_time, result.message
+                        )
+                    )
                 except (OSError, ValueError) as exc:
                     return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"execução não iniciada, mas persistência da rejeição falhou: {exc}")
                 return RealGatewayResult(RealGatewayStatus.REJECTED, result.message)
-            self._mark_uncertain(request_id, event_time, result.message)
+            try:
+                self._mark_uncertain(request_id, event_time, result.message)
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"resultado REAL pós-dispatch incerto e persistência incompleta; recuperação necessária: {exc}",
+                )
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if result.execution.ambiguous:
