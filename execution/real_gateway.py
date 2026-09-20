@@ -396,6 +396,15 @@ class RealExecutionGateway:
         reconciliation_boundary: ExternalOrderReconciliationBoundary,
     ) -> None:
         # The caller already holds the global -> request REAL lock.
+        # Recovery is not a dispatch, but it still performs a broker-side
+        # external operation. A newly activated REAL kill switch must therefore
+        # block reconciliation as well. Because activation uses the same global
+        # lock, this check also closes the activation-vs-query race: an
+        # activation cannot occur between this check and the broker query.
+        if not self._kill_switch.allows_execution():
+            raise ValueError(
+                f"REAL reconciliation bloqueada pelo kill switch: {self._kill_switch.state.reason}"
+            )
         # Check the authoritative durable state before touching the broker.
         # A reconciliation query is not an execution, but it is still an
         # external side effect and must never be used to probe arbitrary IDs.
