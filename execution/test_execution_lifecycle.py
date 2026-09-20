@@ -80,3 +80,11 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_records_read_is_lock_consistent(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-b", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-a", ExecutionLifecycleState.PENDING, now))
+    assert [record.request_id for record in store.records()] == ["req-a", "req-b"]
