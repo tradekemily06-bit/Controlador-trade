@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .kill_switch import KillSwitch, KillSwitchState
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 
 class OperationalSafetyStore:
@@ -101,7 +107,7 @@ class OperationalSafetyStore:
             "execution_audit": execution_audit,
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        self._atomic_write(payload)
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
@@ -114,7 +120,25 @@ class OperationalSafetyStore:
             raise ValueError("estado de segurança inválido.")
         payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        self._atomic_write(payload)
+
+    def _atomic_write(self, payload: dict[str, object]) -> None:
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary.write_text(
+                    json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                    encoding="utf-8",
+                )
+                os.replace(temporary, self.path)
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         payload = self._read_payload()
