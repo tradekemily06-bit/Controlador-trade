@@ -43,6 +43,11 @@ class KillSwitch:
         coordination_lock_path: str | Path | None = None,
     ) -> None:
         self._path = Path(path) if path is not None else None
+        if coordination_lock_path is None and self._path is not None and self._path.name == "real-kill-switch.json":
+            # The canonical REAL kill-switch filename has one unambiguous
+            # shared coordination barrier, allowing an independently created
+            # process-local KillSwitch(path) to remain race-safe too.
+            coordination_lock_path = self._path.parent / ".real-execution.global.lock"
         self._coordination_lock_path = (
             Path(coordination_lock_path) if coordination_lock_path is not None else None
         )
