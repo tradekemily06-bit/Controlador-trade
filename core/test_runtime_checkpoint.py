@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -56,6 +56,6 @@ def test_checkpoint_rejects_older_timestamp_from_other_session(tmp_path):
                 "old-session",
                 99,
                 "req-old",
-                now.replace(microsecond=max(0, now.microsecond - 1)),
+                now - timedelta(seconds=1),
             )
         )
