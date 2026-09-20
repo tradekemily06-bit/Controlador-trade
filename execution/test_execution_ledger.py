@@ -149,3 +149,12 @@ def test_legacy_status_only_ledger_remains_readable(tmp_path: Path):
 
     assert ledger.status("req-1").value == "ACCEPTED"
     assert ledger.external_id("req-1") is None
+
+
+def test_unknown_cannot_be_promoted_by_record(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-record")
+    ledger.mark_unknown("req-record")
+    with pytest.raises(ValueError, match="estado UNKNOWN"):
+        ledger.record("req-record")
+    assert ledger.status("req-record") is ExecutionLedgerStatus.UNKNOWN
