@@ -25,7 +25,7 @@ class SQLiteScopedStateStore:
         self._reject_symlinked_database()
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._reject_symlinked_database()
-        with self._lock, sqlite3.connect(self.database_path) as db:
+        with self._lock, self._connect() as db:
             db.execute("PRAGMA journal_mode=DELETE")
             db.execute("PRAGMA synchronous=FULL")
             db.execute(
@@ -73,6 +73,10 @@ class SQLiteScopedStateStore:
     @classmethod
     def _namespace(cls, namespace: str) -> str:
         return cls._component(namespace, "namespace", maximum=MAX_NAMESPACE_LENGTH)
+
+    def _connect(self) -> sqlite3.Connection:
+        self._reject_symlinked_database()
+        return sqlite3.connect(self.database_path)
 
     @staticmethod
     def _encode_payload(payload: object) -> str:
