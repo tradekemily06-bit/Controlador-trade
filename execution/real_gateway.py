@@ -247,7 +247,14 @@ class RealExecutionGateway:
 
         ledger_external_id = self._ledger.external_id(request_id)
         observed_external_id = observation.external_id.strip()
-        if ledger_external_id is not None and ledger_external_id != observed_external_id:
+        # Reconciliation is a recovery boundary, not an identity-assignment
+        # boundary. If the request never durably recorded an external broker
+        # reference, a caller-supplied ID is not proof that this request created
+        # that external order. Keep the request unresolved instead of allowing
+        # identity injection to promote UNKNOWN/RESERVED.
+        if ledger_external_id is None:
+            raise ValueError("request_id não possui external_id durável para reconciliação.")
+        if ledger_external_id != observed_external_id:
             raise ValueError("external_id observado difere do external_id durável do Ledger.")
 
         executed = observation.status is ExternalOrderStatus.EXECUTED
