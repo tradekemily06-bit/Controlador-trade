@@ -91,6 +91,19 @@ def test_ledger_rejects_external_id_collision(tmp_path: Path):
         ledger.bind_external_id("req-2", "broker-123")
 
 
+def test_unknown_cannot_be_promoted_to_terminal_without_reconciliation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+
+    with pytest.raises(ValueError, match="UNKNOWN só pode sair por reconcile"):
+        ledger.mark_accepted("req-unknown")
+    with pytest.raises(ValueError, match="UNKNOWN só pode sair por reconcile"):
+        ledger.mark_rejected("req-unknown")
+
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_reconcile_executed_requires_external_id(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-uncertain")
