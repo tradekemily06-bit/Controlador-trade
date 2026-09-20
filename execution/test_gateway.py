@@ -129,3 +129,23 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_binds_missing_internal_request_id_to_external_identity():
+    class CapturingExecutor:
+        def __init__(self): self.request = None
+        def execute(self, request):
+            self.request = request
+            return ExecutionResult(True, "ok", "EXT-1")
+    executor = CapturingExecutor()
+    result = ExecutionGateway(executor, KillSwitch()).execute("req-bound", request())
+    assert result.status is GatewayStatus.ACCEPTED
+    assert executor.request.request_id == "req-bound"
+
+
+def test_gateway_rejects_conflicting_internal_request_id():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    conflicting = ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, request_id="req-inner")
+    result = gateway.execute("req-outer", conflicting)
+    assert result.status is GatewayStatus.INVALID_REQUEST
+    assert "difere" in result.message
