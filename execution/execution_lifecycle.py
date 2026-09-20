@@ -165,6 +165,13 @@ class ExecutionLifecycleStore:
 
         return self._mutate_locked(mutation)
 
+    def snapshot(self) -> dict[str, ExecutionLifecycleRecord]:
+        """Return one lock-consistent view for recovery/audit."""
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return dict(self._records)
+
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         self._load()
         return tuple(self._records[key] for key in sorted(self._records))
