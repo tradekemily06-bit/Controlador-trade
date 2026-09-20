@@ -29,7 +29,7 @@ class ExecutionLedger:
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
-        self.path = Path(path).resolve()
+        self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._reconciliation_evidence: dict[str, dict[str, str]] = {}
         self._execution_context: dict[str, dict[str, str | None]] = {}
@@ -124,6 +124,10 @@ class ExecutionLedger:
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do ledger não pode ser symlink")
+        if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+            raise OSError("ledger deve ser um arquivo regular")
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload: dict[str, Any] = {
             "states": {key: self._states[key].value for key in sorted(self._states)},
@@ -133,10 +137,27 @@ class ExecutionLedger:
         encoded = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         if len(encoded) > MAX_LEDGER_FILE_BYTES:
             raise ValueError("ledger de execução excede o limite permitido.")
-        temporary.write_bytes(encoded)
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
+        try:
+            fd = os.open(temporary, flags, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                fd = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+        except FileExistsError as exc:
+            raise RuntimeError("arquivo temporário do ledger já existe") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
         directory_fd = os.open(self.path.parent, os.O_RDONLY)
         try:
             os.fsync(directory_fd)
