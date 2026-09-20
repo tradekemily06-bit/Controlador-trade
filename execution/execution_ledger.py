@@ -70,7 +70,7 @@ class ExecutionLedger:
         with exclusive_file_lock(lock_path):
             self._load()
             mutation()
-            self._write
+            self._write()
 
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
