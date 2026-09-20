@@ -120,7 +120,7 @@ def safety():
         market_healthy=True,
         recovery_safe=True,
         risk_approved=True,
-        broker_available=True,
+        broker_available=True, authorization_id=auth().authorization_id,
     )
 
 
@@ -1474,6 +1474,7 @@ def test_real_admission_artifact_rejects_inconsistent_manual_construction():
             audit_id="audit",
             status=RealAdmissionStatus.ADMITTED,
             broker_id="fake",
+            authorization_id="auth",
             reasons=("forged blocked reason",),
         )
     with pytest.raises(ValueError, match="BLOCKED"):
@@ -1482,6 +1483,7 @@ def test_real_admission_artifact_rejects_inconsistent_manual_construction():
             audit_id="audit",
             status=RealAdmissionStatus.BLOCKED,
             broker_id="fake",
+            authorization_id="auth",
             reasons=(),
         )
 
@@ -1490,11 +1492,13 @@ def test_real_safety_artifact_rejects_inconsistent_manual_construction():
     with pytest.raises(ValueError, match="READY"):
         RealSafetyReport(
             state=RealSafetyState.READY,
+            authorization_id="auth",
             reasons=("forged blocked reason",),
         )
     with pytest.raises(ValueError, match="BLOCKED"):
         RealSafetyReport(
             state=RealSafetyState.BLOCKED,
+            authorization_id="auth",
             reasons=(),
         )
 
