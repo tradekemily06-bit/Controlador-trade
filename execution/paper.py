@@ -37,8 +37,13 @@ class PaperExecutor:
                 accepted=False,
                 message="PaperExecutor aceita somente modo DEMO.",
             )
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(
+                accepted=False,
+                message="request_id obrigatório para execução DEMO.",
+            )
 
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return ExecutionResult(
                 accepted=False,
                 message="Símbolo não pode ser vazio.",
