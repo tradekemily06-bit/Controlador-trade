@@ -29,6 +29,9 @@ class MarkerAdapter:
     def query_order_by_request_id(self, request_id):
         return ExternalOrderObservation(request_id, ExternalOrderStatus.EXECUTED, "confirmed")
 
+    def query_order(self, external_id):
+        return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "confirmed")
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         with self.marker.open("a", encoding="utf-8") as handle:
             handle.write(request.request_id or "missing")
