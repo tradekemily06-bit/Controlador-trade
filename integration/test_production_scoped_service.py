@@ -109,7 +109,8 @@ def test_production_service_never_reads_global_process_memory(tmp_path) -> None:
     service = ConfiguredEcosystemService(production_data_plane=plane)
     _identity()
     try:
-        service.memory.append(service.analyze(_payload(80), persist=False, subject_id="user-a", tenant_id="tenant-a"))
+        with pytest.raises(RuntimeError, match="local learning state is unavailable"):
+            service.memory.append(service.analyze(_payload(80), persist=False, subject_id="user-a", tenant_id="tenant-a"))
 
         with pytest.raises(PermissionError):
             service.memory_view(subject_id="user-b", tenant_id="tenant-a")
@@ -121,7 +122,8 @@ def test_production_service_replaces_legacy_local_store_with_fail_closed_block(t
     plane = _plane(tmp_path)
     service = ConfiguredEcosystemService(production_data_plane=plane)
 
-    assert service.memory == []
+    with pytest.raises(RuntimeError, match="local learning state is unavailable"):
+        len(service.memory)
     with pytest.raises(RuntimeError, match="local decision store is unavailable"):
         service.store.load()
     with pytest.raises(RuntimeError, match="local decision store is unavailable"):
@@ -142,6 +144,7 @@ def test_production_service_cannot_retain_preloaded_legacy_decisions(tmp_path) -
     plane = _plane(tmp_path)
     service = ConfiguredEcosystemService(decision_store=LegacyStore(), production_data_plane=plane)
 
-    assert service.memory == []
+    with pytest.raises(RuntimeError, match="local learning state is unavailable"):
+        len(service.memory)
     with pytest.raises(RuntimeError, match="local decision store is unavailable"):
         service.store.save(object())
