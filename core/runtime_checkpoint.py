@@ -20,7 +20,7 @@ def process_file_lock(path: str | Path) -> Iterator[None]:
         with lock_path.open("a+b") as lock_file:
             lock_file.seek(0, os.SEEK_END)
             if lock_file.tell() == 0:
-                lock_file.write(b"\\0")
+                lock_file.write(b"\0")
                 lock_file.flush()
             lock_file.seek(0)
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
