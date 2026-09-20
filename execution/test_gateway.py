@@ -2,6 +2,7 @@ from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -112,7 +113,7 @@ def test_gateway_rejects_invalid_executor_result():
 
 def test_gateway_requires_executor():
     try:
-        ExecutionGateway(None, KillSwitch())
+        ExecutionGateway(None, KillSwitch(), allow_ephemeral=True)
     except ValueError as exc:
         assert "executor" in str(exc)
     else:
