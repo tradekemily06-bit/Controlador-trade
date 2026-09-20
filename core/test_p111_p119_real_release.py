@@ -767,3 +767,34 @@ def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
         pass
     else:
         raise AssertionError("reconciliação REAL não deve aceitar booleano como evidência")
+
+
+def test_real_reconciliation_rejects_mismatched_external_observation(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("observed-request")
+    ledger.mark_unknown("observed-request")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+    )
+
+    class WrongRequestReconciler:
+        def lookup(self, request_id: str) -> RealReconciliationObservation:
+            return RealReconciliationObservation(
+                request_id="different-request",
+                executed=True,
+                external_id="external-1",
+                observed_at=datetime.now(timezone.utc),
+                source="fake-read-only-broker-reconciler",
+            )
+
+    try:
+        gateway.reconcile_unknown("observed-request", reconciler=WrongRequestReconciler())
+    except ValueError as exc:
+        assert "evidência externa" in str(exc)
+    else:
+        raise AssertionError("evidência de outro request_id não pode reconciliar esta execução")
+    assert ledger.status("observed-request") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("observed-request") is None
