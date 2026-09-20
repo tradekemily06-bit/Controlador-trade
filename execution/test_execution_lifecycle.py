@@ -21,15 +21,27 @@ def test_unknown_blocks_implicit_transition(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
     store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now, "uncertain"))
     with pytest.raises(ValueError, match="UNKNOWN"):
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
+
+
+def test_terminal_states_cannot_be_overwritten(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="transição inválida"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
 
 
 def test_unknown_requires_explicit_reconciliation(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
     store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
     store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now))
     result = store.reconcile("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, message="confirmed")
     assert result.state is ExecutionLifecycleState.ACCEPTED
