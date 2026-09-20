@@ -122,6 +122,16 @@ class ExecutionLifecycleStore:
         )
         os.replace(temporary, self.path)
 
+    def _read_locked(self, reader):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self._with_lock() as lock_file:
+            self._lock(lock_file)
+            try:
+                self._load()
+                return reader()
+            finally:
+                self._unlock(lock_file)
+
     def _mutate_locked(self, mutation) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._with_lock() as lock_file:
@@ -160,8 +170,7 @@ class ExecutionLifecycleStore:
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
-        self._load()
-        return self._records.get(request_id)
+        return self._read_locked(lambda: self._records.get(request_id))
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
@@ -215,5 +224,4 @@ class ExecutionLifecycleStore:
         return result
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
-        self._load()
-        return tuple(self._records[key] for key in sorted(self._records))
+        return self._read_locked(lambda: tuple(self._records[key] for key in sorted(self._records)))
