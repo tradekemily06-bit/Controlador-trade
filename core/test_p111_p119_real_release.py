@@ -408,3 +408,30 @@ def test_real_admission_must_match_authorized_broker(tmp_path: Path):
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
+
+def test_real_gateway_blocks_adapter_identity_mismatch_before_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="registered-adapter")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = RealExecutionAuthorization("auth", "a111", "fake", "different-adapter", True, True)
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="adapter-mismatch",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is None
