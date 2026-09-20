@@ -91,6 +91,42 @@ def test_ledger_rejects_external_id_collision(tmp_path: Path):
         ledger.bind_external_id("req-2", "broker-123")
 
 
+def test_reconcile_executed_requires_external_id(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-uncertain")
+    ledger.mark_unknown("req-uncertain")
+
+    with pytest.raises(ValueError, match="external_id durável"):
+        ledger.reconcile("req-uncertain", executed=True)
+
+    assert ledger.status("req-uncertain").value == "UNKNOWN"
+
+
+def test_reconcile_executed_binds_external_id_atomically(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-uncertain")
+    ledger.mark_unknown("req-uncertain")
+
+    ledger.reconcile("req-uncertain", executed=True, external_id="broker-456")
+
+    restored = ExecutionLedger(path)
+    assert restored.status("req-uncertain").value == "RECONCILED_EXECUTED"
+    assert restored.external_id("req-uncertain") == "broker-456"
+
+
+def test_reconcile_cannot_steal_external_id(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1")
+    ledger.mark_unknown("req-1")
+    ledger.reserve("req-2")
+    ledger.mark_unknown("req-2")
+    ledger.bind_external_id("req-1", "broker-789")
+
+    with pytest.raises(ValueError, match="outro request_id"):
+        ledger.reconcile("req-2", executed=True, external_id="broker-789")
+
+
 def test_legacy_status_only_ledger_remains_readable(tmp_path: Path):
     path = tmp_path / "ledger.json"
     path.write_text('{"req-1": "ACCEPTED"}', encoding="utf-8")
