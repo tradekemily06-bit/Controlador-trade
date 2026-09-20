@@ -1357,14 +1357,6 @@ def test_crash_after_broker_side_effect_before_ledger_is_recoverable_without_rep
 
     adapter.execute = broker_accept_then_interrupt
     gw, ledger, lifecycle = gateway(tmp_path, adapter)
-    ledger.reserve("crash-boundary")
-    lifecycle.put(
-        ExecutionLifecycleRecord(
-            "crash-boundary",
-            ExecutionLifecycleState.PENDING,
-            datetime.now(timezone.utc),
-        )
-    )
 
     with pytest.raises(SystemExit, match="simulated process crash"):
         execute(gw, "crash-boundary")
