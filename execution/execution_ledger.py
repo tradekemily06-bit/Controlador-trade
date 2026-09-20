@@ -10,6 +10,11 @@ try:
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None
+
 
 class ExecutionLedgerStatus(str, Enum):
     RESERVED = "RESERVED"
@@ -26,7 +31,7 @@ class ExecutionLedger:
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
-        self.path = Path(path)
+        self.path = Path(path).expanduser().resolve()
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._load()
 
@@ -67,25 +72,60 @@ class ExecutionLedger:
         )
         os.replace(temporary, self.path)
 
+    def _lock_path(self) -> Path:
+        return self.path.with_name(f".{self.path.name}.lock")
+
+    @staticmethod
+    def _lock(lock_file, *, exclusive: bool) -> None:
+        if fcntl is not None:
+            mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+            fcntl.flock(lock_file.fileno(), mode)
+            return
+        if msvcrt is not None:
+            lock_file.seek(0, 2)
+            if lock_file.tell() == 0:
+                lock_file.write(b"0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        raise RuntimeError("plataforma sem mecanismo de lock suportado.")
+
+    @staticmethod
+    def _unlock(lock_file) -> None:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        elif msvcrt is not None:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+
+    def _read_locked(self, reader):
+        lock_path = self._lock_path()
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock_file:
+            self._lock(lock_file, exclusive=False)
+            try:
+                self._load()
+                return reader()
+            finally:
+                self._unlock(lock_file)
+
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
-        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path = self._lock_path()
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        with lock_path.open("a+b") as lock_file:
+            self._lock(lock_file, exclusive=True)
             try:
                 self._load()
                 mutation()
                 self._write()
             finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                self._unlock(lock_file)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
-        self._load()
-        return self._states.get(request_id)
+        return self._read_locked(lambda: self._states.get(request_id))
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -141,8 +181,7 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
-        self._load()
-        return tuple(sorted(self._states))
+        return self._read_locked(lambda: tuple(sorted(self._states)))
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
