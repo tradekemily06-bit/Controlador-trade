@@ -111,5 +111,9 @@ class RuntimeCheckpointStore:
             not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
         ):
             raise ValueError("request_id do checkpoint inválido.")
-        if not isinstance(checkpoint.updated_at, datetime):
-            raise ValueError("checkpoint inválido.")
+        if (
+            not isinstance(checkpoint.updated_at, datetime)
+            or checkpoint.updated_at.tzinfo is None
+            or checkpoint.updated_at.utcoffset() is None
+        ):
+            raise ValueError("checkpoint deve usar timestamp timezone-aware.")
