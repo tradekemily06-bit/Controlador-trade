@@ -281,8 +281,6 @@ class RealExecutionGateway:
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport, snapshot: DecisionSnapshot) -> RealGatewayResult:
         with self._configuration_lock:
-            if self._reconciliation_started:
-                return RealGatewayResult(RealGatewayStatus.BLOCKED, "reconciliação REAL já iniciou; dispatch bloqueado para este gateway")
             self._dispatch_started = True
         if not isinstance(authorization, RealExecutionAuthorization) or not isinstance(admission, RealAdmission) or not isinstance(safety, RealSafetyReport):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto REAL inválido.")
@@ -354,11 +352,11 @@ class RealExecutionGateway:
                 if isinstance(persisted_external_id, str) and persisted_external_id.strip() and persisted_external_id.strip() != evidence_id.strip():
                     raise ValueError("evidence_id difere do external_id emitido pelo broker para esta operação")
                 with self._configuration_lock:
-                    if self._reconciliation_started:
-                        raise RuntimeError("reconciliação REAL já iniciou neste gateway")
                     verifier = self._reconciliation_evidence_verifier
                     if verifier is None:
                         raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
+                    # First reconciliation permanently binds the verifier configuration,
+                    # but must not disable future independent request lifecycles.
                     self._reconciliation_started = True
                 try:
                     verified = bool(verifier.verify(
