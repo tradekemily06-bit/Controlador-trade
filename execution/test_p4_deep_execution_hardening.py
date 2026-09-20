@@ -1508,3 +1508,32 @@ def test_real_authorization_rejects_noncanonical_identity_fields():
         RealExecutionAuthorization(
             "auth", "audit", "fake", "adapter ", True, True
         )
+
+
+def test_real_gateway_rejects_cross_bound_authorization_provenance(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+    )
+    auth = RealExecutionAuthorization("auth-a", "audit-a", "fake", "fake-adapter", True, True)
+    other = RealExecutionAuthorization("auth-b", "audit-b", "fake", "fake-adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id=auth.audit_id, audit_verified=True,
+        authorization_active=auth.active, safety_ready=True,
+        broker_available=True, broker_id="fake", authorization_id=other.authorization_id,
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=auth.active, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True, authorization_id=other.authorization_id,
+    )
+    result = gateway.execute(
+        broker="fake", request_id="cross-bound",
+        request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="cross-bound"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
