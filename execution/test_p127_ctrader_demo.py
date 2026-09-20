@@ -87,3 +87,21 @@ def test_demo_adapter_rejects_non_demo_transport_endpoint():
         assert "endpoint DEMO" in str(exc)
     else:
         raise AssertionError("transport live não pode entrar no adapter DEMO")
+
+
+def test_demo_adapter_marks_transport_exception_uncertain():
+    class FailingTransport(FakeDemoTransport):
+        def place_market_order(self, order):
+            self.orders.append(order)
+            raise TimeoutError("transport timeout")
+
+    result = CTraderDemoAdapter(FailingTransport()).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True
+
+
+def test_demo_adapter_marks_accepted_without_external_id_uncertain():
+    transport = FakeDemoTransport(result=BrokerOrderResult(True, "accepted", None))
+    result = CTraderDemoAdapter(transport).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True
