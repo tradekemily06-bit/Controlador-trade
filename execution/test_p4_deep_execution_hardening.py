@@ -1312,7 +1312,8 @@ def test_reconciliation_repairs_reserved_lifecycle_unknown_with_durable_external
 def test_recovery_can_find_broker_acceptance_by_request_reference_without_external_id(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
-            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted before crash"
+            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted before crash",
+            "crash-no-external-id",
         )
     )
     gw, ledger, lifecycle = gateway(tmp_path, adapter)
@@ -1338,7 +1339,8 @@ def test_recovery_can_find_broker_acceptance_by_request_reference_without_extern
 def test_recovery_does_not_retry_when_request_reference_is_pending(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
-            "broker-pending", ExternalOrderStatus.PENDING, "still pending"
+            "broker-pending", ExternalOrderStatus.PENDING, "still pending",
+            "crash-pending",
         )
     )
     gw, ledger, lifecycle = gateway(tmp_path, adapter)
@@ -1356,10 +1358,37 @@ def test_recovery_does_not_retry_when_request_reference_is_pending(tmp_path):
     assert ledger.status("crash-pending") is ExecutionLedgerStatus.RESERVED
 
 
+def test_request_reference_query_rejects_broker_observation_for_another_request(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-wrong", ExternalOrderStatus.EXECUTED, "wrong order",
+            "another-request",
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("requested-order")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "requested-order", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+
+    with pytest.raises(ValueError, match="outro request_id"):
+        gw.reconcile_unknown(
+            "requested-order",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert adapter.calls == 0
+    assert ledger.status("requested-order") is ExecutionLedgerStatus.RESERVED
+
+
 def test_request_reference_query_is_pinned_to_real_adapter_identity(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
-            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted"
+            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted",
+            "pinned-query",
         )
     )
     gw, ledger, lifecycle = gateway(tmp_path, adapter)
