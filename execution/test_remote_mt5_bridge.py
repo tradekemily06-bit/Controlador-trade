@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.remote_mt5_bridge import BridgeHealth, SafeRemoteMT5Executor
 
@@ -24,8 +25,9 @@ def request(mode: ExecutionMode = ExecutionMode.DEMO) -> ExecutionRequest:
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=0.01,
-        duration_seconds=0,
+        duration_seconds=60,
         mode=mode,
+        request_id="remote-test-1",
     )
 
 
@@ -83,4 +85,4 @@ def test_remote_bridge_blocks_missing_request_id():
     result = executor.execute(request)
     assert result.accepted is False
     assert "request_id" in result.message
-    assert bridge.executions == []
+    assert bridge.calls == 0
