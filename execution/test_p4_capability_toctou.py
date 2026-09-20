@@ -43,14 +43,14 @@ def _auth():
 def _admission():
     return RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake"
+        authorization_active=True, safety_ready=True, broker_available=True, broker_id="fake", authorization_id="auth"
     )
 
 
 def _safety():
     return RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True, market_healthy=True,
-        recovery_safe=True, risk_approved=True, broker_available=True
+        recovery_safe=True, risk_approved=True, broker_available=True, authorization_id="auth"
     )
 
 
