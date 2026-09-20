@@ -678,7 +678,7 @@ def test_real_accept_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert blocked.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
-    gateway.reconcile_unknown("persist-crash-accepted", reconciler=FakeReconciler("persist-crash-accepted", executed=True))
+    gateway.reconcile_unknown("persist-crash-accepted", reconciler=FakeReconciler("persist-crash-accepted", executed=True, external_id="external-1"))
     assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("persist-crash-accepted").state is ExecutionLifecycleState.ACCEPTED
 
