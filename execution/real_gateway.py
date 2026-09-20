@@ -91,6 +91,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        registered_adapter_id = self._gateway.adapter_id(broker)
+        if registered_adapter_id is None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL não está registrado na fronteira autorizada.")
+        if registered_adapter_id != authorization.adapter_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL difere do adapter explicitamente autorizado.")
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
