@@ -37,7 +37,7 @@ def test_gateway_rejects_duplicate_after_restart(tmp_path: Path):
     accepted = first.execute("req-001", request())
     assert accepted.status is GatewayStatus.ACCEPTED
 
-    restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), allow_ephemeral=True)
     duplicate = restored.execute("req-001", request())
     assert duplicate.status is GatewayStatus.DUPLICATE
 
