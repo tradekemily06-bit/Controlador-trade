@@ -114,8 +114,10 @@ class ExecutionLifecycleStore:
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
-        self._load()
-        return self._records.get(request_id)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return self._records.get(request_id)
 
     def reconstruct_unknown(
         self,
@@ -173,8 +175,10 @@ class ExecutionLifecycleStore:
             return dict(self._records)
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
-        self._load()
-        return tuple(self._records[key] for key in sorted(self._records))
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            self._load()
+            return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
