@@ -34,7 +34,18 @@ class SafeRemoteMT5Executor:
             health = self._bridge.health()
         except Exception:
             return False
-        return bool(health.available and health.demo_account)
+        return self._valid_demo_health(health)
+
+    @staticmethod
+    def _valid_demo_health(health: BridgeHealth) -> bool:
+        """Validate the bridge health contract before trusting environment state."""
+        return (
+            type(health) is BridgeHealth
+            and health.available is True
+            and health.demo_account is True
+            and isinstance(health.message, str)
+            and bool(health.message.strip())
+        )
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
@@ -46,7 +57,7 @@ class SafeRemoteMT5Executor:
             health = self._bridge.health()
         except Exception as exc:
             return ExecutionResult(False, f"ponte MT5 bloqueada: falha de health check: {exc}")
-        if not health.available or not health.demo_account:
+        if not self._valid_demo_health(health):
             return ExecutionResult(False, f"ponte MT5 bloqueada: {health.message}")
 
         return self._bridge.execute_demo(request)
