@@ -136,11 +136,13 @@ class OperationalSafetyStore:
 
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
-        payload = self._read_payload()
-        raw = payload.get("execution_audit", [])
-        if not isinstance(raw, list):
-            raise ValueError("auditoria de execução persistida inválida.")
-        return tuple(self._execution_audit_item(item) for item in raw)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with exclusive_file_lock(lock_path):
+            payload = self._read_payload()
+            raw = payload.get("execution_audit", [])
+            if not isinstance(raw, list):
+                raise ValueError("auditoria de execução persistida inválida.")
+            return tuple(self._execution_audit_item(item) for item in raw)
 
     def load(self) -> tuple[DecisionAudit, KillSwitch]:
         audit, kill_switch = DecisionAudit(), KillSwitch()
