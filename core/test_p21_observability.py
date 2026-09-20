@@ -47,7 +47,9 @@ def test_pending_runtime_requires_attention(tmp_path):
 
 def test_unknown_runtime_is_blocked(tmp_path):
     monitor, lifecycle, _ = build(tmp_path)
-    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
+    now = datetime.now(timezone.utc)
+    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    lifecycle.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now))
     health = monitor.assess()
     assert health.state is HealthState.BLOCKED
     assert health.unknown_executions == 1
