@@ -159,6 +159,34 @@ class ExecutionLifecycleStore:
         assert result is not None
         return result
 
+    def reconcile_missing(
+        self,
+        request_id: str,
+        state: ExecutionLifecycleState,
+        *,
+        updated_at: datetime,
+        message: str = "",
+    ) -> ExecutionLifecycleRecord:
+        """Create terminal lifecycle evidence for a Ledger-only orphan after explicit reconciliation."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reconciliação de órfão exige estado ACCEPTED ou REJECTED.")
+        result: ExecutionLifecycleRecord | None = None
+
+        def mutation() -> None:
+            nonlocal result
+            if request_id in self._records:
+                raise ValueError("Lifecycle já possui registro para request_id.")
+            record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+            self._validate(record)
+            self._records[request_id] = record
+            result = record
+
+        self._mutate_locked(mutation)
+        assert result is not None
+        return result
+
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         self._load()
         return tuple(self._records[k] for k in sorted(self._records))
