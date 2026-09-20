@@ -173,7 +173,9 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
+    with pytest.raises(ValueError, match="external_id durável"):
+        gateway.reconcile_unknown("unknown-2", executed=True)
+    gateway.reconcile_unknown("unknown-2", executed=True, external_id="reconciled-fake-2")
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
