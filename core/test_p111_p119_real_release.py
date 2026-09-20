@@ -16,6 +16,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from execution.real_reconciliation import RealReconciliationObservation
 
 
 class FakeAdapter:
@@ -56,6 +57,25 @@ class UnknownAdapter:
     def execute(self, request):
         self.calls += 1
         raise TimeoutError("timeout after dispatch")
+
+
+
+class FakeReconciler:
+    def __init__(self, request_id: str, *, executed: bool, external_id: str | None = "external-reconciled"):
+        self.request_id = request_id
+        self.executed = executed
+        self.external_id = external_id
+        self.calls = 0
+
+    def lookup(self, request_id: str) -> RealReconciliationObservation:
+        self.calls += 1
+        return RealReconciliationObservation(
+            request_id=request_id,
+            executed=self.executed,
+            external_id=self.external_id if self.executed else None,
+            observed_at=datetime.now(timezone.utc),
+            source="fake-read-only-broker-reconciler",
+        )
 
 
 def _authorization():
@@ -191,7 +211,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     release = RealReleaseClosureBoundary().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
+    gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -209,7 +229,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
+    gateway.reconcile_unknown("crashed", reconciler=FakeReconciler("crashed", executed=False))
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
@@ -524,7 +544,7 @@ def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_pa
         ledger,
         lifecycle,
     )
-    gateway.reconcile_unknown("crash-accepted", executed=True)
+    gateway.reconcile_unknown("crash-accepted", reconciler=FakeReconciler("crash-accepted", executed=True))
 
     assert ledger.status("crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("crash-accepted").state is ExecutionLifecycleState.ACCEPTED
@@ -549,7 +569,7 @@ def test_reconcile_repairs_ledger_rejected_lifecycle_pending_crash_window(tmp_pa
         ledger,
         lifecycle,
     )
-    gateway.reconcile_unknown("crash-rejected", executed=False)
+    gateway.reconcile_unknown("crash-rejected", reconciler=FakeReconciler("crash-rejected", executed=False))
 
     assert ledger.status("crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
     assert lifecycle.get("crash-rejected").state is ExecutionLifecycleState.REJECTED
@@ -645,7 +665,7 @@ def test_real_accept_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert blocked.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
-    gateway.reconcile_unknown("persist-crash-accepted", executed=True)
+    gateway.reconcile_unknown("persist-crash-accepted", reconciler=FakeReconciler("persist-crash-accepted", executed=True))
     assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("persist-crash-accepted").state is ExecutionLifecycleState.ACCEPTED
 
@@ -711,7 +731,7 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert blocked.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 1
 
-    gateway.reconcile_unknown("persist-crash-rejected", executed=False)
+    gateway.reconcile_unknown("persist-crash-rejected", reconciler=FakeReconciler("persist-crash-rejected", executed=False))
     assert ledger.status("persist-crash-rejected") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
     assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.REJECTED
 
@@ -727,7 +747,23 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
         ledger,
         lifecycle,
     )
-    gateway.reconcile_unknown("ledger-only", executed=True)
+    gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
 
     assert ledger.status("ledger-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
+    registry = BrokerRegistry()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+    )
+    ExecutionLedger(tmp_path / "ledger.json").reserve("bool-evidence")
+    try:
+        gateway.reconcile_unknown("bool-evidence", executed=True)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("reconciliação REAL não deve aceitar booleano como evidência")
