@@ -118,6 +118,15 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
         if normalized_broker != admission.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "broker da requisição difere da admissão REAL.")
+        try:
+            registered_adapter_id = self._gateway.adapter_id(normalized_broker)
+        except Exception:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL não registrado para o broker solicitado.")
+        if registered_adapter_id != authorization.adapter_id.strip():
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "adapter_id da autorização difere do adapter efetivamente registrado para o broker.",
+            )
 
         # Check this request's own durable authority before global recovery.
         # After a restart, an UNKNOWN/RESERVED request must remain visibly
