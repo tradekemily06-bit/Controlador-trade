@@ -113,7 +113,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"execução REAL bloqueada pelo kill switch: {reason}")
 
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway._execute_real(broker, request)
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
