@@ -245,7 +245,7 @@ def test_real_pre_dispatch_adapter_unavailable_is_not_unknown(tmp_path: Path):
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unavailable", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
-    assert ledger.status("unavailable") is None
+    assert ledger.status("unavailable") is ExecutionLedgerStatus.REJECTED
     assert adapter.calls == 0
 
 
