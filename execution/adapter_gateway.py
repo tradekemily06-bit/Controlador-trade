@@ -52,7 +52,10 @@ class _RealQueryCapability:
     def query_order(self, external_id: str):
         if not self._valid():
             raise ValueError("capacidade de consulta REAL mudou; reconciliação bloqueada.")
-        result = self._adapter.query_order(external_id)
+        query = getattr(self._adapter, "query_order", None)
+        if not callable(query):
+            raise ValueError("capacidade de consulta REAL mudou; reconciliação bloqueada.")
+        result = query(external_id)
         if not self._valid():
             raise ValueError("capacidade de consulta REAL mudou durante a consulta; reconciliação bloqueada.")
         return result
@@ -85,7 +88,10 @@ class _RealRequestQueryCapability:
     def query_order_by_request_id(self, request_id: str):
         if not self._valid():
             raise ValueError("capacidade de consulta por request_id mudou; reconciliação bloqueada.")
-        result = self._adapter.query_order_by_request_id(request_id)
+        query = getattr(self._adapter, "query_order_by_request_id", None)
+        if not callable(query):
+            raise ValueError("capacidade de consulta por request_id mudou; reconciliação bloqueada.")
+        result = query(request_id)
         if not self._valid():
             raise ValueError("capacidade de consulta por request_id mudou durante a consulta; reconciliação bloqueada.")
         return result
