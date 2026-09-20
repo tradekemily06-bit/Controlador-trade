@@ -17,7 +17,7 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO):
 
 
 def test_gateway_executes_valid_demo_request():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request())
 
@@ -30,7 +30,7 @@ def test_gateway_blocks_active_kill_switch_before_executor():
     executor = PaperExecutor()
     kill_switch = KillSwitch()
     kill_switch.activate("emergência")
-    gateway = ExecutionGateway(executor, kill_switch)
+    gateway = ExecutionGateway(executor, kill_switch, allow_ephemeral=True)
 
     result = gateway.execute("req-1", request())
 
@@ -39,7 +39,7 @@ def test_gateway_blocks_active_kill_switch_before_executor():
 
 
 def test_gateway_rejects_real_mode_in_p5():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request(mode=ExecutionMode.REAL))
 
@@ -47,7 +47,7 @@ def test_gateway_rejects_real_mode_in_p5():
 
 
 def test_gateway_rejects_wait_signal():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("req-1", request(signal=Signal.AGUARDAR))
 
@@ -56,7 +56,7 @@ def test_gateway_rejects_wait_signal():
 
 def test_gateway_rejects_duplicate_request_id():
     executor = PaperExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
 
     first = gateway.execute("req-1", request())
     second = gateway.execute("req-1", request())
@@ -67,7 +67,7 @@ def test_gateway_rejects_duplicate_request_id():
 
 
 def test_gateway_does_not_mark_invalid_request_as_processed():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
 
     invalid = gateway.execute("req-1", request(mode=ExecutionMode.REAL))
     valid = gateway.execute("req-1", request())
@@ -77,7 +77,7 @@ def test_gateway_does_not_mark_invalid_request_as_processed():
 
 
 def test_gateway_rejects_empty_request_id():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
 
     result = gateway.execute("   ", request())
 
@@ -139,13 +139,13 @@ def test_gateway_binds_missing_internal_request_id_to_external_identity():
             self.request = request
             return ExecutionResult(True, "ok", "EXT-1")
     executor = CapturingExecutor()
-    result = ExecutionGateway(executor, KillSwitch()).execute("req-bound", request())
+    result = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True).execute("req-bound", request())
     assert result.status is GatewayStatus.ACCEPTED
     assert executor.request.request_id == "req-bound"
 
 
 def test_gateway_rejects_conflicting_internal_request_id():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
     conflicting = ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO, request_id="req-inner")
     result = gateway.execute("req-outer", conflicting)
     assert result.status is GatewayStatus.INVALID_REQUEST
@@ -153,7 +153,7 @@ def test_gateway_rejects_conflicting_internal_request_id():
 
 
 def test_gateway_rejects_non_finite_amount():
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), allow_ephemeral=True)
     invalid = ExecutionRequest("BTCUSD", Signal.COMPRA, float("nan"), 60, ExecutionMode.DEMO)
     result = gateway.execute("req-nan", invalid)
     assert result.status is GatewayStatus.INVALID_REQUEST
