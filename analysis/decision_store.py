@@ -36,6 +36,15 @@ class DecisionStore:
             raise RuntimeError("local decision store is unavailable in public SaaS mode")
 
     def _connect(self) -> sqlite3.Connection:
+        if self.database_path:
+            path = Path(self.database_path)
+            parent = path.parent
+            if parent.resolve(strict=True) != parent.absolute():
+                raise RuntimeError("decision database directory must not be a symlink")
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise RuntimeError("decision database must be a regular file")
         return sqlite3.connect(self.database_path or ":memory:", timeout=5)
 
     def _initialize(self) -> None:
