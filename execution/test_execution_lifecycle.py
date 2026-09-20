@@ -27,6 +27,17 @@ def test_unknown_blocks_implicit_transition(tmp_path):
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
 
 
+def test_new_cycle_cannot_start_terminal_or_unknown(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+
+    with pytest.raises(ValueError, match="transição inválida"):
+        store.put(ExecutionLifecycleRecord("req-terminal", ExecutionLifecycleState.ACCEPTED, now))
+    with pytest.raises(ValueError, match="transição inválida"):
+        store.put(ExecutionLifecycleRecord("req-unknown", ExecutionLifecycleState.UNKNOWN, now))
+
+
 def test_terminal_states_cannot_be_overwritten(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
