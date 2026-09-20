@@ -11,6 +11,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from datetime import datetime, timezone
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 
 
 class RealGatewayStatus(str):
@@ -221,33 +222,59 @@ class RealExecutionGateway:
             )
         )
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str | None = None) -> None:
-        """Explicitly reconcile uncertain state; never resubmits the order."""
+    def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
+        """Resolve an uncertain REAL execution only from explicit external evidence."""
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("observação externa obrigatória para reconciliação REAL.")
+        if observation.status not in (
+            ExternalOrderStatus.EXECUTED,
+            ExternalOrderStatus.NOT_EXECUTED,
+        ):
+            raise ValueError("observação externa ainda não é conclusiva.")
         current = self._ledger.status(request_id)
-        if current not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+        if current is not None and current not in (
+            ExecutionLedgerStatus.UNKNOWN,
+            ExecutionLedgerStatus.RESERVED,
+        ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+
         lifecycle = self._lifecycle.get(request_id)
         if lifecycle is not None and lifecycle.state not in (
             ExecutionLifecycleState.UNKNOWN,
             ExecutionLifecycleState.PENDING,
         ):
             raise ValueError("Lifecycle não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
-        target = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
+
+        ledger_external_id = self._ledger.external_id(request_id)
+        observed_external_id = observation.external_id.strip()
+        if ledger_external_id is not None and ledger_external_id != observed_external_id:
+            raise ValueError("external_id observado difere do external_id durável do Ledger.")
+
+        executed = observation.status is ExternalOrderStatus.EXECUTED
+        self._ledger.reconcile(
+            request_id,
+            executed=executed,
+            external_id=observed_external_id,
+        )
+        target = (
+            ExecutionLifecycleState.ACCEPTED
+            if executed
+            else ExecutionLifecycleState.REJECTED
+        )
         try:
             if lifecycle is None:
                 self._lifecycle.reconcile_missing(
                     request_id,
                     target,
                     updated_at=datetime.now(timezone.utc),
-                    message="reconciliação REAL explícita de órfão",
+                    message=f"reconciliação REAL por evidência externa: {observation.message}",
                 )
             else:
                 self._lifecycle.reconcile(
                     request_id,
                     target,
                     updated_at=datetime.now(timezone.utc),
-                    message="reconciliação REAL explícita",
+                    message=f"reconciliação REAL por evidência externa: {observation.message}",
                 )
         except (OSError, ValueError) as exc:
             raise RuntimeError(
