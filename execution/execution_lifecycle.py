@@ -95,10 +95,10 @@ class ExecutionLifecycleStore:
     def _mutate_locked(self, mutation):
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with exclusive_file_lock(lock_path):
-                self._load()
-                result = mutation()
+            self._load
+            result = mutation()
                 self._save()
-                return result
+            return result
 
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
