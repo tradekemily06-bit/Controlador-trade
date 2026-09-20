@@ -195,15 +195,51 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> None:
+    def reconcile(self, request_id: str, *, executed: bool, external_id: str | None = None) -> None:
+        """Finalize an uncertain request from an explicit external observation.
+
+        If the broker confirms execution, a durable external reference is mandatory.
+        The binding and state transition happen under the same process lock so a crash
+        cannot leave a reconciled execution without its broker identity.
+        """
         self._validate_id(request_id)
+        if external_id is not None and (
+            not isinstance(external_id, str) or not external_id.strip()
+        ):
+            raise ValueError("external_id inválido.")
+
+        normalized_external_id = external_id.strip() if isinstance(external_id, str) else None
 
         def mutation() -> None:
-            if self._states.get(request_id) not in (
+            current = self._states.get(request_id)
+            if current not in (
                 ExecutionLedgerStatus.UNKNOWN,
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+
+            existing = self._external_ids.get(request_id)
+            resolved_external_id = normalized_external_id or existing
+            if executed and not resolved_external_id:
+                raise ValueError(
+                    "reconciliação EXECUTED exige external_id durável."
+                )
+
+            if resolved_external_id is not None:
+                owner = next(
+                    (
+                        rid
+                        for rid, value in self._external_ids.items()
+                        if value == resolved_external_id and rid != request_id
+                    ),
+                    None,
+                )
+                if owner is not None:
+                    raise ValueError("external_id já está vinculado a outro request_id.")
+                if existing is not None and existing != resolved_external_id:
+                    raise ValueError("request_id já possui external_id diferente.")
+                self._external_ids[request_id] = resolved_external_id
+
             self._states[request_id] = (
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
