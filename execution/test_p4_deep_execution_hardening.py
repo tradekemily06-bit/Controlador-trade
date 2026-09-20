@@ -42,6 +42,7 @@ class FakeAdapter:
         self.result = result or ExecutionResult(True, "accepted", "ext-1")
         self.observation = observation
         self.query_calls = 0
+        self.request_query_calls = 0
 
     def is_available(self):
         return True
@@ -49,6 +50,12 @@ class FakeAdapter:
     def execute(self, request):
         self.calls += 1
         return self.result
+
+    def query_order_by_request_id(self, request_id):
+        self.request_query_calls += 1
+        if self.observation is None:
+            raise ValueError("no request observation")
+        return self.observation
 
     def query_order(self, external_id):
         self.query_calls += 1
@@ -1297,3 +1304,76 @@ def test_reconciliation_repairs_reserved_lifecycle_unknown_with_durable_external
 
     assert ledger.status("reserved-projection") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("reserved-projection").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_recovery_can_find_broker_acceptance_by_request_reference_without_external_id(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted before crash"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("crash-no-external-id")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "crash-no-external-id", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+    ))
+
+    gw.reconcile_unknown(
+        "crash-no-external-id",
+        broker="fake",
+        authorization=auth(),
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+    )
+
+    assert adapter.calls == 0
+    assert adapter.request_query_calls == 1
+    assert ledger.status("crash-no-external-id") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("crash-no-external-id") == "broker-after-crash"
+    assert lifecycle.get("crash-no-external-id").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_recovery_does_not_retry_when_request_reference_is_pending(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-pending", ExternalOrderStatus.PENDING, "still pending"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("crash-pending")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "crash-pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+    ))
+
+    with pytest.raises(ValueError, match="evidência terminal"):
+        gw.reconcile_unknown(
+            "crash-pending", broker="fake", authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert adapter.calls == 0
+    assert ledger.status("crash-pending") is ExecutionLedgerStatus.RESERVED
+
+
+def test_request_reference_query_is_pinned_to_real_adapter_identity(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-after-crash", ExternalOrderStatus.EXECUTED, "accepted"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("pinned-query")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "pinned-query", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+    ))
+    original = adapter.query_order_by_request_id
+    def mutate_then_return(request_id):
+        adapter.adapter_id = "changed"
+        return original(request_id)
+    adapter.query_order_by_request_id = mutate_then_return
+
+    with pytest.raises(ValueError, match="capacidade de consulta por request_id mudou"):
+        gw.reconcile_unknown(
+            "pinned-query", broker="fake", authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+    assert ledger.status("pinned-query") is ExecutionLedgerStatus.RESERVED
+    assert adapter.calls == 0
