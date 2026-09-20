@@ -24,8 +24,9 @@ def request(mode: ExecutionMode = ExecutionMode.DEMO) -> ExecutionRequest:
         symbol="EURUSD",
         signal=Signal.COMPRA,
         amount=0.01,
-        duration_seconds=0,
+        duration_seconds=60,
         mode=mode,
+        request_id="bridge-test",
     )
 
 
