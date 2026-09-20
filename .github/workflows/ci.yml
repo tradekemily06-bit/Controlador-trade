@@ -74,3 +74,24 @@ jobs:
 
           echo "Container health endpoint did not become ready."
           exit 1
+
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest
+
+      - name: Run full test suite on Windows
+        run: python -m pytest -q
+
+      - name: Compile all Python project surfaces on Windows
+        run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
