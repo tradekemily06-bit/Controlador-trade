@@ -5,6 +5,9 @@ from datetime import datetime
 from typing import Protocol
 
 
+_RECONCILIATION_ISSUER = object()
+
+
 @dataclass(frozen=True)
 class RealReconciliationObservation:
     """Read-only broker observation used to close an uncertain REAL request.
@@ -18,6 +21,11 @@ class RealReconciliationObservation:
     external_id: str | None
     observed_at: datetime
     source: str
+    _issuer: object = None
+
+    @property
+    def issued_by_boundary(self) -> bool:
+        return self._issuer is _RECONCILIATION_ISSUER
 
 
 class RealReconciliationPort(Protocol):
@@ -31,12 +39,34 @@ class RealReconciliationPort(Protocol):
         ...
 
 
+class RealReconciliationEvidenceBoundary:
+    """Issues observations only after a read-only reconciler has obtained them."""
+
+    def issue(
+        self,
+        *,
+        request_id: str,
+        executed: bool,
+        external_id: str | None,
+        observed_at: datetime,
+        source: str,
+    ) -> RealReconciliationObservation:
+        return RealReconciliationObservation(
+            request_id=request_id,
+            executed=executed,
+            external_id=external_id,
+            observed_at=observed_at,
+            source=source,
+            _issuer=_RECONCILIATION_ISSUER,
+        )
+
+
 def validate_observation(
     request_id: str,
     observation: RealReconciliationObservation,
 ) -> bool:
     """Fail closed on malformed or contradictory reconciliation evidence."""
-    if not isinstance(observation, RealReconciliationObservation):
+    if type(observation) is not RealReconciliationObservation or not observation.issued_by_boundary:
         return False
     if observation.request_id != request_id:
         return False
