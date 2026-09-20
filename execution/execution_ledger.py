@@ -198,10 +198,12 @@ class ExecutionLedger:
                 if external_id is None or not isinstance(external_id, str) or not external_id.strip():
                     raise ValueError("reconciliação EXECUTED exige external_id durável.")
                 existing = self._external_ids.get(request_id)
-                if existing is not None and existing != external_id.strip():
-                    raise ValueError("external_id observado difere do external_id durável.")
                 if existing is None:
-                    self._external_ids[request_id] = external_id.strip()
+                    raise ValueError(
+                        "reconciliação EXECUTED não pode criar external_id; identidade externa deve ser persistida antes."
+                    )
+                if existing != external_id.strip():
+                    raise ValueError("external_id observado difere do external_id durável.")
             allowed = (
                 ExecutionLedgerStatus.UNKNOWN,
                 ExecutionLedgerStatus.RESERVED,
