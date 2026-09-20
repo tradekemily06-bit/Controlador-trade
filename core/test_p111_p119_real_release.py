@@ -435,3 +435,53 @@ def test_real_gateway_blocks_adapter_identity_mismatch_before_dispatch(tmp_path:
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
     assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is None
+
+def test_real_gateway_rejects_non_trading_signal(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = ExecutionRequest("TEST", Signal.AGUARDAR, 10.0, 60, ExecutionMode.REAL)
+
+    result = gateway.execute(
+        broker="fake", request_id="aguardar-real", request=request,
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+    assert ExecutionLedger(tmp_path / "ledger.json").status("aguardar-real") is None
+
+
+def test_real_gateway_canonicalizes_request_id_before_persistence(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=" req-canonical ")
+
+    result = gateway.execute(
+        broker="fake", request_id="  req-canonical  ", request=request,
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
+    assert ExecutionLedger(tmp_path / "ledger.json").status("req-canonical") is ExecutionLedgerStatus.ACCEPTED
+    assert ExecutionLedger(tmp_path / "ledger.json").status("  req-canonical  ") is None
