@@ -1340,6 +1340,57 @@ def test_reconciliation_is_blocked_by_persistent_kill_switch_before_broker_query
     assert adapter.request_query_calls == 0
     assert ledger.status("kill-switch-recovery") is ExecutionLedgerStatus.RESERVED
 
+def test_crash_after_broker_side_effect_before_ledger_is_recoverable_without_replay(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-crash-boundary",
+            ExternalOrderStatus.EXECUTED,
+            "broker accepted before local process interruption",
+            "crash-boundary",
+        )
+    )
+    original_execute = adapter.execute
+
+    def broker_accept_then_interrupt(request):
+        original_execute(request)
+        raise SystemExit("simulated process crash after broker acceptance")
+
+    adapter.execute = broker_accept_then_interrupt
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("crash-boundary")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "crash-boundary",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    with pytest.raises(SystemExit, match="simulated process crash"):
+        execute(gw, "crash-boundary")
+
+    # The simulated interruption happens after the external side effect but
+    # before RealExecutionGateway can persist external_id. Recovery must treat
+    # this as uncertain and query by the same client/request reference.
+    assert adapter.calls == 1
+    assert ledger.status("crash-boundary") is ExecutionLedgerStatus.RESERVED
+    assert lifecycle.get("crash-boundary").state is ExecutionLifecycleState.PENDING
+
+    recovery_result = gw.reconcile_unknown(
+        "crash-boundary",
+        broker="fake",
+        authorization=auth(),
+        reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+    )
+
+    assert recovery_result is None
+    assert adapter.calls == 1
+    assert adapter.request_query_calls == 1
+    assert ledger.status("crash-boundary") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("crash-boundary") == "broker-crash-boundary"
+    assert lifecycle.get("crash-boundary").state is ExecutionLifecycleState.ACCEPTED
+
+
 def test_recovery_can_find_broker_acceptance_by_request_reference_without_external_id(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
