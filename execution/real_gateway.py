@@ -432,6 +432,10 @@ class RealExecutionGateway:
             observation = request_query.query_order_by_request_id(request_id)
             if not hasattr(observation, "external_id") or not isinstance(observation.external_id, str) or not observation.external_id.strip():
                 raise ValueError("broker retornou observação sem external_id para request_id.")
+            if not hasattr(observation, "request_id") or not isinstance(observation.request_id, str) or not observation.request_id.strip():
+                raise ValueError("broker retornou observação sem request_id correlacionável.")
+            if observation.request_id != request_id:
+                raise ValueError("broker retornou observação vinculada a outro request_id.")
             if observation.status not in (
                 ExternalOrderStatus.EXECUTED,
                 ExternalOrderStatus.NOT_EXECUTED,
