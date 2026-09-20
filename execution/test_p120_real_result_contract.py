@@ -12,6 +12,14 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class MissingExternalIdAdapter:
+    supports_real_execution = True
+    adapter_id = "adapter"
+    def query_order_by_request_id(self, request_id):
+        raise ValueError("no broker evidence")
+
+    def query_order(self, external_id):
+        raise ValueError("no broker evidence")
+
     def is_available(self):
         return True
 
@@ -28,14 +36,14 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
-        broker_available=True, broker_id="fake",
+        broker_available=True, broker_id="fake", authorization_id=authorization.authorization_id,
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True,
-        broker_available=True,
+        broker_available=True, authorization_id="auth",
     )
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-external-id")
 
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,

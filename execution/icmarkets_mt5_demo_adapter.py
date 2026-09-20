@@ -22,6 +22,7 @@ class ICMarketsMT5DemoConfig:
 
 
 class ICMarketsMT5DemoAdapter:
+    supports_real_execution = False
     """IC Markets MT5 DEMO boundary.
 
     Uses the official MetaTrader5 Python package against a running MT5 terminal.
@@ -90,11 +91,20 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if type(request) is not ExecutionRequest:
+            return ExecutionResult(False, "request de execução inválido; ordem bloqueada.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal is Signal.AGUARDAR:
             return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
-        if not math.isfinite(request.amount) or request.amount <= 0:
+        if not isinstance(request.request_id, str) or not request.request_id.strip() or request.request_id != request.request_id.strip():
+            return ExecutionResult(False, "request_id inválido ou não canônico; ordem bloqueada.")
+        if (
+            not isinstance(request.amount, (int, float))
+            or isinstance(request.amount, bool)
+            or not math.isfinite(float(request.amount))
+            or request.amount <= 0
+        ):
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
         mt5 = self._module()
@@ -155,9 +165,8 @@ class ICMarketsMT5DemoAdapter:
 
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
             if external_id is None:
-                return ExecutionResult(
-                    False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                raise MT5AdapterError(
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado DEMO incerto."
                 )
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))

@@ -15,12 +15,17 @@ class BrokerOrderSide(str, Enum):
 @dataclass(frozen=True)
 class BrokerOrderRequest:
     request_id: str
+    client_order_id: str
     symbol: str
     side: BrokerOrderSide
     amount: float
     duration_seconds: int
 
     def __post_init__(self) -> None:
+        if not isinstance(self.client_order_id, str) or not self.client_order_id.strip() or self.client_order_id != self.client_order_id.strip():
+            raise ValueError("client_order_id inválido")
+        if self.client_order_id != self.request_id:
+            raise ValueError("client_order_id deve ser exatamente o request_id")
         if not isinstance(self.request_id, str) or not self.request_id.strip():
             raise ValueError("request_id inválido")
         if not isinstance(self.symbol, str) or not self.symbol.strip():
@@ -63,6 +68,7 @@ class BrokerOrderBoundary:
 
         return BrokerOrderRequest(
             request_id=request_id,
+            client_order_id=request_id,
             symbol=symbol,
             side=side,
             amount=amount,

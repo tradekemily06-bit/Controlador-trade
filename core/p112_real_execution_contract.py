@@ -15,8 +15,10 @@ class RealExecutionAuthorization:
     def __post_init__(self) -> None:
         for name in ("authorization_id", "audit_id", "broker_id", "adapter_id"):
             value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} é obrigatório.")
+            if type(value) is not str or not value.strip() or value != value.strip():
+                raise ValueError(f"{name} inválido ou não canônico.")
+        if type(self.explicitly_enabled) is not bool or type(self.real_execution_allowed) is not bool:
+            raise ValueError("flags de autorização REAL precisam ser booleanos.")
         if self.real_execution_allowed and not self.explicitly_enabled:
             raise ValueError("REAL exige habilitação explícita.")
 

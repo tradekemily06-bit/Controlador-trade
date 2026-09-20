@@ -68,3 +68,33 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_rejects_non_boolean_availability():
+    registry = BrokerRegistry()
+    registry.register("broken", FakeAdapter(available="yes"))
+
+    with pytest.raises(BrokerRegistryError, match="disponibilidade inválida"):
+        registry.is_available("broken")
+    with pytest.raises(BrokerRegistryError, match="disponibilidade inválida"):
+        registry.info()
+
+
+def test_concurrent_duplicate_registration_has_single_winner():
+    from concurrent.futures import ThreadPoolExecutor
+
+    registry = BrokerRegistry()
+
+    def register():
+        try:
+            registry.register("same", FakeAdapter())
+            return "ok"
+        except BrokerRegistryError:
+            return "duplicate"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: register(), range(8)))
+
+    assert results.count("ok") == 1
+    assert results.count("duplicate") == 7
+    assert registry.names() == ("same",)

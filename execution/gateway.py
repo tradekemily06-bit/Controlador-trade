@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -35,7 +36,7 @@ class GatewayResult:
 
 
 class ExecutionGateway:
-    """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
+    """Broker-agnostic safety gateway. This gateway permits only DEMO execution."""
 
     def __init__(
         self,
@@ -92,6 +93,24 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                if self._lifecycle is not None:
+                    try:
+                        self._lifecycle.put(
+                            ExecutionLifecycleRecord(
+                                request_id,
+                                ExecutionLifecycleState.UNKNOWN,
+                                event_time,
+                                f"reserva do ledger falhou: {exc}",
+                            )
+                        )
+                    except (OSError, ValueError):
+                        pass
+                return GatewayResult(GatewayStatus.DUPLICATE, f"request_id não pôde ser reservado com segurança: {exc}")
+
         try:
             result = self._executor.execute(request)
         except Exception as exc:
@@ -101,15 +120,37 @@ class ExecutionGateway:
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
+        if type(result.accepted) is not bool:
+            self._mark_unknown(request_id, event_time, "executor retornou accepted inválido")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou accepted inválido; execução marcada como UNKNOWN.")
+        if type(result.message) is not str or not result.message.strip():
+            self._mark_unknown(request_id, event_time, "executor retornou message inválida")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou message inválida; execução marcada como UNKNOWN.")
+        if result.external_id is not None and (type(result.external_id) is not str or not result.external_id.strip()):
+            self._mark_unknown(request_id, event_time, "executor retornou external_id inválido")
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou external_id inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id, external_id=result.external_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"rejeição não pôde ser persistida; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"rejeição persistida no ledger, mas lifecycle falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                if not isinstance(result.external_id, str) or not result.external_id.strip():
+                    self._mark_unknown(request_id, event_time, "execução DEMO aceita sem external_id")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução DEMO aceita sem external_id; execução marcada como UNKNOWN.", result)
+                self._ledger.mark_accepted(request_id, external_id=result.external_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
@@ -128,31 +169,46 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
-        if self._lifecycle is None:
-            return
-        try:
-            current = self._lifecycle.get(request_id)
-            if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-            elif current.state is not ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-        except (OSError, ValueError):
-            pass
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                elif current.state is not ExecutionLifecycleState.UNKNOWN:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+            except (OSError, ValueError):
+                pass
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            return "request_id não pode ser vazio."
-        if not isinstance(request, ExecutionRequest):
+        if type(request_id) is not str or not request_id.strip() or request_id != request_id.strip():
+            return "request_id inválido ou não canônico."
+        if type(request) is not ExecutionRequest:
             return "requisição de execução inválida."
+        if request.request_id is not None and request.request_id != request_id:
+            return "request_id externo e request.request_id precisam coincidir."
         if request.mode is not ExecutionMode.DEMO:
-            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
+            return "esta etapa aceita somente execução DEMO."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if type(request.symbol) is not str or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if (
+            not isinstance(request.amount, (int, float))
+            or isinstance(request.amount, bool)
+            or not math.isfinite(float(request.amount))
+            or request.amount <= 0
+        ):
+            return "Valor da execução deve ser um número finito positivo."
+        if (
+            not isinstance(request.duration_seconds, int)
+            or isinstance(request.duration_seconds, bool)
+            or request.duration_seconds <= 0
+        ):
+            return "Duração deve ser um inteiro positivo."
         return None
