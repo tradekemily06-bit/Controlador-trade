@@ -228,6 +228,8 @@ class RealExecutionGateway:
 
         if result.execution.uncertain:
             try:
+                if result.execution.external_id:
+                    self._ledger.bind_external_id(request_id, result.execution.external_id)
                 self._ledger.mark_unknown(request_id)
                 self._lifecycle.put(
                     ExecutionLifecycleRecord(
@@ -274,6 +276,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
+            self._ledger.bind_external_id(request_id, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
             self._lifecycle.put(
                 ExecutionLifecycleRecord(
@@ -330,6 +333,11 @@ class RealExecutionGateway:
             if executed
             else ExecutionLedgerStatus.REJECTED
         )
+        durable_external_id = self._ledger.external_id(request_id)
+        if executed and not durable_external_id:
+            raise ValueError("reconciliação EXECUTED exige external_id previamente persistido.")
+        if executed and observation.external_id != durable_external_id:
+            raise ValueError("external_id observado difere da identidade externa durável.")
         if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
@@ -349,7 +357,7 @@ class RealExecutionGateway:
             raise ValueError("ciclo de execução não está em estado reconciliável.")
 
         if ledger_status is not desired_ledger:
-            self._ledger.reconcile(request_id, executed=executed)
+            self._ledger.reconcile(request_id, executed=executed, external_id=observation.external_id if executed else None)
             ledger_status = desired_ledger
 
         if lifecycle_missing:
