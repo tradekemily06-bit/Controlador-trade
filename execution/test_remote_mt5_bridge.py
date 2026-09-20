@@ -86,3 +86,25 @@ def test_remote_bridge_blocks_missing_request_id():
     assert result.accepted is False
     assert "request_id" in result.message
     assert bridge.calls == 0
+
+
+def test_remote_bridge_marks_transport_exception_uncertain():
+    class FailingBridge(FakeBridge):
+        def execute_demo(self, request):
+            self.calls += 1
+            raise TimeoutError("bridge timeout")
+
+    result = SafeRemoteMT5Executor(FailingBridge(BridgeHealth(True, True, "ok"))).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True
+
+
+def test_remote_bridge_marks_accepted_without_external_id_uncertain():
+    class MissingIdBridge(FakeBridge):
+        def execute_demo(self, request):
+            self.calls += 1
+            return ExecutionResult(True, "accepted", None)
+
+    result = SafeRemoteMT5Executor(MissingIdBridge(BridgeHealth(True, True, "ok"))).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True
