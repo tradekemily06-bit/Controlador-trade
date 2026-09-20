@@ -45,6 +45,8 @@ class DecisionStore:
                 path.parent.mkdir(parents=True, exist_ok=True)
             if path.parent.resolve(strict=True) != path.parent.absolute():
                 raise OSError("decision database directory must not be a symlink")
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise OSError("decision database directory must not be a symlink")
             if path.exists():
                 stat = path.lstat()
                 if path.is_symlink() or not path.is_file():
