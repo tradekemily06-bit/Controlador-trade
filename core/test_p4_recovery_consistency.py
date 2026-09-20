@@ -25,7 +25,7 @@ def test_recovery_refuses_mixed_cross_store_snapshot(tmp_path, monkeypatch):
         calls["count"] += 1
         snapshot = original_statuses()
         if calls["count"] % 2 == 1:
-            ledger.reserve(f"racing-recovery-{calls["count"]}")
+            ledger.reserve(f"racing-recovery-{calls['count']}")
         return snapshot
 
     monkeypatch.setattr(ledger, "statuses", mutate_between_reads)
