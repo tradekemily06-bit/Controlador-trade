@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -68,6 +68,13 @@ class ExecutionGateway:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
+
+        # The gateway owns the canonical request identity. Adapters must receive
+        # the same identity that is persisted/audited; never dispatch a request
+        # with an unbound request_id that cannot be reconciled externally.
+        if request.request_id is not None and request.request_id.strip() != request_id.strip():
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "request_id da requisição difere da identidade canônica do gateway.")
+        request = replace(request, request_id=request_id.strip())
 
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
@@ -149,10 +156,10 @@ class ExecutionGateway:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
+        if not isinstance(request.amount, (int, float)) or request.amount <= 0:
             return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return "Duração deve ser positiva."
         return None
