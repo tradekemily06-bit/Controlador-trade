@@ -24,6 +24,7 @@ def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) ->
             ICMarketsMT5DemoConfig(symbol=symbol),
             mt5_module=mt5_module,
         ),
+        adapter_id=IC_MARKETS_MT5_DEMO,
     )
     return registry
 
