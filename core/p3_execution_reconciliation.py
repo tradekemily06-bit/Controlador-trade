@@ -190,7 +190,24 @@ class ExecutionReconciliationCoordinator:
                 # completed while reconciliation was waiting. A stale observation
                 # must never be reported as successfully applied to a terminal
                 # request, especially when it contradicts the terminal outcome.
-                if bound_external_id is not None and bound_external_id != result.external_id:
+                # The identity requirement must be repeated after acquiring both
+                # durable locks. The pre-lock check is only a snapshot; otherwise a
+                # RESERVED/UNKNOWN request with no bound external_id could consume an
+                # arbitrary broker observation after a concurrent state change.
+                if ledger_state in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                    if bound_external_id is None:
+                        raise ValueError(
+                            "external_id durável ausente; reconciliação externa segura indisponível."
+                        )
+                    if bound_external_id != result.external_id:
+                        raise ValueError(
+                            "external_id durável divergiu durante a reconciliação concorrente."
+                        )
+                elif bound_external_id is None:
+                    raise ValueError(
+                        "estado terminal sem external_id durável; observação externa não é compatível com uma reconciliação segura."
+                    )
+                elif bound_external_id != result.external_id:
                     raise ValueError(
                         "external_id durável divergiu durante a reconciliação concorrente."
                     )
