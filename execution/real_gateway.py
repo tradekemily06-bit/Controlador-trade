@@ -233,13 +233,22 @@ class RealExecutionGateway:
         ):
             raise ValueError("Lifecycle não está em estado incerto reconciliável.")
         self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
+        target = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
         try:
-            self._lifecycle.reconcile(
-                request_id,
-                ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED,
-                updated_at=datetime.now(timezone.utc),
-                message="reconciliação REAL explícita",
-            )
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id,
+                    target,
+                    updated_at=datetime.now(timezone.utc),
+                    message="reconciliação REAL explícita de órfão",
+                )
+            else:
+                self._lifecycle.reconcile(
+                    request_id,
+                    target,
+                    updated_at=datetime.now(timezone.utc),
+                    message="reconciliação REAL explícita",
+                )
         except (OSError, ValueError) as exc:
             raise RuntimeError(
                 f"Ledger reconciliado, mas Lifecycle não foi reconciliado; recuperação necessária: {exc}"
