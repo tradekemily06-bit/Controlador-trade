@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import math
 
 from core.kill_switch import KillSwitch
+from core.models import Signal
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
@@ -59,6 +60,10 @@ class RealExecutionGateway:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return False
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return False
+        if request.request_id is not None and (not isinstance(request.request_id, str) or not request.request_id.strip()):
+            return False
         return True
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
@@ -66,6 +71,7 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        request_id = request_id.strip()
         if not isinstance(request, ExecutionRequest):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         if not isinstance(authorization, RealExecutionAuthorization):
@@ -74,7 +80,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL inválida.")
         if not isinstance(safety, RealSafetyReport):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL inválida.")
-        if request.request_id is not None and request.request_id != request_id:
+        if request.request_id is not None and request.request_id.strip() != request_id:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id do envelope difere do request_id da requisição.")
         request = replace(request, request_id=request_id)
         if not authorization.active:
