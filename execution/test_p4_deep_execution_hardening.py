@@ -546,7 +546,10 @@ def test_terminal_ledger_repairs_lifecycle_projection(tmp_path):
 
 
 def test_reconciliation_requires_broker_query_and_durable_external_id(tmp_path):
-    gw, ledger, lifecycle = gateway(tmp_path, FakeAdapter())
+    class LegacyQueryOnlyAdapter(FakeAdapter):
+        query_order_by_request_id = None
+
+    gw, ledger, lifecycle = gateway(tmp_path, LegacyQueryOnlyAdapter())
     ledger.reserve("reconcile-me")
     lifecycle.put(
         ExecutionLifecycleRecord(
