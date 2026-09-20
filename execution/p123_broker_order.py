@@ -76,6 +76,10 @@ class BrokerOrderBoundary:
             raise ValueError("resultado da corretora inválido")
         if not isinstance(result.accepted, bool):
             raise ValueError("accepted inválido")
+        if not isinstance(result.ambiguous, bool):
+            raise ValueError("ambiguous inválido")
+        if result.ambiguous and result.accepted:
+            raise ValueError("resultado ambíguo não pode ser simultaneamente confirmado como aceito")
         if not isinstance(result.message, str) or not result.message.strip():
             raise ValueError("message inválida")
         if result.external_id is not None and (
