@@ -148,12 +148,36 @@ class RealExecutionGateway:
             pass
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the external order."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+
+        # Recovery may find a ledger-only RESERVED/UNKNOWN record after a crash
+        # between the two durable stores. Materialize UNKNOWN in lifecycle first
+        # so the lifecycle side can never silently disappear while the ledger is
+        # being reconciled. This still never re-submits the external order.
+        current = self._lifecycle.get(request_id)
+        timestamp = datetime.now(timezone.utc)
+        if current is None:
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.UNKNOWN,
+                    timestamp,
+                    "estado reconstruído durante reconciliação explícita",
+                )
+            )
+        elif current.state not in (ExecutionLifecycleState.UNKNOWN, ExecutionLifecycleState.PENDING):
+            raise ValueError("lifecycle não está em estado reconciliável.")
+
         self._ledger.reconcile(request_id, executed=executed)
         state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
-        self._lifecycle.reconcile(request_id, state, updated_at=datetime.now(timezone.utc), message="reconciliação explícita concluída")
+        self._lifecycle.reconcile(
+            request_id,
+            state,
+            updated_at=datetime.now(timezone.utc),
+            message="reconciliação explícita concluída",
+        )
