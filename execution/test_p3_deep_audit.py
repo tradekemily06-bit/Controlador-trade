@@ -27,7 +27,7 @@ def real_request():
 
 
 def real_contracts():
-    auth = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    auth = RealExecutionAuthorization("auth", "audit", "fake", "fake", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm",
         audit_id="audit",
