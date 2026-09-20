@@ -40,6 +40,17 @@ class NoExternalIdAdapter:
         return ExecutionResult(True, "accepted but reference missing", None)
 
 
+class FakeOrderQuery:
+    def __init__(self, observation):
+        self.observation = observation
+        self.calls = 0
+
+    def query_order(self, external_id):
+        self.calls += 1
+        assert external_id == self.observation.external_id
+        return self.observation
+
+
 class UnknownAdapter:
     def is_available(self):
         return True
@@ -207,7 +218,12 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", observation=ExternalOrderObservation("external-unknown-2", ExternalOrderStatus.EXECUTED, "broker confirmou execução"))
+    query = FakeOrderQuery(ExternalOrderObservation("external-unknown-2", ExternalOrderStatus.EXECUTED, "broker confirmou execução"))
+    with pytest.raises(ValueError, match="external_id persistido"):
+        gateway.reconcile_unknown("unknown-2", query=query)
+    ledger.bind_external_id("unknown-2", "external-unknown-2")
+    gateway.reconcile_unknown("unknown-2", query=query)
+    assert query.calls == 1
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -225,8 +241,13 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     import pytest
-    with pytest.raises(ValueError, match="observação externa obrigatória"):
-        gateway.reconcile_unknown("crashed", observation=None)
+    with pytest.raises(ValueError, match="external_id persistido"):
+        gateway.reconcile_unknown(
+            "crashed",
+            query=FakeOrderQuery(
+                ExternalOrderObservation("external-crashed", ExternalOrderStatus.NOT_EXECUTED, "not found")
+            ),
+        )
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
