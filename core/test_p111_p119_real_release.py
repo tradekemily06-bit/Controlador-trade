@@ -9,7 +9,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
-from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
+from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
