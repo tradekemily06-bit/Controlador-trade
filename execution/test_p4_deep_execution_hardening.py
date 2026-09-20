@@ -1315,6 +1315,31 @@ def test_reconciliation_repairs_reserved_lifecycle_unknown_with_durable_external
     assert lifecycle.get("reserved-projection").state is ExecutionLifecycleState.ACCEPTED
 
 
+def test_reconciliation_is_blocked_by_persistent_kill_switch_before_broker_query(tmp_path):
+    adapter = FakeAdapter(
+        observation=ExternalOrderObservation(
+            "broker-reconcile", ExternalOrderStatus.EXECUTED, "confirmed", "kill-switch-recovery"
+        )
+    )
+    gw, ledger, lifecycle = gateway(tmp_path, adapter)
+    ledger.reserve("kill-switch-recovery")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "kill-switch-recovery", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+    ))
+    gw._kill_switch.activate("recovery emergency stop")
+
+    with pytest.raises(ValueError, match="kill switch"):
+        gw.reconcile_unknown(
+            "kill-switch-recovery",
+            broker="fake",
+            authorization=auth(),
+            reconciliation_boundary=ExternalOrderReconciliationBoundary(),
+        )
+
+    assert adapter.calls == 0
+    assert adapter.request_query_calls == 0
+    assert ledger.status("kill-switch-recovery") is ExecutionLedgerStatus.RESERVED
+
 def test_recovery_can_find_broker_acceptance_by_request_reference_without_external_id(tmp_path):
     adapter = FakeAdapter(
         observation=ExternalOrderObservation(
