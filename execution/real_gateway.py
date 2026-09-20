@@ -222,6 +222,48 @@ class RealExecutionGateway:
             )
         )
 
+    def recover_lifecycle_from_durable_acceptance(self, request_id: str) -> None:
+        """Repair only local Lifecycle evidence from an already durable acceptance.
+
+        This path never dispatches, never changes Ledger state, and never invents
+        a broker result. It exists for the crash window after Ledger ACCEPTED but
+        before Lifecycle ACCEPTED (or when the Lifecycle file was lost).
+        """
+        current = self._ledger.status(request_id)
+        if current not in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ):
+            raise ValueError("Ledger não contém aceite durável recuperável.")
+        external_id = self._ledger.external_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("aceite durável sem external_id; recuperação bloqueada.")
+
+        lifecycle = self._lifecycle.get(request_id)
+        if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.ACCEPTED:
+            return
+        if lifecycle is not None and lifecycle.state not in (
+            ExecutionLifecycleState.PENDING,
+            ExecutionLifecycleState.UNKNOWN,
+        ):
+            raise ValueError("Lifecycle não está em estado recuperável.")
+
+        message = f"Lifecycle recuperado a partir do aceite durável do Ledger; external_id={external_id.strip()}"
+        if lifecycle is None:
+            self._lifecycle.reconcile_missing(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message=message,
+            )
+        else:
+            self._lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message=message,
+            )
+
     def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
         """Resolve an uncertain REAL execution only from explicit external evidence."""
         if not isinstance(observation, ExternalOrderObservation):
