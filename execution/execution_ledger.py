@@ -68,9 +68,9 @@ class ExecutionLedger:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with exclusive_file_lock(lock_path):
-                self._load()
-                mutation()
-                self._write()
+            self._load
+            mutation()
+            self._write
 
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
