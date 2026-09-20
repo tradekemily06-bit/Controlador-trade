@@ -74,7 +74,7 @@ class HttpIdentityTests(unittest.TestCase):
             trusted=True,
         )
         self.assertEqual(status, "503 Service Unavailable")
-        self.assertIn("tenant-scoped data plane", payload["error"])
+        self.assertIn("tenant/subject-scoped data plane", payload["error"])
 
 
 if __name__ == "__main__":
