@@ -120,7 +120,10 @@ class OperationMemoryStore:
             if not self.path.exists():
                 return memory
             try:
-                if self.path.stat().st_size > MAX_MEMORY_FILE_BYTES:
+                stat = self.path.lstat()
+                if self.path.is_symlink() or not self.path.is_file():
+                    raise ValueError("arquivo de memória deve ser regular.")
+                if stat.st_size > MAX_MEMORY_FILE_BYTES:
                     raise ValueError("arquivo de memória excede o limite permitido.")
                 payload = json.loads(self.path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
