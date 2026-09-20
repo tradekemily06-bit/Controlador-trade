@@ -59,7 +59,9 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
     adapter = FakeAdapter(error=True)
     result = gateway_with(adapter).execute("fake", request())
     assert result.accepted is False
-    assert result.execution is None
+    assert result.execution is not None
+    assert result.execution.uncertain is True
+    assert result.uncertain is True
     assert adapter.calls == 1
 
 
