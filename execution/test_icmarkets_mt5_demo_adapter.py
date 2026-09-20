@@ -124,4 +124,4 @@ def test_partial_fill_is_ambiguous_not_rejected(tmp_path):
     assert result.accepted is False
     assert result.ambiguous is True
     assert result.external_id == "123456"
-    assert "parcial" in result.message
+    assert "parte" in result.message
