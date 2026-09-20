@@ -163,6 +163,27 @@ def test_real_safety_fails_closed():
     assert report.state is RealSafetyState.BLOCKED
 
 
+def test_real_gateway_live_kill_switch_blocks_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    kill_switch = KillSwitch()
+    kill_switch.activate("emergência")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, kill_switch)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(release_id="kill-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+
+    result = gateway.execute(broker="fake", request_id="kill-live", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("kill-live") is None
+
+
 def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
