@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
