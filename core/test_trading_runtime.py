@@ -85,7 +85,7 @@ def test_runtime_stops_after_rejected_execution() -> None:
     assert result.executed_cycles == 0
 
 
-def test_runtime_uses_deterministic_request_ids() -> None:
+def test_runtime_uses_unique_request_ids() -> None:
     coordinator = FakeCoordinator(accepted=True)
     result = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=coordinator).run(
         request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=2
