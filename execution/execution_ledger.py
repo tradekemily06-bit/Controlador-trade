@@ -139,7 +139,7 @@ class ExecutionLedger:
         def mutation() -> None:
             if request_id not in self._states:
                 raise ValueError("request_id não foi reservado; record() não pode criar aceite fora da barreira.")
-            if self._states[request_id] not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            if self._states[request_id] is not ExecutionLedgerStatus.RESERVED:
                 raise ValueError("record() não pode alterar estado terminal.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
 
