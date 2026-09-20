@@ -117,7 +117,7 @@ def _safety(auth):
     return RealSafetyGate().evaluate(
         authorization_active=auth.active, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True,
-        broker_available=True,
+        broker_available=True, authorization_id="auth",
     )
 
 
@@ -210,7 +210,7 @@ def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
 def test_real_safety_fails_closed():
     report = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=False,
-        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True, authorization_id=auth.authorization_id,
+        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True, authorization_id="auth",
     )
     assert report.state is RealSafetyState.BLOCKED
 
@@ -385,7 +385,7 @@ def test_real_gateway_rejects_noncanonical_request_id(tmp_path):
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True,
-        risk_approved=True, broker_available=True,
+        risk_approved=True, broker_available=True, authorization_id="auth",
     )
     request = _request()
     request = type(request)(
