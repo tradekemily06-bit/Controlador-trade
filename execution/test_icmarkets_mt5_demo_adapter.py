@@ -75,6 +75,9 @@ def test_demo_order_checks_before_send_and_confirms():
 
     assert result.accepted is True
     assert result.external_id == "123456"
+    order_send = next(call for call in mt5.calls if isinstance(call, tuple) and call[0] == "order_send")
+    assert order_send[1]["comment"].startswith("CTD-")
+    assert len(order_send[1]["comment"]) == 20
     names = [call if isinstance(call, str) else call[0] for call in mt5.calls]
     assert names.index("order_check") < names.index("order_send")
 
@@ -137,3 +140,22 @@ def test_demo_adapter_blocks_invalid_signal():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_demo_adapter_requires_request_id_before_mt5_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    malformed = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id=None,
+    )
+
+    result = adapter.execute(malformed)
+
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert mt5.calls == []
