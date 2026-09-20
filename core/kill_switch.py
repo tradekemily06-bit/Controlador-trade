@@ -54,7 +54,13 @@ class KillSwitch:
         self._state = KillSwitchState()
         if self._path is not None:
             self._validate_path()
+            existed = self._path.exists()
             self._load()
+            if not existed:
+                # Materialize the canonical fail-open-disabled state durably.
+                # REAL composition must have an explicit persistent state file
+                # before any dispatch/recovery process can observe it.
+                self._mutate_persisted(self._state)
         elif self._coordination_lock_path is not None:
             raise KillSwitchValidationError(
                 "coordenação do kill switch exige estado persistente."
