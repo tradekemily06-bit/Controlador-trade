@@ -57,6 +57,9 @@ class NoExternalIdAdapter:
     supports_real_execution = True
     adapter_id = "fake-adapter"
 
+    def query_order_by_request_id(self, request_id):
+        raise ValueError("no broker evidence")
+
     def is_available(self):
         return True
 
