@@ -45,3 +45,4 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("missing-external-id").state.name == "UNKNOWN"
