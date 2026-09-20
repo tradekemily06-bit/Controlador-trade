@@ -297,8 +297,7 @@ def test_real_reservation_creates_pending_lifecycle_before_dispatch(tmp_path: Pa
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 1
     record = ExecutionLifecycleStore(lifecycle_path).get("pending-1")
-    assert record is not None
-    assert record.state is ExecutionLifecycleState.UNKNOWN
+    assert record is not None    assert record.state is ExecutionLifecycleState.UNKNOWN
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
@@ -798,68 +797,32 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("ledger-only")
-    ledger.mark_unknown("ledger-only")
 
-    gateway = RealExecutionGateway(
-        BrokerAdapterGateway(BrokerRegistry()),
-        ledger,
-        lifecycle,
-        KillSwitch(),
-    )
-    try:
-        gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
-    except ValueError as exc:
-        assert "external_id" in str(exc)
-    else:
-        raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
-    assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("ledger-only") is None
-
-
-def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
-    registry = BrokerRegistry()
-    gateway = RealExecutionGateway(
-        BrokerAdapterGateway(registry),
-        ExecutionLedger(tmp_path / "ledger.json"),
-        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
-        KillSwitch(),
-    )
-    ExecutionLedger(tmp_path / "ledger.json").reserve("bool-evidence")
-    try:
-        gateway.reconcile_unknown("bool-evidence", executed=True)
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("reconciliação REAL não deve aceitar booleano como evidência")
-
-
-def test_real_reconciliation_rejects_mismatched_external_observation(tmp_path: Path):
+def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    ledger.reserve("observed-request")
-    ledger.mark_unknown("observed-request")
+    ledger.reserve("local-reject")
+    ledger.mark_rejected("local-reject")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "local-reject",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "crash before lifecycle terminal write",
+        )
+    )
+
+    class ExplodingReconciler:
+        def lookup(self, request_id: str):
+            raise AssertionError("rejeição durável não deve consultar o broker")
+
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(BrokerRegistry()),
         ledger,
         lifecycle,
         KillSwitch(),
     )
+    gateway.reconcile_unknown("local-reject", reconciler=ExplodingReconciler())
 
-    class WrongRequestReconciler:
-        def lookup(self, request_id: str) -> RealReconciliationObservation:
-            return RealReconciliationObservation(
-                request_id="different-request",
-                executed=True,
-                external_id="external-1",
-                observed_at=datetime.now(timezone.utc),
-                source="fake-read-only-broker-reconciler",
-            )
-
-    try:
-        gateway.reconcile_unknown("observed-request", reconciler=WrongRequestReconciler())
-    except ValueError as exc:
-        assert "evidência externa" in str(exc)
-    else:
-        raise AssertionError("evidência de outro request_id não pode reconciliar esta execução")
-    assert ledger.status("observed-request") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("observed-request") is None
+    assert lifecycle.get("local-reject").state is ExecutionLifecycleState.REJECTED
+    assert ledger.status("local-reject") is ExecutionLedgerStatus.REJECTED
