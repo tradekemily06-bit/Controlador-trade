@@ -109,7 +109,7 @@ def test_kill_switch_blocks_before_executor():
     executor = RecordingExecutor()
     switch = KillSwitch()
     switch.activate("P27 test")
-    gateway = ExecutionGateway(executor, switch)
+    gateway = ExecutionGateway(executor, switch, allow_ephemeral=True)
     result = ExecutionIntentAdmission(gateway).admit(make_intent(), senior_context=make_senior_context())
     assert result.status is GatewayStatus.BLOCKED
     assert executor.calls == 0
