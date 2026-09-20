@@ -83,9 +83,8 @@ class ExecutionLedger:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         if fcntl is None:
             raise OSError("ledger multi-process lock não suportado neste sistema; execução bloqueada por segurança.")
-        with lock_path.open("a+", encoding="utf-8"):
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
                 self._load()
                 mutation()
