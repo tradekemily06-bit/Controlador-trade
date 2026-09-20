@@ -65,43 +65,43 @@ class RuntimeCheckpointStore:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with process_file_lock(lock_path):
             current = self.load()
-                if current is not None:
-                    if (
-                        current.session_id == checkpoint.session_id
-                        and checkpoint.last_cycle < current.last_cycle
-                    ):
-                        raise ValueError(
-                            "checkpoint obsoleto: last_cycle não pode regredir."
-                        )
-                    if checkpoint.updated_at < current.updated_at:
-                        raise ValueError(
-                            "checkpoint obsoleto: updated_at não pode regredir."
-                        )
-                temporary = self.path.with_name(f".{self.path.name}.tmp")
-                payload = json.dumps(
-                    {
-                        "session_id": checkpoint.session_id,
-                        "last_cycle": checkpoint.last_cycle,
-                        "last_request_id": checkpoint.last_request_id,
-                        "updated_at": checkpoint.updated_at.isoformat(),
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                    sort_keys=True,
-                )
-                with temporary.open("w", encoding="utf-8") as handle:
-                    handle.write(payload)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary, self.path)
-                try:
-                    directory_fd = os.open(self.path.parent, os.O_RDONLY)
-                except OSError:
-                    return
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+            if current is not None:
+                if (
+                    current.session_id == checkpoint.session_id
+                    and checkpoint.last_cycle < current.last_cycle
+                ):
+                    raise ValueError(
+                        "checkpoint obsoleto: last_cycle não pode regredir."
+                    )
+                if checkpoint.updated_at < current.updated_at:
+                    raise ValueError(
+                        "checkpoint obsoleto: updated_at não pode regredir."
+                    )
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            payload = json.dumps(
+                {
+                    "session_id": checkpoint.session_id,
+                    "last_cycle": checkpoint.last_cycle,
+                    "last_request_id": checkpoint.last_request_id,
+                    "updated_at": checkpoint.updated_at.isoformat(),
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            except OSError:
+                return
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
