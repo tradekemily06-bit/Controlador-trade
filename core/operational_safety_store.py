@@ -124,13 +124,13 @@ class OperationalSafetyStore:
     def _mutate_locked(self, mutator) -> None:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with exclusive_file_lock(lock_path):
-            payload = self._read_payload
+            payload = self._read_payload()
             updated = mutator(payload)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.path.with_name(f".{self.path.name}.tmp")
             temporary.write_text(
                 json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True),
-                    encoding="utf-8",
+                encoding="utf-8",
                 )
             os.replace(temporary, self.path)
 
