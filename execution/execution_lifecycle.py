@@ -9,15 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterator
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
-
-try:
-    import msvcrt
-except ImportError:  # pragma: no cover
-    msvcrt = None
+from core.file_lock import exclusive_file_lock
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -186,29 +178,8 @@ class ExecutionLifecycleStore:
     @contextmanager
     def _mutation_lock(self) -> Iterator[None]:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+b") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            elif msvcrt is not None:
-                try:
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-                except OSError as exc:
-                    raise OSError("não foi possível adquirir lock do lifecycle.") from exc
-            else:
-                raise OSError("lifecycle exige lock interprocesso suportado pelo sistema.")
-            try:
-                yield
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-                elif msvcrt is not None:
-                    try:
-                        lock_file.seek(0)
-                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                    except OSError:
-                        pass
+        with exclusive_file_lock(lock_path):
+            yield
 
     def _save_unlocked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
