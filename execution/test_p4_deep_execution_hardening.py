@@ -557,7 +557,7 @@ def test_reconciliation_requires_broker_query_and_durable_external_id(tmp_path):
         )
     )
 
-    with pytest.raises(ValueError, match="external_id durável"):
+    with pytest.raises(ValueError, match="sem external_id"):
         gw.reconcile_unknown(
             "reconcile-me",
             broker="fake",
