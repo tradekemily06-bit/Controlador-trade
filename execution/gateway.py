@@ -97,6 +97,19 @@ class ExecutionGateway:
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
+        # Reserve before dispatch so any transport ambiguity can be
+        # durably represented as UNKNOWN in both stores.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                try:
+                    if self._lifecycle is not None:
+                        self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, event_time, f"reserva do ledger falhou: {exc}"))
+                except (OSError, ValueError):
+                    pass
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar request_id antes do executor: {exc}")
+
         try:
             result = self._executor.execute(request)
         except Exception as exc:
