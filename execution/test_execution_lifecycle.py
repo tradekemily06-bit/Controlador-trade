@@ -88,3 +88,23 @@ def test_records_read_is_lock_consistent(tmp_path):
     store.put(ExecutionLifecycleRecord("req-b", ExecutionLifecycleState.PENDING, now))
     store.put(ExecutionLifecycleRecord("req-a", ExecutionLifecycleState.PENDING, now))
     assert [record.request_id for record in store.records()] == ["req-a", "req-b"]
+
+
+def test_repair_from_durable_terminal_reconstructs_missing_lifecycle(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    result = store.repair_from_durable_terminal(
+        "req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, message="recovered"
+    )
+    assert result.state is ExecutionLifecycleState.ACCEPTED
+    assert ExecutionLifecycleStore(path).get("req-1") == result
+
+
+def test_repair_from_durable_terminal_refuses_conflicting_terminal(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="terminal divergente"):
+        store.repair_from_durable_terminal("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, message="bad")
