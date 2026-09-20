@@ -5,6 +5,8 @@ import os
 from enum import Enum
 from pathlib import Path
 
+from core.file_lock import exclusive_file_lock
+
 
 class ExecutionLedgerStatus(str, Enum):
     RESERVED = "RESERVED"
