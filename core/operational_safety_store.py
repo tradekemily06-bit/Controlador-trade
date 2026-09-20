@@ -107,16 +107,32 @@ class OperationalSafetyStore:
 
     def _write_payload(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do estado de segurança não pode ser symlink")
+        if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+            raise OSError("estado de segurança deve ser um arquivo regular")
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if len(encoded) > MAX_SAFETY_FILE_BYTES:
             raise ValueError("estado de segurança excede o limite permitido.")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
-            temporary.write_bytes(encoded)
-            with temporary.open("r+b") as handle:
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = None
+            try:
+                fd = os.open(temporary, flags, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    fd = None
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, self.path)
+            except FileExistsError as exc:
+                raise RuntimeError("arquivo temporário do estado de segurança já existe") from exc
+            finally:
+                if fd is not None:
+                    os.close(fd)
             try:
                 directory_fd = os.open(self.path.parent, os.O_RDONLY)
             except OSError:
