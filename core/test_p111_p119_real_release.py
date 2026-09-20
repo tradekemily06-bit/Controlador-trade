@@ -109,7 +109,7 @@ def _admission(auth):
     return RealAdmissionBoundary().admit(
         admission_id="adm", audit_id=auth.audit_id, audit_verified=True,
         authorization_active=auth.active, safety_ready=True,
-        broker_available=True, broker_id="fake",
+        broker_available=True, broker_id="fake", authorization_id=auth.authorization_id,
     )
 
 
@@ -210,7 +210,7 @@ def test_real_gateway_rechecks_live_kill_switch_before_dispatch(tmp_path: Path):
 def test_real_safety_fails_closed():
     report = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=False,
-        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True, authorization_id=auth.authorization_id,
     )
     assert report.state is RealSafetyState.BLOCKED
 
@@ -227,7 +227,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=False, kill_switch_clear=True,
-        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True, authorization_id="auth",
     )
     result = gateway.execute(broker="fake", request_id="blocked", request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="blocked"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.BLOCKED
