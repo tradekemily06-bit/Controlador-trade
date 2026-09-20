@@ -24,7 +24,7 @@ class ExecutionCoordinationLock:
     def __init__(self, path: str | Path) -> None:
         if path is None:
             raise ValueError("path é obrigatório.")
-        self.path = Path(path)
+        self.path = Path(path).expanduser().resolve()
         self.lock_path = self.path.with_name(f".{self.path.name}.coordination.lock")
 
     @contextmanager
