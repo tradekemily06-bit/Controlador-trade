@@ -6,6 +6,7 @@ from enum import Enum
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
+from core.file_lock import exclusive_file_lock
 
 
 class RecoveryState(str, Enum):
@@ -48,16 +49,24 @@ class RecoveryCoordinator:
         self.checkpoint_store = checkpoint_store
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
+        # Recovery must share the same cross-process dispatch lock used by
+        # execution gateways. Otherwise it can observe the Ledger/Lifecycle
+        # pair between two durable mutations and falsely conclude the state is
+        # safe to resume.
+        self._coordination_lock_path = execution_ledger.path.with_name(
+            f".{execution_ledger.path.name}.dispatch.lock"
+        )
 
     def assess(self, *, session_id: str | None = None) -> RecoveryAssessment:
         if session_id is not None and (not isinstance(session_id, str) or not session_id.strip()):
             raise ValueError("session_id inválido.")
 
         try:
-            checkpoint = self.checkpoint_store.load()
-            lifecycle = self.lifecycle_store.records()
-            ledger_states = self.execution_ledger.snapshot()
-        except (OSError, ValueError, TypeError) as exc:
+            with exclusive_file_lock(self._coordination_lock_path):
+                checkpoint = self.checkpoint_store.load()
+                lifecycle = self.lifecycle_store.records()
+                ledger_states = self.execution_ledger.snapshot()
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {type(exc).__name__}")
 
         lifecycle_by_id = {record.request_id: record for record in lifecycle}
