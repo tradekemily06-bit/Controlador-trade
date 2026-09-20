@@ -197,7 +197,8 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     safety = RealSafetyGate().evaluate(
         authorization_active=False, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
-    )    release = RealReleaseClosureBoundary().close(release_id="blocked-release", p116_verified=False, p117_admitted=False, p118_available=False, multi_broker_boundary=False)
+    )
+    release = RealReleaseClosureBoundary().close(release_id="blocked-release", p116_verified=False, p117_admitted=False, p118_available=False, multi_broker_boundary=False)
     result = gateway.execute(broker="fake", request_id="blocked", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
@@ -396,7 +397,8 @@ def test_real_gateway_rejects_duck_typed_authority_objects(tmp_path: Path):
     assert adapter.calls == 0
 
 
-def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):    registry = BrokerRegistry()
+def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
+    registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
@@ -595,7 +597,8 @@ def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_pa
 
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(BrokerRegistry()),
-        ledger,        lifecycle,
+        ledger,
+        lifecycle,
         KillSwitch(),
     )
     gateway.reconcile_unknown("crash-accepted", reconciler=FakeReconciler("crash-accepted", executed=True))
@@ -795,6 +798,71 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("ledger-only")
+    ledger.mark_unknown("ledger-only")
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+    )
+    try:
+        gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
+    assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("ledger-only") is None
+
+
+def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
+    registry = BrokerRegistry()
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
+        KillSwitch(),
+    )
+    ExecutionLedger(tmp_path / "ledger.json").reserve("bool-evidence")
+    try:
+        gateway.reconcile_unknown("bool-evidence", executed=True)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("reconciliação REAL não deve aceitar booleano como evidência")
+
+
+def test_real_reconciliation_rejects_mismatched_external_observation(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("observed-request")
+    ledger.mark_unknown("observed-request")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+    )
+
+    class WrongRequestReconciler:
+        def lookup(self, request_id: str) -> RealReconciliationObservation:
+            return RealReconciliationObservation(
+                request_id="different-request",
+                executed=True,
+                external_id="external-1",
+                observed_at=datetime.now(timezone.utc),
+                source="fake-read-only-broker-reconciler",
+            )
+
+    try:
+        gateway.reconcile_unknown("observed-request", reconciler=WrongRequestReconciler())
+    except ValueError as exc:
+        assert "evidência externa" in str(exc)
+    else:
+        raise AssertionError("evidência de outro request_id não pode reconciliar esta execução")
+    assert ledger.status("observed-request") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("observed-request") is None
 
 def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
