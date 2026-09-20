@@ -149,24 +149,49 @@ class ICMarketsMT5DemoAdapter:
             if check is None or getattr(check, "retcode", 0) != 0:
                 return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
 
-            result = mt5.order_send(payload)
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                return ExecutionResult(
+                    False,
+                    f"order_send falhou após despacho potencial; resultado externo incerto: {type(exc).__name__}: {exc}",
+                    ambiguous=True,
+                )
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(
+                    False,
+                    f"order_send sem confirmação; resultado externo incerto: {self._last_error(mt5)}",
+                    ambiguous=True,
+                )
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
-            partial_code = getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None)
+            ambiguous_codes = {
+                getattr(mt5, "TRADE_RETCODE_PLACED", -1),
+                getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", -1),
+                getattr(mt5, "TRADE_RETCODE_TIMEOUT", -1),
+                getattr(mt5, "TRADE_RETCODE_ORDER_CHANGED", -1),
+                getattr(mt5, "TRADE_RETCODE_LOCKED", -1),
+            }
             external_id = getattr(result, "order", None) or getattr(result, "deal", None)
 
-            if partial_code is not None and retcode == partial_code:
+            if retcode in ambiguous_codes:
                 return ExecutionResult(
                     False,
-                    "MT5 executou apenas parte da ordem; reconciliação explícita necessária.",
+                    f"MT5 retornou estado potencialmente externo/ambíguo: retcode={retcode}; reconciliação necessária.",
                     str(external_id) if external_id is not None else None,
                     ambiguous=True,
                 )
 
-            if success_code is None or retcode != success_code:
+            if success_code is None:
+                return ExecutionResult(
+                    False,
+                    "MT5 não expôs TRADE_RETCODE_DONE; confirmação bloqueada.",
+                    str(external_id) if external_id is not None else None,
+                    ambiguous=True,
+                )
+
+            if retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
             if external_id is None:
