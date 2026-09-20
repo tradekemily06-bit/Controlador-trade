@@ -84,3 +84,14 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+def test_demo_adapter_marks_malformed_transport_response_ambiguous():
+    transport = FakeDemoTransport(result=object())
+    adapter = CTraderDemoAdapter(transport)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert result.ambiguous is True
+    assert result.external_id is None
