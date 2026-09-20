@@ -192,13 +192,20 @@ class BrokerAdapterGateway:
             return None
         if getattr(adapter, "supports_real_execution", False) is not True:
             return None
-        # REAL admission is not complete unless crash recovery has a broker-side
-        # lookup keyed by the same request/client reference used for dispatch.
-        # This prevents registering a REAL adapter that can place an order but
-        # cannot recover the accept-before-persistence crash window.
+        # REAL admission is not complete unless the adapter can reconcile
+        # both broker references:
+        #   1) client/request reference, for the crash window before external_id
+        #      reaches the local Ledger;
+        #   2) broker external_id, for every later reconciliation cycle.
+        # A REAL adapter that can place but cannot read back either reference
+        # would create a terminal state that the system cannot safely resolve.
         if not callable(getattr(adapter, "query_order_by_request_id", None)):
             return None
         if not isinstance(adapter, ExternalOrderRequestQueryPort):
+            return None
+        if not callable(getattr(adapter, "query_order", None)):
+            return None
+        if not isinstance(adapter, ExternalOrderQueryPort):
             return None
         adapter_id = getattr(adapter, "adapter_id", None)
         if not isinstance(adapter_id, str) or adapter_id.strip().lower() != expected_adapter_id.strip().lower():
