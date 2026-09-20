@@ -18,6 +18,9 @@ class FakeAdapter:
     def is_available(self):
         return self.available
 
+    def query_order_by_request_id(self, request_id):
+        return None
+
     def execute(self, request):
         self.calls += 1
         if self.error:
