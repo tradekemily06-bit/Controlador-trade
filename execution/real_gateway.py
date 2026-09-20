@@ -288,6 +288,46 @@ class RealExecutionGateway:
                 message=message,
             )
 
+    def recover_lifecycle_from_durable_rejection(self, request_id: str) -> None:
+        """Repair Lifecycle from a durable local rejection without querying or dispatching externally.
+
+        A rejection recorded by the Ledger before a Lifecycle write can fail only
+        after the gateway has decided not to dispatch (or the adapter explicitly
+        returned a rejection). It is local terminal evidence, so recovery must not
+        manufacture broker evidence or require a new external query.
+        """
+        current = self._ledger.status(request_id)
+        if current not in (
+            ExecutionLedgerStatus.REJECTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            raise ValueError("Ledger não contém rejeição durável recuperável.")
+
+        lifecycle = self._lifecycle.get(request_id)
+        if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.REJECTED:
+            return
+        if lifecycle is not None and lifecycle.state not in (
+            ExecutionLifecycleState.PENDING,
+            ExecutionLifecycleState.UNKNOWN,
+        ):
+            raise ValueError("Lifecycle não está em estado recuperável.")
+
+        message = "Lifecycle recuperado a partir da rejeição durável do Ledger; nenhum dispatch adicional permitido."
+        if lifecycle is None:
+            self._lifecycle.reconcile_missing(
+                request_id,
+                ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message=message,
+            )
+        else:
+            self._lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message=message,
+            )
+
     def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
         """Resolve an uncertain REAL execution only from explicit external evidence."""
         if not isinstance(observation, ExternalOrderObservation):
