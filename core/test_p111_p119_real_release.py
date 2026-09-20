@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from core.models import Signal
