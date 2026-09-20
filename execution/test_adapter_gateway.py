@@ -88,3 +88,12 @@ def test_adapter_gateway_rejects_forged_real_capability():
     assert result.accepted is False
     assert result.execution is None
     assert adapter.calls == 0
+
+
+def test_adapter_gateway_preserves_uncertain_adapter_outcome():
+    adapter = FakeAdapter(result=ExecutionResult(False, "ambiguous", None, True))
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.uncertain is True
+    assert result.execution is not None
+    assert result.execution.uncertain is True
