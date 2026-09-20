@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import math
 from typing import Any
 
@@ -91,6 +92,12 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    @staticmethod
+    def _correlation_tag(request_id: str) -> str:
+        """Create a bounded, non-secret broker correlation token from request_id."""
+        digest = hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:16]
+        return f"CTD-{digest}"
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "request de execução inválido.")
@@ -98,6 +105,12 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return ExecutionResult(False, "sinal de execução inválido; ordem bloqueada.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id ausente; ordem DEMO não rastreável bloqueada.")
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool):
+            return ExecutionResult(False, "volume/amount inválido; ordem bloqueada.")
         if not math.isfinite(request.amount) or request.amount <= 0:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
@@ -142,7 +155,7 @@ class ICMarketsMT5DemoAdapter:
                 "price": price,
                 "deviation": self.config.deviation,
                 "magic": self.config.magic,
-                "comment": "ControladorTrading-DEMO",
+                "comment": self._correlation_tag(request.request_id.strip()),
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
