@@ -14,6 +14,18 @@ class RealSafetyReport:
     state: RealSafetyState
     reasons: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.state, RealSafetyState):
+            raise ValueError("estado da barreira REAL inválido.")
+        if not isinstance(self.reasons, tuple) or any(
+            type(reason) is not str or not reason.strip() for reason in self.reasons
+        ):
+            raise ValueError("reasons da barreira REAL inválidos.")
+        if self.state is RealSafetyState.READY and self.reasons:
+            raise ValueError("barreira REAL READY não pode carregar motivos de bloqueio.")
+        if self.state is RealSafetyState.BLOCKED and not self.reasons:
+            raise ValueError("barreira REAL BLOCKED precisa registrar o motivo do bloqueio.")
+
     @property
     def ready(self) -> bool:
         return self.state is RealSafetyState.READY
