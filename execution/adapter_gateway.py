@@ -27,6 +27,9 @@ class BrokerAdapterGateway:
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
+    def adapter_id(self, broker: str) -> str:
+        return self._registry.adapter_id(broker)
+
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
