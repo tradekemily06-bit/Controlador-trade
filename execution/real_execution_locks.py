@@ -7,6 +7,16 @@ from typing import Iterator
 
 from core.file_lock import exclusive_file_lock
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None
+
 
 class RealExecutionLockError(RuntimeError):
     """REAL execution cannot proceed without an inter-process lock."""
