@@ -33,6 +33,9 @@ class CTraderDemoAdapter:
     def __init__(self, transport: CTraderDemoTransport) -> None:
         if transport is None:
             raise ValueError("transport obrigatório")
+        configured_endpoint = getattr(transport, "endpoint", None)
+        if configured_endpoint != CTRADER_DEMO_ENDPOINT:
+            raise ValueError("transport cTrader deve estar explicitamente configurado no endpoint DEMO")
         self._transport = transport
 
     def is_available(self) -> bool:
