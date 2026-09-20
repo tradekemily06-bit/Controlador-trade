@@ -27,6 +27,21 @@ class ExternalOrderQueryPort(Protocol):
         ...
 
 
+@runtime_checkable
+class ExternalOrderRequestQueryPort(Protocol):
+    """Read-only broker lookup by the durable client-order/request reference.
+
+    This is the recovery path for the crash window where the broker accepted
+    the order but the local Ledger has not yet persisted external_id.
+    Implementations must map the request reference to the broker's native
+    client-order-id/idempotency field; callers never supply an arbitrary
+    broker order identifier here.
+    """
+
+    def query_order_by_request_id(self, request_id: str) -> ExternalOrderObservation:
+        ...
+
+
 @dataclass(frozen=True)
 class ReconciliationResult:
     external_id: str
