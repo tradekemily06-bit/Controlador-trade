@@ -29,6 +29,10 @@ class RealExecutionLocks:
         self._root.mkdir(parents=True, exist_ok=True)
         self._global_path = self._root / ".real-execution.global.lock"
 
+    @property
+    def global_lock_path(self) -> Path:
+        return self._global_path
+
     @contextmanager
     def acquire(self, request_id: str) -> Iterator[None]:
         if not isinstance(request_id, str) or not request_id.strip():
