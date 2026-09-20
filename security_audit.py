@@ -69,6 +69,14 @@ class SecurityAudit:
         return os.environ.get("CONTROLADOR_MULTI_INSTANCE", "").strip().lower() in {"1", "true", "yes", "on"}
 
     def _connect(self) -> sqlite3.Connection:
+        if self._database_path:
+            path = Path(self._database_path)
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise RuntimeError("security audit database directory must not be a symlink")
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise RuntimeError("security audit database must be a regular file")
         return sqlite3.connect(self._database_path or ":memory:", timeout=5)
 
     def _initialize_database(self) -> None:
