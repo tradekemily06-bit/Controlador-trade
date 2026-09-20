@@ -73,8 +73,12 @@ class TradingRuntime:
         if checkpoint_store is not None and (not isinstance(session_id, str) or not session_id.strip()):
             raise ValueError("session_id é obrigatório quando checkpoint_store é usado.")
         if request_id_factory is None:
-            session_prefix = session_id.strip() if isinstance(session_id, str) and session_id.strip() else uuid4().hex
-            request_id_factory = lambda index: f"runtime-{session_prefix}-{index:06d}-{uuid4().hex}"
+            if isinstance(session_id, str) and session_id.strip():
+                session_prefix = session_id.strip()
+                request_id_factory = lambda index: f"runtime-{session_prefix}-{index:06d}"
+            else:
+                run_prefix = uuid4().hex
+                request_id_factory = lambda index: f"runtime-{run_prefix}-{index:06d}"
 
         cycles: list[RuntimeCycle] = []
         stopped = False
