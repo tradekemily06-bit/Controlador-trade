@@ -41,7 +41,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     safety = RealSafetyGate().evaluate(
         authorization_active=True, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True,
-        broker_available=True,
+        broker_available=True, authorization_id="auth",
     )
     request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-external-id")
 
