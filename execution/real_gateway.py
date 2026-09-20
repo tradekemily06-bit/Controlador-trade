@@ -8,6 +8,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
 from core.p119_release_closure import RealReleaseClosure
+from core.kill_switch import KillSwitch
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
@@ -38,6 +39,7 @@ class RealExecutionGateway:
         adapter_gateway: BrokerAdapterGateway,
         ledger: ExecutionLedger,
         lifecycle: ExecutionLifecycleStore,
+        kill_switch: KillSwitch,
     ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
@@ -45,10 +47,13 @@ class RealExecutionGateway:
             raise ValueError("ledger é obrigatório para execução REAL.")
         if not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle é obrigatório para execução REAL.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._coordination = ExecutionCoordinationLock(ledger.path)
+        self._kill_switch = kill_switch
 
     @staticmethod
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
@@ -132,6 +137,8 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
         if type(safety) is not RealSafetyReport or not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
+        if not self._kill_switch.allows_execution():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo no momento da execução REAL.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         # A request already recorded in an uncertain state must report UNKNOWN
@@ -185,6 +192,14 @@ class RealExecutionGateway:
                 RealGatewayStatus.UNKNOWN,
                 f"reserva REAL persistida, mas ciclo de execução não pôde ser persistido: {exc}",
             )
+
+        if not self._kill_switch.allows_execution():
+            try:
+                self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), "kill switch ativado antes do dispatch REAL"))
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"kill switch bloqueou o dispatch, mas a rejeição não pôde ser persistida: {exc}")
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado antes do dispatch REAL.")
 
         try:
             result = self._gateway.execute_real(
