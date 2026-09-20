@@ -37,6 +37,11 @@ class FakeAdapter:
     def is_available(self):
         return self.available
 
+    def query_order_by_request_id(self, request_id):
+        if self.observation is None:
+            raise ValueError("unexpected request_id")
+        return self.observation
+
     def execute(self, request):
         self.calls += 1
         return ExecutionResult(True, "fake real execution accepted", "external-1")
