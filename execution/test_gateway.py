@@ -179,3 +179,32 @@ def test_gateway_with_ledger_persists_unknown_after_executor_exception(tmp_path)
     assert ledger.status("req-unknown") is ExecutionLedgerStatus.UNKNOWN
     retry = gateway.execute("req-unknown", request())
     assert retry.status is GatewayStatus.DUPLICATE
+
+
+def test_gateway_persists_ambiguous_result_as_unknown(tmp_path):
+    class AmbiguousExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=False,
+                message="parcial; reconciliação necessária",
+                external_id="EXT-PARTIAL",
+                ambiguous=True,
+            )
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(
+        AmbiguousExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-partial", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution.ambiguous is True
+    assert ledger.status("req-partial") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("req-partial").state is ExecutionLifecycleState.UNKNOWN
