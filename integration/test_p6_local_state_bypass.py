@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 import os
 from pathlib import Path
+import tempfile
 
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
@@ -33,23 +34,17 @@ class ProductionLocalStateBypassTests(unittest.TestCase):
         original_public = os.environ.get("CONTROLADOR_SAAS_PUBLIC")
         original_db = os.environ.get("CONTROLADOR_DECISION_DB")
         try:
-            os.environ["CONTROLADOR_SAAS_PUBLIC"] = "true"
-            blocked_parent = Path(__file__).resolve().parent / "_p6_public_saas_db_parent"
-            blocked_parent.mkdir(exist_ok=True)
-            target = blocked_parent / "target.db"
-            target.write_text("")
-            link_parent = blocked_parent / "db-link"
-            if link_parent.exists() or link_parent.is_symlink():
-                if link_parent.is_dir() and not link_parent.is_symlink():
-                    import shutil
-                    shutil.rmtree(link_parent)
-                else:
-                    link_parent.unlink()
-            link_parent.symlink_to(blocked_parent, target_is_directory=True)
-            os.environ["CONTROLADOR_DECISION_DB"] = str(link_parent / "decisions.db")
-            service = ConfiguredEcosystemService()
-            self.assertIsNone(service.store)
-            self.assertEqual(service.memory, [])
+            with tempfile.TemporaryDirectory() as temp:
+                os.environ["CONTROLADOR_SAAS_PUBLIC"] = "true"
+                root = Path(temp)
+                target = root / "target"
+                target.mkdir()
+                link_parent = root / "db-link"
+                link_parent.symlink_to(target, target_is_directory=True)
+                os.environ["CONTROLADOR_DECISION_DB"] = str(link_parent / "decisions.db")
+                service = ConfiguredEcosystemService()
+                self.assertIsNone(service.store)
+                self.assertEqual(service.memory, [])
         finally:
             if original_public is None:
                 os.environ.pop("CONTROLADOR_SAAS_PUBLIC", None)
