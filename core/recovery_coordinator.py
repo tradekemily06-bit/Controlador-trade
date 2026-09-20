@@ -56,13 +56,12 @@ class RecoveryCoordinator:
     def assess(self) -> RecoveryAssessment:
         try:
             checkpoint = self.checkpoint_store.load()
-            lifecycle = self.lifecycle_store.records()
-            ledger_ids = self.execution_ledger.records()
-            ledger_states = {request_id: self.execution_ledger.status(request_id) for request_id in ledger_ids}
+            lifecycle_by_id = self.lifecycle_store.snapshot()
+            ledger_states = self.execution_ledger.snapshot()
+            lifecycle = tuple(lifecycle_by_id.values())
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
-        lifecycle_by_id = {record.request_id: record for record in lifecycle}
         pending_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.PENDING}
         unknown_ids = {record.request_id for record in lifecycle if record.state is ExecutionLifecycleState.UNKNOWN}
 
