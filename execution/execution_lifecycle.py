@@ -143,6 +143,34 @@ class ExecutionLifecycleStore:
 
         return self._mutate_locked(mutation)
 
+    def repair_from_durable_terminal(
+        self,
+        request_id: str,
+        state: ExecutionLifecycleState,
+        *,
+        updated_at: datetime,
+        message: str,
+    ) -> ExecutionLifecycleRecord:
+        """Repair a missing/uncertain lifecycle from a terminal durable ledger state."""
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("reparo terminal exige ACCEPTED ou REJECTED.")
+        self._validate(ExecutionLifecycleRecord(request_id, state, updated_at, message))
+
+        def mutation() -> ExecutionLifecycleRecord:
+            current = self._records.get(request_id)
+            if current is not None and current.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                if current.state is state:
+                    return current
+                raise ValueError("lifecycle terminal divergente não pode ser sobrescrito.")
+            record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+            self._records[request_id] = record
+            return record
+
+        return self._mutate_locked(mutation)
+
     def reconcile(
         self,
         request_id: str,
