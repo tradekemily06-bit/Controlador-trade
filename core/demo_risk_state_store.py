@@ -133,14 +133,35 @@ class DemoRiskStateStore:
             "state": self._encode_state(state),
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do estado de risco DEMO não pode ser symlink")
+        if self.path.exists():
+            stat = self.path.lstat()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise OSError("estado de risco DEMO deve ser um arquivo regular")
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         with self._lock():
             try:
                 encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
                 if len(encoded) > self.MAX_FILE_BYTES:
                     raise ValueError("estado de risco DEMO excede o limite permitido")
-                temporary.write_bytes(encoded)
-                with temporary.open("r+b") as handle:
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                fd = None
+                try:
+                    fd = os.open(temporary, flags, 0o600)
+                    with os.fdopen(fd, "wb") as handle:
+                        fd = None
+                        handle.write(encoded)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                except FileExistsError as exc:
+                    raise RuntimeError("arquivo temporário do estado de risco DEMO já existe") from exc
+                finally:
+                    if fd is not None:
+                        os.close(fd)
+                with temporary.open("rb") as handle:
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, self.path)
