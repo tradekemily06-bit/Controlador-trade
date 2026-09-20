@@ -64,7 +64,12 @@ class CTraderDemoAdapter:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
         except (TypeError, ValueError) as exc:
-            return ExecutionResult(False, f"falha de validação cTrader DEMO: {exc}")
+            return ExecutionResult(False, f"cTrader DEMO retornou resposta inválida após despacho potencial: {exc}", uncertain=True)
+        except Exception as exc:
+            return ExecutionResult(False, f"cTrader DEMO falhou após despacho potencial; resultado incerto: {type(exc).__name__}: {exc}", uncertain=True)
+
+        if validated.accepted and (not isinstance(validated.external_id, str) or not validated.external_id.strip()):
+            return ExecutionResult(False, "cTrader DEMO aceitou sem external_id; estado externo incerto.", uncertain=True)
 
         return ExecutionResult(
             accepted=validated.accepted,
