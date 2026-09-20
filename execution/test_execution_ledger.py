@@ -33,7 +33,7 @@ def test_ledger_survives_restart(tmp_path: Path):
 
 def test_gateway_rejects_duplicate_after_restart(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    first = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path), allow_ephemeral=True)
     accepted = first.execute("req-001", request())
     assert accepted.status is GatewayStatus.ACCEPTED
 
