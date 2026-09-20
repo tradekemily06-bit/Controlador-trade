@@ -56,6 +56,13 @@ def test_rejected_execution_is_not_recorded(tmp_path: Path):
     assert ExecutionLedger(path).records() == ()
 
 
+def test_snapshot_is_lock_consistent(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1")
+    snapshot = ledger.snapshot()
+    assert snapshot["req-1"] is ExecutionLedgerStatus.RESERVED
+
+
 def test_unknown_cannot_be_resolved_without_reconciliation(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-unknown")
