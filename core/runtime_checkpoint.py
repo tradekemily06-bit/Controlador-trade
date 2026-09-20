@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
 
 
 @dataclass(frozen=True)
@@ -15,7 +21,7 @@ class RuntimeCheckpoint:
 
 
 class RuntimeCheckpointStore:
-    """Durable checkpoint for safe runtime recovery; never replays an order."""
+    """Durable checkpoint with atomic replacement; it never replays an order."""
 
     def __init__(self, path: str | Path) -> None:
         if path is None:
@@ -24,21 +30,32 @@ class RuntimeCheckpointStore:
 
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary.write_text(
+                    json.dumps(
+                        {
+                            "session_id": checkpoint.session_id,
+                            "last_cycle": checkpoint.last_cycle,
+                            "last_request_id": checkpoint.last_request_id,
+                            "updated_at": checkpoint.updated_at.isoformat(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                os.replace(temporary, self.path)
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
@@ -70,5 +87,5 @@ class RuntimeCheckpointStore:
             not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
         ):
             raise ValueError("request_id do checkpoint inválido.")
-        if not isinstance(checkpoint.updated_at, datetime):
-            raise ValueError("checkpoint inválido.")
+        if not isinstance(checkpoint.updated_at, datetime) or checkpoint.updated_at.tzinfo is None:
+            raise ValueError("timestamp do checkpoint deve ser timezone-aware.")
