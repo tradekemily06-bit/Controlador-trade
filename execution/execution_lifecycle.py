@@ -5,6 +5,8 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+
+from core.file_lock import exclusive_file_lock
 from datetime import datetime
 
 
