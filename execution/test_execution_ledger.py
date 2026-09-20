@@ -56,6 +56,17 @@ def test_rejected_execution_is_not_recorded(tmp_path: Path):
     assert ExecutionLedger(path).records() == ()
 
 
+def test_unknown_cannot_be_resolved_without_reconciliation(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_accepted("req-unknown")
+    with pytest.raises(ValueError, match="UNKNOWN"):
+        ledger.mark_rejected("req-unknown")
+
+
 def test_invalid_ledger_fails_closed(tmp_path: Path):
     path = tmp_path / "ledger.json"
     path.write_text('{"invalid": true}', encoding="utf-8")
