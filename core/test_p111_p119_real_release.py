@@ -312,3 +312,56 @@ def test_real_gateway_fails_closed_on_malformed_gate_dependencies(tmp_path: Path
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
+
+
+def test_real_crash_after_external_id_binding_never_replays_and_remains_reconcilable(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    lifecycle_path = tmp_path / "lifecycle.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    original_mark_accepted = ledger.mark_accepted
+
+    def crash_after_binding(request_id, *, external_id):
+        raise OSError("simulated crash between external_id persistence and terminal state")
+
+    ledger.mark_accepted = crash_after_binding
+    result = gateway.execute(
+        broker="fake", request_id="crash-after-bind", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+    restored_ledger = ExecutionLedger(ledger_path)
+    assert restored_ledger.status("crash-after-bind") is ExecutionLedgerStatus.RESERVED
+    assert restored_ledger.external_id("crash-after-bind") == "external-1"
+    restored_lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    assert restored_lifecycle.get("crash-after-bind").state.value == "UNKNOWN"
+
+    restored = RealExecutionGateway(
+        BrokerAdapterGateway(registry), restored_ledger, restored_lifecycle, KillSwitch()
+    )
+    second = restored.execute(
+        broker="fake", request_id="crash-after-bind", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert second.status == RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 1
+
+    # The persisted broker identity makes read-only reconciliation possible;
+    # recovery must never submit the order a second time.
+    query = FakeOrderQuery(
+        ExternalOrderObservation("external-1", ExternalOrderStatus.EXECUTED, "broker confirmou execução")
+    )
+    restored.reconcile_unknown("crash-after-bind", query=query)
+    assert query.calls == 1
+    assert ExecutionLedger(ledger_path).status("crash-after-bind") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert adapter.calls == 1
