@@ -110,6 +110,7 @@ def admission():
         safety_ready=True,
         broker_available=True,
         broker_id="fake",
+        authorization_id="auth",
     )
 
 
@@ -240,6 +241,7 @@ def test_real_admission_must_match_authorization_context(tmp_path):
         safety_ready=True,
         broker_available=True,
         broker_id="other-broker",
+        authorization_id="auth",
     )
     result = gw.execute(
         broker="fake",
