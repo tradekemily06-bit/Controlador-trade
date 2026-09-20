@@ -56,11 +56,28 @@ class ExecutionAuditLog:
     def append(self, event: ExecutionAuditEvent) -> None:
         if not isinstance(event, ExecutionAuditEvent):
             raise ValueError("evento de auditoria inválido.")
+        if self.safety_store is not None:
+            try:
+                self.safety_store.append_execution_audit(event.as_dict())
+                # Refresh after the durable append so an old instance cannot
+                # retain a stale local snapshot or overwrite newer events.
+                self._events = [
+                    ExecutionAuditEvent.from_dict(item)
+                    for item in self.safety_store.load_execution_audit()
+                ]
+            except Exception:
+                try:
+                    self._events = [
+                        ExecutionAuditEvent.from_dict(item)
+                        for item in self.safety_store.load_execution_audit()
+                    ]
+                except Exception:
+                    pass
+                raise
+            return
         if self._events and event.timestamp < self._events[-1].timestamp:
             raise ValueError("eventos de auditoria devem ser cronológicos.")
         self._events.append(event)
-        if self.safety_store is not None:
-            self.safety_store.save_execution_audit(tuple(item.as_dict() for item in self._events))
 
     def events(self) -> tuple[ExecutionAuditEvent, ...]:
         return tuple(self._events)

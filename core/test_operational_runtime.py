@@ -72,3 +72,23 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "enabled": True,
         "reason": "teste de segurança",
     }
+
+
+def test_runtime_kill_switch_survives_restart(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.activate_kill_switch("persistir após restart")
+    assert runtime.kill_switch.state.enabled is True
+
+    restored = build_operational_runtime(tmp_path)
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "persistir após restart"
+    assert restored.gateway._kill_switch is restored.kill_switch
+
+
+def test_runtime_kill_switch_deactivation_is_durable(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.activate_kill_switch("bloqueio")
+    runtime.deactivate_kill_switch()
+
+    restored = build_operational_runtime(tmp_path)
+    assert restored.kill_switch.state.enabled is False

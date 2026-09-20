@@ -8,7 +8,8 @@ from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
-from execution.execution_ledger import ExecutionLedger
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
 
@@ -44,6 +45,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        recovery: RecoveryCoordinator | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +56,9 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        if recovery is not None and not isinstance(recovery, RecoveryCoordinator):
+            raise ValueError("recovery inválido.")
+        self._recovery = recovery
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -77,7 +82,15 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+        if self._recovery is not None:
+            recovery = self._recovery.assess()
+            if recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada pelo estado de recovery: {recovery.state.value}; reconciliação necessária antes de novo envio.",
+                )
+
+        if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
 
         if self._lifecycle is not None:
@@ -87,29 +100,99 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        # Reserve the request atomically before touching the executor. The previous
+        # contains()+record() sequence left a cross-process race where two workers
+        # could both observe the ID as unused and both call the executor.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                try:
+                    already_present = self._ledger.contains(request_id)
+                except (OSError, ValueError):
+                    already_present = False
+                if already_present:
+                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível reservar a execução; execução não enviada: {exc}")
+
+        # Recheck after durable reservation but before publishing lifecycle PENDING.
+        # A PENDING record for this very request is expected; checking after it
+        # would make every fresh execution self-block as REQUIRES_RECONCILIATION.
+        if self._recovery is not None:
+            final_recovery = self._recovery.assess(ignore_request_id=request_id)
+            if final_recovery.state not in (RecoveryState.FRESH, RecoveryState.SAFE_TO_RESUME):
+                self._mark_unknown(request_id, event_time, f"recovery mudou antes do executor: {final_recovery.state.value}")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada imediatamente antes do executor: {final_recovery.state.value}; estado marcado como UNKNOWN.",
+                )
+
+        if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
+                # The ledger reservation already exists. Never leave the request
+                # looking executable after lifecycle persistence fails.
+                self._mark_unknown(request_id, event_time, f"não foi possível persistir o início da execução; estado incerto: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução; estado incerto bloqueado: {exc}")
 
-        try:
-            result = self._executor.execute(request)
-        except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
+        # Final durable-authority check immediately before the side effect.
+        # Reconciliation may have completed this request after the earlier
+        # recovery snapshot; never dispatch when the ledger is no longer RESERVED.
+        if self._ledger is not None:
+            try:
+                admission_status = self._ledger.status(request_id)
+            except (OSError, ValueError) as exc:
+                self._mark_unknown(request_id, event_time, f"não foi possível confirmar a autoridade de execução antes do executor: {exc}")
+                return GatewayResult(
+                    GatewayStatus.EXECUTOR_ERROR,
+                    f"autoridade de execução indisponível; executor não chamado e estado marcado como UNKNOWN: {exc}",
+                )
+            if admission_status is not self._ledger_status_reserved():
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada: autoridade durável mudou para {admission_status.value} antes do executor.",
+                )
+
+        # Serialize the final kill-switch check with the executor call in this
+        # process. Activation racing this window cannot interleave between the
+        # check and the side effect.
+        with self._kill_switch.execution_window():
+            if not self._kill_switch.allows_execution():
+                self._mark_unknown(request_id, event_time, f"kill switch ativado antes do executor: {self._kill_switch.state.reason}")
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    f"execução bloqueada imediatamente antes do executor pelo kill switch: {self._kill_switch.state.reason}.",
+                )
+            try:
+                result = self._executor.execute(request)
+            except Exception as exc:
+                self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"execução rejeitada, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução rejeitada, mas persistência falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
@@ -127,7 +210,19 @@ class ExecutionGateway:
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
+    @staticmethod
+    def _ledger_status_reserved():
+        return ExecutionLedgerStatus.RESERVED
+
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        # UNKNOWN is a cross-authority fail-closed state. Persist it independently
+        # in every available execution authority; a failure in one store must not
+        # prevent the other store from recording the uncertainty.
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:

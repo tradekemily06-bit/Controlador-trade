@@ -24,6 +24,18 @@ class ExternalOrderQueryPort(Protocol):
         ...
 
 
+class ExternalOrderQueryByRequestIdPort(Protocol):
+    """Optional read-only recovery query using the durable client/request identity.
+
+    Implementations must query an external system without placing or retrying
+    an order. The returned observation must carry the broker's exact external
+    identity so the caller can bind it durably before reconciliation.
+    """
+
+    def query_order_by_request_id(self, request_id: str) -> ExternalOrderObservation:
+        ...
+
+
 @dataclass(frozen=True)
 class ReconciliationResult:
     external_id: str

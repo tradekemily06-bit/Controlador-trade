@@ -62,3 +62,10 @@ def test_result_without_external_id_is_preserved_for_p120_ambiguity_handling():
 def test_invalid_result_is_rejected():
     with pytest.raises(ValueError):
         BrokerOrderBoundary.validate_result(BrokerOrderResult(True, " ", None))
+
+
+def test_broker_order_rejects_noncanonical_request_id():
+    with pytest.raises(ValueError, match="request_id"):
+        BrokerOrderBoundary.from_signal(
+            request_id=" req-4 ", symbol="EURUSD", signal=Signal.COMPRA, amount=10, duration_seconds=60
+        )
