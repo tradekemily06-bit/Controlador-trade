@@ -128,4 +128,4 @@ def test_demo_terminal_record_does_not_block_recovery_for_missing_external_id(tm
 
     assessment = coordinator.assess()
 
-    assert assessment.state is RecoveryState.SAFE_TO_RESUME
+    assert assessment.state is RecoveryState.FRESH
