@@ -226,12 +226,17 @@ class ExecutionLedger:
                 if external_id is None or not isinstance(external_id, str) or not external_id.strip():
                     raise ValueError("reconciliação EXECUTED exige external_id durável.")
                 existing = self._external_ids.get(request_id)
-                if existing is None:
-                    raise ValueError(
-                        "reconciliação EXECUTED não pode criar external_id; identidade externa deve ser persistida antes."
-                    )
-                if existing != external_id.strip():
+                observed_external_id = external_id.strip()
+                if existing is not None and existing != observed_external_id:
                     raise ValueError("external_id observado difere do external_id durável.")
+                if existing is None:
+                    # Recovery may legitimately discover the broker identity only
+                    # after a crash between external acceptance and local binding.
+                    # The observation is still constrained by the request_id,
+                    # uniqueness check below, and the reconciliation boundary.
+                    if observed_external_id in self._external_ids.values():
+                        raise ValueError("external_id já está vinculado a outro request_id.")
+                    self._external_ids[request_id] = observed_external_id
             allowed = (
                 ExecutionLedgerStatus.UNKNOWN,
                 ExecutionLedgerStatus.RESERVED,
