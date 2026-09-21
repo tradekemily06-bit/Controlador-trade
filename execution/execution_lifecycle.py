@@ -57,16 +57,19 @@ class ExecutionLifecycleStore:
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
+                request_id = self._normalize_id(item["request_id"])
                 record = ExecutionLifecycleRecord(
-                    request_id=item["request_id"],
+                    request_id=request_id,
                     state=ExecutionLifecycleState(item["state"]),
                     updated_at=datetime.fromisoformat(item["updated_at"]),
                     message=item.get("message", ""),
                 )
                 self._validate(record)
-                if record.request_id in records:
-                    raise ValueError("ciclo de execução persistido inválido: request_id duplicado.")
-                records[record.request_id] = record
+                if request_id in records:
+                    raise ValueError(
+                        "ciclo de execução persistido inválido: request_id duplicado após normalização."
+                    )
+                records[request_id] = record
             self._records = records
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
