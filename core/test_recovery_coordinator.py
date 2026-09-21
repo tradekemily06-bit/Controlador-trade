@@ -67,3 +67,17 @@ def test_recovery_allows_pending_lifecycle_with_reserved_ledger(tmp_path):
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.inconsistent_request_ids == ()
     assert assessment.pending_request_ids == ("req-pending",)
+
+
+def test_recovery_accepts_reconciled_executed_with_terminal_lifecycle(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.PENDING, now))
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.bind_external_id("req-reconciled", "broker-1")
+    coordinator.execution_ledger.mark_accepted("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True, external_id="broker-1")
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, now))
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.SAFE_TO_RESUME
+    assert assessment.inconsistent_request_ids == ()
