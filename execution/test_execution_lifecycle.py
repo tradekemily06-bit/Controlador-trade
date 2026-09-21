@@ -95,4 +95,4 @@ def test_lifecycle_persistence_flushes_before_atomic_replace(tmp_path, monkeypat
     monkeypatch.setattr(os, "replace", replace)
     store.put(ExecutionLifecycleRecord("req-durable", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
     assert calls.index("fsync") < calls.index("replace")
-    assert calls.count("fsync") >= 2
+    assert calls.count("fsync") >= (1 if os.name == "nt" else 2)
