@@ -1057,3 +1057,115 @@ def test_real_authority_boundaries_cannot_be_constructed_externally():
             assert marker in str(exc)
         else:
             raise AssertionError("boundary REAL não pode ser instanciada externamente")
+
+
+def test_real_gateway_blocks_same_thread_adapter_reentry_without_second_dispatch(tmp_path: Path):
+    class ReentrantAdapter:
+        adapter_id = "fake-adapter"
+
+        def __init__(self):
+            self.calls = 0
+            self.gateway = None
+            self.nested_kwargs = None
+            self.nested_result = None
+
+        def is_available(self):
+            return True
+
+        def execute(self, request):
+            self.calls += 1
+            self.nested_result = self.gateway.execute(**self.nested_kwargs)
+            return ExecutionResult(True, "outer execution accepted", "external-outer")
+
+    registry = BrokerRegistry()
+    adapter = ReentrantAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch()
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary._internal().close(
+        release_id="reentry-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    adapter.gateway = gateway
+    adapter.nested_kwargs = dict(
+        broker="fake",
+        request_id="nested-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="outer-request",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
+    assert adapter.nested_result is not None
+    assert adapter.nested_result.status is RealGatewayStatus.BLOCKED
+    assert ledger.status("outer-request") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.status("nested-request") is None
+
+
+def test_real_reconciliation_reentry_is_rejected_without_state_mutation(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch()
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary._internal().close(
+        release_id="reconcile-reentry-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="reconcile-reentry",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+
+    class ReentrantReconciler:
+        def lookup(self, request_id: str):
+            gateway.reconcile_unknown(request_id, reconciler=self)
+            raise AssertionError("lookup should not continue after reentry rejection")
+
+    try:
+        gateway.reconcile_unknown(
+            "reconcile-reentry", reconciler=ReentrantReconciler()
+        )
+    except RuntimeError as exc:
+        assert "reentrada proibida" in str(exc)
+    else:
+        raise AssertionError("reconciliation reentry must be rejected")
+
+    assert ledger.status("reconcile-reentry") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("reconcile-reentry").state is ExecutionLifecycleState.UNKNOWN
