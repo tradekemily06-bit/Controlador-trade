@@ -1258,3 +1258,60 @@ def test_real_gateway_rejects_kill_switch_with_different_coordination_identity(t
         assert "coordenação do Ledger" in str(exc)
     else:
         raise AssertionError("REAL must share the Ledger coordination identity")
+
+
+def test_reconciliation_non_terminal_outcomes_do_not_close_unknown(tmp_path: Path):
+    """A broker query that is inconclusive must leave REAL execution UNKNOWN."""
+    from execution.real_reconciliation import ReconciliationOutcome
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("nonterminal")
+    ledger.mark_unknown("nonterminal")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        _real_kill_switch(tmp_path),
+    )
+    boundary = RealReconciliationEvidenceBoundary._internal()
+
+    class Reconciler:
+        def __init__(self, outcome):
+            self.outcome = outcome
+
+        def lookup(self, request_id):
+            return boundary.issue(
+                request_id=request_id,
+                executed=False,
+                external_id=None,
+                outcome=self.outcome,
+                observed_at=datetime.now(timezone.utc),
+                source="read-only-broker-reconciler",
+                provider_capability=boundary.provider_capability,
+            )
+
+    for outcome in (
+        ReconciliationOutcome.NOT_FOUND,
+        ReconciliationOutcome.NOT_VISIBLE_YET,
+        ReconciliationOutcome.QUERY_FAILED,
+        ReconciliationOutcome.AMBIGUOUS,
+    ):
+        gateway.reconcile_unknown("nonterminal", reconciler=Reconciler(outcome))
+        assert ledger.status("nonterminal") is ExecutionLedgerStatus.UNKNOWN
+        assert lifecycle.get("nonterminal") is None
+
+
+def test_reconciliation_requires_explicit_external_identity_kind_for_execution(tmp_path: Path):
+    from execution.real_reconciliation import validate_observation
+
+    boundary = RealReconciliationEvidenceBoundary._internal()
+    observation = boundary.issue(
+        request_id="identity-kind",
+        executed=True,
+        external_id="123",
+        observed_at=datetime.now(timezone.utc),
+        source="read-only-broker-reconciler",
+        provider_capability=boundary.provider_capability,
+    )
+    assert not validate_observation("identity-kind", observation)
