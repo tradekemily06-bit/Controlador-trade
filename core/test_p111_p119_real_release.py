@@ -1085,6 +1085,62 @@ def test_real_gateway_rejects_admission_bound_to_different_broker_or_audit(tmp_p
     assert lifecycle.records() == ()
 
 
+
+def test_real_recovery_blocks_legacy_accepted_without_external_id(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+
+    # Legacy/DEMO infrastructure can contain ACCEPTED without an external
+    # identity. That state is not safe evidence for REAL recovery.
+    ledger.record("legacy-accepted")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "legacy-accepted",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+    lifecycle.reconcile_pending(
+        "legacy-accepted",
+        ExecutionLifecycleState.ACCEPTED,
+        updated_at=datetime.now(timezone.utc),
+        message="legacy accepted fixture",
+    )
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+        FakeReconciler("test", executed=True),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="legacy-accepted-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="new-real-after-legacy",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
 def test_real_gateway_blocks_when_reconciliation_boundary_is_missing(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
