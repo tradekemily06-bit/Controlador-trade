@@ -110,6 +110,36 @@ class ExecutionLifecycleStore:
         self._load()
         return self._records.get(request_id)
 
+    def project_terminal(
+        self,
+        request_id: str,
+        state: ExecutionLifecycleState,
+        *,
+        updated_at: datetime,
+        message: str = "",
+    ) -> ExecutionLifecycleRecord:
+        """Repair the local lifecycle projection from an already-terminal authoritative Ledger state."""
+        if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+            raise ValueError("projeção terminal exige ACCEPTED ou REJECTED.")
+        self._validate(ExecutionLifecycleRecord(request_id, state, updated_at, message))
+
+        def mutation() -> None:
+            current = self._records.get(request_id)
+            if current is None:
+                self._records[request_id] = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+                return
+            if current.state in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+                if current.state is not state:
+                    raise ValueError("projeção terminal conflita com lifecycle terminal existente.")
+                return
+            if current.state not in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                raise ValueError("projeção terminal em estado inválido.")
+
+            self._records[request_id] = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+
+        self._mutate_locked(mutation)
+        return self._records[request_id]
+
     def reconcile(
         self,
         request_id: str,
