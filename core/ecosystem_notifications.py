@@ -82,6 +82,9 @@ class EcosystemNotificationCenter:
     def all(self) -> tuple[EcosystemNotification, ...]:
         return tuple(self._notifications)
 
+    def count(self) -> int:
+        return len(self._notifications)
+
     @staticmethod
     def summarize(events: Iterable[EcosystemNotification]) -> dict[str, int]:
         counts = {severity.value: 0 for severity in NotificationSeverity}
