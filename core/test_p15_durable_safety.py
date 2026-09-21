@@ -71,3 +71,35 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+
+def test_shared_kill_switch_instances_observe_durable_activation(tmp_path):
+    ledger_path = tmp_path / "execution-ledger.json"
+    state_path = tmp_path / "kill-switch.json"
+    first = __import__("core.kill_switch", fromlist=["KillSwitch"]).KillSwitch(
+        state_path=state_path, coordination_path=ledger_path
+    )
+    second = __import__("core.kill_switch", fromlist=["KillSwitch"]).KillSwitch(
+        state_path=state_path, coordination_path=ledger_path
+    )
+    assert first.allows_execution() is True
+    second.activate("bloqueio compartilhado")
+    assert first.allows_execution() is False
+    assert first.state.reason == "bloqueio compartilhado"
+
+
+def test_shared_kill_switch_corruption_fails_closed(tmp_path):
+    ledger_path = tmp_path / "execution-ledger.json"
+    state_path = tmp_path / "kill-switch.json"
+    state_path.write_text("{invalid", encoding="utf-8")
+    switch = __import__("core.kill_switch", fromlist=["KillSwitch"]).KillSwitch(
+        state_path=state_path, coordination_path=ledger_path
+    ) if False else None
+    from core.kill_switch import KillSwitch, KillSwitchValidationError
+    try:
+        KillSwitch(state_path=state_path, coordination_path=ledger_path)
+    except KillSwitchValidationError:
+        pass
+    else:
+        raise AssertionError("estado corrompido não pode iniciar como CLEAR")
