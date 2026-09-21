@@ -125,3 +125,17 @@ def test_reconciliation_requires_matching_durable_external_reference(tmp_path: P
     ledger.attach_external_id("real-reconcile", "broker-reconcile")
     ledger.reconcile("real-reconcile", executed=True, external_id="broker-reconcile")
     assert ledger.status("real-reconcile") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_real_ledger_persists_broker_identity(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("real-broker", broker_id="broker-a")
+    restored = ExecutionLedger(path)
+    assert restored.broker_id("real-broker") == "broker-a"
+
+
+def test_legacy_ledger_without_broker_remains_readable(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"legacy": "ACCEPTED"}', encoding="utf-8")
+    assert ExecutionLedger(path).broker_id("legacy") is None
