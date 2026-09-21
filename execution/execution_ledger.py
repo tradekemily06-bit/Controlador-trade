@@ -45,14 +45,14 @@ class ExecutionLedger:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
-        self._states, self._external_ids, self._external_reference_required = self._decode(payload)
+        self._states, self._external_ids, self._external_reference_required, self._brokers = self._decode(payload)
 
     @staticmethod
     def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, bool], dict[str, str]]:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
-            return ({item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}, {})
+            return ({item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {}, {}, {})
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
