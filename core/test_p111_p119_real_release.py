@@ -415,3 +415,33 @@ def test_real_monitoring_requires_provenance_fields():
         assert "timezone" in str(exc)
     else:
         raise AssertionError("observação sem timezone não pode ser evidência válida")
+
+
+def test_real_monitoring_rejects_cross_broker_observation(tmp_path: Path):
+    from core.p121_external_order_reconciliation import (
+        ExternalOrderObservation,
+        ExternalOrderQueryPort,
+        ExternalOrderReconciliationBoundary,
+        ExternalOrderStatus,
+    )
+
+    class Query(ExternalOrderQueryPort):
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "ok", "broker-b")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("cross-broker", broker_id="broker-a")
+    ledger.attach_external_id("cross-broker", "ext-1")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+
+    try:
+        ExternalOrderReconciliationBoundary().reconcile_request(
+            request_id="cross-broker",
+            ledger=ledger,
+            lifecycle=lifecycle,
+            query_port=Query(),
+        )
+    except ValueError as exc:
+        assert "broker" in str(exc)
+    else:
+        raise AssertionError("reconciliação não pode aceitar evidência de outro broker")
