@@ -67,6 +67,7 @@ class FakeReconciler:
         self.executed = executed
         self.external_id = external_id
         self.calls = 0
+        self._boundary = RealReconciliationEvidenceBoundary()
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
         self.calls += 1
@@ -76,6 +77,7 @@ class FakeReconciler:
             external_id=self.external_id if self.executed else None,
             observed_at=datetime.now(timezone.utc),
             source="fake-read-only-broker-reconciler",
+            provider_capability=self._boundary.provider_capability,
         )
 
 
