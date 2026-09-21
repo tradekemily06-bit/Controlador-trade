@@ -59,6 +59,7 @@ class MT5ReadOnlyReconciler:
         provider: str = "ic-markets-mt5",
         deals_query: Callable[..., Iterable[Any] | None],
         orders_query: Callable[..., Iterable[Any] | None],
+        context_provider: Callable[[str], dict[str, object] | None] | None = None,
     ) -> None:
         if not isinstance(account_id, str) or not account_id.strip():
             raise ValueError("account_id obrigatório")
@@ -69,6 +70,7 @@ class MT5ReadOnlyReconciler:
         self._provider = provider.strip().lower()
         self._deals_query = deals_query
         self._orders_query = orders_query
+        self._context_provider = context_provider
         self._evidence = RealReconciliationEvidenceBoundary._internal()
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
@@ -84,20 +86,28 @@ class MT5ReadOnlyReconciler:
                 outcome=ReconciliationOutcome.QUERY_FAILED,
                 provider_capability=self._evidence.provider_capability,
             )
-        # The durable request identity must be supplied by the caller through
-        # the adapter request. This reconciler deliberately does not invent
-        # symbol/side/volume/magic from an external result.
-        return self._evidence.issue(
-            request_id=request_id.strip(),
-            executed=False,
-            external_id=None,
-            observed_at=datetime.now(timezone.utc),
-            source=self.source,
-            provider=self._provider,
-            account_id=self._account_id,
-            outcome=ReconciliationOutcome.QUERY_FAILED,
-            provider_capability=self._evidence.provider_capability,
-        )
+        if self._context_provider is None:
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        try:
+            context = self._context_provider(request_id.strip())
+        except Exception:
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        if not isinstance(context, dict):
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        try:
+            identity = MT5ReconciliationIdentity(
+                request_id=request_id.strip(),
+                symbol=str(context["symbol"]).strip(),
+                side=str(context["side"]).upper().replace("COMPRA", "BUY").replace("VENDA", "SELL"),
+                amount=float(context["amount"]),
+                correlation=str(context["correlation"]).strip(),
+                magic=int(context["magic"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        if identity.request_id != request_id.strip():
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        return self.resolve(identity)
 
     def resolve(self, identity: MT5ReconciliationIdentity) -> RealReconciliationObservation:
         """Resolve an already-persisted identity; never dispatches."""
