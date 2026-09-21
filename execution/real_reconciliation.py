@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol\n\n\nclass _ObservationIssuer:\n    __slots__ = ()\n
 
 
-_RECONCILIATION_ISSUER = object()
+_RECONCILIATION_ISSUER = _ObservationIssuer()
 
 
 @dataclass(frozen=True)
