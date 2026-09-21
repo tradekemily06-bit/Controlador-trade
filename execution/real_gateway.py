@@ -160,3 +160,10 @@ class RealExecutionGateway:
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
         self._ledger.reconcile(request_id, executed=executed)
+        if self._lifecycle is not None:
+            self._lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message="reconciliação explícita; nenhuma nova ordem foi enviada",
+            )
