@@ -28,6 +28,14 @@ class MissingExternalIdAdapter:
     def correlation_for(request):
         return f"FAKE-{request.request_id.strip()}"
 
+    def recovery_context_for(self, request):
+        return {
+            "symbol": request.symbol,
+            "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
+            "amount": float(request.amount),
+            "correlation": self.correlation_for(request),
+        }
+
     def is_available(self):
         return True
 
