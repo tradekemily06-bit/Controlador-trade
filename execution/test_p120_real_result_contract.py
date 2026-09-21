@@ -31,12 +31,12 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     authorization = RealExecutionAuthorizationBoundary._internal().issue(authorization_id="auth", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=True, real_execution_allowed=True)
-    admission = RealAdmissionBoundary().admit(
+    admission = RealAdmissionBoundary._internal().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
         broker_available=True, broker_id="fake",
     )
-    safety = RealSafetyGate().evaluate(
+    safety = RealSafetyGate._internal().evaluate(
         authorization_active=True, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
@@ -46,7 +46,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
         authorization=authorization, admission=admission, safety=safety,
-        release=RealReleaseClosureBoundary().close(release_id="release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True),
+        release=RealReleaseClosureBoundary._internal().close(release_id="release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN
