@@ -257,3 +257,58 @@ def test_gateway_does_not_downgrade_accepted_ledger_when_lifecycle_persistence_f
     assert ledger.status("req-accepted-persist-failure") is ExecutionLedgerStatus.ACCEPTED
     assert "Ledger permanece ACCEPTED" in result.message
     assert lifecycle.records_seen == 2
+
+
+def test_recovery_cannot_return_safe_to_resume_while_execution_holds_dispatch_fence(tmp_path):
+    from threading import Event, Thread
+    import time
+
+    class BlockingExecutor:
+        def __init__(self):
+            self.entered = Event()
+            self.release = Event()
+
+        def execute(self, request):
+            self.entered.set()
+            assert self.release.wait(timeout=2)
+            return ExecutionResult(True, "ok")
+
+    executor = BlockingExecutor()
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger, lifecycle=lifecycle)
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+    )
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=1,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id="req-concurrent-recovery",
+    )
+
+    execution_result = []
+    worker = Thread(target=lambda: execution_result.append(gateway.execute(request.request_id, request)))
+    worker.start()
+    assert executor.entered.wait(timeout=2)
+
+    recovery_result = []
+    recovery_worker = Thread(target=lambda: recovery_result.append(recovery.assess()))
+    recovery_worker.start()
+    time.sleep(0.1)
+
+    # Recovery must wait for the same dispatch fence; it must never observe
+    # an in-flight RESERVED/PENDING execution as SAFE_TO_RESUME.
+    assert recovery_worker.is_alive()
+    executor.release.set()
+
+    worker.join(timeout=2)
+    recovery_worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert not recovery_worker.is_alive()
+    assert execution_result[0].status is GatewayStatus.ACCEPTED
+    assert recovery_result[0].state is not RecoveryState.SAFE_TO_RESUME
