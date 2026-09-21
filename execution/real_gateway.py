@@ -13,6 +13,7 @@ from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLif
 from datetime import datetime, timezone
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from execution.execution_coordination import ExecutionCoordinationLock
 
 
 class RealGatewayStatus(str):
@@ -46,6 +47,7 @@ class RealExecutionGateway:
         self._lifecycle = lifecycle
         self._kill_switch = kill_switch
         self._processed_request_ids: set[str] = set(ledger.records())
+        self._coordination = ExecutionCoordinationLock(ledger.path)
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -64,6 +66,12 @@ class RealExecutionGateway:
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
                 safety: RealSafetyReport) -> RealGatewayResult:
+        with self._coordination.acquire():
+            return self._execute_locked(broker=broker, request_id=request_id, request=request, authorization=authorization, admission=admission, safety=safety)
+
+    def _execute_locked(self, *, broker: str, request_id: str, request: ExecutionRequest,
+                        authorization: RealExecutionAuthorization, admission: RealAdmission,
+                        safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
         if not authorization.active:
@@ -330,6 +338,10 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
         """Resolve an uncertain REAL execution only from explicit external evidence."""
+        with self._coordination.acquire():
+            return self._reconcile_unknown_locked(request_id, observation=observation)
+
+    def _reconcile_unknown_locked(self, request_id: str, *, observation: ExternalOrderObservation) -> None:
         if not isinstance(observation, ExternalOrderObservation):
             raise ValueError("observação externa obrigatória para reconciliação REAL.")
         if observation.status not in (
