@@ -37,6 +37,12 @@ class BrokerAdapterGateway:
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
+        if request.mode.value == "REAL" and getattr(adapter, "supports_real_execution", False) is not True:
+            return AdapterExecutionResult(
+                False,
+                "adapter não possui opt-in explícito para execução REAL; dispatch bloqueado.",
+            )
+
         try:
             result = adapter.execute(request)
         except Exception as exc:
