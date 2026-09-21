@@ -270,6 +270,9 @@ class RealExecutionGateway:
                     # this request accidentally.
                     "provider": broker.strip().lower(),
                     "recovery_identity": recovery_context,
+                    # Bound the external history search to the durable reservation
+                    # instant; recovery must never perform an unbounded history scan.
+                    "reserved_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
             self._lifecycle.put(
