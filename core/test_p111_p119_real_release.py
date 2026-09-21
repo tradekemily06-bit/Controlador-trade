@@ -958,3 +958,75 @@ def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
         pass
     else:
         raise AssertionError("evidence issuance must reject a forged provider capability")
+
+
+def test_real_gateway_rejects_unsafe_request_shape_before_reservation(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="shape-guard",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    aguardando = ExecutionRequest("TEST", Signal.AGUARDAR, 10.0, 60, ExecutionMode.REAL)
+    boolean_amount = ExecutionRequest("TEST", Signal.COMPRA, True, 60, ExecutionMode.REAL)
+
+    for request in (aguardando, boolean_amount):
+        result = gateway.execute(
+            broker="fake",
+            request_id="shape-request",
+            request=request,
+            authorization=auth,
+            admission=admission,
+            safety=safety,
+            release=release,
+        )
+        assert result.status is RealGatewayStatus.REJECTED
+
+    assert adapter.calls == 0
+    assert ledger.records() == ()
+    assert lifecycle.records() == ()
+
+
+def test_real_gateway_canonicalizes_request_id_before_external_correlation(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="canonical-id",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id=" canonical-1 ",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+    assert ledger.records() == ()
+    assert lifecycle.records() == ()
