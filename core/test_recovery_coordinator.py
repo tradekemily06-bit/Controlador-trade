@@ -96,7 +96,6 @@ def test_dependencies_are_required(tmp_path):
 
 
 def test_terminal_ledger_without_external_id_requires_reconciliation(tmp_path):
-    coordinator = make_coordinator(tmp_path)
     (tmp_path / "ledger.json").write_text(
         '{"accepted-without-id": {"status": "ACCEPTED", "external_id_required": true}}',
         encoding="utf-8",
