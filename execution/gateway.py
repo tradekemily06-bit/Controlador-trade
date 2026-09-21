@@ -230,15 +230,18 @@ class ExecutionGateway:
             else nullcontext()
         )
         with primary_lock:
+            # The safety fence must remain held through the actual executor call.
+            # Releasing it after the final check would recreate the exact
+            # check-to-use race we are trying to eliminate.
             with secondary_lock:
                 final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
-            if final_safety_error is not None:
-                return None, final_safety_error
-            try:
-                effective_request = self._request_for_dispatch(request, snapshot)
-            except ValueError:
-                return None, "requisição incompatível com o snapshot; dispatch bloqueado."
-            return self._executor.execute(effective_request), None
+                if final_safety_error is not None:
+                    return None, final_safety_error
+                try:
+                    effective_request = self._request_for_dispatch(request, snapshot)
+                except ValueError:
+                    return None, "requisição incompatível com o snapshot; dispatch bloqueado."
+                return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
         if self._ledger is None:
