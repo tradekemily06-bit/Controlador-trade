@@ -117,6 +117,16 @@ class ICMarketsMT5DemoAdapter:
             "magic": self.config.magic,
         }
 
+    def recovery_context_for(self, request: ExecutionRequest) -> dict[str, object]:
+        identity = self.build_reconciliation_request(request)
+        return {
+            "symbol": identity["symbol"],
+            "side": identity["side"],
+            "amount": identity["amount"],
+            "correlation": identity["correlation"],
+            "magic": identity["magic"],
+        }
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "request de execução inválido.")
