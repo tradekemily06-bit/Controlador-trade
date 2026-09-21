@@ -1083,3 +1083,36 @@ def test_real_gateway_rejects_admission_bound_to_different_broker_or_audit(tmp_p
     assert adapter.calls == 0
     assert ledger.records() == ()
     assert lifecycle.records() == ()
+
+
+def test_real_gateway_blocks_when_reconciliation_boundary_is_missing(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="no-reconciler",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="no-reconciler-1",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("no-reconciler-1") is None
