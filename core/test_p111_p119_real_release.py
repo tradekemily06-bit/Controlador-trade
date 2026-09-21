@@ -1215,3 +1215,45 @@ def test_real_gateway_canonicalizes_request_id_before_broker_dispatch(tmp_path: 
     assert ledger.records() == ("broker-id",)
     assert ledger.external_id("broker-id") == "external-1"
     assert ledger.status("  broker-id  ") is ExecutionLedgerStatus.ACCEPTED
+
+
+def test_real_gateway_rejects_ephemeral_kill_switch_at_composition(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+
+    try:
+        RealExecutionGateway(
+            BrokerAdapterGateway(registry),
+            ledger,
+            lifecycle,
+            KillSwitch(),
+        )
+    except ValueError as exc:
+        assert "durável" in str(exc)
+    else:
+        raise AssertionError("REAL must reject an ephemeral kill switch")
+
+
+def test_real_gateway_rejects_kill_switch_with_different_coordination_identity(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    mismatched = KillSwitch(
+        state_path=tmp_path / "kill-switch.json",
+        coordination_path=tmp_path / "different-coordination.json",
+    )
+
+    try:
+        RealExecutionGateway(
+            BrokerAdapterGateway(registry),
+            ledger,
+            lifecycle,
+            mismatched,
+        )
+    except ValueError as exc:
+        assert "coordenação do Ledger" in str(exc)
+    else:
+        raise AssertionError("REAL must share the Ledger coordination identity")
