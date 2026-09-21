@@ -941,3 +941,70 @@ def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
         pass
     else:
         raise AssertionError("evidence issuance must reject a forged provider capability")
+
+
+def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_path: Path):
+    class BindCrashLedger(ExecutionLedger):
+        def __init__(self, path):
+            self.bind_attempts = 0
+            super().__init__(path)
+
+        def bind_external_id(self, request_id: str, external_id: str) -> None:
+            self.bind_attempts += 1
+            if self.bind_attempts == 1:
+                raise OSError("simulated crash during external-id persistence")
+            return super().bind_external_id(request_id, external_id)
+
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = BindCrashLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary().close(
+        release_id="bind-crash-recovery",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="bind-crash",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("bind-crash") is ExecutionLedgerStatus.RESERVED
+    assert lifecycle.get("bind-crash").state is ExecutionLifecycleState.PENDING
+    assert ledger.external_id("bind-crash") is None
+    assert adapter.calls == 1
+
+    boundary = RealReconciliationEvidenceBoundary()
+    observation = boundary.issue(
+        request_id="bind-crash",
+        executed=True,
+        external_id="external-1",
+        observed_at=datetime.now(timezone.utc),
+        source="read-only-broker-reconciler",
+        provider_capability=boundary.provider_capability,
+    )
+
+    class ReadOnlyReconciler:
+        def lookup(self, request_id: str):
+            return observation
+
+    gateway.reconcile_unknown("bind-crash", reconciler=ReadOnlyReconciler())
+
+    assert ledger.status("bind-crash") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("bind-crash") == "external-1"
+    assert lifecycle.get("bind-crash").state is ExecutionLifecycleState.ACCEPTED
+    assert adapter.calls == 1
