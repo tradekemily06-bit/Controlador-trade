@@ -34,6 +34,15 @@ class RealExecutionAuthorization:
 
 
 class RealExecutionAuthorizationBoundary:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _AUTH_ISSUER:
+            raise ValueError("emissor REAL interno não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealExecutionAuthorizationBoundary":
+        return cls(capability=_AUTH_ISSUER)
+
     def issue(self, *, authorization_id: str, audit_id: str, broker_id: str, adapter_id: str,
               explicitly_enabled: bool = False, real_execution_allowed: bool = False) -> RealExecutionAuthorization:
         return RealExecutionAuthorization(
