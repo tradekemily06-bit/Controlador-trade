@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
+import threading
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
@@ -54,6 +56,25 @@ class RealExecutionGateway:
         self._lifecycle = lifecycle
         self._coordination = ExecutionCoordinationLock(ledger.path)
         self._kill_switch = kill_switch
+        # The filesystem lock serializes independent threads/processes, but POSIX
+        # flock can be reacquired by the same process. A callback from an adapter
+        # or reconciler into this gateway would otherwise deadlock or recursively
+        # dispatch a second REAL order. Keep the REAL gateway explicitly
+        # non-reentrant per thread.
+        self._reentry = threading.local()
+
+    def _reentry_active(self) -> bool:
+        return bool(getattr(self._reentry, "active", False))
+
+    @contextmanager
+    def _entry_guard(self, operation: str):
+        if self._reentry_active():
+            raise RuntimeError(f"reentrada proibida na fronteira REAL durante {operation}.")
+        self._reentry.active = True
+        try:
+            yield
+        finally:
+            self._reentry.active = False
 
     @staticmethod
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
@@ -121,7 +142,14 @@ class RealExecutionGateway:
         # Recovery assessment, reservation and the external side effect share
         # one process/host coordination boundary. This prevents a concurrent
         # recovery or second REAL request from observing a transient safe state.
-        with self._coordination.acquire():
+        # The entry guard additionally prevents same-thread callbacks from an
+        # adapter/reconciler from deadlocking or recursively dispatching REAL.
+        if self._reentry_active():
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "reentrada proibida na fronteira REAL durante execução externa.",
+            )
+        with self._entry_guard("execute"), self._coordination.acquire():
             return self._execute_locked(
                 broker=broker,
                 request_id=request_id,
@@ -314,7 +342,7 @@ class RealExecutionGateway:
 
     def recover_lifecycle_from_durable_rejection(self, request_id: str) -> None:
         """Repair Lifecycle from durable local rejection without external I/O or replay."""
-        with self._coordination.acquire():
+        with self._entry_guard("recovery de rejeição"), self._coordination.acquire():
             current = self._ledger.status(request_id)
             if current not in (
                 ExecutionLedgerStatus.REJECTED,
@@ -348,7 +376,7 @@ class RealExecutionGateway:
         Reconciliation never redispatches the request. A naked executed=True/False
         is deliberately not accepted because it is not evidence of broker state.
         """
-        with self._coordination.acquire():
+        with self._entry_guard("reconciliação"), self._coordination.acquire():
             self._reconcile_unknown_locked(request_id, reconciler=reconciler)
 
     def _reconcile_unknown_locked(
