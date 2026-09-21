@@ -14,6 +14,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class MissingExternalIdAdapter:
+    supports_real_execution = True
     def is_available(self):
         return True
 
