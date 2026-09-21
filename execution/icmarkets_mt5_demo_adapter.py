@@ -92,6 +92,12 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    @classmethod
+    def correlation_for(cls, request: ExecutionRequest) -> str:
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para correlation MT5")
+        return cls._correlation_tag(request.request_id.strip())
+
     @staticmethod
     def _correlation_tag(request_id: str) -> str:
         """Create a bounded, non-secret broker correlation token from request_id."""
