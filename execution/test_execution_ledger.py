@@ -262,3 +262,65 @@ def test_reserve_persists_immutable_request_context(tmp_path):
     changed = dict(context)
     changed["amount"] = 0.2
     assert second.context("req-context") != changed
+
+
+def test_persisted_context_fingerprint_mismatch_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        json.dumps({
+            "req-integrity": {
+                "state": "UNKNOWN",
+                "context": {
+                    "broker": "fake",
+                    "adapter_id": "fake-adapter",
+                    "symbol": "EURUSD",
+                    "side": "BUY",
+                    "amount": 0.2,
+                    "duration_seconds": 60,
+                    "request_id": "req-integrity",
+                },
+                "fingerprint": "0" * 64,
+            }
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="fingerprint do context não confere"):
+        ExecutionLedger(path)
+
+
+def test_persisted_context_without_fingerprint_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        json.dumps({
+            "req-integrity": {
+                "state": "UNKNOWN",
+                "context": {
+                    "broker": "fake",
+                    "adapter_id": "fake-adapter",
+                    "symbol": "EURUSD",
+                    "side": "BUY",
+                    "amount": 0.2,
+                    "duration_seconds": 60,
+                    "request_id": "req-integrity",
+                },
+            }
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="context sem fingerprint"):
+        ExecutionLedger(path)
+
+
+def test_persisted_fingerprint_without_context_fails_closed(tmp_path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        json.dumps({
+            "req-integrity": {
+                "state": "UNKNOWN",
+                "fingerprint": "0" * 64,
+            }
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="fingerprint sem context"):
+        ExecutionLedger(path)
