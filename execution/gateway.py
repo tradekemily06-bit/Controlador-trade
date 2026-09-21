@@ -365,8 +365,16 @@ class ExecutionGateway:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
             except (OSError, ValueError):
-                self._mark_unknown(request_id, event_time, "execução aceita, mas persistência do ciclo falhou")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "execução aceita, mas persistência do ciclo falhou; estado UNKNOWN", result)
+                # The broker outcome is already durable as ACCEPTED in the Ledger.
+                # Do not downgrade the lifecycle to UNKNOWN: that would falsely
+                # describe an uncertain external outcome and conflict with the
+                # terminal Ledger state. Leave the durable pair divergent so
+                # RecoveryCoordinator requires explicit reconciliation.
+                return GatewayResult(
+                    GatewayStatus.EXECUTOR_ERROR,
+                    "execução aceita, mas persistência do ciclo falhou; Ledger permanece ACCEPTED e recuperação/reconciliação obrigatória",
+                    result,
+                )
         self._processed_request_ids.add(request_id)
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
