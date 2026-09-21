@@ -156,6 +156,24 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_rejected_with_external_id_becomes_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", RejectedWithExternalIdAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake", request_id="ambiguous-reject", request=_request("ambiguous-reject"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("ambiguous-reject") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id("ambiguous-reject") == "external-rejected-1"
+
+
 def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = UnknownAdapter()
