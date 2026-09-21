@@ -83,6 +83,8 @@ def test_kill_switch_activation_waits_for_dispatch_fence(tmp_path: Path):
     activation_thread.start()
 
     assert not activation_done.wait(timeout=0.2)
+    # The state mutation itself must be fenced, not only its persistence callback.
+    assert kill_switch.state.enabled is False
 
     release_executor.set()
     dispatch_thread.join(timeout=5)
