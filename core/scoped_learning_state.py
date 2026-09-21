@@ -160,17 +160,48 @@ class ScopedLearningState:
         self._state_store.put(tenant_id=scope_key[0], subject_id=scope_key[1], namespace=self.NAMESPACE, payload=self._encode(scope))
 
     @staticmethod
+    def _merge_sources(latest: dict[str, LearningSource], current: dict[str, LearningSource]) -> dict[str, LearningSource]:
+        merged = dict(latest)
+        for source_id, candidate in current.items():
+            previous = merged.get(source_id)
+            if previous is None:
+                merged[source_id] = candidate
+                continue
+            if previous.source_type is not candidate.source_type or previous.uri != candidate.uri:
+                raise ValueError("concurrent learning source identity conflict")
+            if previous.status is LearningSourceStatus.BLOCKED or candidate.status is LearningSourceStatus.BLOCKED:
+                status = LearningSourceStatus.BLOCKED
+            elif previous.content_verified or candidate.content_verified:
+                content_verified = previous.content_verified or candidate.content_verified
+                security_checked = previous.security_checked or candidate.security_checked
+                status = LearningSourceStatus.VALIDATED if content_verified and security_checked else LearningSourceStatus.QUARANTINED
+            else:
+                content_verified = False
+                security_checked = False
+                status = LearningSourceStatus.QUARANTINED
+            merged[source_id] = LearningSource(
+                source_id=source_id,
+                source_type=previous.source_type,
+                uri=previous.uri,
+                status=status,
+                content_verified=previous.content_verified or candidate.content_verified,
+                security_checked=previous.security_checked or candidate.security_checked,
+                knowledge_validated=previous.knowledge_validated or candidate.knowledge_validated,
+                operation_eligible=False,
+            )
+        return merged
+
+    @staticmethod
     def _merge(latest: LearningScope, current: LearningScope) -> LearningScope:
         """Merge additive concurrent learning writes without dropping newer durable data."""
         merged = LearningScope(
-            sources=dict(latest.sources),
+            sources=ScopedLearningState._merge_sources(latest.sources, current.sources),
             resources=dict(latest.resources),
             observations=list(latest.observations),
             activities=dict(latest.activities),
             attempts=list(latest.attempts),
             material_reviews=dict(latest.material_reviews),
         )
-        merged.sources.update(current.sources)
         merged.resources.update(current.resources)
         merged.activities.update(current.activities)
         merged.material_reviews.update(current.material_reviews)
