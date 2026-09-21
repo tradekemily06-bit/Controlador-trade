@@ -64,8 +64,14 @@ class RecoveryCoordinator:
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        lifecycle_ids = {r.request_id for r in lifecycle}
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+        ]
+        orphaned_ledger_ids = sorted(ledger_ids - lifecycle_ids)
+        if unknown or pending or inconsistent or orphaned_ledger_ids:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -73,6 +79,8 @@ class RecoveryCoordinator:
                 details.append("PENDING requer verificação")
             if inconsistent:
                 details.append("ACCEPTED sem ledger requer reconciliação")
+            if orphaned_ledger_ids:
+                details.append("ledger sem lifecycle requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
