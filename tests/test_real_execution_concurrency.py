@@ -22,6 +22,13 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 from execution.adapter_gateway import BrokerAdapterGateway
 
 
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
 class CountingAdapter:
     def __init__(self, calls):
         self.calls = calls
@@ -122,7 +129,7 @@ def _gateway(path: Path, adapter, verifier=None) -> RealExecutionGateway:
         ExecutionLedger(path),
         RiskProvider(),
         SafetyProvider(_safety()),
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: _test_real_barrier(),
         reconciliation_evidence_verifier=verifier,
     )
 
