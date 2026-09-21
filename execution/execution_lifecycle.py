@@ -213,8 +213,9 @@ class ExecutionLifecycleStore:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
-        with self.path.open("rb") as handle:
-            os.fsync(handle.fileno())
+        if os.name != "nt":
+            with self.path.open("rb") as handle:
+                os.fsync(handle.fileno())
         try:
             fd = os.open(self.path.parent, os.O_RDONLY)
         except OSError:
