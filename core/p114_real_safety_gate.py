@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+_SAFETY_ISSUER = object()
 
 
 class RealSafetyState(str, Enum):
@@ -13,13 +16,23 @@ class RealSafetyState(str, Enum):
 class RealSafetyReport:
     state: RealSafetyState
     reasons: tuple[str, ...]
+    _issuer: object = field(default=None, repr=False, compare=False)
 
     @property
     def ready(self) -> bool:
-        return self.state is RealSafetyState.READY
+        return self.state is RealSafetyState.READY and self._issuer is _SAFETY_ISSUER
 
 
 class RealSafetyGate:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _SAFETY_ISSUER:
+            raise ValueError("emissor de segurança REAL não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealSafetyGate":
+        return cls(capability=_SAFETY_ISSUER)
+
     """Fail-closed composition of explicit REAL safety prerequisites."""
 
     def evaluate(self, *, authorization_active: bool, kill_switch_clear: bool,
@@ -37,4 +50,8 @@ class RealSafetyGate:
         for ok, reason in checks:
             if not ok:
                 reasons.append(reason)
-        return RealSafetyReport(RealSafetyState.READY if not reasons else RealSafetyState.BLOCKED, tuple(reasons))
+        return RealSafetyReport(
+            RealSafetyState.READY if not reasons else RealSafetyState.BLOCKED,
+            tuple(reasons),
+            _SAFETY_ISSUER,
+        )

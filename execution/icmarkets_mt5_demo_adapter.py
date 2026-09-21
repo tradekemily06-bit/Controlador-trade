@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import math
 from typing import Any
 
@@ -29,6 +30,8 @@ class ICMarketsMT5DemoAdapter:
     ``ExecutionRequest.amount`` is interpreted as MT5 volume (lots). MT5 has
     no fixed expiry here; positions remain open until explicitly closed.
     """
+
+    adapter_id = "ic-markets-mt5-demo-v1"
 
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
@@ -89,11 +92,54 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    @classmethod
+    def correlation_for(cls, request: ExecutionRequest) -> str:
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para correlation MT5")
+        return cls._correlation_tag(request.request_id.strip())
+
+    @staticmethod
+    def _correlation_tag(request_id: str) -> str:
+        """Create a bounded, non-secret broker correlation token from request_id."""
+        digest = hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:16]
+        return f"CTD-{digest}"
+
+    def build_reconciliation_request(self, request: ExecutionRequest) -> dict[str, object]:
+        """Build only the durable/read-side search identity; never dispatches."""
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para reconciliação MT5")
+        return {
+            "request_id": request.request_id.strip(),
+            "symbol": request.symbol.strip(),
+            "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
+            "amount": float(request.amount),
+            "correlation": self.correlation_for(request),
+            "magic": self.config.magic,
+        }
+
+    def recovery_context_for(self, request: ExecutionRequest) -> dict[str, object]:
+        identity = self.build_reconciliation_request(request)
+        return {
+            "symbol": identity["symbol"],
+            "side": identity["side"],
+            "amount": identity["amount"],
+            "correlation": identity["correlation"],
+            "magic": identity["magic"],
+        }
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
-        if request.signal is Signal.AGUARDAR:
-            return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return ExecutionResult(False, "sinal de execução inválido; ordem bloqueada.")
+        if not isinstance(request.request_id, str) or not request.request_id.strip():
+            return ExecutionResult(False, "request_id ausente; ordem DEMO não rastreável bloqueada.")
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
+            return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool):
+            return ExecutionResult(False, "volume/amount inválido; ordem bloqueada.")
         if not math.isfinite(request.amount) or request.amount <= 0:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
@@ -106,10 +152,13 @@ class ICMarketsMT5DemoAdapter:
             if account is None or not self._is_demo_account(account, mt5):
                 return ExecutionResult(False, "conta MT5 não confirmada como DEMO; ordem bloqueada.")
 
-            symbol = self.config.symbol or request.symbol
-            if not isinstance(symbol, str) or not symbol.strip():
+            configured_symbol = self.config.symbol.strip() if isinstance(self.config.symbol, str) else None
+            requested_symbol = request.symbol.strip() if isinstance(request.symbol, str) else ""
+            if not requested_symbol:
                 return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
-            symbol = symbol.strip()
+            if configured_symbol and configured_symbol != requested_symbol:
+                return ExecutionResult(False, "símbolo da requisição difere do símbolo DEMO configurado; ordem bloqueada.")
+            symbol = configured_symbol or requested_symbol
             if not mt5.symbol_select(symbol, True):
                 return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
 
@@ -135,7 +184,7 @@ class ICMarketsMT5DemoAdapter:
                 "price": price,
                 "deviation": self.config.deviation,
                 "magic": self.config.magic,
-                "comment": "ControladorTrading-DEMO",
+                "comment": self._correlation_tag(request.request_id.strip()),
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
@@ -144,23 +193,56 @@ class ICMarketsMT5DemoAdapter:
             if check is None or getattr(check, "retcode", 0) != 0:
                 return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
 
-            result = mt5.order_send(payload)
+            try:
+                result = mt5.order_send(payload)
+            except Exception as exc:
+                return ExecutionResult(
+                    False,
+                    f"order_send falhou após despacho potencial; resultado externo incerto: {type(exc).__name__}: {exc}",
+                    uncertain=True,
+                )
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(
+                    False,
+                    f"order_send sem confirmação; resultado externo incerto: {self._last_error(mt5)}",
+                    uncertain=True,
+                )
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
-            if success_code is None or retcode != success_code:
+            if success_code is None:
+                return ExecutionResult(False, "MT5 não expôs TRADE_RETCODE_DONE; confirmação bloqueada.", uncertain=True)
+
+            ambiguous_codes = {
+                getattr(mt5, "TRADE_RETCODE_PLACED", -1),
+                getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", -1),
+                getattr(mt5, "TRADE_RETCODE_TIMEOUT", -1),
+                getattr(mt5, "TRADE_RETCODE_ORDER_CHANGED", -1),
+                getattr(mt5, "TRADE_RETCODE_LOCKED", -1),
+            }
+            if retcode in ambiguous_codes:
+                return ExecutionResult(
+                    False,
+                    f"MT5 retornou estado potencialmente externo/ambíguo: retcode={retcode}; reconciliação necessária.",
+                    uncertain=True,
+                )
+            if retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
-            external_id = getattr(result, "order", None) or getattr(result, "deal", None)
+            # For a market execution, the deal ticket is the execution identity;
+            # order is only a fallback when the provider omits the deal ticket.
+            deal_id = getattr(result, "deal", None)
+            order_id = getattr(result, "order", None)
+            external_id = deal_id if deal_id is not None else order_id
+            external_id_kind = "DEAL" if deal_id is not None else ("ORDER" if order_id is not None else None)
             if external_id is None:
                 return ExecutionResult(
                     False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; estado externo incerto.",
+                    uncertain=True,
                 )
 
-            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
+            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id), external_id_kind=external_id_kind)
         finally:
             mt5.shutdown()
 

@@ -1,5 +1,6 @@
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from execution.broker_registry import _BROKER_ACCESS_CAPABILITY
 from execution.default_registry import (
     IC_MARKETS_MT5_DEMO,
     build_demo_registry,
@@ -18,12 +19,12 @@ def test_default_demo_registry_registers_ic_markets_without_connecting():
     registry = build_demo_registry(mt5_module=UnusedMT5())
 
     assert registry.names() == (IC_MARKETS_MT5_DEMO,)
-    assert isinstance(registry.get(IC_MARKETS_MT5_DEMO), ICMarketsMT5DemoAdapter)
+    assert isinstance(registry.get(IC_MARKETS_MT5_DEMO, capability=_BROKER_ACCESS_CAPABILITY), ICMarketsMT5DemoAdapter)
 
 
 def test_default_demo_registry_can_override_symbol():
     registry = build_demo_registry(symbol="EURUSD")
-    adapter = registry.get(IC_MARKETS_MT5_DEMO)
+    adapter = registry.get(IC_MARKETS_MT5_DEMO, capability=_BROKER_ACCESS_CAPABILITY)
 
     assert adapter.config.symbol == "EURUSD"
 

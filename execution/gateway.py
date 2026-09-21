@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from enum import Enum
+import threading
 
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
+from execution.execution_coordination import ExecutionCoordinationLock
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
@@ -55,6 +58,12 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        # DEMO idempotency must cover the complete check -> dispatch -> persist
+        # window. With a durable Ledger, the filesystem lock also serializes
+        # independent processes; without one, the in-process RLock closes the
+        # thread-level race without changing lightweight unit-test semantics.
+        self._coordination = ExecutionCoordinationLock(ledger.path) if ledger else None
+        self._thread_lock = threading.RLock()
 
     def execute(
         self,
@@ -68,6 +77,38 @@ class ExecutionGateway:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
+
+        coordination = self._coordination.acquire() if self._coordination is not None else self._null_coordination()
+        with self._thread_lock, coordination:
+            return self._execute_locked(
+                request_id,
+                request,
+                snapshot=snapshot,
+                timestamp=timestamp,
+                entry_conditions=entry_conditions,
+            )
+
+    @staticmethod
+    @contextmanager
+    def _null_coordination():
+        yield
+
+    def _execute_locked(
+        self,
+        request_id: str,
+        request: ExecutionRequest,
+        *,
+        snapshot: DecisionSnapshot | None,
+        timestamp: datetime | None,
+        entry_conditions: tuple[str, ...],
+    ) -> GatewayResult:
+
+        # The gateway owns the canonical request identity. Adapters must receive
+        # the same identity that is persisted/audited; never dispatch a request
+        # with an unbound request_id that cannot be reconciled externally.
+        if request.request_id is not None and request.request_id.strip() != request_id.strip():
+            return GatewayResult(GatewayStatus.INVALID_REQUEST, "request_id da requisição difere da identidade canônica do gateway.")
+        request = replace(request, request_id=request_id.strip())
 
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
@@ -85,7 +126,11 @@ class ExecutionGateway:
             if existing is not None:
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
+                if existing.state in (
+                    ExecutionLifecycleState.PENDING,
+                    ExecutionLifecycleState.ACCEPTED,
+                    ExecutionLifecycleState.REJECTED,
+                ):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
@@ -102,14 +147,34 @@ class ExecutionGateway:
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
+        if result.uncertain:
+            self._mark_unknown(request_id, event_time, result.message)
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                f"resultado externo incerto; estado UNKNOWN: {result.message}",
+                result,
+            )
+
         if not result.accepted:
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
+        # Accepted without an external broker reference is not safely auditable.
+        if not isinstance(result.external_id, str) or not result.external_id.strip():
+            self._mark_unknown(request_id, event_time, "execução aceita sem external_id; confirmação externa insuficiente")
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                "execução aceita sem external_id; estado UNKNOWN até reconciliação.",
+                result,
+            )
+
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                # Persist acceptance and the broker identity in one Ledger write;
+                # otherwise a crash between those two facts creates a terminal
+                # ACCEPTED record with no durable external identity.
+                self._ledger.record(request_id, result.external_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
@@ -149,10 +214,10 @@ class ExecutionGateway:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
-        if not request.symbol.strip():
+        if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
+        if not isinstance(request.amount, (int, float)) or request.amount <= 0:
             return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return "Duração deve ser positiva."
         return None

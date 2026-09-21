@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.kill_switch import KillSwitch
-from execution.broker_registry import BrokerRegistry
+from execution.broker_registry import BrokerRegistry, _BROKER_ACCESS_CAPABILITY
 from execution.gateway import ExecutionGateway
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 
@@ -41,5 +41,5 @@ def build_ic_markets_mt5_demo_gateway(
     execution request that passes its safety checks.
     """
     registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
-    adapter = registry.get(IC_MARKETS_MT5_DEMO)
+    adapter = registry.get(IC_MARKETS_MT5_DEMO, capability=_BROKER_ACCESS_CAPABILITY)
     return ExecutionGateway(adapter, kill_switch or KillSwitch())

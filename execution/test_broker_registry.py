@@ -1,6 +1,6 @@
 import pytest
 
-from execution.broker_registry import BrokerRegistry, BrokerRegistryError
+from execution.broker_registry import BrokerRegistry, BrokerRegistryError, _BROKER_ACCESS_CAPABILITY
 from execution.ports import ExecutionResult
 
 
@@ -24,7 +24,7 @@ def test_registry_registers_and_normalizes_name():
     registry.register("  TestBroker ", adapter)
 
     assert registry.names() == ("testbroker",)
-    assert registry.get("TESTBROKER") is adapter
+    assert registry.get("TESTBROKER", capability=_BROKER_ACCESS_CAPABILITY) is adapter
     assert registry.is_available("testbroker") is True
 
 
@@ -47,7 +47,7 @@ def test_registry_unknown_adapter_fails_closed():
     registry = BrokerRegistry()
 
     with pytest.raises(BrokerRegistryError):
-        registry.get("unknown")
+        registry.get("unknown", capability=_BROKER_ACCESS_CAPABILITY)
 
 
 def test_registry_reports_unavailable_adapter_without_executing():
@@ -68,3 +68,10 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_rejects_direct_adapter_access_without_capability():
+    registry = BrokerRegistry()
+    registry.register("broker", FakeAdapter())
+    with pytest.raises(BrokerRegistryError, match="capacidade interna"):
+        registry.get("broker", capability=object())

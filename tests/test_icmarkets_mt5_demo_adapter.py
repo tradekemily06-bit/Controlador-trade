@@ -71,7 +71,8 @@ def test_demo_buy_is_sent_after_order_check():
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
 
     assert result.accepted is True
-    assert result.external_id == "123456"
+    assert result.external_id == "654321"
+    assert result.external_id_kind == "DEAL"
     assert fake.sent[0]["type"] == fake.ORDER_TYPE_BUY
     assert fake.sent[0]["volume"] == 0.01
     assert fake.shutdown_calls == 1

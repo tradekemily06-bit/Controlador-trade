@@ -1,0 +1,208 @@
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.mt5_read_reconciler import (
+    MT5HistoryCandidate,
+    MT5ReadOnlyReconciler,
+    MT5ReconciliationIdentity,
+)
+from execution.real_reconciliation import ExternalIdentityKind, ReconciliationOutcome
+
+
+def _identity():
+    return MT5ReconciliationIdentity(
+        request_id="req-1",
+        symbol="EURUSD",
+        side="BUY",
+        amount=0.10,
+        correlation="CTD-abc",
+        magic=2609001,
+    )
+
+
+def _raw(kind="DEAL", ticket=123, volume=0.10, order_ticket=None):
+    return SimpleNamespace(
+        external_id_kind=kind,
+        ticket=ticket,
+        symbol="EURUSD",
+        side="BUY",
+        volume=volume,
+        comment="CTD-abc",
+        magic=2609001,
+        observed_at=datetime.now(timezone.utc),
+        order_ticket=order_ticket,
+    )
+
+
+def _reconciler(deals, orders):
+    return MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: deals,
+        orders_query=lambda **kwargs: orders,
+    )
+
+
+def test_mt5_resolver_accepts_exactly_one_deal():
+    obs = _reconciler([_raw()], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.EXECUTED
+    assert obs.external_id == "123"
+    assert obs.external_id_kind is ExternalIdentityKind.DEAL
+
+
+def test_mt5_resolver_rejects_multiple_distinct_deals_as_ambiguous():
+    obs = _reconciler([_raw(ticket=123), _raw(ticket=456)], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.AMBIGUOUS
+    assert obs.external_id is None
+
+
+def test_mt5_resolver_does_not_treat_order_alone_as_execution():
+    obs = _reconciler([], [_raw(kind="ORDER", ticket=99)]).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_VISIBLE_YET
+    assert obs.external_id is None
+
+
+def test_mt5_resolver_returns_not_found_without_matching_candidates():
+    wrong = SimpleNamespace(
+        external_id_kind="DEAL", ticket=1, symbol="GBPUSD", side="BUY",
+        volume=0.10, comment="CTD-other", magic=2609001,
+        observed_at=datetime.now(timezone.utc),
+    )
+    obs = _reconciler([wrong], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+
+
+def test_mt5_resolver_fails_closed_when_query_raises():
+    r = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: (_ for _ in ()).throw(RuntimeError("terminal down")),
+        orders_query=lambda **kwargs: [],
+    )
+    obs = r.resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.QUERY_FAILED
+
+
+def test_mt5_resolver_does_not_merge_distinct_deals_by_shared_order():
+    a = _raw(ticket=123)
+    b = _raw(ticket=456)
+    a.order_ticket = b.order_ticket = "same-order"
+    obs = _reconciler([a, b], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.AMBIGUOUS
+
+
+def test_mt5_resolver_requires_timezone_aware_reservation_anchor():
+    obs = _reconciler([_raw()], []).resolve(_identity())
+    assert obs.effective_outcome is ReconciliationOutcome.QUERY_FAILED
+
+
+def test_mt5_resolver_passes_bounded_time_window_to_queries():
+    seen = {}
+    def deals(**kwargs):
+        seen["deals"] = kwargs
+        return []
+    def orders(**kwargs):
+        seen["orders"] = kwargs
+        return []
+    anchor = datetime.now(timezone.utc)
+    obs = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=deals,
+        orders_query=orders,
+    ).resolve(_identity(), reserved_at=anchor)
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+    assert seen["deals"]["date_from"] < anchor
+    assert seen["deals"]["date_to"] > anchor
+    assert seen["orders"]["date_from"] == seen["deals"]["date_from"]
+    assert seen["orders"]["date_to"] == seen["deals"]["date_to"]
+    assert seen["deals"]["account_id"] == "123"
+    assert seen["orders"]["account_id"] == "123"
+
+
+def test_mt5_lookup_requires_durable_recovery_identity_and_reservation_anchor():
+    calls = {}
+    anchor = datetime.now(timezone.utc)
+    reconciler = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: calls.setdefault("deals", kwargs) or [],
+        orders_query=lambda **kwargs: calls.setdefault("orders", kwargs) or [],
+        context_provider=lambda request_id: {
+            "request_id": request_id,
+            "recovery_identity": {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "amount": 0.10,
+                "correlation": "CTD-abc",
+                "magic": 2609001,
+            },
+            "reserved_at": anchor.isoformat(),
+        },
+    )
+    obs = reconciler.lookup("req-1")
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+    assert calls["deals"]["date_from"] < anchor
+    assert calls["orders"]["date_to"] == calls["deals"]["date_to"]
+
+
+def test_mt5_lookup_fails_closed_without_durable_recovery_anchor():
+    reconciler = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: [],
+        orders_query=lambda **kwargs: [],
+        context_provider=lambda request_id: {
+            "request_id": request_id,
+            "recovery_identity": {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "amount": 0.10,
+                "correlation": "CTD-abc",
+                "magic": 2609001,
+            },
+        },
+    )
+    obs = reconciler.lookup("req-1")
+    assert obs.effective_outcome is ReconciliationOutcome.QUERY_FAILED
+
+
+def test_mt5_resolver_aggregates_multiple_partial_deals_from_one_order():
+    first = _raw(ticket=123, volume=0.06, order_ticket=900)
+    second = _raw(ticket=124, volume=0.04, order_ticket=900)
+    obs = _reconciler([first, second], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.EXECUTED
+    assert obs.external_id == "900"
+    assert obs.external_id_kind is ExternalIdentityKind.ORDER
+    assert obs.amount == 0.10
+
+
+def test_mt5_resolver_keeps_partial_single_order_open_for_recovery():
+    partial = _raw(ticket=123, volume=0.06, order_ticket=900)
+    obs = _reconciler([partial], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_VISIBLE_YET
+    assert obs.external_id is None
+
+
+def test_mt5_resolver_rejects_two_distinct_orders_even_when_total_volume_matches():
+    first = _raw(ticket=123, volume=0.06, order_ticket=900)
+    second = _raw(ticket=124, volume=0.04, order_ticket=901)
+    obs = _reconciler([first, second], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.AMBIGUOUS
+    assert obs.external_id is None
+
+
+def test_mt5_resolver_ignores_matching_candidate_outside_bounded_window():
+    anchor = datetime.now(timezone.utc)
+    stale = _raw()
+    stale.observed_at = anchor - timedelta(days=3)
+    obs = _reconciler([stale], []).resolve(_identity(), reserved_at=anchor)
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+
+
+def test_mt5_resolver_rejects_candidate_from_different_account_when_transport_exposes_account():
+    wrong_account = _raw()
+    wrong_account.account_id = "999"
+    obs = _reconciler([wrong_account], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND

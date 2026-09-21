@@ -1,5 +1,9 @@
+import threading
+import time
+
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from execution.execution_ledger import ExecutionLedger
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -129,3 +133,98 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_executor_uncertain_result_is_not_reported_as_rejected():
+    class UncertainExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=False,
+                message="resultado externo incerto",
+                uncertain=True,
+            )
+
+    gateway = ExecutionGateway(UncertainExecutor(), KillSwitch())
+    result = gateway.execute("req-uncertain", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution is not None
+    assert result.execution.uncertain is True
+
+
+def test_demo_gateway_serializes_concurrent_duplicate_request_ids(tmp_path):
+    class SlowExecutor:
+        def __init__(self):
+            self.calls = 0
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def execute(self, request):
+            self.calls += 1
+            self.started.set()
+            self.release.wait(timeout=2)
+            return ExecutionResult(True, "demo accepted", f"demo-{self.calls}")
+
+    executor = SlowExecutor()
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO)
+
+    results = []
+    errors = []
+
+    def run():
+        try:
+            results.append(gateway.execute("same-request", request))
+        except Exception as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=run)
+    second = threading.Thread(target=run)
+    first.start()
+    assert executor.started.wait(timeout=2)
+    second.start()
+    time.sleep(0.05)
+
+    # The second caller must not reach the adapter while the first caller still
+    # owns the DEMO check -> dispatch -> persist critical section.
+    assert executor.calls == 1
+
+    executor.release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert not errors
+    assert executor.calls == 1
+    assert len(results) == 2
+    assert {result.status for result in results} == {
+        GatewayStatus.ACCEPTED,
+        GatewayStatus.DUPLICATE,
+    }
+
+
+def test_demo_gateway_persists_external_id_atomically_with_acceptance(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-atomic-demo", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.status("req-atomic-demo").value == "ACCEPTED"
+    assert ledger.external_id("req-atomic-demo") == "PAPER-000001"
+
+
+def test_demo_gateway_does_not_leave_terminal_ledger_without_external_id(tmp_path):
+    class DuplicateIdentityExecutor:
+        def execute(self, _request):
+            return ExecutionResult(True, "demo accepted", "shared-id")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    first = ExecutionGateway(DuplicateIdentityExecutor(), KillSwitch(), ledger=ledger)
+    second = ExecutionGateway(DuplicateIdentityExecutor(), KillSwitch(), ledger=ledger)
+
+    assert first.execute("req-a", request()).status is GatewayStatus.ACCEPTED
+    second_result = second.execute("req-b", request())
+    assert second_result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-b") is None
+    assert ledger.external_id("req-b") is None

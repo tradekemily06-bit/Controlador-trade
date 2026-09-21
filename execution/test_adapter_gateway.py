@@ -21,8 +21,8 @@ class FakeAdapter:
         return self.result
 
 
-def request():
-    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def request(mode=ExecutionMode.DEMO):
+    return ExecutionRequest("BTCUSD", Signal.COMPRA, 10.0, 60, mode)
 
 
 def gateway_with(adapter):
@@ -33,39 +33,41 @@ def gateway_with(adapter):
 
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert adapter.calls == 0
 
 
-def test_adapter_gateway_delegates_only_to_available_adapter():
+def test_adapter_gateway_delegates_available_demo_adapter():
     adapter = FakeAdapter()
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
     assert adapter.calls == 1
 
 
-def test_adapter_gateway_handles_adapter_exception_fail_closed():
-    adapter = FakeAdapter(error=True)
-
-    result = gateway_with(adapter).execute("fake", request())
-
+def test_adapter_gateway_rejects_real_without_real_boundary():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute("fake", request(ExecutionMode.REAL))
     assert result.accepted is False
     assert result.execution is None
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_handles_adapter_exception_fail_closed():
+    adapter = FakeAdapter(error=True)
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.execution is not None
+    assert result.execution.uncertain is True
+    assert result.uncertain is True
     assert adapter.calls == 1
 
 
 def test_adapter_gateway_rejects_invalid_adapter_result():
     adapter = FakeAdapter(result="invalid")
-
     result = gateway_with(adapter).execute("fake", request())
-
     assert result.accepted is False
     assert result.execution is None
 
@@ -73,8 +75,36 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
-
     result = gateway.execute("missing", request())
-
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_rejects_forged_real_capability():
+    adapter = FakeAdapter()
+    result = gateway_with(adapter).execute_real(
+        "fake",
+        request(ExecutionMode.REAL),
+        capability=object(),
+    )
+    assert result.accepted is False
+    assert result.execution is None
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_preserves_uncertain_adapter_outcome():
+    adapter = FakeAdapter(result=ExecutionResult(False, "ambiguous", None, True))
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert result.uncertain is True
+    assert result.execution is not None
+    assert result.execution.uncertain is True
+
+
+def test_execution_result_rejects_accepted_and_uncertain_combination():
+    try:
+        ExecutionResult(True, "contradictory", "external-1", True)
+    except ValueError as exc:
+        assert "aceito e incerto" in str(exc)
+    else:
+        raise AssertionError("accepted+uncertain deve ser impossível")

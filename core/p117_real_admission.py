@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+_ADMISSION_ISSUER = object()
 
 
 class RealAdmissionStatus(str, Enum):
@@ -16,13 +19,23 @@ class RealAdmission:
     status: RealAdmissionStatus
     broker_id: str
     reasons: tuple[str, ...]
+    _issuer: object = field(default=None, repr=False, compare=False)
 
     @property
     def admitted(self) -> bool:
-        return self.status is RealAdmissionStatus.ADMITTED
+        return self.status is RealAdmissionStatus.ADMITTED and self._issuer is _ADMISSION_ISSUER
 
 
 class RealAdmissionBoundary:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _ADMISSION_ISSUER:
+            raise ValueError("emissor de admissão REAL não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealAdmissionBoundary":
+        return cls(capability=_ADMISSION_ISSUER)
+
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
               broker_available: bool, broker_id: str) -> RealAdmission:
@@ -38,4 +51,4 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons))
+        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons), _ADMISSION_ISSUER)

@@ -103,7 +103,14 @@ class CTraderDemoConnection:
     def account_id(self) -> int | None:
         return self._account_id
 
-    def connect(self) -> CTraderClient:
+    def connect(self) -> None:
+        """Connect the DEMO SDK without returning its raw client.
+
+        The raw SDK client remains encapsulated here so callers cannot
+        accidentally obtain a generic send surface that bypasses the
+        adapter/gateway execution boundary. Broker operations belong behind
+        the typed DEMO transport/adapter contract.
+        """
         if self._tokens.snapshot().expires_in <= 0:
             raise RuntimeError("autorize o Controlador Trading no cTrader antes de conectar")
         self._client = self._client_factory(
@@ -111,7 +118,6 @@ class CTraderDemoConnection:
             self._credentials.client_secret,
         )
         self._client.connect()
-        return self._client
 
     def application_auth_request(self) -> Any:
         """Build the SDK application-auth message without exposing credentials in logs."""

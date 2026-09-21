@@ -4,6 +4,7 @@ import pytest
 
 from core.decision_snapshot import DecisionSnapshot
 from core.operational_safety_store import OperationalSafetyStore
+from core.kill_switch import KillSwitch, KillSwitchValidationError
 from core.persistent_operational_recorder import PersistentOperationalRecorder
 
 
@@ -71,3 +72,23 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+
+def test_shared_kill_switch_instances_observe_durable_activation(tmp_path):
+    ledger_path = tmp_path / "execution-ledger.json"
+    state_path = tmp_path / "kill-switch.json"
+    first = KillSwitch(state_path=state_path, coordination_path=ledger_path)
+    second = KillSwitch(state_path=state_path, coordination_path=ledger_path)
+    assert first.allows_execution() is True
+    second.activate("bloqueio compartilhado")
+    assert first.allows_execution() is False
+    assert first.state.reason == "bloqueio compartilhado"
+
+
+def test_shared_kill_switch_corruption_fails_closed(tmp_path):
+    ledger_path = tmp_path / "execution-ledger.json"
+    state_path = tmp_path / "kill-switch.json"
+    state_path.write_text("{invalid", encoding="utf-8")
+    with pytest.raises(KillSwitchValidationError):
+        KillSwitch(state_path=state_path, coordination_path=ledger_path)

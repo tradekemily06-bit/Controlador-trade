@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -13,6 +13,11 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    TRADE_RETCODE_PLACED = 10008
+    TRADE_RETCODE_DONE_PARTIAL = 10010
+    TRADE_RETCODE_TIMEOUT = 10012
+    TRADE_RETCODE_ORDER_CHANGED = 10023
+    TRADE_RETCODE_LOCKED = 10028
 
     def __init__(self, check_code=0, send_result=True):
         self.check_code = check_code
@@ -56,9 +61,9 @@ class FakeMT5:
         return (1, "fake error")
 
 
-def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA):
+def request(mode=ExecutionMode.DEMO, signal=Signal.COMPRA, symbol="EURUSD"):
     return ExecutionRequest(
-        symbol="EURUSD",
+        symbol=symbol,
         signal=signal,
         amount=0.01,
         duration_seconds=60,
@@ -74,7 +79,11 @@ def test_demo_order_checks_before_send_and_confirms():
     result = adapter.execute(request())
 
     assert result.accepted is True
-    assert result.external_id == "123456"
+    assert result.external_id == "654321"
+    assert result.external_id_kind == "DEAL"
+    order_send = next(call for call in mt5.calls if isinstance(call, tuple) and call[0] == "order_send")
+    assert order_send[1]["comment"].startswith("CTD-")
+    assert len(order_send[1]["comment"]) == 20
     names = [call if isinstance(call, str) else call[0] for call in mt5.calls]
     assert names.index("order_check") < names.index("order_send")
 
@@ -111,3 +120,80 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_demo_adapter_blocks_configured_symbol_substitution():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        config=ICMarketsMT5DemoConfig(symbol="EURUSD"),
+        mt5_module=mt5,
+    )
+    result = adapter.execute(request(symbol="GBPUSD"))
+    assert result.accepted is False
+    assert "difere" in result.message
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
+    )
+
+
+def test_demo_adapter_blocks_invalid_signal():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    malformed = request(signal=object())
+    result = adapter.execute(malformed)
+    assert result.accepted is False
+    assert "sinal" in result.message
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
+    )
+
+
+def test_demo_adapter_requires_request_id_before_mt5_access():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    malformed = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=0.01,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id=None,
+    )
+
+    result = adapter.execute(malformed)
+
+    assert result.accepted is False
+    assert "request_id" in result.message
+    assert mt5.calls == []
+
+
+def test_ambiguous_mt5_trade_codes_are_uncertain_not_rejected():
+    for code in (
+        FakeMT5.TRADE_RETCODE_PLACED,
+        FakeMT5.TRADE_RETCODE_DONE_PARTIAL,
+        FakeMT5.TRADE_RETCODE_TIMEOUT,
+        FakeMT5.TRADE_RETCODE_ORDER_CHANGED,
+        FakeMT5.TRADE_RETCODE_LOCKED,
+    ):
+        class AmbiguousMT5(FakeMT5):
+            def order_send(self, payload):
+                self.calls.append(("order_send", payload))
+                return SimpleNamespace(retcode=code, order=123456, deal=654321)
+
+        mt5 = AmbiguousMT5()
+        result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+        assert result.accepted is False
+        assert result.uncertain is True
+
+def test_success_without_external_id_is_uncertain_not_rejected():
+    class NoExternalIdMT5(FakeMT5):
+        def order_send(self, payload):
+            self.calls.append(("order_send", payload))
+            return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=None, deal=None)
+
+    mt5 = NoExternalIdMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+
+    assert result.accepted is False
+    assert result.uncertain is True
+    assert "identificador externo" in result.message
