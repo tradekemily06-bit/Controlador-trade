@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Protocol
 
@@ -87,7 +88,7 @@ class ExternalOrderReconciliationBoundary:
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.ACCEPTED,
-                updated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 message=result.message,
             )
         elif result.status is ExternalOrderStatus.NOT_EXECUTED:
