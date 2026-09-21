@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from execution.adapter_gateway import BrokerAdapterGateway
+from core.p119_release_closure import RealReleaseClosure
+from core.kill_switch import KillSwitch
+from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore, LIFECYCLE_RECOVERY_CAPABILITY
+from execution.execution_coordination import ExecutionCoordinationLock
+from execution.real_reconciliation import RealReconciliationPort, validate_observation
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.models import Signal
 
 
 class RealGatewayStatus(str):
@@ -28,68 +35,219 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(
+        self,
+        adapter_gateway: BrokerAdapterGateway,
+        ledger: ExecutionLedger,
+        lifecycle: ExecutionLifecycleStore,
+        kill_switch: KillSwitch,
+        reconciler: RealReconciliationPort | None = None,
+    ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle é obrigatório para execução REAL.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
-        self._processed_request_ids: set[str] = set(ledger.records())
+        self._lifecycle = lifecycle
+        self._coordination = ExecutionCoordinationLock(ledger.path)
+        self._kill_switch = kill_switch
+        self._reconciler = reconciler
 
     @staticmethod
-    def _valid_request(request: ExecutionRequest) -> bool:
+    def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
+        if not isinstance(request_id, str) or not request_id.strip():
+            return False
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
+        if request.request_id is not None and (
+            not isinstance(request.request_id, str)
+            or request.request_id.strip() != request_id.strip()
+        ):
+            return False
+        if type(request.signal) is not Signal or request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
-        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return False
         return True
 
+    def _recovery_safe(self) -> bool:
+        """Block new REAL dispatch when any durable execution state needs repair."""
+        try:
+            lifecycle = self._lifecycle.records()
+            ledger_ids = self._ledger.records()
+            ledger_states = {request_id: self._ledger.status(request_id) for request_id in ledger_ids}
+        except (OSError, ValueError):
+            return False
+
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+        if any(record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN) for record in lifecycle):
+            return False
+
+        if set(lifecycle_by_id) != set(ledger_states):
+            return False
+
+        for request_id, status in ledger_states.items():
+            record = lifecycle_by_id[request_id]
+            if status is ExecutionLedgerStatus.ACCEPTED:
+                if record.state is not ExecutionLifecycleState.ACCEPTED:
+                    return False
+                # A REAL terminal acceptance is only safe to resume when the
+                # broker/exchange identity is durably known. Legacy/DEMO ledger
+                # records may use ACCEPTED without external_id, but those must
+                # never be treated as a safe REAL recovery state.
+                try:
+                    if self._ledger.external_id(request_id) is None:
+                        return False
+                except (OSError, ValueError):
+                    return False
+            if status is ExecutionLedgerStatus.REJECTED and record.state is not ExecutionLifecycleState.REJECTED:
+                return False
+            if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and record.state is not ExecutionLifecycleState.ACCEPTED:
+                return False
+            if status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED and record.state is not ExecutionLifecycleState.REJECTED:
+                return False
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                return False
+
+        return True
+
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
-                safety: RealSafetyReport) -> RealGatewayResult:
+                safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
+        # Recovery assessment, reservation and the external side effect share
+        # one process/host coordination boundary. This prevents a concurrent
+        # recovery or second REAL request from observing a transient safe state.
+        with self._coordination.acquire():
+            return self._execute_locked(
+                broker=broker,
+                request_id=request_id,
+                request=request,
+                authorization=authorization,
+                admission=admission,
+                safety=safety,
+                release=release,
+            )
+
+    def _execute_locked(self, *, broker: str, request_id: str, request: ExecutionRequest,
+                        authorization: RealExecutionAuthorization, admission: RealAdmission,
+                        safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not authorization.active:
+        if type(release) is not RealReleaseClosure or not release.released:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "release REAL não está formalmente fechado.")
+        if type(authorization) is not RealExecutionAuthorization or not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
-        if not admission.admitted:
+        if type(admission) is not RealAdmission or not admission.admitted:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "admissão REAL não autorizada.")
-        if not safety.ready:
+        if type(safety) is not RealSafetyReport or not safety.ready:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
-        if not self._valid_request(request):
+        if not self._kill_switch.allows_execution():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo no momento da execução REAL.")
+        if self._reconciler is None or not callable(getattr(self._reconciler, "lookup", None)):
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "execução REAL bloqueada: reconciliador externo somente leitura não configurado.",
+            )
+        if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        # Canonicalize identity before any persistence or broker correlation.
+        # Whitespace variants must never become distinct ledger keys while
+        # collapsing to the same external correlation token.
+        request_id = request_id.strip()
+        if request.request_id is not None:
+            request = replace(request, request_id=request_id)
+        # A request already recorded in an uncertain state must report UNKNOWN
+        # for that same request_id. Only genuinely new requests are blocked by
+        # unrelated recovery debt elsewhere in the execution stores.
+        current_status = self._ledger.status(request_id)
+        if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
+            )
+        if current_status is not None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
+        if not self._recovery_safe():
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "estado de execução exige reconciliação; novo despacho REAL bloqueado.",
+            )
+        if request.request_id is None:
+            # Bind the canonical ledger identity into the broker-facing request.
+            request = replace(request, request_id=request_id)
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
-
-        current_status = self._ledger.status(request_id)
-        if current_status is not None:
-            self._processed_request_ids.add(request_id)
-            if current_status in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    "request_id está em estado incerto; reconciliação explícita obrigatória antes de qualquer novo envio.",
-                )
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
+        if admission.broker_id.strip().lower() != broker.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da admissão REAL difere do broker da requisição.")
+        if admission.audit_id.strip() != authorization.audit_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "auditoria da admissão REAL difere da autorização.")
+        registered_adapter_id = self._gateway.adapter_id(broker)
+        if not isinstance(registered_adapter_id, str) or not registered_adapter_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter REAL sem identidade registrada.")
+        if registered_adapter_id.strip() != authorization.adapter_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter da requisição difere da autorização.")
 
         try:
             self._ledger.reserve(request_id)
-            self._processed_request_ids.add(request_id)
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.PENDING,
+                    datetime.now(timezone.utc),
+                    "execução REAL reservada; despacho externo ainda não confirmado.",
+                )
+            )
         except (OSError, ValueError) as exc:
-            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
+            # If the ledger reservation succeeded but its lifecycle marker did not,
+            # never proceed to an external side effect. Marking UNKNOWN is the
+            # safest durable outcome; recovery will detect any cross-store gap.
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"reserva REAL persistida, mas ciclo de execução não pôde ser persistido: {exc}",
+            )
+
+        if not self._kill_switch.allows_execution():
+            try:
+                self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), "kill switch ativado antes do dispatch REAL"))
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"kill switch bloqueou o dispatch, mas a rejeição não pôde ser persistida: {exc}")
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado antes do dispatch REAL.")
 
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute_real(
+                broker, request, capability=_REAL_DISPATCH_CAPABILITY
+            )
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        f"resultado REAL incerto: {type(exc).__name__}: {exc}",
+                    )                )
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
@@ -99,11 +257,47 @@ class RealExecutionGateway:
                 self._ledger.mark_unknown(request_id)
             except (OSError, ValueError):
                 pass
+            try:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        result.message,
+                    )
+                )
+            except (OSError, ValueError):
+                pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
+
+        if result.execution.uncertain:
+            try:
+                if result.execution.external_id:
+                    self._ledger.bind_external_id(request_id, result.execution.external_id)
+                self._ledger.mark_unknown(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        result.execution.message,
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto e persistência falhou: {exc}", result.execution)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.execution.message, result.execution)
 
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.REJECTED,
+                        datetime.now(timezone.utc),
+                        result.execution.message,
+                    )
+                )
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
@@ -113,21 +307,216 @@ class RealExecutionGateway:
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
                 self._ledger.mark_unknown(request_id)
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.UNKNOWN,
+                        datetime.now(timezone.utc),
+                        "aceite REAL sem external_id; reconciliação explícita necessária.",
+                    )
+                )
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
+            self._ledger.bind_external_id(request_id, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    datetime.now(timezone.utc),
+                    result.execution.message,
+                )
+            )
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
+    def recover_lifecycle_from_durable_rejection(self, request_id: str) -> None:
+        """Repair Lifecycle from durable local rejection without external I/O or replay."""
+        with self._coordination.acquire():
+            current = self._ledger.status(request_id)
+            if current not in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                raise ValueError("Ledger não contém rejeição durável recuperável.")
+            lifecycle = self._lifecycle.get(request_id)
+            if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.REJECTED:
+                return
+            if lifecycle is not None and lifecycle.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("Lifecycle não está em estado recuperável.")
+            message = "Lifecycle recuperado a partir da rejeição durável do Ledger; nenhum dispatch adicional permitido."
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id, ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc), message=message, capability=LIFECYCLE_RECOVERY_CAPABILITY,
+                )
+            else:
+                self._lifecycle.reconcile_pending(
+                    request_id, ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc), message=message,
+                )
+
+    def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort | None = None) -> None:
+        """Reconcile UNKNOWN/RESERVED from read-only external broker evidence.
+
+        Reconciliation never redispatches the request. A naked executed=True/False
+        is deliberately not accepted because it is not evidence of broker state.
+        """
+        with self._coordination.acquire():
+            selected = reconciler if reconciler is not None else self._reconciler
+            self._reconcile_unknown_locked(request_id, reconciler=selected)
+
+    def _reconcile_unknown_locked(
+        self,
+        request_id: str,
+        *,
+        reconciler: RealReconciliationPort,
+    ) -> None:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        ledger_status = self._ledger.status(request_id)
+        lifecycle = self._lifecycle.get(request_id)
+
+        # A durable local rejection is already conclusive evidence that this
+        # gateway did not authorize a dispatch. Repairing only the local
+        # Lifecycle must not depend on a broker query that can fail or lie.
+        if ledger_status in (
+            ExecutionLedgerStatus.REJECTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.REJECTED:
+                return
+            if lifecycle is not None and lifecycle.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("ciclo de execução não está em estado reconciliável.")
+            message = "Lifecycle reparado a partir de rejeição durável local; nenhum dispatch ou consulta externa necessária."
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id,
+                    ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
+                )
+            else:
+                self._lifecycle.reconcile_pending(
+                    request_id,
+                    ExecutionLifecycleState.REJECTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                )
+            return
+
+        if reconciler is None or not callable(getattr(reconciler, "lookup", None)):
+            raise ValueError("reconciler REAL somente leitura é obrigatório.")
+
+        observation = reconciler.lookup(request_id)
+        if not validate_observation(request_id, observation):
+            raise ValueError("evidência externa de reconciliação inválida ou contraditória.")
+
+        executed = observation.executed
+        ledger_status = self._ledger.status(request_id)
+        lifecycle = self._lifecycle.get(request_id)
+        desired_ledger = (
+            ExecutionLedgerStatus.RECONCILED_EXECUTED
+            if executed
+            else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+        )
+        desired_lifecycle = (
+            ExecutionLifecycleState.ACCEPTED
+            if executed
+            else ExecutionLifecycleState.REJECTED
+        )
+
+        terminal_status = (
+            ExecutionLedgerStatus.ACCEPTED
+            if executed
+            else ExecutionLedgerStatus.REJECTED
+        )
+        durable_external_id = self._ledger.external_id(request_id)
+        if executed:
+            if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+                raise ValueError("reconciliação EXECUTED exige external_id observado.")
+            # A trusted read-only broker observation may recover an external
+            # identity that was lost in a crash after broker acceptance but
+            # before local external_id persistence. This is discovery, not
+            # minting: the identity must come from the reconciliation boundary.
+            if durable_external_id is not None and observation.external_id.strip() != durable_external_id:
+                raise ValueError("external_id observado difere da identidade externa durável.")
+            if durable_external_id is None:
+                self._ledger.bind_external_id(request_id, observation.external_id.strip())
+                durable_external_id = observation.external_id.strip()
+        elif durable_external_id is not None:
+            # An already durable broker identity is positive local evidence that
+            # the request reached the external boundary; accepting a
+            # NOT_EXECUTED observation would create an impossible terminal state.
+            raise ValueError("evidência NOT_EXECUTED contradiz external_id durável.")
+        if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
+            terminal_status,
+            desired_ledger,
         ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+            raise ValueError("request_id não está em estado reconciliável.")
+
+        now = observation.observed_at
+        lifecycle_missing = lifecycle is None
+
+        if lifecycle is not None and lifecycle.state not in (
+            ExecutionLifecycleState.UNKNOWN,
+            ExecutionLifecycleState.PENDING,
+            desired_lifecycle,
+        ):
+            raise ValueError("ciclo de execução não está em estado reconciliável.")
+
+        if ledger_status is not desired_ledger:
+            self._ledger.reconcile(request_id, executed=executed, external_id=observation.external_id if executed else None)
+            ledger_status = desired_ledger
+
+        if lifecycle_missing:
+            self._lifecycle.reconcile_missing(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message=(
+                    "ciclo criado durante reconciliação baseada em evidência externa "
+                    f"somente leitura ({observation.source}); nenhum replay permitido."
+                ),
+                capability=LIFECYCLE_RECOVERY_CAPABILITY,
+            )
+            return
+
+        if lifecycle.state is desired_lifecycle:
+            return
+
+        if lifecycle.state is ExecutionLifecycleState.PENDING and ledger_status is desired_ledger:
+            self._lifecycle.reconcile_pending(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message=(
+                    "ciclo sincronizado após janela de crash usando evidência externa "
+                    f"somente leitura ({observation.source})."
+                ),
+            )
+        elif lifecycle.state is ExecutionLifecycleState.UNKNOWN:
+            self._lifecycle.reconcile(
+                request_id,
+                desired_lifecycle,
+                updated_at=now,
+                message=(
+                    "reconciliação REAL baseada em evidência externa somente leitura "
+                    f"({observation.source})."
+                ),
+            )
+        else:
+            raise ValueError("Ledger e Lifecycle não formam uma combinação reconciliável.")

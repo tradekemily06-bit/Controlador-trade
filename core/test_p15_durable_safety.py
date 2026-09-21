@@ -71,3 +71,26 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+def test_safety_store_ignores_stale_tmp_and_keeps_durable_state(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    recorder = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    recorder.activate_kill_switch("bloqueio durável")
+    safety_path.with_name(".safety.json.tmp").write_text("{corrompido", encoding="utf-8")
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "bloqueio durável"
+
+
+def test_safety_store_write_is_atomic_and_durable_file_exists(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    recorder = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    recorder.activate_kill_switch("atomicidade")
+
+    assert safety_path.exists()
+    assert not safety_path.with_name(".safety.json.tmp").exists()
+    assert safety_path.with_name(".safety.json.lock").exists()

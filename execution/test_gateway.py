@@ -129,3 +129,20 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_executor_uncertain_result_is_not_reported_as_rejected():
+    class UncertainExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=False,
+                message="resultado externo incerto",
+                uncertain=True,
+            )
+
+    gateway = ExecutionGateway(UncertainExecutor(), KillSwitch())
+    result = gateway.execute("req-uncertain", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution is not None
+    assert result.execution.uncertain is True

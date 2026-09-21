@@ -20,11 +20,15 @@ class PaperExecution:
 class PaperExecutor:
     """Executa ordens somente em ambiente simulado."""
 
+    adapter_id = "paper-demo-v1"
+
     def __init__(self) -> None:
         self._executions: list[PaperExecution] = []
         self._next_id = 1
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if not isinstance(request, ExecutionRequest):
+            return ExecutionResult(False, "request de execução inválido.")
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(
                 accepted=False,

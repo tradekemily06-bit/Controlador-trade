@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -34,7 +35,8 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
-    kill_switch = KillSwitch()
+    safety_store = OperationalSafetyStore(root / "safety.json")
+    _, kill_switch = safety_store.load()
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")

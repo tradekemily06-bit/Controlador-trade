@@ -5,6 +5,8 @@ from execution.ports import ExecutionMode, ExecutionRequest
 
 
 class FakeDemoTransport:
+    endpoint = CTRADER_DEMO_ENDPOINT
+
     def __init__(self, available=True, result=None):
         self.available = available
         self.result = result or BrokerOrderResult(True, "accepted", "demo-123")
@@ -73,3 +75,33 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+def test_demo_adapter_rejects_non_demo_transport_endpoint():
+    class LiveTransport(FakeDemoTransport):
+        endpoint = "live.ctraderapi.com:5035"
+
+    try:
+        CTraderDemoAdapter(LiveTransport())
+    except ValueError as exc:
+        assert "endpoint DEMO" in str(exc)
+    else:
+        raise AssertionError("transport live não pode entrar no adapter DEMO")
+
+
+def test_demo_adapter_marks_transport_exception_uncertain():
+    class FailingTransport(FakeDemoTransport):
+        def place_market_order(self, order):
+            self.orders.append(order)
+            raise TimeoutError("transport timeout")
+
+    result = CTraderDemoAdapter(FailingTransport()).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True
+
+
+def test_demo_adapter_marks_accepted_without_external_id_uncertain():
+    transport = FakeDemoTransport(result=BrokerOrderResult(True, "accepted", None))
+    result = CTraderDemoAdapter(transport).execute(request())
+    assert result.accepted is False
+    assert result.uncertain is True

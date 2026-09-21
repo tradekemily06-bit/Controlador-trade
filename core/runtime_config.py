@@ -37,8 +37,8 @@ class RuntimeConfig:
             raise ValueError("modo de execução inválido.")
         if not isinstance(self.real_enabled, bool):
             raise ValueError("real_enabled deve ser booleano.")
-        if self.mode is ExecutionMode.REAL and not self.real_enabled:
-            raise ValueError("execução REAL exige habilitação explícita.")
+        if self.mode is ExecutionMode.REAL:
+            raise ValueError("execução REAL permanece bloqueada nesta etapa; configuração não pode promovê-la.")
         for name in ("data_path", "memory_path", "safety_path", "ledger_path", "lifecycle_path", "checkpoint_path"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, Path):

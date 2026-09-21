@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 
 @dataclass(frozen=True)
@@ -25,26 +31,44 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary.write_text(
+                    json.dumps(
+                        {
+                            "session_id": checkpoint.session_id,
+                            "last_cycle": checkpoint.last_cycle,
+                            "last_request_id": checkpoint.last_request_id,
+                            "updated_at": checkpoint.updated_at.isoformat(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                os.replace(temporary, self.path)
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
             return None
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            with lock_path.open("a+", encoding="utf-8") as lock_file:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
+                try:
+                    data = json.loads(self.path.read_text(encoding="utf-8"))
+                finally:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
             if not isinstance(data, dict):
                 raise ValueError
             checkpoint = RuntimeCheckpoint(

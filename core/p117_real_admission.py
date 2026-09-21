@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+
+
+_ADMISSION_ISSUER = object()
 
 
 class RealAdmissionStatus(str, Enum):
@@ -16,10 +19,11 @@ class RealAdmission:
     status: RealAdmissionStatus
     broker_id: str
     reasons: tuple[str, ...]
+    _issuer: object = field(default=None, repr=False, compare=False)
 
     @property
     def admitted(self) -> bool:
-        return self.status is RealAdmissionStatus.ADMITTED
+        return self.status is RealAdmissionStatus.ADMITTED and self._issuer is _ADMISSION_ISSUER
 
 
 class RealAdmissionBoundary:
@@ -38,4 +42,4 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons))
+        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons), _ADMISSION_ISSUER)
