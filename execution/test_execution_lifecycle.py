@@ -119,3 +119,29 @@ def test_persisted_lifecycle_rejects_timezone_naive_timestamp(tmp_path):
     )
     with pytest.raises(ValueError, match="timezone-aware"):
         ExecutionLifecycleStore(path)
+
+
+def test_windows_lock_initializes_lock_byte(tmp_path, monkeypatch):
+    import execution.execution_lifecycle as lifecycle_module
+
+    class FakeMSVCRT:
+        LK_LOCK = 1
+        LK_UNLCK = 2
+
+        def __init__(self):
+            self.calls = []
+
+        def locking(self, fd, mode, size):
+            self.calls.append((fd, mode, size))
+
+    fake_msvcrt = FakeMSVCRT()
+    monkeypatch.setattr(lifecycle_module, "fcntl", None)
+    monkeypatch.setattr(lifecycle_module, "msvcrt", fake_msvcrt)
+
+    store = lifecycle_module.ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(lifecycle_module.ExecutionLifecycleRecord("windows-lock", lifecycle_module.ExecutionLifecycleState.PENDING, now))
+
+    lock_path = tmp_path / ".lifecycle.json.lock"
+    assert lock_path.read_bytes() == b"0"
+    assert any(mode == fake_msvcrt.LK_LOCK and size == 1 for _, mode, size in fake_msvcrt.calls)
