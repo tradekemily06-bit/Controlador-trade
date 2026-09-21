@@ -106,11 +106,19 @@ def test_recovery_checkpoint_never_overrides_pending_execution_state(tmp_path):
 def test_recovery_rejects_accepted_ledger_without_external_identity(tmp_path):
     coordinator = _coordinator(tmp_path)
     now = datetime.now(timezone.utc)
-    coordinator.lifecycle_store.put(
-        ExecutionLifecycleRecord("req-no-id", ExecutionLifecycleState.ACCEPTED, now)
-    )
     coordinator.execution_ledger.reserve("req-no-id")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-no-id", ExecutionLifecycleState.PENDING, now)
+    )
     coordinator.execution_ledger.mark_accepted("req-no-id")
+    from execution.execution_lifecycle import LIFECYCLE_RECOVERY_CAPABILITY
+    coordinator.lifecycle_store.reconcile_pending(
+        "req-no-id",
+        ExecutionLifecycleState.ACCEPTED,
+        updated_at=now,
+        message="simulated terminal lifecycle state",
+        capability=LIFECYCLE_RECOVERY_CAPABILITY,
+    )
     assessment = coordinator.assess()
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.inconsistent_request_ids == ("req-no-id",)
