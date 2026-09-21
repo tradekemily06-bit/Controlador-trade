@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Protocol
+
+from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
 class ExternalOrderStatus(str, Enum):
@@ -54,3 +58,45 @@ class ExternalOrderReconciliationBoundary:
             ),
             message=observation.message,
         )
+
+
+    def reconcile_request(
+        self,
+        *,
+        request_id: str,
+        ledger: ExecutionLedger,
+        lifecycle: ExecutionLifecycleStore,
+        query_port: ExternalOrderQueryPort,
+    ) -> ReconciliationResult:
+        """Query the broker by the durable external ID and project a terminal result. This is fail-closed if either durable store update fails.
+
+        This path is read-only toward the broker: it never resubmits an order.
+        """
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if not isinstance(ledger, ExecutionLedger):
+            raise ValueError("ledger inválido.")
+        if not isinstance(lifecycle, ExecutionLifecycleStore):
+            raise ValueError("lifecycle inválido.")
+        external_id = ledger.external_id(request_id)
+        if external_id is None:
+            raise ValueError("request_id não possui external_id durável para reconciliação.")
+        observation = query_port.query_order(external_id)
+        result = self.reconcile(external_id, observation)
+        if result.status is ExternalOrderStatus.EXECUTED:
+            ledger.reconcile(request_id, executed=True, external_id=external_id)
+            lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED,
+                updated_at=datetime.now(timezone.utc),
+                message=result.message,
+            )
+        elif result.status is ExternalOrderStatus.NOT_EXECUTED:
+            ledger.reconcile(request_id, executed=False, external_id=external_id)
+            lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message=result.message,
+            )
+        return result
