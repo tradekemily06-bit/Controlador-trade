@@ -61,6 +61,10 @@ class CTraderDemoAdapter:
                 amount=request.amount,
                 duration_seconds=request.duration_seconds,
             )
+        except (TypeError, ValueError) as exc:
+            return ExecutionResult(False, f"cTrader DEMO rejeitou a requisição antes do despacho: {exc}")
+
+        try:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
         except (TypeError, ValueError) as exc:
