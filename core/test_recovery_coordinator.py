@@ -93,3 +93,20 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_terminal_ledger_without_external_id_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.record("accepted-without-id")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(
+            "accepted-without-id",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    assessment = coordinator.assess()
+
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.can_resume is False
