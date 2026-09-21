@@ -103,18 +103,30 @@ def _audit(environ, request_id: str, status: int) -> None:
     AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/"))[:MAX_SECURITY_PATH_LENGTH], status=status, client_key=SECURITY.client_key(environ))
 
 
-def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
+def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
+    if environ is not None and audit:
+        try:
+            _audit(environ, request_id, status.value)
+        except RuntimeError:
+            if saas_public_mode():
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "serviço de auditoria indisponível", "request_id": request_id}, request_id, None, audit=False)
+            raise
     return [body]
 
 
-def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
+def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
     headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
+    if environ is not None and audit:
+        try:
+            _audit(environ, request_id, status.value)
+        except RuntimeError:
+            if saas_public_mode():
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "serviço de auditoria indisponível", "request_id": request_id}, request_id, None, audit=False)
+            raise
     return [body]
 
 
