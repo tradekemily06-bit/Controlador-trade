@@ -89,3 +89,30 @@ def test_replay_endpoint_rejects_excessive_case_count(monkeypatch):
     payload = json.loads(b"".join(app.application(environ, start_response)))
     assert captured["status"].startswith("400 ")
     assert payload["error"] == "Entrada inválida"
+
+
+def test_public_saas_audit_backend_failure_returns_single_fail_closed_response(monkeypatch):
+    monkeypatch.setattr(app, "saas_public_mode", lambda: True)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setattr(app.AUDIT, "record", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("audit down")))
+
+    calls = []
+
+    def start_response(status, headers):
+        calls.append(status)
+
+    environ = {
+        "REQUEST_METHOD": "GET",
+        "PATH_INFO": "/api/health",
+        "QUERY_STRING": "",
+        "CONTENT_LENGTH": "0",
+        "wsgi.input": io.BytesIO(b""),
+        "REMOTE_ADDR": "127.0.0.1",
+        "controlador.trusted_subject_id": "user-a",
+        "controlador.trusted_tenant_id": "tenant-a",
+        "controlador.trusted_role": "member",
+    }
+    body = b"".join(app.application(environ, start_response))
+
+    assert calls == ["503 Service Unavailable"]
+    assert json.loads(body)["error"] == "serviço de auditoria indisponível"
