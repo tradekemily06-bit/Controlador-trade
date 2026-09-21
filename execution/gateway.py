@@ -92,10 +92,18 @@ class ExecutionGateway:
         # A durable safety store and REAL/DEMO dispatch must share one fence.
         # This makes kill-switch activation atomic with the final pre-dispatch
         # barrier instead of allowing a writer to change safety state midway.
-        if safety_store is not None:
-            self._dispatch_lock_path = safety_store.coordination_lock_path
-        else:
-            self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
+        # Canonical cross-process dispatch fence is the ledger fence when a
+        # durable REAL ledger exists. The safety-store fence is additionally
+        # acquired in a fixed order so kill-switch writers and recovery cannot
+        # interleave with the final dispatch decision.
+        self._dispatch_lock_path = (
+            ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
+            if ledger is not None
+            else (safety_store.coordination_lock_path if safety_store is not None else None)
+        )
+        self._safety_coordination_lock_path = (
+            safety_store.coordination_lock_path if safety_store is not None else None
+        )
 
     def set_operational_barrier_provider(
         self, provider: Callable[[], GlobalOperationalBarrier] | None
@@ -203,9 +211,23 @@ class ExecutionGateway:
         self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
-        lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
-        with lock:
-            final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
+        primary_lock = (
+            exclusive_file_lock(self._dispatch_lock_path)
+            if self._dispatch_lock_path is not None
+            else nullcontext()
+        )
+        # Fixed order: ledger/dispatch fence -> safety-store fence.
+        # Safety writers acquire only the second lock, so no reverse nesting
+        # is introduced and the canonical recovery fence remains effective.
+        secondary_lock = (
+            exclusive_file_lock(self._safety_coordination_lock_path)
+            if self._safety_coordination_lock_path is not None
+            and self._safety_coordination_lock_path != self._dispatch_lock_path
+            else nullcontext()
+        )
+        with primary_lock:
+            with secondary_lock:
+                final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
             if final_safety_error is not None:
                 return None, final_safety_error
             try:
