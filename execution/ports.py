@@ -28,6 +28,7 @@ class ExecutionResult:
     message: str
     external_id: str | None = None
     uncertain: bool = False
+    external_id_kind: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.accepted, bool) or not isinstance(self.uncertain, bool):
@@ -38,6 +39,10 @@ class ExecutionResult:
             raise ValueError("message é obrigatório.")
         if self.external_id is not None and (not isinstance(self.external_id, str) or not self.external_id.strip()):
             raise ValueError("external_id inválido.")
+        if self.external_id_kind is not None and self.external_id_kind not in {"ORDER", "DEAL", "POSITION", "EXECUTION"}:
+            raise ValueError("external_id_kind inválido.")
+        if self.external_id is None and self.external_id_kind is not None:
+            raise ValueError("external_id_kind exige external_id.")
 
 
 class ExecutionPort(Protocol):
