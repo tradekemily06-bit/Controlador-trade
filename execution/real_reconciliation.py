@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Protocol\n\n\nclass _ObservationIssuer:\n    __slots__ = ()\n
+from typing import Protocol
+
+
+class _ObservationIssuer:
+    __slots__ = ()
 
 
 _RECONCILIATION_ISSUER = _ObservationIssuer()
@@ -10,11 +14,7 @@ _RECONCILIATION_ISSUER = _ObservationIssuer()
 
 @dataclass(frozen=True)
 class RealReconciliationObservation:
-    """Read-only broker observation used to close an uncertain REAL request.
-
-    This object is evidence, not a dispatch command. A production reconciler must
-    obtain it by querying the broker/exchange without placing a new order.
-    """
+    """Read-only broker observation used to close an uncertain REAL request."""
 
     request_id: str
     executed: bool
@@ -29,11 +29,7 @@ class RealReconciliationObservation:
 
 
 class RealReconciliationPort(Protocol):
-    """Read-only external reconciliation boundary.
-
-    Implementations must query external execution state and never submit orders.
-    The REAL gateway never accepts a naked boolean as reconciliation evidence.
-    """
+    """Read-only external reconciliation boundary."""
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
         ...
@@ -43,8 +39,6 @@ class RealReconciliationEvidenceBoundary:
     """Issues observations only after a read-only reconciler has obtained them."""
 
     def __init__(self) -> None:
-        # Capabilities are instance-bound: one evidence boundary must not be able
-        # to mint observations through another boundary instance.
         self._provider_capability = object()
 
     @property
