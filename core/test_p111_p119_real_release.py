@@ -17,7 +17,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
-from execution.real_reconciliation import RealReconciliationEvidenceBoundary, RealReconciliationObservation
+from execution.real_reconciliation import ExternalIdentityKind, RealReconciliationEvidenceBoundary, RealReconciliationObservation
 
 
 class FakeAdapter:
@@ -78,6 +78,7 @@ class FakeReconciler:
             observed_at=datetime.now(timezone.utc),
             source="fake-read-only-broker-reconciler",
             provider_capability=self._boundary.provider_capability,
+            external_id_kind=ExternalIdentityKind.EXECUTION,
         )
 
 
