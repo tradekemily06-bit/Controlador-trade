@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 
 from core.operation_memory import OperationMemory
@@ -70,7 +71,7 @@ class RecoveryCoordinator:
         self.lifecycle_store.project_terminal(
             request_id,
             state,
-            updated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            updated_at=datetime.now(timezone.utc),
             message="projeção Lifecycle reparada a partir do Ledger terminal; nenhuma ordem enviada",
         )
 
