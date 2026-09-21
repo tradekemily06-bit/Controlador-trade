@@ -152,14 +152,14 @@ class RealExecutionGateway:
             # the secondary lifecycle projection cannot be persisted.
             pass
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str) -> None:
+        """Close an uncertain REAL request only with a durable external reference; never resubmits."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
         if self._lifecycle is not None:
             self._lifecycle.reconcile(
                 request_id,
