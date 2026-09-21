@@ -59,6 +59,8 @@ class RealExecutionGateway:
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
         if not isinstance(request_id, str) or not request_id.strip():
             return False
+        if request_id.strip() != request_id:
+            return False
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
@@ -68,9 +70,11 @@ class RealExecutionGateway:
             or request.request_id.strip() != request_id.strip()
         ):
             return False
+        if request.signal.name not in ("COMPRA", "VENDA"):
+            return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
-        if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
             return False
@@ -141,6 +145,12 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo no momento da execução REAL.")
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
+        # Canonicalize identity before any persistence or broker correlation.
+        # Whitespace variants must never become distinct ledger keys while
+        # collapsing to the same external correlation token.
+        request_id = request_id.strip()
+        if request.request_id is not None:
+            request = replace(request, request_id=request_id)
         # A request already recorded in an uncertain state must report UNKNOWN
         # for that same request_id. Only genuinely new requests are blocked by
         # unrelated recovery debt elsewhere in the execution stores.
