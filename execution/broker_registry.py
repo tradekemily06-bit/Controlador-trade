@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
-
 from execution.ports import BrokerAdapter
+
+
+_BROKER_ACCESS_CAPABILITY = object()
 
 
 class BrokerRegistryError(ValueError):
@@ -33,7 +34,9 @@ class BrokerRegistry:
             raise BrokerRegistryError("adapter deve implementar is_available().")
         self._adapters[normalized] = adapter
 
-    def get(self, name: str) -> BrokerAdapter:
+    def get(self, name: str, *, capability: object) -> BrokerAdapter:
+        if capability is not _BROKER_ACCESS_CAPABILITY:
+            raise BrokerRegistryError("acesso direto ao adapter é uma capacidade interna.")
         normalized = self._normalize_name(name)
         try:
             return self._adapters[normalized]
@@ -41,11 +44,11 @@ class BrokerRegistry:
             raise BrokerRegistryError(f"adapter não registrado: {normalized}") from exc
 
     def is_available(self, name: str) -> bool:
-        adapter = self.get(name)
+        adapter = self.get(name, capability=_BROKER_ACCESS_CAPABILITY)
         return bool(adapter.is_available())
 
     def adapter_id(self, name: str) -> str | None:
-        adapter = self.get(name)
+        adapter = self.get(name, capability=_BROKER_ACCESS_CAPABILITY)
         value = getattr(adapter, "adapter_id", None)
         if value is None:
             return None
@@ -61,9 +64,6 @@ class BrokerRegistry:
 
     def names(self) -> tuple[str, ...]:
         return tuple(self._adapters)
-
-    def as_mapping(self) -> Mapping[str, BrokerAdapter]:
-        return dict(self._adapters)
 
     @staticmethod
     def _normalize_name(name: str) -> str:
