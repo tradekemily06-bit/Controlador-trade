@@ -71,7 +71,7 @@ class RecoveryCoordinator:
                 request_id: self.execution_ledger.status(request_id)
                 for request_id in self.execution_ledger.records()
             }
-        except ValueError as exc:
+        except (OSError, ValueError) as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
@@ -112,6 +112,12 @@ class RecoveryCoordinator:
                     inconsistent.add(request_id)
             elif ledger_status in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
                 if record.state is not ExecutionLifecycleState.ACCEPTED:
+                    inconsistent.add(request_id)
+                try:
+                    external_id = self.execution_ledger.external_id(request_id)
+                except (OSError, ValueError):
+                    external_id = None
+                if external_id is None:
                     inconsistent.add(request_id)
             elif ledger_status is ExecutionLedgerStatus.REJECTED:
                 if record.state is not ExecutionLifecycleState.REJECTED:
