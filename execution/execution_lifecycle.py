@@ -101,12 +101,16 @@ class ExecutionLifecycleStore:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             return
         if msvcrt is not None:
-            lock_file.seek(0)
+            # Windows msvcrt.locking() requires an existing byte range. Keep
+            # the lock file non-empty before taking the one-byte lock.
+            lock_file.seek(0, 2)
             if lock_file.tell() == 0:
                 lock_file.write(b"0")
                 lock_file.flush()
             lock_file.seek(0)
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        raise RuntimeError("plataforma sem mecanismo de lock suportado.")
 
     @staticmethod
     def _unlock(lock_file) -> None:
