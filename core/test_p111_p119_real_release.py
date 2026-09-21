@@ -1004,3 +1004,12 @@ def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_
     assert ledger.external_id("bind-crash") == "external-1"
     assert lifecycle.get("bind-crash").state is ExecutionLifecycleState.ACCEPTED
     assert adapter.calls == 1
+
+
+def test_real_authorization_boundary_cannot_be_constructed_externally():
+    try:
+        RealExecutionAuthorizationBoundary()
+    except ValueError as exc:
+        assert "emissor REAL interno" in str(exc)
+    else:
+        raise AssertionError("emissor REAL não pode ser instanciado externamente")
