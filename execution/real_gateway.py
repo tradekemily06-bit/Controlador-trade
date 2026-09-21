@@ -124,6 +124,10 @@ class RealExecutionGateway:
             self._mark_unknown(request_id, result.message)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
+        if result.ambiguous:
+            self._mark_unknown(request_id, result.message)
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message, result.execution)
+
         if not result.execution.accepted:
             # A rejection carrying an external reference is ambiguous: the broker
             # may have accepted the order while the adapter classified the response
