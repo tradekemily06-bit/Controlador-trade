@@ -547,7 +547,7 @@ def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = RealExecutionAuthorizationBoundary().issue(
         authorization_id="auth-no-id",
-        audit_id="audit",
+        audit_id="a116",
         broker_id="fake",
         adapter_id="fake-adapter",
         explicitly_enabled=True,
