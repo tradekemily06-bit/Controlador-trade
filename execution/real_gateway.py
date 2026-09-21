@@ -61,6 +61,8 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if self._kill_switch is not None and not self._kill_switch.allows_execution():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado; dispatch REAL bloqueado.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
