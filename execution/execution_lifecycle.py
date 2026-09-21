@@ -147,24 +147,26 @@ class ExecutionLifecycleStore:
     def _acquire_lock(lock_file) -> None:
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        elif msvcrt is not None:
+            return
+        if msvcrt is not None:
             lock_file.seek(0)
-            try:
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-            except OSError:
-                lock_file.seek(0)
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            lock_file.write(b"0")
+            lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        raise OSError("nenhum mecanismo de lock suportado neste sistema")
 
     @staticmethod
     def _release_lock(lock_file) -> None:
         if fcntl is not None:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-        elif msvcrt is not None:
+            return
+        if msvcrt is not None:
             lock_file.seek(0)
-            try:
-                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+        raise OSError("nenhum mecanismo de lock suportado neste sistema")
 
     def _save(self) -> None:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
