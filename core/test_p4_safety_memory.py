@@ -133,3 +133,43 @@ def test_kill_switch_serializes_concurrent_state_transitions():
     assert all(state.enabled is True or state.reason is None for state in states)
     final = switch.state
     assert final.enabled == (final.reason is not None)
+
+
+def test_kill_switch_does_not_hold_state_lock_while_waiting_for_change_fence():
+    from contextlib import contextmanager
+    from threading import Lock, Thread
+    import time
+
+    fence = Lock()
+    fence.acquire()
+
+    @contextmanager
+    def change_fence():
+        fence.acquire()
+        try:
+            yield
+        finally:
+            fence.release()
+
+    switch = KillSwitch(change_fence=change_fence)
+    completed = []
+
+    def activate():
+        switch.activate("concurrent stop")
+        completed.append(True)
+
+    worker = Thread(target=activate)
+    worker.start()
+    time.sleep(0.05)
+
+    # If activate() held the in-process state lock while waiting for the
+    # cross-process fence, this read would block: dispatch holds the fence
+    # first and then reads KillSwitch.state.
+    state = switch.state
+    assert state.enabled is False
+
+    fence.release()
+    worker.join(timeout=1.0)
+    assert not worker.is_alive()
+    assert completed == [True]
+    assert switch.state.enabled is True
