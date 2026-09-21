@@ -73,3 +73,26 @@ def test_reconcile_missing_requires_internal_recovery_capability(tmp_path):
         raise AssertionError("ledger-only lifecycle recovery must require an internal capability")
     store.reconcile_missing("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, capability=LIFECYCLE_RECOVERY_CAPABILITY)
     assert store.get("req-1").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_lifecycle_persistence_flushes_before_atomic_replace(tmp_path, monkeypatch):
+    import os
+    path = tmp_path / "lifecycle.json"
+    store = ExecutionLifecycleStore(path)
+    calls = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def fsync(fd):
+        calls.append("fsync")
+        return real_fsync(fd)
+
+    def replace(src, dst):
+        calls.append("replace")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "replace", replace)
+    store.put(ExecutionLifecycleRecord("req-durable", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+    assert calls.index("fsync") < calls.index("replace")
+    assert calls.count("fsync") >= 2
