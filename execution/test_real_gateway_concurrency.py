@@ -6,6 +6,13 @@ import time
 
 from core.global_operational_barrier import GlobalOperationalBarrier
 from core.test_p111_p119_real_release import (
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
     _admission,
     _authorization,
     _request,
@@ -48,7 +55,7 @@ def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
         ExecutionLedger(ledger_path),
         FakeRiskStateProvider(_risk_state()),
         FakeRealSafetyProvider(safety),
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: _test_real_barrier(),
     )
     request = _request(request_id=request_id)
     result = gateway.execute(
