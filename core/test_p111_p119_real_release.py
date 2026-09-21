@@ -175,7 +175,8 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
+    ledger.attach_external_id("unknown-2", "external-recovered-2")
+    gateway.reconcile_unknown("unknown-2", executed=True, external_id="external-recovered-2")
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -192,7 +193,8 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
+    ledger.attach_external_id("crashed", "external-recovered-crashed")
+    gateway.reconcile_unknown("crashed", executed=False, external_id="external-recovered-crashed")
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
 
@@ -260,5 +262,25 @@ def test_explicit_reconciliation_projects_lifecycle(tmp_path: Path):
         safety=safety,
     )
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-lifecycle", executed=True)
+    ledger.attach_external_id("unknown-lifecycle", "external-recovered-lifecycle")
+    gateway.reconcile_unknown("unknown-lifecycle", executed=True, external_id="external-recovered-lifecycle")
     assert lifecycle.get("unknown-lifecycle").state.name == "ACCEPTED"
+
+
+def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(broker="fake", request_id="no-proof", request=_request(), authorization=auth, admission=admission, safety=safety)
+    assert result.status == RealGatewayStatus.UNKNOWN
+    try:
+        gateway.reconcile_unknown("no-proof", executed=True, external_id="missing-proof")
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("REAL não pode ser fechado como executado sem referência externa durável")
+    assert ledger.status("no-proof") is ExecutionLedgerStatus.UNKNOWN
