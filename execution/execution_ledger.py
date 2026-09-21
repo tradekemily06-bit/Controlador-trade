@@ -74,15 +74,14 @@ class ExecutionLedger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = {key: ({"state": self._states[key].value, "external_id": self._external_ids[key]} if key in self._external_ids else self._states[key].value) for key in sorted(self._states)}
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        with temporary.open("rb") as handle:
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+            handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
-        with self.path.open("rb") as handle:
-            os.fsync(handle.fileno())
+        if os.name != "nt":
+            with self.path.open("rb") as handle:
+                os.fsync(handle.fileno())
         if os.name != "nt":
             directory_fd = os.open(self.path.parent, os.O_RDONLY)
             try:
