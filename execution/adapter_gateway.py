@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from execution.broker_registry import BrokerRegistry, BrokerRegistryError
+from execution.broker_registry import BrokerRegistry, BrokerRegistryError, _BROKER_ACCESS_CAPABILITY
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -62,7 +62,7 @@ class BrokerAdapterGateway:
 
     def _dispatch(self, broker: str, request: ExecutionRequest, *, preserve_exceptions: bool) -> AdapterExecutionResult:
         try:
-            adapter = self._registry.get(broker)
+            adapter = self._registry.get(broker, capability=_BROKER_ACCESS_CAPABILITY)
         except BrokerRegistryError as exc:
             return AdapterExecutionResult(False, str(exc))
 
