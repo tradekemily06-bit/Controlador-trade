@@ -57,6 +57,11 @@ class KillSwitch:
         with self._lock:
             self._on_change = callback
 
+    @property
+    def has_change_fence(self) -> bool:
+        with self._lock:
+            return self._change_fence is not None
+
     def set_change_fence(self, change_fence: Callable[[], object] | None) -> None:
         """Attach the same cross-process fence used by operational dispatch."""
         if change_fence is not None and not callable(change_fence):
