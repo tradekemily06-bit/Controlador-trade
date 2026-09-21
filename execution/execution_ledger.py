@@ -239,15 +239,26 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def record(self, request_id: str) -> None:
-        """Backward-compatible terminal record for existing DEMO infrastructure."""
+    def record(self, request_id: str, external_id: str | None = None) -> None:
+        """Atomically record a terminal DEMO acceptance and optional broker identity.
+
+        Keeping the external identity in the same durable write closes the
+        DEMO crash window between "accepted" and "external_id persisted".
+        Existing callers that only need the legacy accepted marker may omit it.
+        """
         request_id = self._normalize_id(request_id)
+        if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
+            raise ValueError("external_id inválido.")
+        value = external_id.strip() if external_id is not None else None
 
         def mutation() -> None:
-            if request_id not in self._states:
-                self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
-            else:
+            if request_id in self._states:
                 raise ValueError("record() não pode promover estado existente sem transição explícita.")
+            if value is not None and value in self._external_ids.values():
+                raise ValueError("external_id já está vinculado a outro request_id.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            if value is not None:
+                self._external_ids[request_id] = value
 
         self._mutate_locked(mutation)
 
