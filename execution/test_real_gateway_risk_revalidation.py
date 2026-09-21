@@ -19,6 +19,13 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
 class Adapter:
     def __init__(self):
         self.calls = 0
@@ -68,7 +75,7 @@ def gateway(tmp_path: Path, provider: Provider, adapter: Adapter):
     )})()
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), provider, safety_provider,
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: _test_real_barrier(),
     )
 
 
