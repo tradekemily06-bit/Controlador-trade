@@ -206,13 +206,23 @@ class ExecutionLedger:
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
 
-    def reserve(self, request_id: str) -> None:
+    def reserve(self, request_id: str, *, context: dict[str, object] | None = None) -> None:
         request_id = self._normalize_id(request_id)
+        if context is not None:
+            if not isinstance(context, dict) or not context or not all(isinstance(k, str) and k.strip() for k in context):
+                raise ValueError("context de execução inválido.")
+            context = dict(context)
+            fingerprint = self._context_fingerprint(context)
+        else:
+            fingerprint = None
 
         def mutation() -> None:
             if request_id in self._states:
                 raise ValueError("request_id já possui estado; replay REAL recusado.")
             self._states[request_id] = ExecutionLedgerStatus.RESERVED
+            if context is not None:
+                self._contexts[request_id] = context
+                self._fingerprints[request_id] = fingerprint
 
         self._mutate_locked(mutation)
 
