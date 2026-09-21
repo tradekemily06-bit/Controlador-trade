@@ -165,6 +165,14 @@ class RealExecutionGateway:
                         safety: RealSafetyReport, release: RealReleaseClosure) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        # Canonicalize the identity before touching durable state or the broker.
+        # Otherwise "req-1" and " req-1 " could become distinct local reservations
+        # while a broker normalizes them to the same external correlation key.
+        request_id = request_id.strip()
+        if isinstance(request, ExecutionRequest) and request.request_id is not None:
+            if not isinstance(request.request_id, str) or not request.request_id.strip():
+                return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id da request inválido.")
+            request = replace(request, request_id=request.request_id.strip())
         if type(release) is not RealReleaseClosure or not release.released:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "release REAL não está formalmente fechado.")
         if type(authorization) is not RealExecutionAuthorization or not authorization.active:
