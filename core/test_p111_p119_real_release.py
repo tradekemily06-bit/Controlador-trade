@@ -633,7 +633,8 @@ def test_reconcile_repairs_ledger_terminal_lifecycle_pending_crash_window(tmp_pa
     )
     gateway.reconcile_unknown("crash-accepted", reconciler=FakeReconciler("crash-accepted", executed=True))
 
-    assert ledger.status("crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.status("crash-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("crash-accepted") == "external-reconciled"
     assert lifecycle.get("crash-accepted").state is ExecutionLifecycleState.ACCEPTED
 
 
