@@ -44,5 +44,7 @@ class BrokerAdapterGateway:
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
+        if result.accepted and (not isinstance(result.external_id, str) or not result.external_id.strip()):
+            return AdapterExecutionResult(False, "adapter sinalizou aceite sem external_id; confirmação bloqueada.")
 
         return AdapterExecutionResult(result.accepted, result.message, result)
