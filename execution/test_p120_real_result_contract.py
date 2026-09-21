@@ -14,6 +14,13 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
+def _real_kill_switch(tmp_path: Path) -> KillSwitch:
+    return KillSwitch(
+        state_path=tmp_path / "kill-switch.json",
+        coordination_path=tmp_path / "ledger.json",
+    )
+
+
 class MissingExternalIdAdapter:
     adapter_id = "adapter"
 
