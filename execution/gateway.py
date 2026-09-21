@@ -138,19 +138,26 @@ class ExecutionGateway:
     def _refresh_kill_switch(self, *, under_coordination_fence: bool = False) -> str | None:
         if self._safety_store is None:
             return None
+        # Global lock order is always coordination fence -> safety file lock.
+        # Reading the safety file first and then acquiring the coordination
+        # fence would create a cross-thread/process cycle against final dispatch,
+        # which already owns coordination before reading persisted safety state.
         try:
-            _audit, persisted = self._safety_store.load()
-            current = self._kill_switch.state
-            # Never let a stale persisted CLEAR state downgrade an in-memory
-            # ACTIVE switch whose persistence callback is still contending for
-            # the same dispatch fence. Fail closed until persistence catches up.
-            if current.enabled and not persisted.state.enabled:
-                return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
             if under_coordination_fence:
+                _audit, persisted = self._safety_store.load()
+                current = self._kill_switch.state
+                if current.enabled and not persisted.state.enabled:
+                    return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
                 self._kill_switch.synchronize_under_change_fence(persisted.state)
-            else:
-                self._kill_switch.synchronize(persisted.state)
-            return None
+                return None
+
+            with self._safety_store.coordination_lock():
+                _audit, persisted = self._safety_store.load()
+                current = self._kill_switch.state
+                if current.enabled and not persisted.state.enabled:
+                    return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
+                self._kill_switch.synchronize_under_change_fence(persisted.state)
+                return None
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
 
