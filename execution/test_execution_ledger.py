@@ -324,3 +324,22 @@ def test_persisted_fingerprint_without_context_fails_closed(tmp_path):
     )
     with pytest.raises(ValueError, match="fingerprint sem context"):
         ExecutionLedger(path)
+
+
+def test_record_can_atomically_persist_external_id(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.record("req-atomic", "broker-42")
+    assert ledger.status("req-atomic") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("req-atomic") == "broker-42"
+    reloaded = ExecutionLedger(tmp_path / "ledger.json")
+    assert reloaded.status("req-atomic") is ExecutionLedgerStatus.ACCEPTED
+    assert reloaded.external_id("req-atomic") == "broker-42"
+
+
+def test_record_rejects_duplicate_external_id_atomically(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.record("req-a", "broker-42")
+    with pytest.raises(ValueError, match="external_id já está vinculado"):
+        ledger.record("req-b", "broker-42")
+    assert ledger.status("req-b") is None
+    assert ledger.external_id("req-b") is None
