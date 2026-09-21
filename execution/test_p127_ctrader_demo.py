@@ -1,6 +1,12 @@
+import pytest
+
 from core.models import Signal
 from execution.p123_broker_order import BrokerOrderRequest, BrokerOrderResult
-from execution.p127_ctrader_demo import CTraderDemoAdapter, CTRADER_DEMO_ENDPOINT
+from execution.p127_ctrader_demo import (
+    CTraderDemoAdapter,
+    CTraderDemoTransportError,
+    CTRADER_DEMO_ENDPOINT,
+)
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
@@ -16,6 +22,18 @@ class FakeDemoTransport:
     def place_market_order(self, order: BrokerOrderRequest):
         self.orders.append(order)
         return self.result
+
+
+class AmbiguousDemoTransport(FakeDemoTransport):
+    def place_market_order(self, order: BrokerOrderRequest):
+        self.orders.append(order)
+        raise TimeoutError("response lost after broker dispatch")
+
+
+class MalformedResponseTransport(FakeDemoTransport):
+    def place_market_order(self, order: BrokerOrderRequest):
+        self.orders.append(order)
+        return object()
 
 
 def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, request_id="req-127"):
@@ -73,3 +91,23 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+def test_demo_adapter_preserves_ambiguous_transport_failure():
+    transport = AmbiguousDemoTransport()
+    adapter = CTraderDemoAdapter(transport)
+
+    with pytest.raises(CTraderDemoTransportError):
+        adapter.execute(request())
+
+    assert len(transport.orders) == 1
+
+
+def test_demo_adapter_treats_malformed_post_dispatch_response_as_ambiguous():
+    transport = MalformedResponseTransport()
+    adapter = CTraderDemoAdapter(transport)
+
+    with pytest.raises(CTraderDemoTransportError):
+        adapter.execute(request())
+
+    assert len(transport.orders) == 1
