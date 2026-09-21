@@ -99,7 +99,20 @@ class ExecutionLedger:
             if fingerprint is not None:
                 if not isinstance(fingerprint, str) or not fingerprint.strip():
                     raise ValueError("ledger de execução inválido: fingerprint inválido.")
-                fingerprints[request_id] = fingerprint.strip()
+                normalized_fingerprint = fingerprint.strip()
+                # A persisted fingerprint is an integrity binding, not merely
+                # metadata. If context exists, recompute it during load so a
+                # crash, partial edit, stale copy, or manual corruption cannot
+                # silently change the recovery intent while keeping the old hash.
+                if context is None:
+                    raise ValueError("ledger de execução inválido: fingerprint sem context.")
+                if not isinstance(context, dict):
+                    raise ValueError("ledger de execução inválido: context inválido.")
+                if ExecutionLedger._context_fingerprint(context) != normalized_fingerprint:
+                    raise ValueError("ledger de execução inválido: fingerprint do context não confere.")
+                fingerprints[request_id] = normalized_fingerprint
+            elif context is not None:
+                raise ValueError("ledger de execução inválido: context sem fingerprint.")
             if external_id is not None:
                 normalized_external_id = external_id.strip()
                 if normalized_external_id in external_ids.values():
