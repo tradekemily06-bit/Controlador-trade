@@ -182,3 +182,5 @@ def test_persisted_ledger_rejects_duplicate_external_id(tmp_path):
     )
     with pytest.raises(ValueError, match="external_id duplicado"):
         ExecutionLedger(path)
+
+# CI trigger: persisted-state audit coverage.
