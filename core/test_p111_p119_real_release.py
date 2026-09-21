@@ -23,6 +23,9 @@ from execution.real_reconciliation import ExternalIdentityKind, RealReconciliati
 class FakeAdapter:
     adapter_id = "fake-adapter"
 
+    @staticmethod
+    def correlation_for(request):
+        return f"FAKE-{request.request_id.strip()}" if getattr(request, "request_id", None) else None
 
     def __init__(self, available=True):
         self.available = available
@@ -84,7 +87,7 @@ class FakeReconciler:
             symbol="TEST",
             side="BUY",
             amount=10.0,
-            correlation="fake-correlation",
+            correlation=f"FAKE-{request_id}",
         )
 
 
@@ -104,7 +107,7 @@ def _reconciliation_context(request_id: str) -> dict[str, object]:
         "amount": 10.0,
         "duration_seconds": 60,
         "request_id": request_id,
-        "correlation": None,
+        "correlation": f"FAKE-{request_id}",
     }
 
 
@@ -1077,7 +1080,7 @@ def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_
         symbol="TEST",
         side="BUY",
         amount=10.0,
-        correlation="fake-correlation",
+        correlation="FAKE-bind-crash",
     )
 
     class ReadOnlyReconciler:
