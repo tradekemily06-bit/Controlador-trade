@@ -120,12 +120,22 @@ class EcosystemNotificationCenter:
         payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
         return [] if payload is None else self._decode(payload)
 
-    def _save(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> None:
+    def _save(self, scope: tuple[str, str], events: list[EcosystemNotification]) -> list[EcosystemNotification]:
         if self._state_store is None:
             if self._require_durable:
                 raise RuntimeError("durable notification state provider is required")
-            return
-        self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
+            return list(events)
+        def updater(payload):
+            latest = [] if payload is None else self._decode(payload)
+            by_id = {item.notification_id: item for item in latest}
+            for item in events:
+                by_id[item.notification_id] = item
+            merged = list(by_id.values())
+            return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in merged]
+        payload = self._state_store.update(
+            tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, updater=updater
+        )
+        return self._decode(payload)
 
     def _load_global(self) -> list[EcosystemNotification]:
         if self._state_store is None:
@@ -140,26 +150,38 @@ class EcosystemNotificationCenter:
         self._global_loaded = True
         return self._global_notifications
 
-    def _save_global(self, events: list[EcosystemNotification]) -> None:
+    def _save_global(self, events: list[EcosystemNotification]) -> list[EcosystemNotification]:
         if self._state_store is None:
             if self._require_durable:
                 raise RuntimeError("durable notification state provider is required")
             self._global_notifications = list(events)
             self._global_loaded = True
-            return
-        self._state_store.put(tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE, payload=[asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in events])
-        self._global_notifications = list(events)
+            return list(events)
+        def updater(payload):
+            latest = [] if payload is None else self._decode(payload)
+            by_id = {item.notification_id: item for item in latest}
+            for item in events:
+                by_id[item.notification_id] = item
+            merged = list(by_id.values())
+            return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in merged]
+        payload = self._state_store.update(
+            tenant_id=self.GLOBAL_TENANT, subject_id=self.GLOBAL_SUBJECT, namespace=self.NAMESPACE, updater=updater
+        )
+        merged = self._decode(payload)
+        self._global_notifications = list(merged)
         self._global_loaded = True
+        return merged
 
     def _global(self) -> list[EcosystemNotification]:
         """Backward-compatible global cache accessor for legacy callers."""
         return self._load_global()
 
     def _scoped(self, scope: tuple[str, str]) -> list[EcosystemNotification]:
-        cached = self._scoped_notifications.get(scope)
-        if cached is not None:
-            self._scoped_notifications.move_to_end(scope)
-            return cached
+        if self._state_store is None:
+            cached = self._scoped_notifications.get(scope)
+            if cached is not None:
+                self._scoped_notifications.move_to_end(scope)
+                return cached
         events = self._load(scope)
         self._scoped_notifications[scope] = events
         self._scoped_notifications.move_to_end(scope)
@@ -219,8 +241,8 @@ class EcosystemNotificationCenter:
                 return notification
             events = self._load(scope)
             events.append(notification)
-            self._save(scope, events)
-            self._replace_cache(scope, events)
+            merged = self._save(scope, events)
+            self._replace_cache(scope, merged)
             return notification
 
     def new_id(self, prefix: str = "event") -> str:
