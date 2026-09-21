@@ -183,3 +183,16 @@ def test_ambiguous_mt5_trade_codes_are_uncertain_not_rejected():
         result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
         assert result.accepted is False
         assert result.uncertain is True
+
+def test_success_without_external_id_is_uncertain_not_rejected():
+    class NoExternalIdMT5(FakeMT5):
+        def order_send(self, payload):
+            self.calls.append(("order_send", payload))
+            return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=None, deal=None)
+
+    mt5 = NoExternalIdMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+
+    assert result.accepted is False
+    assert result.uncertain is True
+    assert "identificador externo" in result.message
