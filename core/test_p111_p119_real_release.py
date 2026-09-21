@@ -82,7 +82,7 @@ class FakeReconciler:
 
 
 def _authorization():
-    return RealExecutionAuthorizationBoundary().issue(authorization_id="auth", audit_id="a111", broker_id="fake", adapter_id="fake-adapter", explicitly_enabled=True, real_execution_allowed=True)
+    return RealExecutionAuthorizationBoundary._internal().issue(authorization_id="auth", audit_id="a111", broker_id="fake", adapter_id="fake-adapter", explicitly_enabled=True, real_execution_allowed=True)
 
 
 def _admission(auth):
@@ -191,7 +191,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
-    auth = RealExecutionAuthorizationBoundary().issue(authorization_id="a", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=False, real_execution_allowed=False)
+    auth = RealExecutionAuthorizationBoundary._internal().issue(authorization_id="a", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=False, real_execution_allowed=False)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
@@ -404,7 +404,7 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
-    auth = RealExecutionAuthorizationBoundary().issue(
+    auth = RealExecutionAuthorizationBoundary._internal().issue(
         authorization_id="auth-mismatch",
         audit_id="audit",
         broker_id="fake",
@@ -528,7 +528,7 @@ def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     adapter = UnidentifiedAdapter()
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
-    auth = RealExecutionAuthorizationBoundary().issue(
+    auth = RealExecutionAuthorizationBoundary._internal().issue(
         authorization_id="auth-no-id",
         audit_id="audit",
         broker_id="fake",
@@ -809,14 +809,10 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
         lifecycle,
         KillSwitch(),
     )
-    try:
-        gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
-    except ValueError as exc:
-        assert "external_id" in str(exc)
-    else:
-        raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
-    assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("ledger-only") is None
+    gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
+    assert ledger.status("ledger-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("ledger-only") == "external-reconciled"
+    assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
 
 
 def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
