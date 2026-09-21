@@ -82,3 +82,21 @@ def test_recovery_accepts_reconciled_executed_with_terminal_lifecycle(tmp_path):
     assert assessment.state is RecoveryState.FRESH
     assert assessment.can_resume is True
     assert assessment.inconsistent_request_ids == ()
+
+
+def test_recovery_checkpoint_never_overrides_pending_execution_state(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-crash", ExecutionLifecycleState.PENDING, now)
+    )
+    coordinator.execution_ledger.reserve("req-crash")
+    coordinator.checkpoint_store.save(
+        __import__("core.runtime_checkpoint", fromlist=["RuntimeCheckpoint"]).RuntimeCheckpoint(
+            "session-1", 9, "req-crash", now
+        )
+    )
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.can_resume is False
+    assert assessment.pending_request_ids == ("req-crash",)
