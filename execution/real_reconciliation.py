@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import math
 from typing import Protocol
 from enum import Enum
 
@@ -157,6 +158,26 @@ def validate_observation(
         if not isinstance(observation.external_id, str) or not observation.external_id.strip():
             return False
         if observation.external_id_kind is ExternalIdentityKind.UNKNOWN:
+            return False
+        # Executed evidence must carry enough broker context for an independent
+        # reconciler to prove identity, not merely assert an external string.
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (
+                observation.provider,
+                observation.account_id,
+                observation.symbol,
+                observation.side,
+                observation.correlation,
+            )
+        ):
+            return False
+        if (
+            not isinstance(observation.amount, (int, float))
+            or isinstance(observation.amount, bool)
+            or not math.isfinite(observation.amount)
+            or observation.amount <= 0
+        ):
             return False
         return outcome is ReconciliationOutcome.EXECUTED
     # A negative terminal result must be definitive. NOT_FOUND, delayed
