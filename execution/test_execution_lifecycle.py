@@ -65,6 +65,18 @@ def test_unknown_requires_explicit_reconciliation(tmp_path):
     assert ExecutionLifecycleStore(path).get("req-1") == result
 
 
+def test_project_terminal_repairs_pending_and_is_idempotent(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.project_terminal("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, message="repair")
+    assert store.get("req-1").state is ExecutionLifecycleState.ACCEPTED
+    store.project_terminal("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now, message="repair-again")
+    with pytest.raises(ValueError, match="conflita"):
+        store.project_terminal("req-1", ExecutionLifecycleState.REJECTED, updated_at=now)
+
+
 def test_reconciliation_cannot_rewrite_terminal_state(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
