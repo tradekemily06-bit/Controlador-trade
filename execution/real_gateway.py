@@ -15,6 +15,7 @@ from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLif
 from execution.execution_coordination import ExecutionCoordinationLock
 from execution.real_reconciliation import RealReconciliationPort, validate_observation
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.models import Signal
 
 
 class RealGatewayStatus(str):
@@ -68,7 +69,7 @@ class RealExecutionGateway:
             or request.request_id.strip() != request_id.strip()
         ):
             return False
-        if request.signal.name not in ("COMPRA", "VENDA"):
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
