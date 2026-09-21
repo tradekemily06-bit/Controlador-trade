@@ -25,7 +25,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -96,7 +96,7 @@ def test_real_gateway_projects_accepted_lifecycle(tmp_path: Path):
     registry.register("fake", AcceptedAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
     authorization, admission, safety = _auth_and_safety()
 
     result = gateway.execute(
@@ -113,7 +113,7 @@ def test_real_gateway_projects_rejected_lifecycle(tmp_path: Path):
     registry.register("fake", RejectedAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
     authorization, admission, safety = _auth_and_safety()
 
     result = gateway.execute(
@@ -130,7 +130,7 @@ def test_real_gateway_projects_unknown_lifecycle(tmp_path: Path):
     registry.register("fake", RaisingAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
     authorization, admission, safety = _auth_and_safety()
 
     result = gateway.execute(
@@ -146,7 +146,7 @@ def test_real_gateway_persists_accepted_external_id(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", AcceptedAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
     authorization, admission, safety = _auth_and_safety()
 
     result = gateway.execute(
