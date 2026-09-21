@@ -157,6 +157,27 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
+    def attach_external_id(self, request_id: str, external_id: str) -> None:
+        """Durably bind the broker reference before terminal ACCEPTED persistence."""
+        self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id é obrigatório.")
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("external_id só pode ser anexado a estado incerto.")
+            normalized = external_id.strip()
+            existing = self._external_ids.get(request_id)
+            if existing is not None and existing != normalized:
+                raise ValueError("request_id já possui outro external_id.")
+            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id), None)
+            if owner is not None:
+                raise ValueError("external_id já está associado a outro request_id.")
+            self._external_ids[request_id] = normalized
+
+        self._mutate_locked(mutation)
+
     def mark_accepted(self, request_id: str, *, external_id: str) -> None:
         self._validate_id(request_id)
         if not isinstance(external_id, str) or not external_id.strip():
@@ -167,7 +188,10 @@ class ExecutionLedger:
             if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
                 raise ValueError("transição para ACCEPTED inválida.")
             normalized = external_id.strip()
-            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id), None)
+            existing = self._external_ids.get(request_id)
+            if existing is not None and existing != normalized:
+                raise ValueError("request_id já possui outro external_id.")
+            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id)
             if owner is not None:
                 raise ValueError("external_id já está associado a outro request_id.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
