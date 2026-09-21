@@ -79,6 +79,12 @@ class FakeReconciler:
             source="fake-read-only-broker-reconciler",
             provider_capability=self._boundary.provider_capability,
             external_id_kind=ExternalIdentityKind.EXECUTION,
+            provider="fake",
+            account_id="demo-account",
+            symbol="TEST",
+            side="BUY",
+            amount=10.0,
+            correlation="fake-correlation",
         )
 
 
