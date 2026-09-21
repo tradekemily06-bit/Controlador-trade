@@ -123,7 +123,15 @@ class ExecutionLifecycleStore:
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        if os.name != "nt":
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def _read_locked(self, reader):
         self.path.parent.mkdir(parents=True, exist_ok=True)
