@@ -30,7 +30,7 @@ def test_rejection_is_not_executed():
 
 def test_unknown_acceptance_remains_ambiguous():
     result = SandboxValidationBoundary().run(request("req-unknown"), SandboxScenario.UNKNOWN)
-    assert result.accepted is True
+    assert result.accepted is False
     assert result.external_id is None
     assert result.external_status.value == "UNKNOWN"
 
