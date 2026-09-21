@@ -108,3 +108,14 @@ def test_reconcile_uses_latest_persisted_state(tmp_path):
             updated_at=now,
             message="stale reconciliation",
         )
+
+
+def test_persisted_lifecycle_rejects_duplicate_request_id(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"dup","state":"PENDING","updated_at":"2026-01-01T00:00:00+00:00"},'
+        '{"request_id":"dup","state":"UNKNOWN","updated_at":"2026-01-01T00:00:01+00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="request_id duplicado"):
+        ExecutionLifecycleStore(path)
