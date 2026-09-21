@@ -104,6 +104,19 @@ class ICMarketsMT5DemoAdapter:
         digest = hashlib.sha256(request_id.encode("utf-8")).hexdigest()[:16]
         return f"CTD-{digest}"
 
+    def build_reconciliation_request(self, request: ExecutionRequest) -> dict[str, object]:
+        """Build only the durable/read-side search identity; never dispatches."""
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para reconciliação MT5")
+        return {
+            "request_id": request.request_id.strip(),
+            "symbol": request.symbol.strip(),
+            "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
+            "amount": float(request.amount),
+            "correlation": self.correlation_for(request),
+            "magic": self.config.magic,
+        }
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "request de execução inválido.")
