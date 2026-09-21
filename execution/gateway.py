@@ -90,6 +90,14 @@ class ExecutionGateway:
                 except (OSError, ValueError):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
 
+        if not self._kill_switch.allows_execution():
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError):
+                    pass
+            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch antes do dispatch: {self._kill_switch.state.reason}")
+
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
             if existing is not None:
