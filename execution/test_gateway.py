@@ -221,3 +221,39 @@ def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_does_not_downgrade_accepted_ledger_when_lifecycle_persistence_fails(tmp_path):
+    class AcceptingExecutor:
+        def execute(self, _request):
+            return ExecutionResult(accepted=True, message="aceito", external_id="EXT-1")
+
+    class FailingLifecycle:
+        def __init__(self):
+            self.records_seen = 0
+
+        def get(self, _request_id):
+            return None
+
+        def put(self, _record):
+            self.records_seen += 1
+            if self.records_seen >= 2:
+                raise OSError("falha de persistência")
+
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = FailingLifecycle()
+    gateway = ExecutionGateway(
+        AcceptingExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-accepted-persist-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-accepted-persist-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert "Ledger permanece ACCEPTED" in result.message
+    assert lifecycle.records_seen == 2
