@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from core.file_lock import exclusive_file_lock
+from core.safe_file import read_regular_utf8
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -51,7 +52,7 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução deve ser um arquivo regular.")
             if stat.st_size > MAX_LEDGER_FILE_BYTES:
                 raise ValueError("ledger de execução inválido: excede o limite permitido.")
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(read_regular_utf8(self.path, max_bytes=MAX_LEDGER_FILE_BYTES ))
         except OSError:
             raise
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
