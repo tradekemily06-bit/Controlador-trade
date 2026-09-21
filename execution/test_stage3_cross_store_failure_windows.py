@@ -4,7 +4,7 @@ from core.kill_switch import KillSwitch
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleStore, ExecutionLifecycleState
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from core.models import Signal
@@ -84,7 +84,7 @@ def test_terminal_ledger_repair_closes_only_the_persistence_gap(tmp_path):
     ledger.reserve("repair-accepted")
     ledger.mark_accepted("repair-accepted")
     lifecycle.put(
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+        ExecutionLifecycleRecord(
             "repair-accepted",
             ExecutionLifecycleState.PENDING,
             datetime.now(timezone.utc),
