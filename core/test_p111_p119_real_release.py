@@ -1026,7 +1026,7 @@ def test_real_gateway_canonicalizes_request_id_before_external_correlation(tmp_p
         release=release,
     )
 
-    assert result.status is RealGatewayStatus.REJECTED
-    assert adapter.calls == 0
-    assert ledger.records() == ()
-    assert lifecycle.records() == ()
+    assert result.status is RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
+    assert ledger.records() == ("canonical-1",)
+    assert lifecycle.get("canonical-1").state is ExecutionLifecycleState.ACCEPTED
