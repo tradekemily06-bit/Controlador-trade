@@ -81,7 +81,11 @@ def validate_observation(
         return False
     if not isinstance(observation.executed, bool):
         return False
-    if not isinstance(observation.observed_at, datetime):
+    if (
+        not isinstance(observation.observed_at, datetime)
+        or observation.observed_at.tzinfo is None
+        or observation.observed_at.utcoffset() is None
+    ):
         return False
     if not isinstance(observation.source, str) or not observation.source.strip():
         return False
