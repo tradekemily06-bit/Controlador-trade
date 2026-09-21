@@ -106,6 +106,37 @@ class RealExecutionGateway:
             return False
         return True
 
+    @staticmethod
+    def _valid_recovery_context(
+        context: dict[str, object],
+        *,
+        request: ExecutionRequest,
+        correlation: str,
+    ) -> bool:
+        if not isinstance(context, dict) or not context:
+            return False
+        symbol = context.get("symbol")
+        side = context.get("side")
+        amount = context.get("amount")
+        stored_correlation = context.get("correlation")
+        if not isinstance(symbol, str) or symbol.strip() != request.symbol.strip():
+            return False
+        if not isinstance(side, str) or side.strip().upper() not in {"BUY", "SELL", "COMPRA", "VENDA"}:
+            return False
+        expected_side = "COMPRA" if request.signal.value == "COMPRA" else "VENDA"
+        normalized_side = side.strip().upper()
+        if normalized_side != expected_side and not (
+            expected_side == "COMPRA" and normalized_side == "BUY"
+        ) and not (
+            expected_side == "VENDA" and normalized_side == "SELL"
+        ):
+            return False
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool) or not math.isfinite(float(amount)):
+            return False
+        if not math.isclose(float(amount), float(request.amount), rel_tol=0.0, abs_tol=1e-9):
+            return False
+        return isinstance(stored_correlation, str) and stored_correlation.strip() == correlation
+
     def _recovery_safe(self) -> bool:
         """Block new REAL dispatch when any durable execution state needs repair."""
         try:
@@ -254,6 +285,15 @@ class RealExecutionGateway:
                     "adapter REAL sem correlation determinística para reconciliação; despacho bloqueado.",
                 )
             correlation = correlation.strip()
+            if not self._valid_recovery_context(
+                recovery_context,
+                request=request,
+                correlation=correlation,
+            ):
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "adapter REAL retornou recovery context que não corresponde à request/correlation; despacho bloqueado.",
+                )
             self._ledger.reserve(
                 request_id,
                 context={
