@@ -62,6 +62,22 @@ class BrokerAdapterGateway:
             raise AdapterGatewayError("adapter retornou correlation inválida")
         return value.strip()
 
+    def recovery_context_for(self, broker: str, request: ExecutionRequest) -> dict[str, object]:
+        """Return provider-specific read-side identity without performing I/O."""
+        try:
+            adapter = self._registry.get(broker, capability=_BROKER_ACCESS_CAPABILITY)
+        except BrokerRegistryError:
+            return {}
+        builder = getattr(adapter, "recovery_context_for", None)
+        if not callable(builder):
+            return {}
+        value = builder(request)
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise AdapterGatewayError("adapter retornou recovery context inválido")
+        return dict(value)
+
     def execute_real(
         self,
         broker: str,
