@@ -95,13 +95,16 @@ class MT5ReadOnlyReconciler:
         if not isinstance(context, dict):
             return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
         try:
+            recovery = context.get("recovery_identity")
+            if not isinstance(recovery, dict):
+                return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
             identity = MT5ReconciliationIdentity(
                 request_id=request_id.strip(),
-                symbol=str(context["symbol"]).strip(),
-                side=str(context["side"]).upper().replace("COMPRA", "BUY").replace("VENDA", "SELL"),
-                amount=float(context["amount"]),
-                correlation=str(context["correlation"]).strip(),
-                magic=int(context["magic"]),
+                symbol=str(recovery["symbol"]).strip(),
+                side=str(recovery["side"]).upper().replace("COMPRA", "BUY").replace("VENDA", "SELL"),
+                amount=float(recovery["amount"]),
+                correlation=str(recovery["correlation"]).strip(),
+                magic=int(recovery["magic"]),
             )
         except (KeyError, TypeError, ValueError):
             return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
