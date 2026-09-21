@@ -116,3 +116,50 @@ def test_mt5_resolver_passes_bounded_time_window_to_queries():
     assert seen["deals"]["date_to"] > anchor
     assert seen["orders"]["date_from"] == seen["deals"]["date_from"]
     assert seen["orders"]["date_to"] == seen["deals"]["date_to"]
+
+
+def test_mt5_lookup_requires_durable_recovery_identity_and_reservation_anchor():
+    calls = {}
+    anchor = datetime.now(timezone.utc)
+    reconciler = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: calls.setdefault("deals", kwargs) or [],
+        orders_query=lambda **kwargs: calls.setdefault("orders", kwargs) or [],
+        context_provider=lambda request_id: {
+            "request_id": request_id,
+            "recovery_identity": {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "amount": 0.10,
+                "correlation": "CTD-abc",
+                "magic": 2609001,
+            },
+            "reserved_at": anchor.isoformat(),
+        },
+    )
+    obs = reconciler.lookup("req-1")
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+    assert calls["deals"]["date_from"] < anchor
+    assert calls["orders"]["date_to"] == calls["deals"]["date_to"]
+
+
+def test_mt5_lookup_fails_closed_without_durable_recovery_anchor():
+    reconciler = MT5ReadOnlyReconciler(
+        adapter=ICMarketsMT5DemoAdapter(),
+        account_id="123",
+        deals_query=lambda **kwargs: [],
+        orders_query=lambda **kwargs: [],
+        context_provider=lambda request_id: {
+            "request_id": request_id,
+            "recovery_identity": {
+                "symbol": "EURUSD",
+                "side": "BUY",
+                "amount": 0.10,
+                "correlation": "CTD-abc",
+                "magic": 2609001,
+            },
+        },
+    )
+    obs = reconciler.lookup("req-1")
+    assert obs.effective_outcome is ReconciliationOutcome.QUERY_FAILED
