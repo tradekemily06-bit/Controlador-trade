@@ -50,6 +50,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
 
 class AcceptedAdapter:
+    supports_real_execution = True
     def __init__(self):
         self.calls = 0
 
@@ -62,6 +63,7 @@ class AcceptedAdapter:
 
 
 class RejectedAdapter:
+    supports_real_execution = True
     def is_available(self):
         return True
 
@@ -70,6 +72,7 @@ class RejectedAdapter:
 
 
 class RaisingAdapter:
+    supports_real_execution = True
     def is_available(self):
         return True
 
