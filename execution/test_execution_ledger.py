@@ -147,3 +147,25 @@ def test_ledger_persistence_flushes_before_atomic_replace(tmp_path, monkeypatch)
     ledger.record("req-durable")
     assert calls.index("fsync") < calls.index("replace")
     assert calls.count("fsync") >= (1 if os.name == "nt" else 2)
+
+
+def test_ledger_rejects_impossible_external_id_state(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text(json.dumps({"bad": {"state": "REJECTED", "external_id": "broker-1"}}), encoding="utf-8")
+    try:
+        ExecutionLedger(path)
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("ledger must reject external identity on non-executed terminal state")
+
+
+def test_ledger_rejects_reconciled_executed_without_external_id(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text(json.dumps({"bad": "RECONCILED_EXECUTED"}), encoding="utf-8")
+    try:
+        ExecutionLedger(path)
+    except ValueError as exc:
+        assert "external_id" in str(exc)
+    else:
+        raise AssertionError("reconciled execution must have durable external identity")
