@@ -121,6 +121,35 @@ def test_persisted_lifecycle_rejects_timezone_naive_timestamp(tmp_path):
         ExecutionLifecycleStore(path)
 
 
+
+def test_lifecycle_rejects_timestamp_rollback(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    newer = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 21, 11, 59, tzinfo=timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-time", ExecutionLifecycleState.PENDING, newer))
+    with pytest.raises(ValueError, match="updated_at não pode retroceder"):
+        store.put(ExecutionLifecycleRecord("req-time", ExecutionLifecycleState.UNKNOWN, older))
+
+
+def test_lifecycle_reconciliation_rejects_older_timestamp(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    newer = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 21, 11, 59, tzinfo=timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-reconcile-time", ExecutionLifecycleState.PENDING, newer))
+    store.put(ExecutionLifecycleRecord("req-reconcile-time", ExecutionLifecycleState.UNKNOWN, newer))
+    with pytest.raises(ValueError, match="updated_at da reconciliação"):
+        store.reconcile("req-reconcile-time", ExecutionLifecycleState.REJECTED, updated_at=older)
+
+
+def test_lifecycle_pending_recovery_rejects_older_timestamp(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    newer = datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 9, 21, 11, 59, tzinfo=timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-pending-time", ExecutionLifecycleState.PENDING, newer))
+    with pytest.raises(ValueError, match="updated_at da reconciliação PENDING"):
+        store.reconcile_pending("req-pending-time", ExecutionLifecycleState.REJECTED, updated_at=older)
+
+
 def test_windows_lock_initializes_lock_byte(tmp_path, monkeypatch):
     import execution.execution_lifecycle as lifecycle_module
 
