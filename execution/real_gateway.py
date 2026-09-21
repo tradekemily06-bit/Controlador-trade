@@ -124,6 +124,17 @@ class RealExecutionGateway:
 
         for request_id, status in ledger_states.items():
             record = lifecycle_by_id[request_id]
+            # Every durable execution state must remain cryptographically bound
+            # to the original request intent. A terminal record without
+            # context/fingerprint may look harmless, but it cannot be
+            # independently reconciled after a crash; fail closed before any
+            # unrelated REAL dispatch is allowed to continue.
+            context = self._ledger.context(request_id)
+            fingerprint = self._ledger.fingerprint(request_id)
+            if not isinstance(context, dict) or not context or not isinstance(fingerprint, str) or not fingerprint.strip():
+                return False
+            if context.get("request_id") != request_id:
+                return False
             if status is ExecutionLedgerStatus.ACCEPTED:
                 if record.state is not ExecutionLifecycleState.ACCEPTED:
                     return False
