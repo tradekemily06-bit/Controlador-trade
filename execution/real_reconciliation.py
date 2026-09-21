@@ -38,8 +38,14 @@ class RealReconciliationPort(Protocol):
 class RealReconciliationEvidenceBoundary:
     """Issues observations only after a read-only reconciler has obtained them."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _RECONCILIATION_ISSUER:
+            raise ValueError("emissor de evidência REAL não pode ser criado por código externo.")
         self._provider_capability = object()
+
+    @classmethod
+    def _internal(cls) -> "RealReconciliationEvidenceBoundary":
+        return cls(capability=_RECONCILIATION_ISSUER)
 
     @property
     def provider_capability(self) -> object:
