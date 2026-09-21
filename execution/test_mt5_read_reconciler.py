@@ -45,7 +45,7 @@ def _reconciler(deals, orders):
 
 
 def test_mt5_resolver_accepts_exactly_one_deal():
-    obs = _reconciler([_raw()], []).resolve(_identity())
+    obs = _reconciler([_raw()], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
     assert obs.effective_outcome is ReconciliationOutcome.EXECUTED
     assert obs.external_id == "123"
     assert obs.external_id_kind is ExternalIdentityKind.DEAL
