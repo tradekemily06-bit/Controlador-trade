@@ -79,7 +79,8 @@ def test_demo_order_checks_before_send_and_confirms():
     result = adapter.execute(request())
 
     assert result.accepted is True
-    assert result.external_id == "123456"
+    assert result.external_id == "654321"
+    assert result.external_id_kind == "DEAL"
     order_send = next(call for call in mt5.calls if isinstance(call, tuple) and call[0] == "order_send")
     assert order_send[1]["comment"].startswith("CTD-")
     assert len(order_send[1]["comment"]) == 20
