@@ -42,9 +42,10 @@ def build_global_operational_barrier(
             components.append(SafetyComponent("execution-recovery", recovery.can_resume is True, recovery.message, RemediationMode.MANUAL_REQUIRED))
         except Exception as exc:
             components.append(SafetyComponent("execution-recovery", False, f"estado de recuperação indisponível: {type(exc).__name__}"))
-    try:
-        health = runtime.health.assess()
-        components.append(SafetyComponent("runtime-health", health.state.value == "HEALTHY", health.message, RemediationMode.MANUAL_REQUIRED))
-    except Exception as exc:
-        components.append(SafetyComponent("runtime-health", False, f"saúde do runtime indisponível: {type(exc).__name__}"))
+    if include_recovery:
+        try:
+            health = runtime.health.assess()
+            components.append(SafetyComponent("runtime-health", health.state.value == "HEALTHY", health.message, RemediationMode.MANUAL_REQUIRED))
+        except Exception as exc:
+            components.append(SafetyComponent("runtime-health", False, f"saúde do runtime indisponível: {type(exc).__name__}"))
     return GlobalOperationalBarrier(components, dispatch_fence_provider=runtime.safety_store.coordination_lock)
