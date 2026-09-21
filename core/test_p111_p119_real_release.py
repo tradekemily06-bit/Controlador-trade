@@ -39,6 +39,14 @@ class NoExternalIdAdapter:
         return ExecutionResult(True, "accepted but reference missing", None)
 
 
+class RejectedWithExternalIdAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(False, "adapter reported rejection after broker response", "external-rejected-1")
+
+
 class UnknownAdapter:
     def is_available(self):
         return True
