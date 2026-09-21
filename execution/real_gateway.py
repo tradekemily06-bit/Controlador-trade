@@ -236,6 +236,16 @@ class RealExecutionGateway:
 
         try:
             correlation = self._gateway.correlation_for(broker, request)
+            # REAL recovery requires a deterministic provider-side correlation.
+            # Without it, a later read could match an unrelated execution with
+            # the same symbol/side/amount. Never create a REAL request that
+            # cannot carry a durable, broker-searchable identity.
+            if not isinstance(correlation, str) or not correlation.strip():
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "adapter REAL sem correlation determinística para reconciliação; despacho bloqueado.",
+                )
+            correlation = correlation.strip()
             self._ledger.reserve(
                 request_id,
                 context={
@@ -247,6 +257,10 @@ class RealExecutionGateway:
                     "duration_seconds": int(request.duration_seconds),
                     "request_id": request_id,
                     "correlation": correlation,
+                    # Provider is bound to the authorized broker identity so
+                    # read-side evidence from another provider cannot close
+                    # this request accidentally.
+                    "provider": broker.strip().lower(),
                 },
             )
             self._lifecycle.put(
@@ -534,12 +548,16 @@ class RealExecutionGateway:
                 raise ValueError("context REAL possui amount inválido.")
             if not math.isclose(float(observation.amount), float(expected_amount), rel_tol=0.0, abs_tol=1e-9):
                 raise ValueError("evidência externa não corresponde ao amount persistido da request.")
+            expected_provider = context.get("provider", context.get("broker"))
+            if not isinstance(expected_provider, str) or not expected_provider.strip():
+                raise ValueError("context REAL possui provider inválido.")
+            if observation.provider.strip().lower() != expected_provider.strip().lower():
+                raise ValueError("evidência externa não corresponde ao provider/broker autorizado.")
             expected_correlation = context.get("correlation")
-            if expected_correlation is not None:
-                if not isinstance(expected_correlation, str) or not expected_correlation.strip():
-                    raise ValueError("context REAL possui correlation inválida.")
-                if observation.correlation.strip() != expected_correlation.strip():
-                    raise ValueError("evidência externa não corresponde à correlation persistida da request.")
+            if not isinstance(expected_correlation, str) or not expected_correlation.strip():
+                raise ValueError("context REAL exige correlation persistida.")
+            if observation.correlation.strip() != expected_correlation.strip():
+                raise ValueError("evidência externa não corresponde à correlation persistida da request.")
 
         outcome = observation.effective_outcome
         # Only definitive broker answers may close UNKNOWN. "Not found", delayed
