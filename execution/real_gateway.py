@@ -331,6 +331,7 @@ class RealExecutionGateway:
                 self._lifecycle.reconcile_pending(
                     request_id, ExecutionLifecycleState.REJECTED,
                     updated_at=datetime.now(timezone.utc), message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
                 )
 
     def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort) -> None:
@@ -382,6 +383,7 @@ class RealExecutionGateway:
                     ExecutionLifecycleState.REJECTED,
                     updated_at=datetime.now(timezone.utc),
                     message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
                 )
             return
 
@@ -463,6 +465,7 @@ class RealExecutionGateway:
                     "ciclo sincronizado após janela de crash usando evidência externa "
                     f"somente leitura ({observation.source})."
                 ),
+                capability=LIFECYCLE_RECOVERY_CAPABILITY,
             )
         elif lifecycle.state is ExecutionLifecycleState.UNKNOWN:
             self._lifecycle.reconcile(
