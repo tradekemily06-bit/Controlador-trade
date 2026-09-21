@@ -24,7 +24,7 @@ def test_default_demo_registry_registers_ic_markets_without_connecting():
 
 def test_default_demo_registry_can_override_symbol():
     registry = build_demo_registry(symbol="EURUSD")
-    adapter = registry.get(IC_MARKETS_MT5_DEMO)
+    adapter = registry.get(IC_MARKETS_MT5_DEMO, capability=_BROKER_ACCESS_CAPABILITY)
 
     assert adapter.config.symbol == "EURUSD"
 
