@@ -67,3 +67,31 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_accepted_external_id_survives_restart(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("req-ext")
+    ledger.mark_accepted("req-ext", external_id="broker-123")
+
+    restored = ExecutionLedger(path)
+    assert restored.status("req-ext").value == "ACCEPTED"
+    assert restored.external_id("req-ext") == "broker-123"
+
+
+def test_legacy_status_only_format_remains_readable(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text('{"legacy": "ACCEPTED"}', encoding="utf-8")
+    ledger = ExecutionLedger(path)
+    assert ledger.status("legacy").value == "ACCEPTED"
+    assert ledger.external_id("legacy") is None
+
+
+def test_external_id_cannot_be_reused_for_another_request(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-a")
+    ledger.mark_accepted("req-a", external_id="broker-123")
+    ledger.reserve("req-b")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.mark_accepted("req-b", external_id="broker-123")
