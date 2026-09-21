@@ -27,6 +27,23 @@ def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_p
     assert snapshot["market_data"]["health"] == "NOT_CONNECTED"
 
 
+
+def test_operational_runtime_restores_durable_kill_switch_after_restart(tmp_path):
+    first = build_operational_runtime(tmp_path)
+    from core.operational_safety_store import OperationalSafetyStore
+    from core.decision_audit import DecisionAudit
+
+    store = OperationalSafetyStore(tmp_path / "safety.json")
+    store.save(DecisionAudit(), first.kill_switch)
+    first.kill_switch.activate("restart-safe block")
+    store.save(DecisionAudit(), first.kill_switch)
+
+    restored = build_operational_runtime(tmp_path)
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "restart-safe block"
+    assert restored.kill_switch.allows_execution() is False
+
+
 def test_pending_runtime_is_visible_and_blocks_operation(tmp_path):
     runtime = build_operational_runtime(tmp_path)
     service = EcosystemService(operational_runtime=runtime)
