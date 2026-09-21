@@ -176,8 +176,8 @@ def test_ledger_rejects_reconciled_executed_without_external_id(tmp_path: Path):
 def test_persisted_ledger_rejects_duplicate_external_id(tmp_path):
     path = tmp_path / "ledger.json"
     path.write_text(
-        '{"req-1":{"status":"ACCEPTED","external_id":"broker-dup"},'
-        '"req-2":{"status":"ACCEPTED","external_id":"broker-dup"}}',
+        '{"req-1":{"state":"ACCEPTED","external_id":"broker-dup"},'
+        '"req-2":{"state":"ACCEPTED","external_id":"broker-dup"}}',
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="external_id duplicado"):
