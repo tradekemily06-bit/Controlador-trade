@@ -86,7 +86,7 @@ def _authorization():
 
 
 def _admission(auth):
-    return RealAdmissionBoundary().admit(
+    return RealAdmissionBoundary._internal().admit(
         admission_id="adm", audit_id="a116", audit_verified=True,
         authorization_active=auth.active, safety_ready=True,
         broker_available=True, broker_id="fake",
@@ -94,7 +94,7 @@ def _admission(auth):
 
 
 def _safety(auth):
-    return RealSafetyGate().evaluate(
+    return RealSafetyGate._internal().evaluate(
         authorization_active=auth.active, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
@@ -133,7 +133,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
-    p119 = RealReleaseClosureBoundary().close(
+    p119 = RealReleaseClosureBoundary._internal().close(
         release_id="release", p116_verified=p116.verified, p117_admitted=p117.admitted,
         p118_available=True, multi_broker_boundary=True,
     )
@@ -158,7 +158,7 @@ def test_real_authorization_is_explicit():
 
 
 def test_real_safety_fails_closed():
-    report = RealSafetyGate().evaluate(
+    report = RealSafetyGate._internal().evaluate(
         authorization_active=True, kill_switch_clear=False,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
     )
@@ -177,7 +177,7 @@ def test_real_gateway_live_kill_switch_blocks_dispatch(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="kill-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="kill-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
 
     result = gateway.execute(broker="fake", request_id="kill-live", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
 
@@ -192,15 +192,15 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry.register("fake", adapter)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
     auth = RealExecutionAuthorizationBoundary._internal().issue(authorization_id="a", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=False, real_execution_allowed=False)
-    admission = RealAdmissionBoundary().admit(
+    admission = RealAdmissionBoundary._internal().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
     )
-    safety = RealSafetyGate().evaluate(
+    safety = RealSafetyGate._internal().evaluate(
         authorization_active=False, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
     )
-    release = RealReleaseClosureBoundary().close(release_id="blocked-release", p116_verified=False, p117_admitted=False, p118_available=False, multi_broker_boundary=False)
+    release = RealReleaseClosureBoundary._internal().close(release_id="blocked-release", p116_verified=False, p117_admitted=False, p118_available=False, multi_broker_boundary=False)
     result = gateway.execute(broker="fake", request_id="blocked", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
@@ -215,7 +215,7 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="unknown-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="unknown-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
@@ -233,7 +233,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
     try:
@@ -255,7 +255,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="crashed-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="crashed-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
@@ -278,7 +278,7 @@ def test_real_reservation_creates_pending_lifecycle_before_dispatch(tmp_path: Pa
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="pending-release",
         p116_verified=True,
         p117_admitted=True,
@@ -325,7 +325,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     admission = _admission(auth)
     safety = _safety(auth)
     malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL, request_id="bad")
-    release = RealReleaseClosureBoundary().close(release_id="bad-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="bad-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
@@ -339,7 +339,7 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="missing-id-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
+    release = RealReleaseClosureBoundary._internal().close(release_id="missing-id-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
@@ -414,7 +414,7 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     )
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="mismatch-release",
         p116_verified=True,
         p117_admitted=True,
@@ -462,7 +462,7 @@ def test_real_gateway_blocks_new_dispatch_when_recovery_is_required(tmp_path: Pa
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="recovery-block",
         p116_verified=True,
         p117_admitted=True,
@@ -497,7 +497,7 @@ def test_real_gateway_rejects_request_id_mismatch(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="request-id-mismatch",
         p116_verified=True,
         p117_admitted=True,
@@ -538,7 +538,7 @@ def test_real_gateway_requires_registered_adapter_identity(tmp_path: Path):
     )
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="no-id-release",
         p116_verified=True,
         p117_admitted=True,
@@ -645,7 +645,7 @@ def test_real_adapter_exception_is_unknown_not_rejected(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="exception-unknown",
         p116_verified=True,
         p117_admitted=True,
@@ -690,7 +690,7 @@ def test_real_accept_persist_crash_keeps_request_uncertain_until_reconciliation(
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="persist-crash-accepted",
         p116_verified=True,
         p117_admitted=True,
@@ -756,7 +756,7 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="persist-crash-rejected",
         p116_verified=True,
         p117_admitted=True,
@@ -960,7 +960,7 @@ def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(
+    release = RealReleaseClosureBoundary._internal().close(
         release_id="bind-crash-recovery",
         p116_verified=True,
         p117_admitted=True,
@@ -1013,3 +1013,17 @@ def test_real_authorization_boundary_cannot_be_constructed_externally():
         assert "emissor REAL interno" in str(exc)
     else:
         raise AssertionError("emissor REAL não pode ser instanciado externamente")
+
+
+def test_real_authority_boundaries_cannot_be_constructed_externally():
+    for boundary, marker in (
+        (RealAdmissionBoundary, "admissão REAL"),
+        (RealSafetyGate, "segurança REAL"),
+        (RealReleaseClosureBoundary, "release REAL"),
+    ):
+        try:
+            boundary()
+        except ValueError as exc:
+            assert marker in str(exc)
+        else:
+            raise AssertionError("boundary REAL não pode ser instanciada externamente")
