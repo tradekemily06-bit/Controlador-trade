@@ -71,7 +71,7 @@ class FakeReconciler:
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
         self.calls += 1
-        return RealReconciliationEvidenceBoundary().issue(
+        return self._boundary.issue(
             request_id=request_id,
             executed=self.executed,
             external_id=self.external_id if self.executed else None,
@@ -895,6 +895,24 @@ def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
 
     assert lifecycle.get("local-reject").state is ExecutionLifecycleState.REJECTED
     assert ledger.status("local-reject") is ExecutionLedgerStatus.REJECTED
+
+
+def test_reconciliation_evidence_capability_is_instance_bound():
+    first = RealReconciliationEvidenceBoundary()
+    second = RealReconciliationEvidenceBoundary()
+    try:
+        second.issue(
+            request_id="cross-boundary",
+            executed=False,
+            external_id=None,
+            observed_at=datetime.now(timezone.utc),
+            source="fake",
+            provider_capability=first.provider_capability,
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("provider capability must not cross evidence-boundary instances")
 
 
 def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
