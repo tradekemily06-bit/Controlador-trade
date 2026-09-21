@@ -50,7 +50,7 @@ class SandboxBroker:
             return result
 
         if scenario is SandboxScenario.UNKNOWN:
-            result = BrokerOrderResult(True, "ambiguous", None)
+            result = BrokerOrderResult(False, "ambiguous", None, ambiguous=True)
             self._requests[request.request_id] = result
             return result
 
@@ -81,9 +81,9 @@ class SandboxValidationBoundary:
                 scenario, True, first.external_id, status, duplicate_blocked, first.message
             )
 
-        if first.accepted and first.external_id is None:
+        if first.ambiguous:
             return SandboxValidationResult(
-                scenario, True, None, ExternalOrderStatus.UNKNOWN, duplicate_blocked, first.message
+                scenario, False, None, ExternalOrderStatus.UNKNOWN, duplicate_blocked, first.message
             )
 
         return SandboxValidationResult(
