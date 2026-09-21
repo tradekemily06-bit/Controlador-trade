@@ -81,6 +81,9 @@ class ExecutionLedger:
             if states.get(request_id) in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
                 raise ValueError("ledger de execução inválido: estado não executado possui external_id.")
             external_ids[request_id] = external_id.strip()
+        for request_id, status in states.items():
+            if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and request_id not in external_ids:
+                raise ValueError("ledger de execução inválido: RECONCILED_EXECUTED exige external_id.")
         return external_ids
 
     def _write(self) -> None:
