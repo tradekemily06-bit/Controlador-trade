@@ -1366,3 +1366,89 @@ def test_reconciliation_requires_explicit_external_identity_kind_for_execution(t
         provider_capability=boundary.provider_capability,
     )
     assert not validate_observation("identity-kind", observation)
+
+
+def test_real_gateway_blocks_adapter_without_recovery_correlation_before_reservation(tmp_path: Path):
+    class NoCorrelationAdapter(FakeAdapter):
+        @staticmethod
+        def correlation_for(request):
+            return None
+
+    registry = BrokerRegistry()
+    adapter = NoCorrelationAdapter()
+    registry.register("fake", adapter)
+    ledger_path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(ledger_path)
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+        _real_kill_switch(tmp_path, ledger_path=ledger_path),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary._internal().close(
+        release_id="missing-correlation",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="missing-correlation",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+    assert ledger.status("missing-correlation") is None
+
+
+def test_real_reconciliation_rejects_evidence_from_wrong_provider(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("wrong-provider", context=_reconciliation_context("wrong-provider"))
+    ledger.mark_unknown("wrong-provider")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        _real_kill_switch(tmp_path),
+    )
+    boundary = RealReconciliationEvidenceBoundary._internal()
+
+    class WrongProviderReconciler:
+        def lookup(self, request_id):
+            return boundary.issue(
+                request_id=request_id,
+                executed=True,
+                external_id="external-wrong-provider",
+                observed_at=datetime.now(timezone.utc),
+                source="read-only-broker-reconciler",
+                provider_capability=boundary.provider_capability,
+                external_id_kind=ExternalIdentityKind.EXECUTION,
+                provider="other-broker",
+                account_id="demo-account",
+                symbol="TEST",
+                side="BUY",
+                amount=10.0,
+                correlation=f"FAKE-{request_id}",
+            )
+
+    try:
+        gateway.reconcile_unknown("wrong-provider", reconciler=WrongProviderReconciler())
+    except ValueError as exc:
+        assert "provider/broker" in str(exc)
+    else:
+        raise AssertionError("evidence from another provider must not close REAL recovery")
+
+    assert ledger.status("wrong-provider") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("wrong-provider") is None
