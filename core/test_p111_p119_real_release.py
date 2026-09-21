@@ -212,6 +212,39 @@ def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Pat
         raise AssertionError("stale ledger must not reserve the same REAL request_id")
 
 
+def test_real_gateway_rejects_aguardar_before_adapter(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="aguardar", request=ExecutionRequest("TEST", Signal.AGUARDAR, 10.0, 60, ExecutionMode.REAL, "aguardar"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_requires_matching_request_identity(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="gateway-id",
+        request=ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, "different-id"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
 def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
