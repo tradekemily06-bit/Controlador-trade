@@ -61,7 +61,7 @@ def test_reconcile_request_uses_durable_external_id_and_projects_terminal_state(
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("req-42")
-    ledger.mark_accepted("req-42", external_id="broker-42")
+    ledger.attach_external_id("req-42", "broker-42")
     lifecycle.put(
         ExecutionLifecycleRecord(
             "req-42",
