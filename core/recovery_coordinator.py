@@ -53,6 +53,27 @@ class RecoveryCoordinator:
         self.execution_ledger = execution_ledger
         self.memory = memory
 
+    def repair_terminal_lifecycle_projection(self, request_id: str) -> None:
+        """Explicitly repair Lifecycle from a terminal Ledger record; never contacts or replays the broker."""
+        status = self.execution_ledger.status(request_id)
+        if status is ExecutionLedgerStatus.ACCEPTED:
+            state = ExecutionLifecycleState.ACCEPTED
+        elif status is ExecutionLedgerStatus.REJECTED:
+            state = ExecutionLifecycleState.REJECTED
+        elif status is ExecutionLedgerStatus.RECONCILED_EXECUTED:
+            state = ExecutionLifecycleState.ACCEPTED
+        elif status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+            state = ExecutionLifecycleState.REJECTED
+        else:
+            raise ValueError("somente estados terminais do Ledger podem reparar a projeção.")
+
+        self.lifecycle_store.project_terminal(
+            request_id,
+            state,
+            updated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+            message="projeção Lifecycle reparada a partir do Ledger terminal; nenhuma ordem enviada",
+        )
+
     def assess(self) -> RecoveryAssessment:
         try:
             checkpoint = self.checkpoint_store.load()
