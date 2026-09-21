@@ -11,7 +11,7 @@ from core.p119_release_closure import RealReleaseClosure
 from core.kill_switch import KillSwitch
 from execution.adapter_gateway import BrokerAdapterGateway, _REAL_DISPATCH_CAPABILITY
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore, LIFECYCLE_RECOVERY_CAPABILITY
 from execution.execution_coordination import ExecutionCoordinationLock
 from execution.real_reconciliation import RealReconciliationPort, validate_observation
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -325,7 +325,7 @@ class RealExecutionGateway:
             if lifecycle is None:
                 self._lifecycle.reconcile_missing(
                     request_id, ExecutionLifecycleState.REJECTED,
-                    updated_at=datetime.now(timezone.utc), message=message,
+                    updated_at=datetime.now(timezone.utc), message=message, capability=LIFECYCLE_RECOVERY_CAPABILITY,
                 )
             else:
                 self._lifecycle.reconcile_pending(
