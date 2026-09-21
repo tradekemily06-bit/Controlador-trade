@@ -113,3 +113,54 @@ def test_coordination_lock_serializes_independent_processes(tmp_path: Path):
         if first.poll() is None:
             first.kill()
             first.wait(timeout=5)
+
+
+def test_ledger_cross_process_same_request_id_allows_only_one_reservation(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    child = textwrap.dedent(
+        """
+        import sys
+        from execution.execution_ledger import ExecutionLedger
+        try:
+            ExecutionLedger(sys.argv[1]).reserve("same-request")
+        except ValueError:
+            raise SystemExit(3)
+        """
+    )
+    first = subprocess.Popen([sys.executable, "-c", child, str(ledger_path)])
+    second = subprocess.Popen([sys.executable, "-c", child, str(ledger_path)])
+    assert {first.wait(timeout=10), second.wait(timeout=10)} == {0, 3}
+    assert ExecutionLedger(ledger_path).records() == ("same-request",)
+
+
+def test_lifecycle_cross_process_terminal_transition_cannot_regress(tmp_path: Path):
+    lifecycle_path = tmp_path / "lifecycle.json"
+    lifecycle = ExecutionLifecycleStore(lifecycle_path)
+    lifecycle.put(
+        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+            "shared-request",
+            __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.PENDING,
+            __import__("datetime", fromlist=["datetime"]).datetime.now(__import__("datetime", fromlist=["timezone"]).timezone.utc),
+        )
+    )
+    child = textwrap.dedent(
+        """
+        import sys
+        from datetime import datetime, timezone
+        from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+        store = ExecutionLifecycleStore(sys.argv[1])
+        state = ExecutionLifecycleState.ACCEPTED if sys.argv[2] == "accepted" else ExecutionLifecycleState.REJECTED
+        try:
+            store.put(ExecutionLifecycleRecord("shared-request", state, datetime.now(timezone.utc)))
+        except ValueError:
+            raise SystemExit(3)
+        """
+    )
+    first = subprocess.Popen([sys.executable, "-c", child, str(lifecycle_path), "accepted"])
+    second = subprocess.Popen([sys.executable, "-c", child, str(lifecycle_path), "rejected"])
+    results = {first.wait(timeout=10), second.wait(timeout=10)}
+    assert results == {0, 3}
+    assert ExecutionLifecycleStore(lifecycle_path).get("shared-request").state in (
+        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.ACCEPTED,
+        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.REJECTED,
+    )
