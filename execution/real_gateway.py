@@ -224,6 +224,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter da requisição difere da autorização.")
 
         try:
+            correlation = self._gateway.correlation_for(broker, request)
             self._ledger.reserve(
                 request_id,
                 context={
@@ -234,6 +235,7 @@ class RealExecutionGateway:
                     "amount": float(request.amount),
                     "duration_seconds": int(request.duration_seconds),
                     "request_id": request_id,
+                    "correlation": correlation,
                 },
             )
             self._lifecycle.put(
