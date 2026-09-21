@@ -867,6 +867,35 @@ def test_real_reconciliation_rejects_mismatched_external_observation(tmp_path: P
     assert ledger.status("observed-request") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("observed-request") is None
 
+def test_reconciliation_rejects_not_executed_evidence_when_external_id_is_durable(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("contradictory-evidence")
+    ledger.bind_external_id("contradictory-evidence", "external-1")
+    ledger.mark_unknown("contradictory-evidence")
+
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+    )
+
+    try:
+        gateway.reconcile_unknown(
+            "contradictory-evidence",
+            reconciler=FakeReconciler("contradictory-evidence", executed=False),
+        )
+    except ValueError as exc:
+        assert "contradiz" in str(exc)
+    else:
+        raise AssertionError("NOT_EXECUTED evidence must not erase a durable external identity")
+
+    assert ledger.status("contradictory-evidence") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.external_id("contradictory-evidence") == "external-1"
+    assert lifecycle.get("contradictory-evidence") is None
+
+
 def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
