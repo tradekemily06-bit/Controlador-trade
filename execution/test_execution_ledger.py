@@ -206,3 +206,19 @@ def test_persisted_ledger_rejects_duplicate_external_id(tmp_path):
         ExecutionLedger(path)
 
 # CI trigger: persisted-state audit coverage.
+
+
+def test_ledger_canonicalizes_request_id_whitespace(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve("  canonical-id  ")
+
+    assert ledger.status("canonical-id") is ExecutionLedgerStatus.RESERVED
+    assert ledger.records() == ("canonical-id",)
+
+    try:
+        ledger.reserve("canonical-id")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("request_id whitespace aliases must not create a second reservation")
