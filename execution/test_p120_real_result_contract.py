@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.models import Signal
+from core.kill_switch import KillSwitch
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
@@ -139,3 +140,44 @@ def test_real_gateway_projects_unknown_lifecycle(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert lifecycle.get("unknown-1").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_gateway_persists_accepted_external_id(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", AcceptedAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    authorization, admission, safety = _auth_and_safety()
+
+    result = gateway.execute(
+        broker="fake", request_id="accepted-ext", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert ExecutionLedger(tmp_path / "ledger.json").external_id("accepted-ext") == "external-1"
+
+
+def test_real_gateway_kill_switch_is_rechecked_at_dispatch(tmp_path: Path):
+    class TripKillSwitch:
+        def allows_execution(self):
+            return False
+
+    registry = BrokerRegistry()
+    adapter = AcceptedAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        kill_switch=TripKillSwitch(),
+    )
+    authorization, admission, safety = _auth_and_safety()
+
+    result = gateway.execute(
+        broker="fake", request_id="blocked-by-kill-switch", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert ledger.status("blocked-by-kill-switch") is None
