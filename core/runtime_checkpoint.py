@@ -55,7 +55,10 @@ class RuntimeCheckpointStore:
                     ),
                     encoding="utf-8",
                 )
-                os.replace(temporary, self.path)
+                with temporary.open("rb+") as temp_file:
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temporary, self.path)
             finally:
                 self._release_lock(lock_file)
 
