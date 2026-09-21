@@ -27,6 +27,17 @@ def _request(path: str, method: str = "GET"):
     return captured["status"], json.loads(body)
 
 
+def test_public_saas_blocks_multi_instance_before_generic_routes(monkeypatch):
+    monkeypatch.setattr(app, "saas_public_mode", lambda: True)
+    monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
+    monkeypatch.setenv("CONTROLADOR_MULTI_INSTANCE", "1")
+
+    status, payload = _request("/api/health")
+
+    assert status.startswith("503 ")
+    assert "multi-instance" in payload["error"]
+
+
 def test_public_saas_blocks_unscoped_learning_endpoint(monkeypatch):
     monkeypatch.setattr(app, "saas_public_mode", lambda: True)
     monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
