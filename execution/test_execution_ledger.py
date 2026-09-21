@@ -195,3 +195,5 @@ def test_persisted_ledger_rejects_duplicate_external_id(tmp_path):
         ExecutionLedger(path)
 
 # CI trigger: persisted-state audit coverage.
+
+# CI trigger: continue end-to-end persisted-state audit.
