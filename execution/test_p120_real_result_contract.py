@@ -159,9 +159,14 @@ def test_real_gateway_persists_accepted_external_id(tmp_path: Path):
 
 
 def test_real_gateway_kill_switch_is_rechecked_at_dispatch(tmp_path: Path):
-    class TripKillSwitch:
+    class TripKillSwitch(KillSwitch):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
         def allows_execution(self):
-            return False
+            self.calls += 1
+            return self.calls < 2
 
     registry = BrokerRegistry()
     adapter = AcceptedAdapter()
