@@ -29,6 +29,14 @@ class OperationalSafetyStore:
     def _lock(self):
         return exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock"))
 
+    @property
+    def coordination_lock_path(self) -> Path:
+        """Shared execution/safety fence used by dispatch and safety-state writers."""
+        return self.path.with_name(f".{self.path.name}.dispatch.lock")
+
+    def coordination_lock(self):
+        return exclusive_file_lock(self.coordination_lock_path)
+
     @staticmethod
     def _snapshot(data: object) -> DecisionSnapshot:
         if not isinstance(data, dict):
@@ -204,8 +212,9 @@ class OperationalSafetyStore:
     def replace_with_fail_closed_state(self, reason: str) -> None:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason é obrigatório.")
-        with self._lock():
-            self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
+        with self.coordination_lock():
+            with self._lock():
+                self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
 
     def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
         if not isinstance(audit, DecisionAudit):
@@ -213,33 +222,35 @@ class OperationalSafetyStore:
         if not isinstance(kill_switch, (KillSwitch, KillSwitchState)):
             raise TypeError("kill_switch deve ser KillSwitch ou KillSwitchState.")
         state = kill_switch.state
-        with self._lock():
-            payload = self._read_payload()
-            normalized_execution = [self._execution_audit_item(item) for item in payload.get("execution_audit", [])]
-            merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
-            persisted_state = payload.get("kill_switch", {})
-            if not isinstance(persisted_state, dict):
-                raise ValueError("estado do kill switch inválido.")
-            safe_state = {
-                "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
-                "reason": state.reason if state.enabled else persisted_state.get("reason"),
-            }
-            self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
+        with self.coordination_lock():
+            with self._lock():
+                payload = self._read_payload()
+                normalized_execution = [self._execution_audit_item(item) for item in payload.get("execution_audit", [])]
+                merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
+                persisted_state = payload.get("kill_switch", {})
+                if not isinstance(persisted_state, dict):
+                    raise ValueError("estado do kill switch inválido.")
+                safe_state = {
+                    "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
+                    "reason": state.reason if state.enabled else persisted_state.get("reason"),
+                }
+                self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
 
     def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
             raise TypeError("enabled deve ser bool.")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
             raise ValueError("reason é obrigatório ao ativar o kill switch.")
-        with self._lock():
-            payload = self._read_payload()
-            persisted = payload.get("kill_switch", {})
-            if not isinstance(persisted, dict):
-                raise ValueError("estado do kill switch inválido.")
-            state = KillSwitchState(enabled=enabled, reason=reason if enabled else None)
-            payload["kill_switch"] = {"enabled": state.enabled, "reason": state.reason}
-            self._write_payload(payload)
-            return state
+        with self.coordination_lock():
+            with self._lock():
+                payload = self._read_payload()
+                persisted = payload.get("kill_switch", {})
+                if not isinstance(persisted, dict):
+                    raise ValueError("estado do kill switch inválido.")
+                state = KillSwitchState(enabled=enabled, reason=reason if enabled else None)
+                payload["kill_switch"] = {"enabled": state.enabled, "reason": state.reason}
+                self._write_payload(payload)
+                return state
 
     def load(self) -> tuple[DecisionAudit, KillSwitchState]:
         with self._lock():
