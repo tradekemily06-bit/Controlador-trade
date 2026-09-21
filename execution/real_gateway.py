@@ -41,6 +41,7 @@ class RealExecutionGateway:
         ledger: ExecutionLedger,
         lifecycle: ExecutionLifecycleStore,
         kill_switch: KillSwitch,
+        reconciler: RealReconciliationPort | None = None,
     ) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
@@ -55,6 +56,7 @@ class RealExecutionGateway:
         self._lifecycle = lifecycle
         self._coordination = ExecutionCoordinationLock(ledger.path)
         self._kill_switch = kill_switch
+        self._reconciler = reconciler
 
     @staticmethod
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
@@ -142,6 +144,11 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira de segurança REAL não está pronta.")
         if not self._kill_switch.allows_execution():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativo no momento da execução REAL.")
+        if self._reconciler is None or not callable(getattr(self._reconciler, "lookup", None)):
+            return RealGatewayResult(
+                RealGatewayStatus.BLOCKED,
+                "execução REAL bloqueada: reconciliador externo somente leitura não configurado.",
+            )
         if not self._valid_request(request_id, request):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request REAL inválido.")
         # Canonicalize identity before any persistence or broker correlation.
@@ -346,14 +353,15 @@ class RealExecutionGateway:
                     updated_at=datetime.now(timezone.utc), message=message,
                 )
 
-    def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort) -> None:
+    def reconcile_unknown(self, request_id: str, *, reconciler: RealReconciliationPort | None = None) -> None:
         """Reconcile UNKNOWN/RESERVED from read-only external broker evidence.
 
         Reconciliation never redispatches the request. A naked executed=True/False
         is deliberately not accepted because it is not evidence of broker state.
         """
         with self._coordination.acquire():
-            self._reconcile_unknown_locked(request_id, reconciler=reconciler)
+            selected = reconciler if reconciler is not None else self._reconciler
+            self._reconcile_unknown_locked(request_id, reconciler=selected)
 
     def _reconcile_unknown_locked(
         self,
