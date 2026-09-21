@@ -23,6 +23,13 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
 class FakeAdapter:
     def __init__(self, result=None, error=False, available=True):
         self.result = result or ExecutionResult(True, "accepted", "external-1")
@@ -240,7 +247,7 @@ def test_real_gateway_blocks_changed_authoritative_risk_before_dispatch(tmp_path
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
     state = _risk_state(); provider = FakeRiskStateProvider(state); auth = _authorization("risk-changed"); safety = _safety(auth)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), provider,
-                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: _test_real_barrier())
     provider.state = OperationalState(balance=state.balance, equity=state.equity, realized_pnl=state.realized_pnl,
                                       unrealized_pnl=state.unrealized_pnl, trades_today=1,
                                       consecutive_losses=state.consecutive_losses, open_positions=state.open_positions,
@@ -255,7 +262,7 @@ def test_real_gateway_blocks_provider_failure_without_leaking_detail(tmp_path: P
         def current_risk_state(self): raise RuntimeError("SECRET_RISK_PROVIDER_DETAIL")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("risk-provider-fails"); safety = _safety(auth)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), BrokenProvider(),
-                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: _test_real_barrier())
     result = gateway.execute(broker="fake", request_id="risk-provider-fails", request=_request("risk-provider-fails"), authorization=auth,
                              admission=_admission("risk-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_RISK_PROVIDER_DETAIL" not in result.message
@@ -265,7 +272,7 @@ def test_real_gateway_blocks_stale_safety_before_dispatch(tmp_path: Path):
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-changed"); admitted_safety = _safety(auth)
     provider = FakeRealSafetyProvider(admitted_safety)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), provider,
-                                   operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   operational_barrier_provider=lambda: _test_real_barrier())
     provider.report = RealSafetyGate().evaluate(authorization_active=True, kill_switch_clear=False, market_healthy=True,
                                                 recovery_safe=True, risk_approved=True, broker_available=True)
     result = gateway.execute(broker="fake", request_id="safety-changed", request=_request("safety-changed"), authorization=auth,
@@ -277,7 +284,7 @@ def test_real_gateway_blocks_safety_provider_failure_without_leaking_detail(tmp_
     class BrokenSafetyProvider:
         def current_real_safety(self): raise RuntimeError("SECRET_SAFETY_PROVIDER_DETAIL")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-provider-fails"); safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: _test_real_barrier())
     result = gateway.execute(broker="fake", request_id="safety-provider-fails", request=_request("safety-provider-fails"), authorization=auth,
                              admission=_admission("safety-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_SAFETY_PROVIDER_DETAIL" not in result.message
