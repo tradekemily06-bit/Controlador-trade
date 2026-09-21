@@ -77,6 +77,7 @@ class RecoveryCoordinator:
                 ExecutionLedgerStatus.RECONCILED_EXECUTED,
                 ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
             )
+            and self.execution_ledger.external_reference_required(request_id)
             and self.execution_ledger.external_id(request_id) is None
         ]
         inconsistent = [
