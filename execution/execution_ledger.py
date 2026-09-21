@@ -38,7 +38,7 @@ class ExecutionLedger:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
         self._states = self._decode(payload)
-        self._external_ids = self._decode_external_ids(payload)
+        self._external_ids = self._decode_external_ids(payload, self._states)
 
     @staticmethod
     def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
@@ -62,7 +62,9 @@ class ExecutionLedger:
         return states
 
     @staticmethod
-    def _decode_external_ids(payload: object) -> dict[str, str]:
+    def _decode_external_ids(
+        payload: object, states: dict[str, ExecutionLedgerStatus]
+    ) -> dict[str, str]:
         if not isinstance(payload, dict):
             return {}
         external_ids: dict[str, str] = {}
