@@ -93,6 +93,11 @@ class RealExecutionGateway:
             barrier = provider()
             if not isinstance(barrier, GlobalOperationalBarrier):
                 return "provedor da barreira operacional global retornou um objeto inválido"
+            # REAL requires the same coordination fence used by kill-switch and
+            # operational-safety writers. A last read without that fence is only
+            # advisory and still permits a check-to-use race.
+            if not barrier.has_dispatch_fence:
+                return "barreira operacional global não possui fence canônica de dispatch; execução REAL bloqueada"
             decision = barrier.evaluate()
         except Exception as exc:
             return f"estado da barreira operacional global indisponível: {type(exc).__name__}"
@@ -318,10 +323,21 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "identidade de risco da requisição difere do snapshot; REAL bloqueado.")
         try:
             with exclusive_file_lock(self._dispatch_lock_path):
-                return self._dispatch_locked(
-                    broker, request_id, request, safety, snapshot,
-                    authorization, admission,
-                )
+                # Lock order is canonical: dispatch fence -> operational safety
+                # fence -> ledger mutations. Safety writers acquire only the
+                # second fence, so kill-switch activation cannot race the final
+                # safety read and broker dispatch.
+                barrier = self._operational_barrier_provider()
+                if not isinstance(barrier, GlobalOperationalBarrier) or not barrier.has_dispatch_fence:
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira operacional global sem fence canônica de dispatch; REAL bloqueado")
+                try:
+                    with barrier.dispatch_fence():
+                        return self._dispatch_locked(
+                            broker, request_id, request, safety, snapshot,
+                            authorization, admission,
+                        )
+                except (OSError, TypeError, RuntimeError) as exc:
+                    return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a fence de segurança REAL: {self._safe_error(exc)}")
         except OSError as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível obter a barreira de dispatch REAL: {self._safe_error(exc)}")
 
