@@ -31,6 +31,14 @@ class FakeAdapter:
         self.available = available
         self.calls = 0
 
+    def recovery_context_for(self, request):
+        return {
+            "symbol": request.symbol,
+            "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
+            "amount": float(request.amount),
+            "correlation": self.correlation_for(request),
+        }
+
     def is_available(self):
         return self.available
 
