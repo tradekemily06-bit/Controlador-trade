@@ -154,14 +154,14 @@ class ExecutionLedger:
                 self._unlock(lock_file)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
         return self._read_locked(lambda: self._states.get(request_id))
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
 
     def reserve(self, request_id: str) -> None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
 
         def mutation() -> None:
             if request_id in self._states:
@@ -172,7 +172,7 @@ class ExecutionLedger:
 
     def record(self, request_id: str) -> None:
         """Backward-compatible terminal record for existing DEMO infrastructure."""
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
 
         def mutation() -> None:
             if request_id not in self._states:
@@ -183,11 +183,11 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def external_id(self, request_id: str) -> str | None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
         return self._read_locked(lambda: self._external_ids.get(request_id))
 
     def bind_external_id(self, request_id: str, external_id: str) -> None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id não pode ser vazio.")
         value = external_id.strip()
@@ -218,7 +218,7 @@ class ExecutionLedger:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
     def reconcile(self, request_id: str, *, executed: bool, external_id: str | None = None) -> None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
 
         def mutation() -> None:
             current = self._states.get(request_id)
@@ -259,12 +259,13 @@ class ExecutionLedger:
         return self._read_locked(lambda: tuple(sorted(self._states)))
 
     @staticmethod
-    def _validate_id(request_id: str) -> None:
+    def _normalize_id(request_id: str) -> str:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        return request_id.strip()
 
     def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
-        self._validate_id(request_id)
+        request_id = self._normalize_id(request_id)
 
         def mutation() -> None:
             current = self._states.get(request_id)
