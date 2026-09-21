@@ -915,6 +915,17 @@ def test_reconciliation_evidence_capability_is_instance_bound():
         raise AssertionError("provider capability must not cross evidence-boundary instances")
 
 
+def test_reconciliation_observation_constructor_cannot_mark_itself_issued():
+    observation = RealReconciliationObservation(
+        request_id="forged",
+        executed=False,
+        external_id=None,
+        observed_at=datetime.now(timezone.utc),
+        source="forged",
+    )
+    assert observation.issued_by_boundary is False
+
+
 def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
     boundary = RealReconciliationEvidenceBoundary()
     try:
