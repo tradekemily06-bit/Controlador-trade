@@ -980,8 +980,9 @@ def test_real_gateway_rejects_unsafe_request_shape_before_reservation(tmp_path: 
 
     aguardando = ExecutionRequest("TEST", Signal.AGUARDAR, 10.0, 60, ExecutionMode.REAL)
     boolean_amount = ExecutionRequest("TEST", Signal.COMPRA, True, 60, ExecutionMode.REAL)
+    malformed_signal = ExecutionRequest("TEST", "COMPRA", 10.0, 60, ExecutionMode.REAL)
 
-    for request in (aguardando, boolean_amount):
+    for request in (aguardando, boolean_amount, malformed_signal):
         result = gateway.execute(
             broker="fake",
             request_id="shape-request",
