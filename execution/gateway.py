@@ -222,13 +222,17 @@ class ExecutionGateway:
         return replace(request, risk_state_fingerprint=snapshot.risk_state_identity)
 
     def _dispatch_with_authoritative_barriers(
-        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime
+        self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime, dispatch_lock_held: bool = False
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
         primary_lock = (
-            exclusive_file_lock(self._dispatch_lock_path)
-            if self._dispatch_lock_path is not None
-            else nullcontext()
+            nullcontext()
+            if dispatch_lock_held
+            else (
+                exclusive_file_lock(self._dispatch_lock_path)
+                if self._dispatch_lock_path is not None
+                else nullcontext()
+            )
         )
         # Fixed order: ledger/dispatch fence -> safety-store fence.
         # Safety writers acquire only the second lock, so no reverse nesting
@@ -292,40 +296,52 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
         if request_id in self._processed_request_ids:
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
-        if self._ledger is not None:
-            try:
-                self._ledger.reserve(request_id)
-            except (OSError, ValueError):
-                current = self._ledger.status(request_id)
-                if current is not None:
-                    self._processed_request_ids.add(request_id)
-                    if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-                        return GatewayResult(GatewayStatus.BLOCKED, "request_id está em estado incerto; reconciliação explícita obrigatória antes de novo envio.")
-                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível reservar request_id com segurança")
-            self._processed_request_ids.add(request_id)
-        if self._lifecycle is not None:
-            existing = self._lifecycle.get(request_id)
-            if existing is not None:
-                self._abandon_reserved_request(request_id)
-                if existing.state is ExecutionLifecycleState.UNKNOWN:
-                    return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
-            try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
-            except (OSError, ValueError):
-                self._abandon_reserved_request(request_id)
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
-        try:
-            result, barrier_error = self._dispatch_with_authoritative_barriers(request, snapshot, now=operational_now)
-        except Exception as exc:
-            self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
-            if self._incident_manager is not None:
+        # Admission and PENDING lifecycle state share the dispatch fence used by
+        # recovery. This prevents RecoveryCoordinator from returning SAFE_TO_RESUME
+        # after a concurrent execution has reserved the Ledger but before it has
+        # entered the dispatch fence.
+        admission_lock = (
+            exclusive_file_lock(self._dispatch_lock_path)
+            if self._dispatch_lock_path is not None
+            else nullcontext()
+        )
+        with admission_lock:
+            if self._ledger is not None:
                 try:
-                    self._incident_manager.open_incident(title="Falha técnica na execução", message=f"O executor apresentou uma falha inesperada ({self._safe_error(exc)}). O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.")
-                except (ValueError, RuntimeError):
-                    pass
-            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
+                    self._ledger.reserve(request_id)
+                except (OSError, ValueError):
+                    current = self._ledger.status(request_id)
+                    if current is not None:
+                        self._processed_request_ids.add(request_id)
+                        if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+                            return GatewayResult(GatewayStatus.BLOCKED, "request_id está em estado incerto; reconciliação explícita obrigatória antes de novo envio.")
+                        return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível reservar request_id com segurança")
+                self._processed_request_ids.add(request_id)
+            if self._lifecycle is not None:
+                existing = self._lifecycle.get(request_id)
+                if existing is not None:
+                    self._abandon_reserved_request(request_id)
+                    if existing.state is ExecutionLifecycleState.UNKNOWN:
+                        return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
+                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
+                except (OSError, ValueError):
+                    self._abandon_reserved_request(request_id)
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "não foi possível persistir o início da execução")
+            try:
+                result, barrier_error = self._dispatch_with_authoritative_barriers(
+                    request, snapshot, now=operational_now, dispatch_lock_held=True
+                )
+            except Exception as exc:
+                self._mark_unknown(request_id, event_time, "resultado do executor é incerto")
+                if self._incident_manager is not None:
+                    try:
+                        self._incident_manager.open_incident(title="Falha técnica na execução", message=f"O executor apresentou uma falha inesperada ({self._safe_error(exc)}). O resultado da ordem ficou UNKNOWN e novas ordens foram bloqueadas para investigação.")
+                    except (ValueError, RuntimeError):
+                        pass
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {self._safe_error(exc)}")
         if barrier_error is not None:
             self._mark_pre_dispatch_block(request_id, event_time, barrier_error)
             return GatewayResult(GatewayStatus.BLOCKED, barrier_error)
