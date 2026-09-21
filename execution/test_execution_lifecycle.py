@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import datetime, timezone
 
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore, LIFECYCLE_RECOVERY_CAPABILITY
@@ -96,3 +98,24 @@ def test_lifecycle_persistence_flushes_before_atomic_replace(tmp_path, monkeypat
     store.put(ExecutionLifecycleRecord("req-durable", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
     assert calls.index("fsync") < calls.index("replace")
     assert calls.count("fsync") >= (1 if os.name == "nt" else 2)
+
+
+def test_persisted_lifecycle_rejects_duplicate_request_id(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"dup","state":"PENDING","updated_at":"2026-01-01T00:00:00+00:00"},'
+        '{"request_id":"dup","state":"UNKNOWN","updated_at":"2026-01-01T00:00:01+00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="request_id duplicado"):
+        ExecutionLifecycleStore(path)
+
+
+def test_persisted_lifecycle_rejects_timezone_naive_timestamp(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"naive","state":"PENDING","updated_at":"2026-01-01T00:00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ExecutionLifecycleStore(path)
