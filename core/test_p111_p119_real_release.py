@@ -220,7 +220,7 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("unknown-1").state is ExecutionLifecycleState.UNKNOWN
-    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
+    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch(), FakeReconciler("test", executed=True))
     second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert second.status == RealGatewayStatus.UNKNOWN
 
@@ -1147,7 +1147,7 @@ def test_real_gateway_blocks_when_reconciliation_boundary_is_missing(tmp_path: P
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch(), FakeReconciler("test", executed=True))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
