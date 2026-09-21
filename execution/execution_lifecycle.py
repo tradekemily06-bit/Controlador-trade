@@ -68,8 +68,11 @@ class ExecutionLifecycleStore:
                     raise ValueError("ciclo de execução persistido inválido: request_id duplicado.")
                 records[record.request_id] = record
             self._records = records
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
+        except ValueError:
+            # Preserve precise lifecycle invariant failures for diagnostics.
+            raise
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
