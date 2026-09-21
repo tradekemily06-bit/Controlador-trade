@@ -358,6 +358,46 @@ class RealExecutionGateway:
         # gateway did not authorize a dispatch. Repairing only the local
         # Lifecycle must not depend on a broker query that can fail or lie.
         if ledger_status in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ) and self._ledger.external_id(request_id) is not None:
+            # A crash can happen after the Ledger terminal state is durable but
+            # before Lifecycle becomes terminal. The Ledger already contains the
+            # broker identity, so no new broker query or dispatch is necessary.
+            if lifecycle is not None and lifecycle.state is ExecutionLifecycleState.ACCEPTED:
+                return
+            if lifecycle is not None and lifecycle.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("ciclo de execução não está em estado recuperável.")
+            message = "Lifecycle recuperado a partir de aceite durável do Ledger; nenhum dispatch ou consulta externa necessária."
+            if lifecycle is None:
+                self._lifecycle.reconcile_missing(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
+                )
+            elif lifecycle.state is ExecutionLifecycleState.PENDING:
+                self._lifecycle.reconcile_pending(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
+                )
+            else:
+                self._lifecycle.reconcile(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    updated_at=datetime.now(timezone.utc),
+                    message=message,
+                )
+            return
+
+        if ledger_status in (
             ExecutionLedgerStatus.REJECTED,
             ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
         ):
