@@ -78,7 +78,15 @@ class ExecutionLedger:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
+        if os.name != "nt":
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def _lock_path(self) -> Path:
         return self.path.with_name(f".{self.path.name}.lock")
