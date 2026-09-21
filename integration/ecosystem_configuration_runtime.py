@@ -125,7 +125,7 @@ class ConfiguredEcosystemService(EcosystemService):
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
+        notification_id = f"update-{self.notifications.count() + 1}"
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
