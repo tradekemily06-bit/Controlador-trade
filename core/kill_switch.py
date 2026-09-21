@@ -97,6 +97,19 @@ class KillSwitch:
                 self._state = state
                 return state
 
+    def synchronize_under_change_fence(self, state: KillSwitchState) -> KillSwitchState:
+        """Adopt trusted state while the caller already owns the canonical fence.
+
+        This avoids re-acquiring an OS-level file lock from inside the same
+        critical section. Callers must already hold the fence configured by
+        set_change_fence().
+        """
+        if not isinstance(state, KillSwitchState):
+            raise KillSwitchValidationError("state deve ser KillSwitchState.")
+        with self._lock:
+            self._state = state
+            return state
+
     def allows_execution(self) -> bool:
         with self._lock:
             return not self._state.enabled
