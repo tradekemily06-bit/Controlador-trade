@@ -129,8 +129,6 @@ class EcosystemPreferencesStore:
         scope = self._require_scope_for_durable_state()
         if scope is None:
             return self._default_preferences
-        if scope in self._scoped:
-            return self._scoped[scope]
         if self._state_store is not None:
             payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
             if payload is not None:
@@ -138,6 +136,9 @@ class EcosystemPreferencesStore:
                 self._validate(value)
                 self._scoped[scope] = value
                 return value
+            return self._default_preferences
+        if scope in self._scoped:
+            return self._scoped[scope]
         return self._default_preferences
 
     def _fresh_current(self) -> EcosystemPreferences:
