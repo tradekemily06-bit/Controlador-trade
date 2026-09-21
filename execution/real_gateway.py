@@ -51,6 +51,15 @@ class RealExecutionGateway:
             raise ValueError("lifecycle é obrigatório para execução REAL.")
         if not isinstance(kill_switch, KillSwitch):
             raise ValueError("kill_switch é obrigatório para execução REAL.")
+        # REAL must never be composed with an ephemeral kill switch. Its
+        # durable state and coordination lock must exist, and the coordination
+        # identity must be the same one protecting the REAL Ledger critical
+        # section. Otherwise a second process could activate the switch while
+        # this gateway is dispatching under a different lock.
+        if not kill_switch.is_durable:
+            raise ValueError("REAL exige kill switch durável e coordenado.")
+        if kill_switch.coordination_path != ledger.path:
+            raise ValueError("kill switch REAL deve compartilhar a coordenação do Ledger.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
