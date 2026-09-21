@@ -1031,3 +1031,55 @@ def test_real_gateway_canonicalizes_request_id_before_external_correlation(tmp_p
     assert adapter.calls == 1
     assert ledger.records() == ("canonical-1",)
     assert lifecycle.get("canonical-1").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_rejects_admission_bound_to_different_broker_or_audit(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake-a", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch()
+    )
+
+    authorization = RealExecutionAuthorizationBoundary().issue(
+        authorization_id="auth",
+        audit_id="audit-a",
+        broker_id="fake-a",
+        adapter_id="fake-adapter",
+        explicitly_enabled=True,
+        real_execution_allowed=True,
+    )
+    safety = _safety(authorization)
+    release = RealReleaseClosureBoundary().close(
+        release_id="release-scope",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    mismatched_admission = RealAdmissionBoundary().admit(
+        admission_id="adm",
+        audit_id="audit-b",
+        audit_verified=True,
+        authorization_active=True,
+        safety_ready=True,
+        broker_available=True,
+        broker_id="fake-b",
+    )
+
+    result = gateway.execute(
+        broker="fake-a",
+        request_id="scope-mismatch",
+        request=_request(),
+        authorization=authorization,
+        admission=mismatched_admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+    assert ledger.records() == ()
+    assert lifecycle.records() == ()
