@@ -82,6 +82,10 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._maintenance = maintenance
         self._safety_store = safety_store
+        if safety_store is not None:
+            # Every gateway-owned KillSwitch must mutate under the exact same
+            # cross-process safety fence used by final dispatch.
+            kill_switch.set_change_fence(safety_store.coordination_lock)
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
         self._operational_barrier_provider = operational_barrier_provider
