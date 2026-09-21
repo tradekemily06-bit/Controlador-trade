@@ -93,3 +93,16 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "enabled": True,
         "reason": "teste de segurança",
     }
+
+
+def test_execution_barrier_excludes_recovery_derived_checks(tmp_path):
+    from core.operational_barrier_factory import build_global_operational_barrier
+
+    runtime = build_operational_runtime(tmp_path)
+    barrier = build_global_operational_barrier(runtime, include_recovery=False)
+
+    names = {component.name for component in barrier._components}
+    assert "execution-recovery" not in names
+    assert "runtime-health" not in names
+    assert "kill-switch" in names
+    assert "operational-safety-store" in names
