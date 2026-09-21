@@ -222,3 +222,17 @@ def test_ledger_canonicalizes_request_id_whitespace(tmp_path: Path):
         pass
     else:
         raise AssertionError("request_id whitespace aliases must not create a second reservation")
+
+
+def test_ledger_rejects_persisted_request_id_aliases(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    path.write_text(
+        '{"req-1":"ACCEPTED","  req-1  ":"REJECTED"}',
+        encoding="utf-8",
+    )
+    try:
+        ExecutionLedger(path)
+    except ValueError as exc:
+        assert "duplicado" in str(exc)
+    else:
+        raise AssertionError("persisted request_id aliases must fail closed")
