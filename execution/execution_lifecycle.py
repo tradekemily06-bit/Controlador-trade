@@ -33,6 +33,9 @@ class ExecutionLifecycleRecord:
     message: str = ""
 
 
+LIFECYCLE_RECOVERY_CAPABILITY = object()
+
+
 class ExecutionLifecycleStore:
     """Durable execution state with cross-process mutation serialization."""
 
@@ -195,12 +198,14 @@ class ExecutionLifecycleStore:
         assert result is not None
         return result
 
-    def reconcile_missing(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+    def reconcile_missing(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "", capability: object = None) -> ExecutionLifecycleRecord:
         """Create the terminal Lifecycle record for a Ledger-only crash window.
 
         This is permitted only when the Ledger has already been independently
         reconciled. It never creates a dispatchable PENDING state.
         """
+        if capability is not LIFECYCLE_RECOVERY_CAPABILITY:
+            raise ValueError("reconciliação ausente exige capacidade interna de recovery.")
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
