@@ -119,15 +119,14 @@ class ExecutionLifecycleStore:
             }
             for r in sorted(self._records.values(), key=lambda item: item.request_id)
         ]
-        temporary.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-        with temporary.open("rb") as handle:
+        with temporary.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
+            handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
-        with self.path.open("rb") as handle:
-            os.fsync(handle.fileno())
+        if os.name != "nt":
+            with self.path.open("rb") as handle:
+                os.fsync(handle.fileno())
         if os.name != "nt":
             directory_fd = os.open(self.path.parent, os.O_RDONLY)
             try:
