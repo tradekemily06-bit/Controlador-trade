@@ -191,7 +191,7 @@ class ExecutionLedger:
             existing = self._external_ids.get(request_id)
             if existing is not None and existing != normalized:
                 raise ValueError("request_id já possui outro external_id.")
-            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id)
+            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id), None)
             if owner is not None:
                 raise ValueError("external_id já está associado a outro request_id.")
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
