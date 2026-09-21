@@ -63,9 +63,17 @@ class ExecutionLedger:
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
             try:
-                states[request_id] = ExecutionLedgerStatus(raw_state)
+                status = ExecutionLedgerStatus(raw_state)
             except ValueError as exc:
                 raise ValueError("ledger de execução inválido.") from exc
+            if status in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ) and external_id is not None:
+                raise ValueError("ledger de execução inválido: estado não executado possui external_id.")
+            if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and external_id is None:
+                raise ValueError("ledger de execução inválido: RECONCILED_EXECUTED exige external_id.")
+            states[request_id] = status
             if external_id is not None:
                 external_ids[request_id] = external_id.strip()
         return states, external_ids
