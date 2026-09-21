@@ -236,3 +236,29 @@ def test_ledger_rejects_persisted_request_id_aliases(tmp_path: Path):
         assert "duplicado" in str(exc)
     else:
         raise AssertionError("persisted request_id aliases must fail closed")
+
+
+def test_reserve_persists_immutable_request_context(tmp_path):
+    path = tmp_path / "ledger.json"
+    context = {
+        "broker": "fake",
+        "adapter_id": "fake-adapter",
+        "symbol": "EURUSD",
+        "side": "BUY",
+        "amount": 0.1,
+        "duration_seconds": 60,
+        "request_id": "req-context",
+    }
+    first = ExecutionLedger(path)
+    first.reserve("req-context", context=context)
+    fingerprint = first.fingerprint("req-context")
+    assert fingerprint
+    assert first.context("req-context") == context
+
+    second = ExecutionLedger(path)
+    assert second.context("req-context") == context
+    assert second.fingerprint("req-context") == fingerprint
+
+    changed = dict(context)
+    changed["amount"] = 0.2
+    assert second.context("req-context") != changed
