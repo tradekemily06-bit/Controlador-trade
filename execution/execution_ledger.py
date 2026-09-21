@@ -76,9 +76,9 @@ class ExecutionLedger:
             states[request_id] = status
             if external_id is not None:
                 normalized_external_id = external_id.strip()
-            if normalized_external_id in external_ids.values():
-                raise ValueError("ledger de execução inválido: external_id duplicado.")
-            external_ids[request_id] = normalized_external_id
+                if normalized_external_id in external_ids.values():
+                    raise ValueError("ledger de execução inválido: external_id duplicado.")
+                external_ids[request_id] = normalized_external_id
         return states, external_ids
 
     def _write(self) -> None:
