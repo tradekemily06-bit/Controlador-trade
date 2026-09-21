@@ -30,6 +30,15 @@ class RealReleaseClosure:
 
 
 class RealReleaseClosureBoundary:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _RELEASE_ISSUER:
+            raise ValueError("emissor de release REAL não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealReleaseClosureBoundary":
+        return cls(capability=_RELEASE_ISSUER)
+
     def close(self, *, release_id: str, p116_verified: bool, p117_admitted: bool,
               p118_available: bool, multi_broker_boundary: bool) -> RealReleaseClosure:
         if not release_id.strip():
