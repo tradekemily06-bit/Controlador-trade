@@ -59,6 +59,16 @@ def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
+def test_lifecycle_and_ledger_mismatch_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.record("req-1")
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "inconsistentes" in result.message
+
+
 def test_ledger_without_lifecycle_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     coordinator.execution_ledger.record("orphaned")
