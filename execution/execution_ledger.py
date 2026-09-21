@@ -55,9 +55,10 @@ class ExecutionLedger:
             if isinstance(raw_status, dict):
                 raw_status = raw_status.get("status")
             try:
-                states[request_id] = ExecutionLedgerStatus(raw_status)
+                status = ExecutionLedgerStatus(raw_status)
             except (TypeError, ValueError) as exc:
                 raise ValueError("ledger de execução inválido.") from exc
+            states[request_id] = status
         return states
 
     @staticmethod
@@ -70,9 +71,13 @@ class ExecutionLedger:
                 continue
             external_id = raw_status.get("external_id")
             if external_id is None:
+                if states.get(request_id) is ExecutionLedgerStatus.RECONCILED_EXECUTED:
+                    raise ValueError("ledger de execução inválido: RECONCILED_EXECUTED exige external_id.")
                 continue
             if not isinstance(external_id, str) or not external_id.strip():
                 raise ValueError("ledger de execução inválido.")
+            if states.get(request_id) in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
+                raise ValueError("ledger de execução inválido: estado não executado possui external_id.")
             external_ids[request_id] = external_id.strip()
         return external_ids
 
