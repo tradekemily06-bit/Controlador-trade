@@ -110,3 +110,19 @@ def test_terminal_ledger_without_external_id_requires_reconciliation(tmp_path):
 
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.can_resume is False
+
+
+def test_demo_terminal_record_does_not_block_recovery_for_missing_external_id(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.record("demo-1")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord(
+            "demo-1",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    assessment = coordinator.assess()
+
+    assert assessment.state is RecoveryState.SAFE_TO_RESUME
