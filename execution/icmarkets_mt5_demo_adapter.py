@@ -200,7 +200,12 @@ class ICMarketsMT5DemoAdapter:
             if retcode != success_code:
                 return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
-            external_id = getattr(result, "order", None) or getattr(result, "deal", None)
+            # For a market execution, the deal ticket is the execution identity;
+            # order is only a fallback when the provider omits the deal ticket.
+            deal_id = getattr(result, "deal", None)
+            order_id = getattr(result, "order", None)
+            external_id = deal_id if deal_id is not None else order_id
+            external_id_kind = "DEAL" if deal_id is not None else ("ORDER" if order_id is not None else None)
             if external_id is None:
                 return ExecutionResult(
                     False,
@@ -208,7 +213,7 @@ class ICMarketsMT5DemoAdapter:
                     uncertain=True,
                 )
 
-            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
+            return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id), external_id_kind=external_id_kind)
         finally:
             mt5.shutdown()
 
