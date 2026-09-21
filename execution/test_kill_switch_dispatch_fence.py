@@ -97,3 +97,42 @@ def test_kill_switch_activation_waits_for_dispatch_fence(tmp_path: Path):
 
     blocked = gateway.execute("req-after-fence", request("req-after-fence"))
     assert blocked.status is GatewayStatus.BLOCKED
+
+
+def test_kill_switch_synchronize_waits_for_dispatch_fence(tmp_path: Path):
+    safety = OperationalSafetyStore(tmp_path / "operational-safety.json")
+    kill_switch = KillSwitch(change_fence=safety.coordination_lock)
+    executor_started = Event()
+    release_executor = Event()
+
+    class BlockingExecutor:
+        def execute(self, _request):
+            executor_started.set()
+            assert release_executor.wait(timeout=5)
+            return ExecutionResult(True, "demo accepted", "PAPER-SYNC-FENCE")
+
+    gateway = ExecutionGateway(BlockingExecutor(), kill_switch, safety_store=safety)
+
+    dispatch_thread = Thread(target=lambda: gateway.execute("req-sync-fence", request("req-sync-fence")))
+    dispatch_thread.start()
+    assert executor_started.wait(timeout=5)
+
+    sync_done = Event()
+
+    def synchronize():
+        kill_switch.synchronize(type(kill_switch.state)(enabled=True, reason="external safety state"))
+        sync_done.set()
+
+    sync_thread = Thread(target=synchronize)
+    sync_thread.start()
+    assert not sync_done.wait(timeout=0.2)
+    assert kill_switch.state.enabled is False
+
+    release_executor.set()
+    dispatch_thread.join(timeout=5)
+    sync_thread.join(timeout=5)
+
+    assert not dispatch_thread.is_alive()
+    assert not sync_thread.is_alive()
+    assert sync_done.is_set()
+    assert kill_switch.state.enabled is True
