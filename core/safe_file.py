@@ -30,7 +30,7 @@ def read_regular_utf8(path: str | Path, *, max_bytes: int) -> str:
     try:
         fd = os.open(target, flags)
         stat = os.fstat(fd)
-        if not os.path.isfile(target) or not _is_regular_mode(stat.st_mode):
+        if not _is_regular_mode(stat.st_mode):
             raise OSError("arquivo operacional deve ser regular.")
         if stat.st_size > max_bytes:
             raise ValueError("arquivo operacional excede o limite permitido.")
