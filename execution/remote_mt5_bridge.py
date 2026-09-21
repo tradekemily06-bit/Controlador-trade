@@ -20,6 +20,8 @@ class RemoteMT5Bridge(Protocol):
 
     def execute_demo(self, request: ExecutionRequest) -> ExecutionResult: ...
 
+    def lookup_demo(self, request_id: str): ...
+
 
 class SafeRemoteMT5Executor:
     adapter_id = "remote-mt5-demo-v1"
