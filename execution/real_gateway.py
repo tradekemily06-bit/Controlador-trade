@@ -99,8 +99,18 @@ class RealExecutionGateway:
 
         for request_id, status in ledger_states.items():
             record = lifecycle_by_id[request_id]
-            if status is ExecutionLedgerStatus.ACCEPTED and record.state is not ExecutionLifecycleState.ACCEPTED:
-                return False
+            if status is ExecutionLedgerStatus.ACCEPTED:
+                if record.state is not ExecutionLifecycleState.ACCEPTED:
+                    return False
+                # A REAL terminal acceptance is only safe to resume when the
+                # broker/exchange identity is durably known. Legacy/DEMO ledger
+                # records may use ACCEPTED without external_id, but those must
+                # never be treated as a safe REAL recovery state.
+                try:
+                    if self._ledger.external_id(request_id) is None:
+                        return False
+                except (OSError, ValueError):
+                    return False
             if status is ExecutionLedgerStatus.REJECTED and record.state is not ExecutionLifecycleState.REJECTED:
                 return False
             if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and record.state is not ExecutionLifecycleState.ACCEPTED:
