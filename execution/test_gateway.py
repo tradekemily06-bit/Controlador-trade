@@ -201,3 +201,30 @@ def test_demo_gateway_serializes_concurrent_duplicate_request_ids(tmp_path):
         GatewayStatus.ACCEPTED,
         GatewayStatus.DUPLICATE,
     }
+
+
+def test_demo_gateway_persists_external_id_atomically_with_acceptance(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-atomic-demo", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.status("req-atomic-demo").value == "ACCEPTED"
+    assert ledger.external_id("req-atomic-demo") == "PAPER-000001"
+
+
+def test_demo_gateway_does_not_leave_terminal_ledger_without_external_id(tmp_path):
+    class DuplicateIdentityExecutor:
+        def execute(self, _request):
+            return ExecutionResult(True, "demo accepted", "shared-id")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    first = ExecutionGateway(DuplicateIdentityExecutor(), KillSwitch(), ledger=ledger)
+    second = ExecutionGateway(DuplicateIdentityExecutor(), KillSwitch(), ledger=ledger)
+
+    assert first.execute("req-a", request()).status is GatewayStatus.ACCEPTED
+    second_result = second.execute("req-b", request())
+    assert second_result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-b") is None
+    assert ledger.external_id("req-b") is None
