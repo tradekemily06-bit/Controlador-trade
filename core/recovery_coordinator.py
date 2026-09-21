@@ -28,35 +28,43 @@ class RecoveryCoordinator:
         if not isinstance(memory,OperationMemory): raise ValueError("memory inválida.")
         self.checkpoint_store=checkpoint_store; self.lifecycle_store=lifecycle_store; self.execution_ledger=execution_ledger; self.memory=memory
     def assess(self):
-        try:
-            checkpoint=self.checkpoint_store.load()
-            lifecycle=self.lifecycle_store.records()
-            ids=self.execution_ledger.records()
-            ledger={rid:self.execution_ledger.status(rid) for rid in ids}
-        except (OSError,ValueError) as exc:
-            return RecoveryAssessment(RecoveryState.INVALID,None,(),(),f"estado persistido inválido: {exc}")
-        by_id={r.request_id:r for r in lifecycle}; pending=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING)); unknown=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
-        bad=set()
-        for rid,r in by_id.items():
-            ls=ledger.get(rid)
-            if r.state is ExecutionLifecycleState.PENDING and ls not in (None,ExecutionLedgerStatus.RESERVED): bad.add(rid)
-            elif r.state is ExecutionLifecycleState.UNKNOWN and ls not in (None,ExecutionLedgerStatus.RESERVED,ExecutionLedgerStatus.UNKNOWN,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED): bad.add(rid)
-            elif r.state is ExecutionLifecycleState.ACCEPTED and ls not in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED): bad.add(rid)
-            elif r.state is ExecutionLifecycleState.REJECTED and ls is not ExecutionLedgerStatus.REJECTED: bad.add(rid)
-        for rid,ls in ledger.items():
-            if rid not in by_id: bad.add(rid); continue
-            rs=by_id[rid].state
-            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN): bad.add(rid)
-            # A terminal acceptance without a durable external reference cannot be
-            # safely reconciled after restart. Fail closed instead of declaring the
-            # runtime resumable based only on local state.
-            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED) and not self.execution_ledger.external_id(rid):
-                bad.add(rid)
-        if pending or unknown or bad:
-            details=[]
-            if pending: details.append("PENDING requer verificação")
-            if unknown: details.append("UNKNOWN requer reconciliação")
-            if bad: details.append("divergência Ledger/Lifecycle requer reconciliação")
-            return RecoveryAssessment(RecoveryState.REQUIRES_RECONCILIATION,checkpoint,pending,unknown,"; ".join(details),tuple(sorted(bad)))
-        state=RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
-        return RecoveryAssessment(state,checkpoint,(),(),"nenhum estado pendente; retomada sem replay automático" if checkpoint else "nenhum checkpoint; sessão pode iniciar com segurança",())
+        # Observe recovery state under the same durable coordination boundary
+        # used by REAL dispatch/reconciliation; fail-closed snapshots must not
+        # race the cross-store execution critical section.
+        from execution.execution_coordination import ExecutionCoordinationLock
+        with ExecutionCoordinationLock(self.execution_ledger.path).acquire():
+            return self._assess_locked()
+
+        def _assess_locked(self):
+            try:
+                checkpoint=self.checkpoint_store.load()
+                lifecycle=self.lifecycle_store.records()
+                ids=self.execution_ledger.records()
+                ledger={rid:self.execution_ledger.status(rid) for rid in ids}
+            except (OSError,ValueError) as exc:
+                return RecoveryAssessment(RecoveryState.INVALID,None,(),(),f"estado persistido inválido: {exc}")
+            by_id={r.request_id:r for r in lifecycle}; pending=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING)); unknown=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+            bad=set()
+            for rid,r in by_id.items():
+                ls=ledger.get(rid)
+                if r.state is ExecutionLifecycleState.PENDING and ls not in (None,ExecutionLedgerStatus.RESERVED): bad.add(rid)
+                elif r.state is ExecutionLifecycleState.UNKNOWN and ls not in (None,ExecutionLedgerStatus.RESERVED,ExecutionLedgerStatus.UNKNOWN,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED): bad.add(rid)
+                elif r.state is ExecutionLifecycleState.ACCEPTED and ls not in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED): bad.add(rid)
+                elif r.state is ExecutionLifecycleState.REJECTED and ls is not ExecutionLedgerStatus.REJECTED: bad.add(rid)
+            for rid,ls in ledger.items():
+                if rid not in by_id: bad.add(rid); continue
+                rs=by_id[rid].state
+                if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN): bad.add(rid)
+                # A terminal acceptance without a durable external reference cannot be
+                # safely reconciled after restart. Fail closed instead of declaring the
+                # runtime resumable based only on local state.
+                if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED) and not self.execution_ledger.external_id(rid):
+                    bad.add(rid)
+            if pending or unknown or bad:
+                details=[]
+                if pending: details.append("PENDING requer verificação")
+                if unknown: details.append("UNKNOWN requer reconciliação")
+                if bad: details.append("divergência Ledger/Lifecycle requer reconciliação")
+                return RecoveryAssessment(RecoveryState.REQUIRES_RECONCILIATION,checkpoint,pending,unknown,"; ".join(details),tuple(sorted(bad)))
+            state=RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
+            return RecoveryAssessment(state,checkpoint,(),(),"nenhum estado pendente; retomada sem replay automático" if checkpoint else "nenhum checkpoint; sessão pode iniciar com segurança",())
