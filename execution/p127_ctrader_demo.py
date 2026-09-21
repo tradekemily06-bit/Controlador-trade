@@ -50,6 +50,13 @@ class CTraderDemoAdapter:
     def is_available(self) -> bool:
         return bool(self._transport.is_available())
 
+    @staticmethod
+    def correlation_for(request: ExecutionRequest) -> str:
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para correlation cTrader")
+        import hashlib
+        return "CTD-" + hashlib.sha256(request.request_id.strip().encode("utf-8")).hexdigest()[:32]
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
             return ExecutionResult(False, "request de execução inválido")
