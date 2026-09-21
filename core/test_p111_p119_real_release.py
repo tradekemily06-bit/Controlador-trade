@@ -95,6 +95,19 @@ def _real_kill_switch(tmp_path: Path, ledger_path: Path | None = None) -> KillSw
     )
 
 
+def _reconciliation_context(request_id: str) -> dict[str, object]:
+    return {
+        "broker": "fake",
+        "adapter_id": "fake-adapter",
+        "symbol": "TEST",
+        "side": "COMPRA",
+        "amount": 10.0,
+        "duration_seconds": 60,
+        "request_id": request_id,
+        "correlation": None,
+    }
+
+
 def _authorization():
     return RealExecutionAuthorizationBoundary._internal().issue(authorization_id="auth", audit_id="a111", broker_id="fake", adapter_id="fake-adapter", explicitly_enabled=True, real_execution_allowed=True)
 
@@ -259,7 +272,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
     path = tmp_path / "ledger.json"
-    ExecutionLedger(path).reserve("crashed")
+    ExecutionLedger(path).reserve("crashed", context=_reconciliation_context("crashed"))
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
@@ -844,7 +857,7 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
 def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_dispatch(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    ledger.reserve("ledger-only")
+    ledger.reserve("ledger-only", context=_reconciliation_context("ledger-only"))
     ledger.mark_unknown("ledger-only")
 
     gateway = RealExecutionGateway(
@@ -879,7 +892,7 @@ def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
 def test_real_reconciliation_rejects_mismatched_external_observation(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    ledger.reserve("observed-request")
+    ledger.reserve("observed-request", context=_reconciliation_context("observed-request"))
     ledger.mark_unknown("observed-request")
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(BrokerRegistry()),
@@ -1279,7 +1292,7 @@ def test_reconciliation_non_terminal_outcomes_do_not_close_unknown(tmp_path: Pat
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    ledger.reserve("nonterminal")
+    ledger.reserve("nonterminal", context=_reconciliation_context("nonterminal"))
     ledger.mark_unknown("nonterminal")
     gateway = RealExecutionGateway(
         BrokerAdapterGateway(BrokerRegistry()),
