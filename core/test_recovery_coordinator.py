@@ -59,6 +59,14 @@ def test_accepted_without_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
+def test_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.record("orphaned")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "ledger sem lifecycle" in result.message
+
+
 def test_invalid_checkpoint_fails_closed(tmp_path):
     coordinator = make_coordinator(tmp_path)
     (tmp_path / "checkpoint.json").write_text("{bad", encoding="utf-8")
