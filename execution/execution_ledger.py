@@ -183,6 +183,19 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
+    def mark_demo_accepted(self, request_id: str) -> None:
+        """Persist a terminal DEMO acceptance without requiring a broker external_id."""
+        self._validate_id(request_id)
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("transição DEMO para ACCEPTED inválida.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            self._external_reference_required[request_id] = False
+
+        self._mutate_locked(mutation)
+
     def attach_external_id(self, request_id: str, external_id: str) -> None:
         """Durably bind the broker reference before terminal ACCEPTED persistence."""
         self._validate_id(request_id)
