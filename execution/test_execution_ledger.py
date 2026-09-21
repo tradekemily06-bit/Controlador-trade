@@ -89,17 +89,15 @@ def test_terminal_ledger_state_is_immutable(tmp_path: Path):
         ledger.mark_rejected("req-terminal")
 
 
-def test_executed_reconciliation_cannot_mint_external_identity(tmp_path: Path):
+def test_executed_reconciliation_can_recover_missing_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-reconcile")
     ledger.mark_unknown("req-reconcile")
 
-    with pytest.raises(ValueError, match="não pode criar external_id"):
-        ledger.reconcile("req-reconcile", executed=True, external_id="broker-123")
+    ledger.reconcile("req-reconcile", executed=True, external_id="broker-123")
 
-    assert ledger.status("req-reconcile").value == "UNKNOWN"
-    assert ledger.external_id("req-reconcile") is None
-
+    assert ledger.status("req-reconcile").value == "RECONCILED_EXECUTED"
+    assert ledger.external_id("req-reconcile") == "broker-123"
 
 def test_executed_reconciliation_requires_the_durable_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
