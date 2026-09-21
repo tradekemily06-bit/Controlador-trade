@@ -96,7 +96,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve(request_id, broker_id=broker.strip())
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
             self._processed_request_ids.add(request_id)
