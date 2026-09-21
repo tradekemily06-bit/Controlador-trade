@@ -75,7 +75,7 @@ def test_replay_endpoint_rejects_excessive_case_count(monkeypatch):
     assert payload["error"] == "Entrada inválida"
 
 
-def test_replay_endpoint_rejects_excessive_case_count(monkeypatch):
+def test_replay_endpoint_rejects_excessive_case_count_against_default_limit(monkeypatch):
     monkeypatch.setattr(app, "saas_public_mode", lambda: False)
     monkeypatch.setattr(app.SECURITY, "allow", lambda environ: True)
     cases = json.dumps({"cases": [{} for _ in range(app.MAX_REPLAY_CASES + 1)]}).encode("utf-8")
