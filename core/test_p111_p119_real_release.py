@@ -67,8 +67,8 @@ def _safety(auth):
     )
 
 
-def _request():
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def _request(request_id="req"):
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id)
 
 
 def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
@@ -99,7 +99,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
-    result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
+    result = gateway.execute(broker="fake", request_id="req", request=_request("blocked"), authorization=auth, admission=p117, safety=safety)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
@@ -143,7 +143,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
         authorization_active=False, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
     )
-    result = gateway.execute(broker="fake", request_id="blocked", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="blocked", request=_request("unknown-1"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
 
@@ -157,11 +157,11 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
+    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request("unknown-2"), authorization=auth, admission=admission, safety=safety)
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
-    second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
+    second = restored.execute(broker="fake", request_id="unknown-1", request=_request("crashed"), authorization=auth, admission=admission, safety=safety)
     assert second.status == RealGatewayStatus.UNKNOWN
 
 
@@ -173,7 +173,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request("missing-id"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     ledger.attach_external_id("unknown-2", "external-recovered-2")
     gateway.reconcile_unknown("unknown-2", executed=True, external_id="external-recovered-2")
@@ -191,7 +191,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="crashed", request=_request("no-proof"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     ledger.attach_external_id("crashed", "external-recovered-crashed")
