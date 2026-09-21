@@ -243,21 +243,28 @@ class OperationalSafetyStore:
         """Persist while the caller already owns the canonical coordination fence."""
         self._save_under_coordination_fence(audit, kill_switch)
 
-    def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+    def _set_kill_switch_under_coordination_fence(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
             raise TypeError("enabled deve ser bool.")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
             raise ValueError("reason é obrigatório ao ativar o kill switch.")
+        with self._lock():
+            payload = self._read_payload()
+            persisted = payload.get("kill_switch", {})
+            if not isinstance(persisted, dict):
+                raise ValueError("estado do kill switch inválido.")
+            state = KillSwitchState(enabled=enabled, reason=reason if enabled else None)
+            payload["kill_switch"] = {"enabled": state.enabled, "reason": state.reason}
+            self._write_payload(payload)
+            return state
+
+    def set_kill_switch_under_coordination_fence(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+        """Persist while the caller already owns the canonical coordination fence."""
+        return self._set_kill_switch_under_coordination_fence(enabled=enabled, reason=reason)
+
+    def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         with self.coordination_lock():
-            with self._lock():
-                payload = self._read_payload()
-                persisted = payload.get("kill_switch", {})
-                if not isinstance(persisted, dict):
-                    raise ValueError("estado do kill switch inválido.")
-                state = KillSwitchState(enabled=enabled, reason=reason if enabled else None)
-                payload["kill_switch"] = {"enabled": state.enabled, "reason": state.reason}
-                self._write_payload(payload)
-                return state
+            return self._set_kill_switch_under_coordination_fence(enabled=enabled, reason=reason)
 
     def load(self) -> tuple[DecisionAudit, KillSwitchState]:
         with self._lock():
