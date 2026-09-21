@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from enum import Enum
 from pathlib import Path
 
@@ -34,6 +35,8 @@ class ExecutionLedger:
         self.path = Path(path).expanduser().resolve()
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._external_ids: dict[str, str] = {}
+        self._contexts: dict[str, dict[str, object]] = {}
+        self._fingerprints: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -45,10 +48,10 @@ class ExecutionLedger:
             raise ValueError("ledger de execução inválido.") from exc
         except ValueError:
             raise
-        self._states, self._external_ids = self._decode(payload)
+        self._states, self._external_ids, self._contexts, self._fingerprints = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, dict[str, object]], dict[str, str]]:
         if isinstance(payload, list):
             states: dict[str, ExecutionLedgerStatus] = {}
             for item in payload:
@@ -58,11 +61,13 @@ class ExecutionLedger:
                 if request_id in states:
                     raise ValueError("ledger de execução inválido: request_id duplicado após normalização.")
                 states[request_id] = ExecutionLedgerStatus.ACCEPTED
-            return (states, {})
+            return (states, {}, {}, {})
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
         external_ids: dict[str, str] = {}
+        contexts: dict[str, dict[str, object]] = {}
+        fingerprints: dict[str, str] = {}
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
@@ -90,7 +95,7 @@ class ExecutionLedger:
                 if normalized_external_id in external_ids.values():
                     raise ValueError("ledger de execução inválido: external_id duplicado.")
                 external_ids[request_id] = normalized_external_id
-        return states, external_ids
+        return states, external_ids, contexts, fingerprints
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
