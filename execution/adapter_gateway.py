@@ -46,6 +46,22 @@ class BrokerAdapterGateway:
             )
         return self._dispatch(broker, request, preserve_exceptions=False)
 
+    def correlation_for(self, broker: str, request: ExecutionRequest) -> str | None:
+        """Return the provider-defined deterministic correlation before dispatch."""
+        try:
+            adapter = self._registry.get(broker, capability=_BROKER_ACCESS_CAPABILITY)
+        except BrokerRegistryError:
+            return None
+        correlation = getattr(adapter, "correlation_for", None)
+        if not callable(correlation):
+            return None
+        value = correlation(request)
+        if value is None:
+            return None
+        if not isinstance(value, str) or not value.strip():
+            raise AdapterGatewayError("adapter retornou correlation inválida")
+        return value.strip()
+
     def execute_real(
         self,
         broker: str,
