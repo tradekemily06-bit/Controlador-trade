@@ -414,10 +414,16 @@ class RealExecutionGateway:
             else ExecutionLedgerStatus.REJECTED
         )
         durable_external_id = self._ledger.external_id(request_id)
-        if executed and not durable_external_id:
-            raise ValueError("reconciliação EXECUTED exige external_id previamente persistido.")
-        if executed and observation.external_id != durable_external_id:
-            raise ValueError("external_id observado difere da identidade externa durável.")
+        if executed:
+            if not isinstance(observation.external_id, str) or not observation.external_id.strip():
+                raise ValueError("reconciliação EXECUTED exige external_id válido na evidência.")
+            if durable_external_id is not None and observation.external_id != durable_external_id:
+                raise ValueError("external_id observado difere da identidade externa durável.")
+            # A crash can occur after the broker accepts an order but before the
+            # local external_id bind is durable. In that case the read-only broker
+            # observation is the authoritative source for recovering the missing
+            # local identity; it is never a new dispatch.
+
         if ledger_status not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
