@@ -96,4 +96,5 @@ def test_adapter_gateway_rejects_accepted_result_without_external_id():
     result = gateway_with(adapter).execute("fake", request())
 
     assert result.accepted is False
-    assert result.execution is None
+    assert result.execution is not None
+    assert result.ambiguous is True
