@@ -11,6 +11,7 @@ from core.kill_switch import KillSwitch
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -50,6 +51,8 @@ class RealExecutionGateway:
             return False
         if request.mode is not ExecutionMode.REAL:
             return False
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+            return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
         if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
@@ -63,6 +66,8 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip():
+            return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id do gateway difere do request_id da ordem.")
         if self._kill_switch is not None and not self._kill_switch.allows_execution():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado; dispatch REAL bloqueado.")
         if not authorization.active:
