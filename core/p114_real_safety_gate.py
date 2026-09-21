@@ -24,6 +24,15 @@ class RealSafetyReport:
 
 
 class RealSafetyGate:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _SAFETY_ISSUER:
+            raise ValueError("emissor de segurança REAL não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealSafetyGate":
+        return cls(capability=_SAFETY_ISSUER)
+
     """Fail-closed composition of explicit REAL safety prerequisites."""
 
     def evaluate(self, *, authorization_active: bool, kill_switch_clear: bool,
