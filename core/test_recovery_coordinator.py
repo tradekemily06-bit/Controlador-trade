@@ -79,5 +79,6 @@ def test_recovery_accepts_reconciled_executed_with_terminal_lifecycle(tmp_path):
     coordinator.execution_ledger.reconcile("req-reconciled", executed=True, external_id="broker-1")
     coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, now))
     assessment = coordinator.assess()
-    assert assessment.state is RecoveryState.SAFE_TO_RESUME
+    assert assessment.state is RecoveryState.FRESH
+    assert assessment.can_resume is True
     assert assessment.inconsistent_request_ids == ()
