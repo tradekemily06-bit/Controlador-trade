@@ -222,7 +222,9 @@ class RealExecutionGateway:
                 "estado de execução exige reconciliação; novo despacho REAL bloqueado.",
             )
         if request.request_id is None:
-            # Bind the canonical ledger identity into the broker-facing request.
+            # Bind the canonical ledger identity before correlation is computed.
+            # The broker-side recovery key must be derived from the exact durable
+            # request_id that will be reserved, never from an unbound request.
             request = replace(request, request_id=request_id)
         if not isinstance(broker, str) or not broker.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
