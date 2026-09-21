@@ -249,7 +249,23 @@ class EcosystemNotificationCenter:
         return self.publish_update(notification_id, title, message, important=True, update_kind=UpdateKind.ECOSYSTEM)
 
     def publish_security_update(self, notification_id: str, title: str, message: str, *, blocking: bool = False) -> EcosystemNotification:
-        return self.publish_global(EcosystemNotification(notification_id, NotificationKind.SECURITY, NotificationSeverity.CRITICAL if blocking else NotificationSeverity.IMPORTANT, title, message, requires_attention=True, blocking=blocking))
+        """Publish a security event to the trusted private scope.
+
+        Security details are not global by default: tenant/user-specific
+        information must never become visible through the system-wide feed.
+        Deliberately global security announcements must use publish_global()
+        explicitly after their producer has established that they contain no
+        private tenant/subject data.
+        """
+        return self.publish(EcosystemNotification(
+            notification_id,
+            NotificationKind.SECURITY,
+            NotificationSeverity.CRITICAL if blocking else NotificationSeverity.IMPORTANT,
+            title,
+            message,
+            requires_attention=True,
+            blocking=blocking,
+        ))
 
     def visible(self, *, include_info: bool = False) -> tuple[EcosystemNotification, ...]:
         events = self._current()
