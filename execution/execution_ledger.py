@@ -62,7 +62,14 @@ class ExecutionLedger:
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
-            raw_state = raw_status.get("state") if isinstance(raw_status, dict) else raw_status
+            if isinstance(raw_status, dict):
+                state_value = raw_status.get("state")
+                legacy_status_value = raw_status.get("status")
+                if state_value is not None and legacy_status_value is not None and state_value != legacy_status_value:
+                    raise ValueError("ledger de execução inválido: state/status divergentes.")
+                raw_state = state_value if state_value is not None else legacy_status_value
+            else:
+                raw_state = raw_status
             external_id = raw_status.get("external_id") if isinstance(raw_status, dict) else None
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
