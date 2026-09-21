@@ -149,6 +149,7 @@ class MT5ReadOnlyReconciler:
                 symbol=identity.symbol,
                 correlation=identity.correlation,
                 magic=identity.magic,
+                account_id=self._account_id,
             )
             orders = self._orders_query(
                 date_from=date_from,
@@ -156,6 +157,7 @@ class MT5ReadOnlyReconciler:
                 symbol=identity.symbol,
                 correlation=identity.correlation,
                 magic=identity.magic,
+                account_id=self._account_id,
             )
         except Exception:
             return self._negative(identity.request_id, ReconciliationOutcome.QUERY_FAILED)
@@ -165,8 +167,13 @@ class MT5ReadOnlyReconciler:
 
         for raw in list(deals) + list(orders):
             candidate = self._normalize(raw, identity)
-            if candidate is not None:
-                candidates.append(candidate)
+            if candidate is None:
+                continue
+            # Never trust a transport to honor the requested bounded window.
+            # An old matching execution must not close a fresh UNKNOWN request.
+            if candidate.observed_at < date_from or candidate.observed_at > date_to:
+                continue
+            candidates.append(candidate)
 
         # A market request may be filled by multiple deals. Distinct deals
         # are not automatically ambiguous when they all belong to exactly one
@@ -262,6 +269,9 @@ class MT5ReadOnlyReconciler:
 
         observed_at = getattr(raw, "observed_at", None)
         if not isinstance(observed_at, datetime) or observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            return None
+        raw_account_id = getattr(raw, "account_id", None)
+        if raw_account_id is not None and str(raw_account_id).strip() != self._account_id:
             return None
         return MT5HistoryCandidate(
             ticket=str(ticket),
