@@ -295,7 +295,7 @@ class MT5ReadOnlyReconciler:
             account_id=candidate.account_id,
             symbol=candidate.symbol,
             side=candidate.side,
-            amount=candidate.amount,
+            amount=identity.amount,
             correlation=candidate.correlation,
             provider_capability=self._evidence.provider_capability,
         )
