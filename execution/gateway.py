@@ -82,6 +82,16 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
         with self._execution_lock:
+            # Inspect the lifecycle projection before reserving the ledger. If the
+            # two stores are already inconsistent, do not create a fresh RESERVED
+            # record on top of a pre-existing PENDING/UNKNOWN projection.
+            if self._lifecycle is not None:
+                existing = self._lifecycle.get(request_id)
+                if existing is not None:
+                    if existing.state is ExecutionLifecycleState.UNKNOWN:
+                        return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
+                    if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+                        return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
                 return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
             if self._ledger is not None:
