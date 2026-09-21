@@ -224,7 +224,18 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "adapter da requisição difere da autorização.")
 
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve(
+                request_id,
+                context={
+                    "broker": broker.strip().lower(),
+                    "adapter_id": registered_adapter_id.strip(),
+                    "symbol": request.symbol.strip(),
+                    "side": request.signal.value,
+                    "amount": float(request.amount),
+                    "duration_seconds": int(request.duration_seconds),
+                    "request_id": request_id,
+                },
+            )
             self._lifecycle.put(
                 ExecutionLifecycleRecord(
                     request_id,
