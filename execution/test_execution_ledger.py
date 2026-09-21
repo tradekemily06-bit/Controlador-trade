@@ -99,6 +99,18 @@ def test_executed_reconciliation_can_recover_missing_external_identity(tmp_path:
     assert ledger.status("req-reconcile").value == "RECONCILED_EXECUTED"
     assert ledger.external_id("req-reconcile") == "broker-123"
 
+def test_not_executed_reconciliation_rejects_durable_external_identity(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-contradictory")
+    ledger.bind_external_id("req-contradictory", "broker-123")
+
+    with pytest.raises(ValueError, match="NOT_EXECUTED contradiz"):
+        ledger.reconcile("req-contradictory", executed=False)
+
+    assert ledger.status("req-contradictory") is ExecutionLedgerStatus.RESERVED
+    assert ledger.external_id("req-contradictory") == "broker-123"
+
+
 def test_executed_reconciliation_requires_the_durable_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-reconcile-durable")
