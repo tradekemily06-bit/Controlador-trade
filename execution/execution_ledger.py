@@ -105,6 +105,16 @@ class ExecutionLedger:
             temp_file.flush()
             os.fsync(temp_file.fileno())
         os.replace(temporary, self.path)
+        self._fsync_directory()
+
+    def _fsync_directory(self) -> None:
+        if os.name != "posix":
+            return
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     def _mutate_locked(self, mutation) -> None:
         """Serialize read/modify/write so two processes cannot reserve the same ID."""
