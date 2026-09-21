@@ -108,3 +108,19 @@ def test_executed_reconciliation_requires_the_durable_external_identity(tmp_path
     ledger.reconcile("req-reconcile-durable", executed=True, external_id="broker-123")
 
     assert ledger.status("req-reconcile-durable").value == "RECONCILED_EXECUTED"
+
+
+def test_external_id_cannot_be_bound_to_terminal_nonexecuted_state(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-rejected")
+    ledger.mark_rejected("req-rejected")
+    try:
+        ledger.bind_external_id("req-rejected", "ext-rejected")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("rejected requests must not acquire an external execution identity")
+    ledger.reserve("req-unknown")
+    ledger.mark_unknown("req-unknown")
+    ledger.bind_external_id("req-unknown", "ext-unknown")
+    assert ledger.external_id("req-unknown") == "ext-unknown"
