@@ -116,3 +116,16 @@ def test_demo_adapter_marks_accepted_without_external_id_uncertain():
     result = CTraderDemoAdapter(transport).execute(request())
     assert result.accepted is False
     assert result.uncertain is True
+
+
+def test_ctrader_order_contract_carries_deterministic_recovery_correlation():
+    transport = FakeDemoTransport()
+    adapter = CTraderDemoAdapter(transport)
+    request = ExecutionRequest("EURUSD", Signal.COMPRA, 1.0, 60, ExecutionMode.DEMO, request_id="req-correlation")
+
+    result = adapter.execute(request)
+
+    assert result.accepted is True
+    assert transport.orders[0].correlation == adapter.correlation_for(request)
+    assert transport.orders[0].correlation.startswith("CTD-")
+    assert len(transport.orders[0].correlation) == 36
