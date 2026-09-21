@@ -137,7 +137,7 @@ class ExecutionGateway:
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_demo_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
