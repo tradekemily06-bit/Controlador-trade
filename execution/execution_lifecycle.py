@@ -129,8 +129,14 @@ class ExecutionLifecycleStore:
         )
 
         def mutation() -> None:
-            if request_id not in self._records:
+            current = self._records.get(request_id)
+            if current is None:
                 raise ValueError("execução não encontrada.")
+            if current.state not in (
+                ExecutionLifecycleState.PENDING,
+                ExecutionLifecycleState.UNKNOWN,
+            ):
+                raise ValueError("reconciliação só pode resolver PENDING/UNKNOWN.")
             self._records[request_id] = ExecutionLifecycleRecord(
                 request_id, state, updated_at, message
             )
