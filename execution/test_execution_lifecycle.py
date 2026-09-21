@@ -149,3 +149,18 @@ def test_lifecycle_canonicalizes_request_id_whitespace(tmp_path: Path):
     assert record is not None
     assert record.request_id == "canonical-id"
     assert store.records()[0].request_id == "canonical-id"
+
+
+def test_lifecycle_rejects_persisted_request_id_aliases(tmp_path: Path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"req-1","state":"PENDING","updated_at":"2026-09-21T00:00:00+00:00"},'
+        '{"request_id":"  req-1  ","state":"PENDING","updated_at":"2026-09-21T00:00:01+00:00"}]',
+        encoding="utf-8",
+    )
+    try:
+        ExecutionLifecycleStore(path)
+    except ValueError as exc:
+        assert "duplicado" in str(exc)
+    else:
+        raise AssertionError("persisted request_id aliases must fail closed")
