@@ -85,3 +85,25 @@ def test_learning_source_flags_are_monotonic_under_stale_updates(tmp_path: Path)
     final = learning_a.get(tenant_id="tenant", subject_id="subject").sources["s1"]
     assert final.content_verified is True
     assert final.security_checked is True
+
+
+def test_preferences_do_not_lose_stale_worker_updates(tmp_path: Path):
+    from core.ecosystem_preferences import EcosystemPreferencesStore
+
+    db = tmp_path / "state.db"
+    store_a = SQLiteScopedStateStore(db)
+    store_b = SQLiteScopedStateStore(db)
+    prefs_a = EcosystemPreferencesStore(state_store=store_a)
+    prefs_b = EcosystemPreferencesStore(state_store=store_b)
+
+    from security.http_identity import TrustedHttpIdentity, _current_identity
+    token = _current_identity.set(TrustedHttpIdentity("subject", "tenant", "user"))
+    try:
+        prefs_a.update(default_timeframe="1m")
+        prefs_b.update(default_symbol="GBPUSD")
+        final = prefs_a.preferences
+    finally:
+        _current_identity.reset(token)
+
+    assert final.default_timeframe == "1m"
+    assert final.default_symbol == "GBPUSD"
