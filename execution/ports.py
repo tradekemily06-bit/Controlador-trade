@@ -50,9 +50,19 @@ class ExecutionPort(Protocol):
         ...
 
 
+class ReadOnlyReconciler(Protocol):
+    """Read-only broker discovery; implementations must never dispatch orders."""
+
+    def lookup(self, request_id: str):
+        ...
+
+
 class BrokerAdapter(Protocol):
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         ...
 
     def is_available(self) -> bool:
+        ...
+
+    def correlation_for(self, request: ExecutionRequest) -> str | None:
         ...
