@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 import sys
+import textwrap
 import time
 
 from execution.execution_coordination import ExecutionCoordinationLock
@@ -38,11 +39,11 @@ def test_ledger_canonicalizes_equivalent_paths(tmp_path: Path):
 def test_lifecycle_canonicalizes_equivalent_paths(tmp_path: Path):
     state = tmp_path / "state"
     state.mkdir()
-    canonical = state / "lifecycle.json"
-    alias = state / "." / "lifecycle.json"
+    canonical = state / "ledger.json"
+    alias = state / "." / "ledger.json"
 
-    first = ExecutionLifecycleStore(canonical)
-    second = ExecutionLifecycleStore(alias)
+    first = ExecutionLifecycleStore(alias)
+    second = ExecutionLifecycleStore(canonical)
 
     assert first.path == second.path
 
@@ -53,19 +54,25 @@ def test_coordination_lock_serializes_independent_processes(tmp_path: Path):
     release = tmp_path / "release-first"
     acquired = tmp_path / "second-acquired"
 
-    child = (
-        "import sys,time;"
-        "from pathlib import Path;"
-        "from execution.execution_coordination import ExecutionCoordinationLock;"
-        "lock=ExecutionCoordinationLock(sys.argv[1]);"
-        "ready=Path(sys.argv[2]); release=Path(sys.argv[3]);"
-        "acquired=Path(sys.argv[4]);"
-        "with lock.acquire():"
-        " ready.write_text('ready');"
-        " while not release.exists(): time.sleep(0.02)"
+    child = textwrap.dedent(
+        """
+        import sys
+        import time
+        from pathlib import Path
+        from execution.execution_coordination import ExecutionCoordinationLock
+
+        lock = ExecutionCoordinationLock(sys.argv[1])
+        ready = Path(sys.argv[2])
+        release = Path(sys.argv[3])
+
+        with lock.acquire():
+            ready.write_text("ready")
+            while not release.exists():
+                time.sleep(0.02)
+        """
     )
     first = subprocess.Popen(
-        [sys.executable, "-c", child, str(lock_path), str(ready), str(release), str(acquired)]
+        [sys.executable, "-c", child, str(lock_path), str(ready), str(release)]
     )
     second = None
     try:
@@ -74,13 +81,18 @@ def test_coordination_lock_serializes_independent_processes(tmp_path: Path):
             time.sleep(0.02)
         assert ready.exists(), "first process did not acquire coordination lock"
 
-        child_second = (
-            "import sys;"
-            "from pathlib import Path;"
-            "from execution.execution_coordination import ExecutionCoordinationLock;"
-            "lock=ExecutionCoordinationLock(sys.argv[1]);"
-            "Path(sys.argv[2]).write_text('acquired') if False else None;"
-            "with lock.acquire(): Path(sys.argv[2]).write_text('acquired')"
+        child_second = textwrap.dedent(
+            """
+            import sys
+            from pathlib import Path
+            from execution.execution_coordination import ExecutionCoordinationLock
+
+            lock = ExecutionCoordinationLock(sys.argv[1])
+            acquired = Path(sys.argv[2])
+
+            with lock.acquire():
+                acquired.write_text("acquired")
+            """
         )
         second = subprocess.Popen(
             [sys.executable, "-c", child_second, str(lock_path), str(acquired)]
