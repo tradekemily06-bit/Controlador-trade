@@ -95,8 +95,8 @@ class PersistentOperationalRecorder:
         # gate are one critical section. No dispatch can observe the old
         # in-memory state between these two operations.
         with self.safety_store.coordination_lock():
-            persisted = self.safety_store.set_kill_switch(enabled=True, reason=reason)
-            self.kill_switch.synchronize(persisted)
+            persisted = self.safety_store.set_kill_switch_under_coordination_fence(enabled=True, reason=reason)
+            self.kill_switch.synchronize_under_change_fence(persisted)
             return persisted
 
     def deactivate_kill_switch(self):
@@ -106,6 +106,6 @@ class PersistentOperationalRecorder:
         # state is conservative; atomicity nevertheless prevents split-brain
         # safety state and makes recovery deterministic.
         with self.safety_store.coordination_lock():
-            persisted = self.safety_store.set_kill_switch(enabled=False)
-            self.kill_switch.synchronize(persisted)
+            persisted = self.safety_store.set_kill_switch_under_coordination_fence(enabled=False)
+            self.kill_switch.synchronize_under_change_fence(persisted)
             return persisted
