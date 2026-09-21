@@ -327,11 +327,21 @@ class RealExecutionGateway:
                 # fence -> ledger mutations. Safety writers acquire only the
                 # second fence, so kill-switch activation cannot race the final
                 # safety read and broker dispatch.
-                barrier = self._operational_barrier_provider()
-                if not isinstance(barrier, GlobalOperationalBarrier) or not barrier.has_dispatch_fence:
+                # The provider must be resolved only after entering the
+                # canonical safety fence. Building the barrier before the fence
+                # would snapshot CLEAR and allow a kill-switch activation that
+                # happened before dispatch to be missed.
+                probe = self._operational_barrier_provider()
+                if not isinstance(probe, GlobalOperationalBarrier) or not probe.has_dispatch_fence:
                     return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira operacional global sem fence canônica de dispatch; REAL bloqueado")
                 try:
-                    with barrier.dispatch_fence():
+                    with probe.dispatch_fence():
+                        barrier = self._operational_barrier_provider()
+                        if not isinstance(barrier, GlobalOperationalBarrier) or not barrier.has_dispatch_fence:
+                            return RealGatewayResult(RealGatewayStatus.BLOCKED, "barreira operacional global perdeu a fence canônica durante o dispatch; REAL bloqueado")
+                        decision = barrier.evaluate()
+                        if not decision.operationally_allowed:
+                            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"barreira operacional global bloqueou REAL: {decision.reason}")
                         return self._dispatch_locked(
                             broker, request_id, request, safety, snapshot,
                             authorization, admission,
