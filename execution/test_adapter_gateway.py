@@ -78,3 +78,12 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_rejects_accepted_result_without_external_id():
+    adapter = FakeAdapter(result=ExecutionResult(True, "accepted", None))
+
+    result = gateway_with(adapter).execute("fake", request())
+
+    assert result.accepted is False
+    assert result.execution is None
