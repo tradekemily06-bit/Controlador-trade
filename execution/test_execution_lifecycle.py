@@ -39,6 +39,22 @@ def test_unknown_blocks_implicit_transition(tmp_path):
         store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
 
 
+def test_terminal_lifecycle_cannot_be_rewound(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    with pytest.raises(ValueError, match="transição de lifecycle inválida"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="transição de lifecycle inválida"):
+        store.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.UNKNOWN, now))
+
+
 def test_unknown_requires_explicit_reconciliation(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
