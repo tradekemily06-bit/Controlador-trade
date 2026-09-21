@@ -20,6 +20,15 @@ class CTraderDemoTransport(Protocol):
     def place_market_order(self, order: BrokerOrderRequest) -> BrokerOrderResult:
         ...
 
+    @staticmethod
+    def correlation_for(request: ExecutionRequest) -> str:
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para correlation cTrader")
+        # cTrader clientOrderId is bounded to 50 chars. A deterministic token
+        # lets recovery rediscover the order without exposing the raw request id.
+        import hashlib
+        return "CTD-" + hashlib.sha256(request.request_id.strip().encode("utf-8")).hexdigest()[:32]
+
     def is_available(self) -> bool:
         ...
 
