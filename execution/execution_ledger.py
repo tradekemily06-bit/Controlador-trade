@@ -76,6 +76,8 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido: request_id duplicado após normalização.")
             raw_state = raw_status.get("state") if isinstance(raw_status, dict) else raw_status
             external_id = raw_status.get("external_id") if isinstance(raw_status, dict) else None
+            context = raw_status.get("context") if isinstance(raw_status, dict) else None
+            fingerprint = raw_status.get("fingerprint") if isinstance(raw_status, dict) else None
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
             try:
@@ -90,6 +92,14 @@ class ExecutionLedger:
             if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and external_id is None:
                 raise ValueError("ledger de execução inválido: RECONCILED_EXECUTED exige external_id.")
             states[request_id] = status
+            if context is not None:
+                if not isinstance(context, dict) or not all(isinstance(k, str) and k.strip() for k in context):
+                    raise ValueError("ledger de execução inválido: context inválido.")
+                contexts[request_id] = dict(context)
+            if fingerprint is not None:
+                if not isinstance(fingerprint, str) or not fingerprint.strip():
+                    raise ValueError("ledger de execução inválido: fingerprint inválido.")
+                fingerprints[request_id] = fingerprint.strip()
             if external_id is not None:
                 normalized_external_id = external_id.strip()
                 if normalized_external_id in external_ids.values():
@@ -100,7 +110,16 @@ class ExecutionLedger:
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        payload = {key: ({"state": self._states[key].value, "external_id": self._external_ids[key]} if key in self._external_ids else self._states[key].value) for key in sorted(self._states)}
+        payload = {}
+        for key in sorted(self._states):
+            entry = {"state": self._states[key].value}
+            if key in self._external_ids:
+                entry["external_id"] = self._external_ids[key]
+            if key in self._contexts:
+                entry["context"] = self._contexts[key]
+            if key in self._fingerprints:
+                entry["fingerprint"] = self._fingerprints[key]
+            payload[key] = entry if len(entry) > 1 else entry["state"]
         with temporary.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.flush()
@@ -166,6 +185,19 @@ class ExecutionLedger:
                 self._write()
             finally:
                 self._unlock(lock_file)
+
+    @staticmethod
+    def _context_fingerprint(context: dict[str, object]) -> str:
+        encoded = json.dumps(context, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def context(self, request_id: str) -> dict[str, object] | None:
+        request_id = self._normalize_id(request_id)
+        return self._read_locked(lambda: dict(self._contexts[request_id]) if request_id in self._contexts else None)
+
+    def fingerprint(self, request_id: str) -> str | None:
+        request_id = self._normalize_id(request_id)
+        return self._read_locked(lambda: self._fingerprints.get(request_id))
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         request_id = self._normalize_id(request_id)
