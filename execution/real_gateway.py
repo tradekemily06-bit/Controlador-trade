@@ -59,8 +59,6 @@ class RealExecutionGateway:
     def _valid_request(request_id: str, request: ExecutionRequest) -> bool:
         if not isinstance(request_id, str) or not request_id.strip():
             return False
-        if request_id.strip() != request_id:
-            return False
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
