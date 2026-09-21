@@ -1,3 +1,6 @@
+import threading
+import time
+
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -146,3 +149,54 @@ def test_executor_uncertain_result_is_not_reported_as_rejected():
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert result.execution is not None
     assert result.execution.uncertain is True
+
+
+def test_demo_gateway_serializes_concurrent_duplicate_request_ids(tmp_path):
+    class SlowExecutor:
+        def __init__(self):
+            self.calls = 0
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def execute(self, request):
+            self.calls += 1
+            self.started.set()
+            self.release.wait(timeout=2)
+            return ExecutionResult(True, "demo accepted", f"demo-{self.calls}")
+
+    executor = SlowExecutor()
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.DEMO)
+
+    results = []
+    errors = []
+
+    def run():
+        try:
+            results.append(gateway.execute("same-request", request))
+        except Exception as exc:
+            errors.append(exc)
+
+    first = threading.Thread(target=run)
+    second = threading.Thread(target=run)
+    first.start()
+    assert executor.started.wait(timeout=2)
+    second.start()
+    time.sleep(0.05)
+
+    # The second caller must not reach the adapter while the first caller still
+    # owns the DEMO check -> dispatch -> persist critical section.
+    assert executor.calls == 1
+
+    executor.release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert not errors
+    assert executor.calls == 1
+    assert len(results) == 2
+    assert {result.status for result in results} == {
+        GatewayStatus.ACCEPTED,
+        GatewayStatus.DUPLICATE,
+    }
