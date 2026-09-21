@@ -133,3 +133,19 @@ def test_reconcile_pending_requires_internal_recovery_capability(tmp_path):
         capability=LIFECYCLE_RECOVERY_CAPABILITY,
     )
     assert store.get("req-pending").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_lifecycle_canonicalizes_request_id_whitespace(tmp_path: Path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    store.put(
+        ExecutionLifecycleRecord(
+            "  canonical-id  ",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    record = store.get("canonical-id")
+    assert record is not None
+    assert record.request_id == "canonical-id"
+    assert store.records()[0].request_id == "canonical-id"
