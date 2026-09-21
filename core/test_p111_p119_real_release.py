@@ -1169,3 +1169,42 @@ def test_real_reconciliation_reentry_is_rejected_without_state_mutation(tmp_path
 
     assert ledger.status("reconcile-reentry") is ExecutionLedgerStatus.UNKNOWN
     assert lifecycle.get("reconcile-reentry").state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_real_gateway_canonicalizes_request_id_before_broker_dispatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch()
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    release = RealReleaseClosureBoundary._internal().close(
+        release_id="canonical-id-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    request = ExecutionRequest(
+        "TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="  broker-id  "
+    )
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="  broker-id  ",
+        request=request,
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
+
+    assert result.status is RealGatewayStatus.ADMITTED
+    assert ledger.records() == ("broker-id",)
+    assert ledger.external_id("broker-id") == "external-1"
+    assert ledger.status("  broker-id  ") is ExecutionLedgerStatus.ACCEPTED
