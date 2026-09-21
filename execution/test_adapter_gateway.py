@@ -7,6 +7,7 @@ from core.models import Signal
 class FakeAdapter:
     def __init__(self, available=True, result=None, error=False):
         self.available = available
+        self.supports_real_execution = True
         self.result = result or ExecutionResult(True, "ok", "FAKE-1")
         self.error = error
         self.calls = 0
@@ -78,6 +79,14 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_blocks_real_without_explicit_opt_in():
+    adapter = FakeAdapter()
+    adapter.supports_real_execution = False
+    result = gateway_with(adapter).execute("fake", request())
+    assert result.accepted is False
+    assert adapter.calls == 0
 
 
 def test_adapter_gateway_rejects_accepted_result_without_external_id():
