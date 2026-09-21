@@ -1036,6 +1036,13 @@ def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_
         observed_at=datetime.now(timezone.utc),
         source="read-only-broker-reconciler",
         provider_capability=boundary.provider_capability,
+        external_id_kind=ExternalIdentityKind.EXECUTION,
+        provider="fake",
+        account_id="demo-account",
+        symbol="TEST",
+        side="BUY",
+        amount=10.0,
+        correlation="fake-correlation",
     )
 
     class ReadOnlyReconciler:
