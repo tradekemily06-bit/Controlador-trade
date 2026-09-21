@@ -59,6 +59,7 @@ class RuntimeCheckpointStore:
                     temp_file.flush()
                     os.fsync(temp_file.fileno())
                 os.replace(temporary, self.path)
+                self._fsync_directory()
             finally:
                 self._release_lock(lock_file)
 
@@ -95,6 +96,15 @@ class RuntimeCheckpointStore:
         if not isinstance(checkpoint.updated_at, datetime):
             raise ValueError("checkpoint inválido.")
 
+
+    def _fsync_directory(self) -> None:
+        if os.name != "posix":
+            return
+        directory_fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
     @staticmethod
     def _acquire_lock(lock_file) -> None:
