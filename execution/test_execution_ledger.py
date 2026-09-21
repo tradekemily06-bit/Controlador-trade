@@ -124,3 +124,26 @@ def test_external_id_cannot_be_bound_to_terminal_nonexecuted_state(tmp_path):
     ledger.mark_unknown("req-unknown")
     ledger.bind_external_id("req-unknown", "ext-unknown")
     assert ledger.external_id("req-unknown") == "ext-unknown"
+
+
+def test_ledger_persistence_flushes_before_atomic_replace(tmp_path, monkeypatch):
+    import os
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    calls = []
+    real_fsync = os.fsync
+    real_replace = os.replace
+
+    def fsync(fd):
+        calls.append("fsync")
+        return real_fsync(fd)
+
+    def replace(src, dst):
+        calls.append("replace")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    monkeypatch.setattr(os, "replace", replace)
+    ledger.record("req-durable")
+    assert calls.index("fsync") < calls.index("replace")
+    assert calls.count("fsync") >= 2
