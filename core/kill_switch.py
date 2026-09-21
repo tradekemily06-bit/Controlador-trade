@@ -55,6 +55,18 @@ class KillSwitch:
             self._load_durable()
 
     @property
+    def state_path(self) -> Path | None:
+        return self._state_path
+
+    @property
+    def coordination_path(self) -> Path | None:
+        return self._coordination_path
+
+    @property
+    def is_durable(self) -> bool:
+        return self._state_path is not None and self._coordination_path is not None
+
+    @property
     def state(self) -> KillSwitchState:
         if self._state_path is not None:
             self._load_durable()
