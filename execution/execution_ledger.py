@@ -232,8 +232,10 @@ class ExecutionLedger:
     def mark_unknown(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
 
-    def reconcile(self, request_id: str, *, executed: bool) -> None:
+    def reconcile(self, request_id: str, *, executed: bool, external_id: str) -> None:
         self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("reconciliação exige external_id durável.")
 
         def mutation() -> None:
             if self._states.get(request_id) not in (
@@ -241,11 +243,16 @@ class ExecutionLedger:
                 ExecutionLedgerStatus.RESERVED,
             ):
                 raise ValueError("request_id não está em estado incerto reconciliável.")
+            normalized = external_id.strip()
+            stored = self._external_ids.get(request_id)
+            if stored != normalized:
+                raise ValueError("external_id da reconciliação difere do external_id durável.")
             self._states[request_id] = (
                 ExecutionLedgerStatus.RECONCILED_EXECUTED
                 if executed
                 else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
             )
+            self._external_reference_required[request_id] = True
 
         self._mutate_locked(mutation)
 
