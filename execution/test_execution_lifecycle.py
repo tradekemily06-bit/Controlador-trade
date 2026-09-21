@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from datetime import datetime, timezone
@@ -119,6 +121,7 @@ def test_persisted_lifecycle_rejects_timezone_naive_timestamp(tmp_path):
     )
     with pytest.raises(ValueError, match="timezone-aware"):
         ExecutionLifecycleStore(path)
+
 
 def test_reconcile_pending_requires_internal_recovery_capability(tmp_path):
     store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
