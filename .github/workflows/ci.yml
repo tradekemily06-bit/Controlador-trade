@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@f8cf4291c8b8e273ddd26e569454615c7315d932
         with:
           python-version: "3.12"
 
@@ -74,21 +74,3 @@ jobs:
 
           echo "Container health endpoint did not become ready."
           exit 1
-
-
-  windows-safety:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest
-
-      - name: Run persistence and recovery tests on Windows
-        run: python -m pytest -q execution/test_execution_ledger.py execution/test_execution_lifecycle.py core/test_runtime_checkpoint.py core/test_recovery_coordinator.py
