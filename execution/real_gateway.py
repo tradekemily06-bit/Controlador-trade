@@ -36,6 +36,8 @@ class RealExecutionGateway:
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
+        if not isinstance(kill_switch, KillSwitch):
+            raise ValueError("kill_switch ao vivo é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
