@@ -10,8 +10,10 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
 
-RUN addgroup --system app && adduser --system --ingroup app app \
-    && chown -R app:app /app
+RUN addgroup --system app && adduser --system --ingroup app --home /home/app app \
+    && mkdir -p /home/app \
+    && chown -R app:app /app /home/app
+ENV HOME=/home/app
 USER app
 
 EXPOSE 7860
@@ -19,4 +21,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '7860') + '/api/health', timeout=3).read()" || exit 1
 
-CMD ["python", "-m", "security.wsgi_entrypoint"]
+CMD ["gunicorn", "--bind", "0.0.0.0:7860", "--workers", "1", "--threads", "8", "--timeout", "30", "security.wsgi_entrypoint:application"]

@@ -134,7 +134,7 @@ class ScopedLearningState:
         if not isinstance(payload, dict):
             raise RuntimeError("learning state is corrupt")
         try:
-            sources = {str(key): LearningSource(source_id=str(value["source_id"]), source_type=LearningSourceType(str(value["source_type"])), uri=str(value["uri"]), status=LearningSourceStatus(str(value["status"])), content_verified=bool(value.get("content_verified", False)), security_checked=bool(value.get("security_checked", False)), knowledge_validated=bool(value.get("knowledge_validated", False)), operation_eligible=bool(value.get("operation_eligible", False))) for key, value in dict(payload.get("sources", {})).items()}
+            sources = {str(key): LearningSource(source_id=str(value["source_id"]), source_type=LearningSourceType(str(value["source_type"])), uri=str(value["uri"]), status=LearningSourceStatus(str(value["status"])), content_verified=bool(value.get("content_verified", False)), security_checked=bool(value.get("security_checked", False)), knowledge_validated=bool(value.get("knowledge_validated", False)), operation_eligible=False) for key, value in dict(payload.get("sources", {})).items()}
             resources = {str(key): LearningResource(resource_id=str(value["resource_id"]), title=str(value["title"]), content_type=ContentType(str(value["content_type"])), source_url=value.get("source_url"), source_name=value.get("source_name"), status=LearningStatus(str(value.get("status", LearningStatus.RECEIVED.value))), tags=tuple(value.get("tags", ()) or ())) for key, value in dict(payload.get("resources", {})).items()}
             observations = [LearningObservation(resource_id=str(value["resource_id"]), statement=str(value["statement"]), concepts=tuple(value.get("concepts", ()) or ()), evidence=value.get("evidence"), confidence=value.get("confidence"), validated=bool(value.get("validated", False))) for value in list(payload.get("observations", ()) or ())]
             activities = {str(key): LearningActivity(activity_id=str(value["activity_id"]), prompt=str(value["prompt"]), expected_concepts=tuple(value.get("expected_concepts", ()) or ()), difficulty=str(value.get("difficulty", "UNSPECIFIED"))) for key, value in dict(payload.get("activities", {})).items()}
@@ -160,17 +160,48 @@ class ScopedLearningState:
         self._state_store.put(tenant_id=scope_key[0], subject_id=scope_key[1], namespace=self.NAMESPACE, payload=self._encode(scope))
 
     @staticmethod
+    def _merge_sources(latest: dict[str, LearningSource], current: dict[str, LearningSource]) -> dict[str, LearningSource]:
+        merged = dict(latest)
+        for source_id, candidate in current.items():
+            previous = merged.get(source_id)
+            if previous is None:
+                merged[source_id] = candidate
+                continue
+            if previous.source_type is not candidate.source_type or previous.uri != candidate.uri:
+                raise ValueError("concurrent learning source identity conflict")
+            if previous.status is LearningSourceStatus.BLOCKED or candidate.status is LearningSourceStatus.BLOCKED:
+                status = LearningSourceStatus.BLOCKED
+            elif previous.content_verified or candidate.content_verified:
+                content_verified = previous.content_verified or candidate.content_verified
+                security_checked = previous.security_checked or candidate.security_checked
+                status = LearningSourceStatus.VALIDATED if content_verified and security_checked else LearningSourceStatus.QUARANTINED
+            else:
+                content_verified = False
+                security_checked = False
+                status = LearningSourceStatus.QUARANTINED
+            merged[source_id] = LearningSource(
+                source_id=source_id,
+                source_type=previous.source_type,
+                uri=previous.uri,
+                status=status,
+                content_verified=previous.content_verified or candidate.content_verified,
+                security_checked=previous.security_checked or candidate.security_checked,
+                knowledge_validated=previous.knowledge_validated or candidate.knowledge_validated,
+                operation_eligible=False,
+            )
+        return merged
+
+    @staticmethod
     def _merge(latest: LearningScope, current: LearningScope) -> LearningScope:
         """Merge additive concurrent learning writes without dropping newer durable data."""
         merged = LearningScope(
-            sources=dict(latest.sources),
+            sources=ScopedLearningState._merge_sources(latest.sources, current.sources),
             resources=dict(latest.resources),
             observations=list(latest.observations),
             activities=dict(latest.activities),
             attempts=list(latest.attempts),
             material_reviews=dict(latest.material_reviews),
         )
-        merged.sources.update(current.sources)
         merged.resources.update(current.resources)
         merged.activities.update(current.activities)
         merged.material_reviews.update(current.material_reviews)
@@ -217,7 +248,18 @@ class ScopedLearningState:
         if current is None:
             current = self._cache(scope, self._load(scope))
         if self._state_store is not None:
-            latest = self._load(scope)
-            current = self._merge(latest, current)
+            def updater(payload):
+                latest = LearningScope() if payload is None else self._decode(payload)
+                merged = self._merge(latest, current)
+                return self._encode(merged)
+
+            merged_payload = self._state_store.update(
+                tenant_id=scope[0],
+                subject_id=scope[1],
+                namespace=self.NAMESPACE,
+                updater=updater,
+            )
+            current = self._decode(merged_payload)
         self._cache(scope, current)
-        self._save(scope, current)
+        if self._state_store is None:
+            self._save(scope, current)

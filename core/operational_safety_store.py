@@ -11,6 +11,13 @@ from .file_lock import exclusive_file_lock
 from .kill_switch import KillSwitch, KillSwitchState
 
 
+MAX_SAFETY_FILE_BYTES = 4 * 1024 * 1024
+MAX_SAFETY_AUDIT_RECORDS = 10_000
+MAX_SAFETY_EXECUTION_AUDIT_RECORDS = 10_000
+MAX_SAFETY_IDENTIFIER_LENGTH = 256
+MAX_SAFETY_MESSAGE_LENGTH = 4_096
+
+
 class OperationalSafetyStore:
     """Persists validated operational audit and kill-switch state atomically."""
 
@@ -21,6 +28,14 @@ class OperationalSafetyStore:
 
     def _lock(self):
         return exclusive_file_lock(self.path.with_name(f".{self.path.name}.lock"))
+
+    @property
+    def coordination_lock_path(self) -> Path:
+        """Shared execution/safety fence used by dispatch and safety-state writers."""
+        return self.path.with_name(f".{self.path.name}.dispatch.lock")
+
+    def coordination_lock(self):
+        return exclusive_file_lock(self.coordination_lock_path)
 
     @staticmethod
     def _snapshot(data: object) -> DecisionSnapshot:
@@ -80,22 +95,54 @@ class OperationalSafetyStore:
         if not self.path.exists():
             return {"audit": [], "kill_switch": {}, "execution_audit": []}
         try:
+            stat = self.path.lstat()
+            if not self.path.is_file() or self.path.is_symlink():
+                raise ValueError("estado de segurança deve ser um arquivo regular.")
+            if stat.st_size > MAX_SAFETY_FILE_BYTES:
+                raise ValueError("estado de segurança inválido: excede o limite permitido.")
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
         if not isinstance(payload, dict):
             raise ValueError("estado de segurança deve ser um objeto.")
+        audit_items = payload.get("audit", [])
+        execution_items = payload.get("execution_audit", [])
+        if not isinstance(audit_items, list) or len(audit_items) > MAX_SAFETY_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
+        if not isinstance(execution_items, list) or len(execution_items) > MAX_SAFETY_EXECUTION_AUDIT_RECORDS:
+            raise ValueError("estado de segurança inválido.")
         return payload
 
     def _write_payload(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do estado de segurança não pode ser symlink")
+        if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+            raise OSError("estado de segurança deve ser um arquivo regular")
+        encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        if len(encoded) > MAX_SAFETY_FILE_BYTES:
+            raise ValueError("estado de segurança excede o limite permitido.")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        if temporary.exists():
+            raise RuntimeError("arquivo temporário do estado de segurança já existe")
         try:
-            temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-            with temporary.open("r+b") as handle:
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
+            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            fd = None
+            try:
+                fd = os.open(temporary, flags, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    fd = None
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, self.path)
+            except FileExistsError as exc:
+                raise RuntimeError("arquivo temporário do estado de segurança já existe") from exc
+            finally:
+                if fd is not None:
+                    os.close(fd)
             try:
                 directory_fd = os.open(self.path.parent, os.O_RDONLY)
             except OSError:
@@ -165,10 +212,11 @@ class OperationalSafetyStore:
     def replace_with_fail_closed_state(self, reason: str) -> None:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("reason é obrigatório.")
-        with self._lock():
-            self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
+        with self.coordination_lock():
+            with self._lock():
+                self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
 
-    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+    def _save_under_coordination_fence(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
         if not isinstance(kill_switch, (KillSwitch, KillSwitchState)):
@@ -187,7 +235,15 @@ class OperationalSafetyStore:
             }
             self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
 
-    def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+        with self.coordination_lock():
+            self._save_under_coordination_fence(audit, kill_switch)
+
+    def save_under_coordination_fence(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+        """Persist while the caller already owns the canonical coordination fence."""
+        self._save_under_coordination_fence(audit, kill_switch)
+
+    def _set_kill_switch_under_coordination_fence(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
             raise TypeError("enabled deve ser bool.")
         if enabled and (not isinstance(reason, str) or not reason.strip()):
@@ -201,6 +257,14 @@ class OperationalSafetyStore:
             payload["kill_switch"] = {"enabled": state.enabled, "reason": state.reason}
             self._write_payload(payload)
             return state
+
+    def set_kill_switch_under_coordination_fence(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+        """Persist while the caller already owns the canonical coordination fence."""
+        return self._set_kill_switch_under_coordination_fence(enabled=enabled, reason=reason)
+
+    def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
+        with self.coordination_lock():
+            return self._set_kill_switch_under_coordination_fence(enabled=enabled, reason=reason)
 
     def load(self) -> tuple[DecisionAudit, KillSwitchState]:
         with self._lock():

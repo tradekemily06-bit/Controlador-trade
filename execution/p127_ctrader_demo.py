@@ -14,6 +14,10 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 CTRADER_DEMO_ENDPOINT = "demo.ctraderapi.com:5035"
 
 
+class CTraderDemoTransportError(RuntimeError):
+    """Raised when the cTrader DEMO transport outcome is not deterministically known."""
+
+
 class CTraderDemoTransport(Protocol):
     """External transport supplied by the cTrader adapter integration."""
 
@@ -65,12 +69,20 @@ class CTraderDemoAdapter:
                 amount=request.amount,
                 duration_seconds=request.duration_seconds,
             )
+        except (TypeError, ValueError) as exc:
+            # This happens before any broker call, so it is a deterministic rejection.
+            return ExecutionResult(False, f"falha de validação cTrader DEMO: {self._safe_error(exc)}")
+
+        # Once the external order call begins, any exception—including a malformed
+        # or missing response—must remain ambiguous. The broker may have accepted
+        # the order even if the client did not receive a terminal response.
+        try:
             broker_result = self._transport.place_market_order(broker_order)
             validated = BrokerOrderBoundary.validate_result(broker_result)
-        except (TypeError, ValueError) as exc:
-            return ExecutionResult(False, f"falha de validação cTrader DEMO: {self._safe_error(exc)}")
         except Exception as exc:
-            return ExecutionResult(False, f"falha técnica cTrader DEMO; execução não confirmada: {self._safe_error(exc)}")
+            raise CTraderDemoTransportError(
+                f"transporte cTrader DEMO terminou sem confirmação determinística: {self._safe_error(exc)}"
+            ) from exc
 
         return ExecutionResult(
             accepted=validated.accepted,

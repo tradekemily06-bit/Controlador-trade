@@ -2,3 +2,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .runtime/
+
+# Local environment/secret material — never commit credentials.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx

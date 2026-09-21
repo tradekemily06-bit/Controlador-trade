@@ -15,14 +15,16 @@ from execution.mt5_demo_risk_state_provider import MT5DemoRiskStateConfig, MT5De
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
-from security_audit import AUDIT
-from security.http_identity import PublicSaaSNotReady, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
+from security_audit import AUDIT, MAX_SECURITY_PATH_LENGTH
+from security.http_identity import PublicSaaSNotReady, clear_trusted_identity, require_role, require_tenant_scoped_data_plane, require_trusted_identity, saas_public_mode
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
+MAX_QUERY_STRING_BYTES = 8 * 1024
+MAX_REPLAY_CASES = 100
 
 
 def _build_authoritative_risk_provider():
@@ -54,33 +56,92 @@ else:
     )
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
 ONBOARDING = EcosystemOnboarding()
-PUBLIC_SAAS_MUTATIONS = {"/api/preferences", "/api/preferences/candles", "/api/preferences/notifications", "/api/analyze", "/api/replay", "/api/outcome", "/api/psychology/check-in", "/api/psychology/advanced", "/api/learning/resources", "/api/learning/sources/screen", "/api/learning/sources/validate", "/api/learning/sources/admit", "/api/learning/observations", "/api/learning/activities", "/api/learning/professor/activity", "/api/learning/attempts"}
-PUBLIC_SAAS_READS = {"/api/status", "/api/preferences", "/api/notifications", "/api/notifications/all", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections", "/api/learning", "/api/learning/resources", "/api/learning/sources", "/api/learning/observations", "/api/learning/activities", "/api/psychology/status", "/api/saas/status"}
-ADMIN_ONLY_SAAS_MUTATIONS = {"/api/learning/sources/validate", "/api/learning/sources/admit"}
+# Only these API paths currently propagate the trusted subject/tenant into
+# the service data plane. Any other stateful SaaS endpoint is fail-closed until
+# its storage path is tenant/subject scoped end-to-end.
+PUBLIC_SAAS_OWNER_SCOPED = {
+    ("GET", "/api/memory"),
+    ("GET", "/api/statistics"),
+    ("POST", "/api/analyze"),
+    ("POST", "/api/replay"),
+    ("POST", "/api/outcome"),
+}
+PUBLIC_SAAS_GENERIC = {
+    ("GET", "/api/health"),
+    ("GET", "/api/status"),
+    ("GET", "/api/onboarding"),
+    ("GET", "/api/saas/status"),
+    ("GET", "/api/news"),
+    ("GET", "/api/connections"),
+}
+PUBLIC_SAAS_BLOCKED = {
+    ("GET", "/api/learning"),
+    ("GET", "/api/learning/resources"),
+    ("GET", "/api/learning/sources"),
+    ("GET", "/api/notifications"),
+    ("GET", "/api/notifications/all"),
+    ("GET", "/api/preferences"),
+    ("GET", "/api/psychology/status"),
+    ("GET", "/api/risk"),
+    ("POST", "/api/learning/activities"),
+    ("POST", "/api/learning/attempts"),
+    ("POST", "/api/learning/observations"),
+    ("POST", "/api/learning/professor/activity"),
+    ("POST", "/api/learning/resources"),
+    ("POST", "/api/learning/sources/admit"),
+    ("POST", "/api/learning/sources/screen"),
+    ("POST", "/api/learning/sources/validate"),
+    ("POST", "/api/preferences"),
+    ("POST", "/api/preferences/candles"),
+    ("POST", "/api/preferences/notifications"),
+    ("POST", "/api/psychology/advanced"),
+    ("POST", "/api/psychology/check-in"),
+}
 
 
 def _audit(environ, request_id: str, status: int) -> None:
-    AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/")), status=status, client_key=SECURITY.client_key(environ))
+    AUDIT.record(request_id=request_id, method=str(environ.get("REQUEST_METHOD", "GET")).upper(), path=str(environ.get("PATH_INFO", "/"))[:MAX_SECURITY_PATH_LENGTH], status=status, client_key=SECURITY.client_key(environ))
 
 
-def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None) -> list[bytes]:
+def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
+    if environ is not None and audit:
+        try:
+            _audit(environ, request_id, status.value)
+        except RuntimeError:
+            if saas_public_mode():
+                status = HTTPStatus.SERVICE_UNAVAILABLE
+                payload = {"error": "serviço de auditoria indisponível", "request_id": request_id}
+            else:
+                raise
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
     return [body]
 
 
-def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None) -> list[bytes]:
+def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
+    if environ is not None and audit:
+        try:
+            _audit(environ, request_id, status.value)
+        except RuntimeError:
+            if saas_public_mode():
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "serviço de auditoria indisponível", "request_id": request_id}, request_id, None, audit=False)
+            raise
     headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
     start_response(f"{status.value} {status.phrase}", headers)
-    if environ is not None: _audit(environ, request_id, status.value)
     return [body]
 
 
 def _read_json(environ) -> dict:
+    raw_content_length = environ.get("CONTENT_LENGTH")
+    transfer_encoding = str(environ.get("HTTP_TRANSFER_ENCODING") or "").strip().lower()
+    # This WSGI reader is deliberately bounded by Content-Length. Do not fall
+    # back to an unbounded read for chunked/unknown-length bodies.
+    if transfer_encoding:
+        if transfer_encoding != "identity" or raw_content_length not in (None, "", "0"):
+            raise ValueError("Entrada inválida: transferência de payload não suportada")
     try:
-        length = int(environ.get("CONTENT_LENGTH") or "0")
+        length = int(raw_content_length or "0")
     except (TypeError, ValueError) as exc:
         raise ValueError("Entrada inválida: content-length inválido") from exc
     if length < 0 or length > MAX_BODY_BYTES:
@@ -90,7 +151,7 @@ def _read_json(environ) -> dict:
         raise ValueError("Entrada inválida: payload excede o limite permitido")
     try:
         data = json.loads(raw or b"{}")
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("Entrada inválida: JSON inválido") from exc
     if not isinstance(data, dict):
         raise ValueError("Entrada inválida: payload deve ser um objeto JSON")
@@ -98,15 +159,22 @@ def _read_json(environ) -> dict:
 
 
 def _query_limit(environ, default: int, maximum: int = 100) -> int:
-    values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("limit")
+    raw_query = environ.get("QUERY_STRING") or ""
+    if len(str(raw_query).encode("utf-8", "replace")) > MAX_QUERY_STRING_BYTES:
+        raise ValueError("query string excede o limite permitido")
+    if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum < 1:
+        raise ValueError("maximum deve ser maior que zero")
+    if not isinstance(default, int) or isinstance(default, bool) or default < 1 or default > maximum:
+        raise ValueError("default de limit inválido")
+    values = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True, max_num_fields=256).get("limit")
     if not values or values[-1] == "":
         return default
     try:
         limit = int(values[-1])
     except (TypeError, ValueError) as exc:
         raise ValueError("limit deve ser um inteiro") from exc
-    if limit < 1:
-        raise ValueError("limit deve ser maior que zero")
+    if limit < 1 or limit > maximum:
+        raise ValueError("limit fora do limite permitido")
     return limit
 
 
@@ -126,16 +194,20 @@ def _authorize_internal_update(environ) -> tuple[bool, str]:
 def _authorize_public_saas_request(environ, path: str, method: str) -> None:
     if not saas_public_mode():
         return
-    if method == "POST" and path in PUBLIC_SAAS_MUTATIONS:
-        identity = require_trusted_identity(environ)
-        if path in ADMIN_ONLY_SAAS_MUTATIONS:
-            require_role(identity, "admin")
+    multi_instance = os.environ.get("CONTROLADOR_MULTI_INSTANCE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if multi_instance:
+        raise PublicSaaSNotReady("SaaS público multi-instance exige rate limiting centralizado e data plane compartilhado")
+    require_trusted_identity(environ)
+    route = (method, path)
+    if route in PUBLIC_SAAS_GENERIC:
+        return
+    if route in PUBLIC_SAAS_OWNER_SCOPED:
         require_tenant_scoped_data_plane()
-    elif method == "GET" and path in PUBLIC_SAAS_READS:
-        require_trusted_identity(environ)
-        require_tenant_scoped_data_plane()
-
-
+        return
+    # Authentication alone is not tenant isolation. The remaining stateful
+    # endpoints still use process-local/global service state, so exposing them
+    # in public SaaS mode would create a cross-tenant data boundary violation.
+    raise PublicSaaSNotReady("endpoint ainda não possui armazenamento tenant/subject-scoped; SaaS público bloqueado")
 def _file_response(start_response, path: Path, content_type: str, request_id: str, environ) -> list[bytes]:
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
@@ -169,8 +241,9 @@ def _learning_source_for_request(source_id: str):
 
 def application(environ, start_response):
     request_id = SECURITY.request_id(); path = environ.get("PATH_INFO", "/"); method = environ.get("REQUEST_METHOD", "GET").upper()
-    if not SECURITY.allow(environ): return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
     try:
+        if not SECURITY.allow(environ):
+            return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
         _authorize_public_saas_request(environ, path, method)
         identity = require_trusted_identity(environ) if saas_public_mode() else None
         owner_kwargs = {"subject_id": identity.subject_id, "tenant_id": identity.tenant_id} if identity is not None else {}
@@ -198,6 +271,7 @@ def application(environ, start_response):
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list): raise ValueError("cases deve ser uma lista")
+            if len(cases) > MAX_REPLAY_CASES: raise ValueError("cases excede o limite permitido")
             return _json_response(start_response, HTTPStatus.OK, {"results": SERVICE.replay(cases, **owner_kwargs), "execution_allowed": False}, request_id, environ)
         if path == "/api/memory" and method == "GET": return _json_response(start_response, HTTPStatus.OK, {"records": SERVICE.memory_view(_query_limit(environ, 50), **owner_kwargs)}, request_id, environ)
         if path == "/api/statistics" and method == "GET": return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(**owner_kwargs), request_id, environ)
@@ -234,10 +308,15 @@ def application(environ, start_response):
             content_type = "text/html; charset=utf-8" if candidate.suffix == ".html" else "text/javascript; charset=utf-8" if candidate.suffix == ".js" else "text/css; charset=utf-8" if candidate.suffix == ".css" else "application/octet-stream"
             return _file_response(start_response, candidate, content_type, request_id, environ)
         return _text_response(start_response, HTTPStatus.NOT_FOUND, b"Not Found", request_id, environ)
-    except PublicSaaSNotReady as exc: return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": exc.args[0] if exc.args and isinstance(exc.args[0], str) else "Serviço SaaS indisponível", "request_id": request_id}, request_id, environ)
+    except PublicSaaSNotReady:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "SaaS público bloqueado: tenant/subject-scoped data plane unavailable", "request_id": request_id}, request_id, environ)
     except PermissionError: return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "Acesso negado", "request_id": request_id}, request_id, environ)
     except (ValueError, KeyError, TypeError, RuntimeError): return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
     except Exception as exc: return _json_response(start_response, HTTPStatus.INTERNAL_SERVER_ERROR, {"error": "Erro interno", "request_id": request_id}, request_id, environ)
+    finally:
+        # WSGI workers can serve multiple users sequentially. Never let a
+        # trusted identity survive into the next request on the same worker.
+        clear_trusted_identity()
 
 
 def run() -> None:

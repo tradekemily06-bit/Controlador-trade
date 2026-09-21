@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from typing import Any
+from threading import RLock
 
 
 class CandleStyle(str, Enum):
@@ -72,6 +73,7 @@ class EcosystemPreferencesStore:
         self._validate(self._default_preferences)
         self._scoped: dict[tuple[str, str], EcosystemPreferences] = {}
         self._state_store = state_store
+        self._lock = RLock()
 
     @staticmethod
     def _trusted_scope() -> tuple[str, str] | None:
@@ -127,8 +129,6 @@ class EcosystemPreferencesStore:
         scope = self._require_scope_for_durable_state()
         if scope is None:
             return self._default_preferences
-        if scope in self._scoped:
-            return self._scoped[scope]
         if self._state_store is not None:
             payload = self._state_store.get(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE)
             if payload is not None:
@@ -136,6 +136,9 @@ class EcosystemPreferencesStore:
                 self._validate(value)
                 self._scoped[scope] = value
                 return value
+            return self._default_preferences
+        if scope in self._scoped:
+            return self._scoped[scope]
         return self._default_preferences
 
     def _fresh_current(self) -> EcosystemPreferences:
@@ -154,7 +157,8 @@ class EcosystemPreferencesStore:
 
     @property
     def preferences(self) -> EcosystemPreferences:
-        return self._current()
+        with self._lock:
+            return self._current()
 
     def _save(self, value: EcosystemPreferences) -> EcosystemPreferences:
         self._validate(value)
@@ -167,16 +171,42 @@ class EcosystemPreferencesStore:
                 self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=asdict(value))
         return value
 
+    def _atomic_update(self, builder) -> EcosystemPreferences:
+        scope = self._require_scope_for_durable_state()
+        if scope is None or self._state_store is None:
+            return self._save(builder(self._current()))
+
+        def updater(payload):
+            latest = self._default_preferences if payload is None else self._decode(payload)
+            value = builder(latest)
+            self._validate(value)
+            return asdict(value)
+
+        payload = self._state_store.update(
+            tenant_id=scope[0],
+            subject_id=scope[1],
+            namespace=self.NAMESPACE,
+            updater=updater,
+        )
+        value = self._decode(payload)
+        self._scoped[scope] = value
+        return value
+
     def update(self, **changes) -> EcosystemPreferences:
-        return self._save(replace(self._fresh_current(), **changes))
+        with self._lock:
+            return self._atomic_update(lambda current: replace(current, **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, candle=replace(current.candle, **changes)))
+        with self._lock:
+            return self._atomic_update(
+                lambda current: replace(current, candle=replace(current.candle, **changes))
+            )
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
-        current = self._fresh_current()
-        return self._save(replace(current, notifications=replace(current.notifications, **changes)))
+        with self._lock:
+            return self._atomic_update(
+                lambda current: replace(current, notifications=replace(current.notifications, **changes))
+            )
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:

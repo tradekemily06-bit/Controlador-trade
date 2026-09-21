@@ -8,10 +8,10 @@ O Controlador Trading possui um painel mobile-first servido pelo `app.py`. O ser
 - A API de análise retorna `execution_allowed: false`.
 - REAL permanece desabilitado.
 - Nenhuma credencial de corretora deve ser colocada no repositório.
-- Esta publicação é para teste/uso controlado do ecossistema, **não é uma implantação SaaS multiusuário de produção**.
-- A camada atual ainda não configura um provedor de autenticação/sessão, autorização por usuário nem isolamento de estado por tenant na borda HTTP.
-- Antes de disponibilizar a API publicamente para múltiplos usuários, a implantação precisa adicionar autenticação, autorização, sessão segura, isolamento tenant-scoped e armazenamento compartilhado apropriado.
-- Em especial, endpoints que alteram memória, resultados, preferências ou conteúdo de aprendizagem não devem ser tratados como API pública multiusuário enquanto essa camada de identidade não estiver configurada.
+- A configuração atual suporta apenas um deployment SaaS público **single-instance**, com armazenamento tenant+subject-scoped e identidade confiável fornecida pela borda. Isso não equivale a suporte a SaaS horizontal/multi-instance.
+- A aplicação exige uma identidade confiável injetada pela infraestrutura para as rotas protegidas, mas a autenticação/sessão em si continua sendo responsabilidade da borda/identity provider.
+- Antes de escalar para múltiplas instâncias, a implantação precisa adicionar um provedor de armazenamento compartilhado que cumpra o contrato tenant-scoped e também uma solução centralizada de rate limiting. SQLite local continua explicitamente limitado a uma única instância.
+- Em especial, a infraestrutura deve garantir que as chaves WSGI `controlador.trusted_*` não possam ser fornecidas pelo cliente e que somente o identity provider confiável possa injetá-las. O processo WSGI não deve ficar diretamente exposto sem essa borda.
 
 ## Hospedagem recomendada para o primeiro teste
 

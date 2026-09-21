@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime
+import os
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
@@ -36,8 +37,12 @@ class EcosystemService:
 
     def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
         self.engine = engine or SignalEngine()
-        self.store = decision_store or DecisionStore()
-        self.memory: list[DecisionRecord] = self.store.load()
+        public_saas = os.environ.get("CONTROLADOR_SAAS_PUBLIC", "").strip().lower() in {"1", "true", "yes", "on"}
+        # Public SaaS must never bootstrap a legacy global decision database or
+        # load process-wide decision history before the scoped production
+        # boundary has a chance to replace the legacy store.
+        self.store = decision_store if decision_store is not None else (DecisionStore() if not public_saas else None)
+        self.memory: list[DecisionRecord] = [] if self.store is None else self.store.load()
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()

@@ -11,6 +11,8 @@ SAAS_PUBLIC_ENV = "CONTROLADOR_SAAS_PUBLIC"
 TRUSTED_SUBJECT_KEY = "controlador.trusted_subject_id"
 TRUSTED_TENANT_KEY = "controlador.trusted_tenant_id"
 TRUSTED_ROLE_KEY = "controlador.trusted_role"
+MAX_IDENTITY_COMPONENT_LENGTH = 256
+MAX_ROLE_LENGTH = 64
 
 
 class PublicSaaSNotReady(RuntimeError):
@@ -26,7 +28,18 @@ class TrustedHttpIdentity:
     role: str
 
     def is_valid(self) -> bool:
-        return bool(self.subject_id.strip() and self.tenant_id.strip() and self.role.strip())
+        values = (self.subject_id, self.tenant_id, self.role)
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            return False
+        if len(self.subject_id.strip()) > MAX_IDENTITY_COMPONENT_LENGTH:
+            return False
+        if len(self.tenant_id.strip()) > MAX_IDENTITY_COMPONENT_LENGTH:
+            return False
+        if len(self.role.strip()) > MAX_ROLE_LENGTH:
+            return False
+        if any(ord(char) < 32 for value in values for char in value):
+            return False
+        return True
 
 
 _current_identity: ContextVar[TrustedHttpIdentity | None] = ContextVar("controlador_trusted_identity", default=None)

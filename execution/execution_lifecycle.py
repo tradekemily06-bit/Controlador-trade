@@ -10,6 +10,12 @@ from datetime import datetime
 from core.file_lock import exclusive_file_lock
 
 
+MAX_LIFECYCLE_RECORDS = 10_000
+MAX_LIFECYCLE_FILE_BYTES = 4 * 1024 * 1024
+MAX_LIFECYCLE_IDENTIFIER_LENGTH = 256
+MAX_LIFECYCLE_MESSAGE_LENGTH = 4_096
+
+
 class ExecutionLifecycleState(str, Enum):
     PENDING = "PENDING"
     ACCEPTED = "ACCEPTED"
@@ -40,9 +46,19 @@ class ExecutionLifecycleStore:
             self._records = {}
             return
         try:
+            stat = self.path.lstat()
+        except OSError as exc:
+            raise ValueError("ciclo de execução persistido inválido.") from exc
+        if self.path.is_symlink() or not self.path.is_file():
+            raise ValueError("ciclo de execução deve ser um arquivo regular.")
+        if stat.st_size > MAX_LIFECYCLE_FILE_BYTES:
+            raise ValueError("ciclo de execução persistido inválido.")
+        try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            if len(payload) > MAX_LIFECYCLE_RECORDS:
+                raise ValueError("ciclo de execução excede o limite permitido.")
             loaded: dict[str, ExecutionLifecycleRecord] = {}
             for item in payload:
                 if not isinstance(item, dict):
@@ -63,13 +79,13 @@ class ExecutionLifecycleStore:
 
     @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
-        if not isinstance(record.request_id, str) or not record.request_id.strip():
+        if not isinstance(record.request_id, str) or not record.request_id.strip() or len(record.request_id.strip()) > MAX_LIFECYCLE_IDENTIFIER_LENGTH:
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
         if not isinstance(record.updated_at, datetime):
             raise ValueError("timestamp inválido.")
-        if not isinstance(record.message, str):
+        if not isinstance(record.message, str) or len(record.message) > MAX_LIFECYCLE_MESSAGE_LENGTH:
             raise ValueError("mensagem inválida.")
 
     @staticmethod
@@ -145,11 +161,39 @@ class ExecutionLifecycleStore:
 
     def _save(self, records: dict[str, ExecutionLifecycleRecord]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do ciclo de execução não pode ser symlink")
+        if self.path.exists() and (self.path.is_symlink() or not self.path.is_file()):
+            raise OSError("ciclo de execução deve ser um arquivo regular")
+        if len(records) > MAX_LIFECYCLE_RECORDS:
+            raise ValueError("ciclo de execução excede o limite permitido.")
+        encoded = self._serialize(records).encode("utf-8")
+        if len(encoded) > MAX_LIFECYCLE_FILE_BYTES:
+            raise ValueError("ciclo de execução excede o limite permitido.")
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(self._serialize(records), encoding="utf-8")
-        with temporary.open("rb") as handle:
-            os.fsync(handle.fileno())
-        os.replace(temporary, self.path)
+        if temporary.exists():
+            raise RuntimeError("arquivo temporário do ciclo de execução já existe")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
+        try:
+            fd = os.open(temporary, flags, 0o600)
+            with os.fdopen(fd, "wb") as handle:
+                fd = None
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+        except FileExistsError as exc:
+            raise RuntimeError("arquivo temporário do ciclo de execução já existe") from exc
+        finally:
+            if fd is not None:
+                os.close(fd)
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
         directory_fd = os.open(self.path.parent, os.O_RDONLY)
         try:
             os.fsync(directory_fd)

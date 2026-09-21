@@ -7,7 +7,6 @@ import app
 
 
 SENSITIVE_READS = (
-    "/api/status",
     "/api/preferences",
     "/api/notifications",
     "/api/notifications/all",
@@ -65,10 +64,32 @@ def test_public_saas_mutation_requires_trusted_identity(monkeypatch):
 
 def test_public_saas_does_not_expose_global_state_after_identity_is_trusted(monkeypatch):
     monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
-    for path in ("/api/status", "/api/memory", "/api/statistics", "/api/preferences"):
+    for path in ("/api/memory", "/api/statistics", "/api/preferences"):
         status, payload = call(path, trusted=True)
         assert status == "503 Service Unavailable", (path, status, payload)
-        assert "tenant-scoped data plane is not configured" in payload["error"]
+        assert "tenant" in payload["error"].lower() and "scoped" in payload["error"].lower()
+
+    for path in ("/api/status", "/api/news", "/api/connections", "/api/saas/status"):
+        status, payload = call(path, trusted=True)
+        assert status == "200 OK", (path, status, payload)
+
+
+def test_every_stateful_public_saas_route_fails_closed_without_durable_scope(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
+    for method, path in sorted(app.PUBLIC_SAAS_OWNER_SCOPED):
+        status, payload = call(path, method=method, trusted=True)
+        assert status == "503 Service Unavailable", (method, path, status, payload)
+        assert "tenant" in payload["error"].lower() or "scoped" in payload["error"].lower()
+
+
+def test_public_saas_generic_routes_are_explicitly_minimal(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_SAAS_PUBLIC", "true")
+    for method, path in sorted(app.PUBLIC_SAAS_GENERIC):
+        if path == "/api/health":
+            status, payload = call(path, method=method, trusted=False)
+        else:
+            status, payload = call(path, method=method, trusted=True)
+        assert status == "200 OK", (method, path, status, payload)
 
 
 def test_public_saas_health_is_minimal_and_does_not_expose_system_state(monkeypatch):

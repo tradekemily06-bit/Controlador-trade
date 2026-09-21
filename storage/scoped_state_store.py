@@ -6,6 +6,11 @@ from pathlib import Path
 from threading import RLock
 
 
+MAX_SCOPE_COMPONENT_LENGTH = 256
+MAX_NAMESPACE_LENGTH = 128
+MAX_PAYLOAD_BYTES = 256 * 1024
+
+
 class SQLiteScopedStateStore:
     """Small durable JSON state store keyed by tenant, subject and namespace.
 
@@ -17,9 +22,11 @@ class SQLiteScopedStateStore:
     def __init__(self, database_path: str | Path) -> None:
         self.database_path = Path(database_path)
         self._lock = RLock()
+        self._reject_symlinked_database()
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, sqlite3.connect(self.database_path) as db:
-            db.execute("PRAGMA journal_mode=WAL")
+        self._reject_symlinked_database()
+        with self._lock, self._connect() as db:
+            db.execute("PRAGMA journal_mode=DELETE")
             db.execute("PRAGMA synchronous=FULL")
             db.execute(
                 "CREATE TABLE IF NOT EXISTS scoped_state ("
@@ -28,20 +35,69 @@ class SQLiteScopedStateStore:
                 "PRIMARY KEY (tenant_id, subject_id, namespace))"
             )
             db.commit()
+        try:
+            self.database_path.chmod(0o600)
+        except OSError as exc:
+            raise RuntimeError("scoped state storage permissions could not be hardened") from exc
+
+    def _reject_symlinked_database(self) -> None:
+        try:
+            parent = self.database_path.parent
+            if parent.resolve(strict=True) != parent.absolute():
+                raise RuntimeError("scoped state database directory cannot be a symbolic link")
+            if self.database_path.exists():
+                stat = self.database_path.lstat()
+                if self.database_path.is_symlink() or not self.database_path.is_file():
+                    raise RuntimeError("scoped state database must be a regular file")
+        except OSError as exc:
+            raise RuntimeError("scoped state database could not be inspected") from exc
 
     @staticmethod
-    def _scope(tenant_id: str | None, subject_id: str | None) -> tuple[str, str]:
-        tenant = str(tenant_id or "").strip()
-        subject = str(subject_id or "").strip()
-        if not tenant or not subject:
-            raise PermissionError("tenant_id and subject_id are required")
-        return tenant, subject
+    def _component(value: str | None, field: str, *, maximum: int = MAX_SCOPE_COMPONENT_LENGTH) -> str:
+        if not isinstance(value, str):
+            raise PermissionError(f"{field} must be a string")
+        normalized = value.strip()
+        if not normalized:
+            raise PermissionError(f"{field} is required")
+        if len(normalized) > maximum:
+            raise ValueError(f"{field} exceeds the maximum length")
+        return normalized
+
+    @classmethod
+    def _scope(cls, tenant_id: str | None, subject_id: str | None) -> tuple[str, str]:
+        return (
+            cls._component(tenant_id, "tenant_id"),
+            cls._component(subject_id, "subject_id"),
+        )
+
+    @classmethod
+    def _namespace(cls, namespace: str) -> str:
+        if not isinstance(namespace, str):
+            raise ValueError("namespace must be a string")
+        normalized = namespace.strip()
+        if not normalized:
+            raise ValueError("namespace is required")
+        if len(normalized) > MAX_NAMESPACE_LENGTH:
+            raise ValueError("namespace exceeds the maximum length")
+        return normalized
+
+    def _connect(self) -> sqlite3.Connection:
+        self._reject_symlinked_database()
+        return sqlite3.connect(self.database_path)
+
+    @staticmethod
+    def _encode_payload(payload: object) -> str:
+        try:
+            encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise ValueError("scoped state payload is not safely serializable") from exc
+        if len(encoded.encode("utf-8")) > MAX_PAYLOAD_BYTES:
+            raise ValueError("scoped state payload exceeds the maximum size")
+        return encoded
 
     def get(self, *, tenant_id: str | None, subject_id: str | None, namespace: str) -> object | None:
         tenant, subject = self._scope(tenant_id, subject_id)
-        namespace = str(namespace).strip()
-        if not namespace:
-            raise ValueError("namespace is required")
+        namespace = self._namespace(namespace)
         with self._lock, sqlite3.connect(self.database_path) as db:
             row = db.execute(
                 "SELECT payload FROM scoped_state WHERE tenant_id=? AND subject_id=? AND namespace=?",
@@ -51,15 +107,47 @@ class SQLiteScopedStateStore:
             return None
         try:
             return json.loads(row[0])
-        except (TypeError, json.JSONDecodeError) as exc:
+        except (TypeError, json.JSONDecodeError, RecursionError) as exc:
             raise RuntimeError("scoped state is corrupt") from exc
+
+    def update(self, *, tenant_id: str | None, subject_id: str | None, namespace: str, updater) -> object:
+        """Atomically read-modify-write one scoped record under a SQLite writer transaction."""
+        tenant, subject = self._scope(tenant_id, subject_id)
+        namespace = self._namespace(namespace)
+        if not callable(updater):
+            raise TypeError("updater must be callable")
+        with self._lock, sqlite3.connect(self.database_path, timeout=5.0) as db:
+            db.execute("PRAGMA busy_timeout=5000")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                row = db.execute(
+                    "SELECT payload FROM scoped_state WHERE tenant_id=? AND subject_id=? AND namespace=?",
+                    (tenant, subject, namespace),
+                ).fetchone()
+                if row is None:
+                    current = None
+                else:
+                    try:
+                        current = json.loads(row[0])
+                    except (TypeError, json.JSONDecodeError, RecursionError) as exc:
+                        raise RuntimeError("scoped state is corrupt") from exc
+                updated = updater(current)
+                encoded = self._encode_payload(updated)
+                db.execute(
+                    "INSERT INTO scoped_state(tenant_id,subject_id,namespace,payload) VALUES(?,?,?,?) "
+                    "ON CONFLICT(tenant_id,subject_id,namespace) DO UPDATE SET payload=excluded.payload",
+                    (tenant, subject, namespace, encoded),
+                )
+                db.commit()
+                return updated
+            except Exception:
+                db.rollback()
+                raise
 
     def put(self, *, tenant_id: str | None, subject_id: str | None, namespace: str, payload: object) -> None:
         tenant, subject = self._scope(tenant_id, subject_id)
-        namespace = str(namespace).strip()
-        if not namespace:
-            raise ValueError("namespace is required")
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        namespace = self._namespace(namespace)
+        encoded = self._encode_payload(payload)
         with self._lock, sqlite3.connect(self.database_path) as db:
             db.execute(
                 "INSERT INTO scoped_state(tenant_id,subject_id,namespace,payload) VALUES(?,?,?,?) "

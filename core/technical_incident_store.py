@@ -10,6 +10,11 @@ from threading import RLock
 from core.file_lock import exclusive_file_lock
 
 
+MAX_INCIDENT_FILE_BYTES = 64 * 1024
+MAX_INCIDENT_ID_LENGTH = 256
+MAX_INCIDENT_REASON_LENGTH = 4096
+
+
 class TechnicalIncidentStore:
     """Atomic cross-process store for the global execution stop state."""
     def __init__(self, path: str | Path) -> None:
@@ -25,16 +30,24 @@ class TechnicalIncidentStore:
         if not self.path.exists():
             return {"status": "HEALTHY", "incident_id": None, "reason": None, "changed_at": None}
         try:
+            stat = self.path.lstat()
+        except OSError as exc:
+            raise ValueError("estado de incidente técnico inválido") from exc
+        if self.path.is_symlink() or not self.path.is_file():
+            raise ValueError("estado de incidente técnico deve ser um arquivo regular")
+        if stat.st_size > MAX_INCIDENT_FILE_BYTES:
+            raise ValueError("estado de incidente técnico inválido")
+        try:
             value = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de incidente técnico inválido") from exc
         if not isinstance(value, dict) or value.get("status") not in ("HEALTHY", "INCIDENT"):
             raise ValueError("estado de incidente técnico inválido")
         incident_id = value.get("incident_id")
-        if incident_id is not None and (not isinstance(incident_id, str) or not incident_id.strip()):
+        if incident_id is not None and (not isinstance(incident_id, str) or not incident_id.strip() or len(incident_id.strip()) > MAX_INCIDENT_ID_LENGTH):
             raise ValueError("incident_id de incidente técnico inválido")
         reason = value.get("reason")
-        if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        if reason is not None and (not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > MAX_INCIDENT_REASON_LENGTH):
             raise ValueError("reason de incidente técnico inválido")
         changed_at = value.get("changed_at")
         if changed_at is not None and (not isinstance(changed_at, str) or datetime.fromisoformat(changed_at).tzinfo is None):
@@ -49,23 +62,46 @@ class TechnicalIncidentStore:
 
     def _write(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.parent.resolve(strict=True) != self.path.parent.absolute():
+            raise OSError("diretório do incidente técnico não pode ser symlink")
+        if self.path.exists():
+            stat = self.path.lstat()
+            if self.path.is_symlink() or not self.path.is_file():
+                raise OSError("estado de incidente técnico deve ser um arquivo regular")
         temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        hidden_temporary = self.path.with_name(f".{self.path.name}.tmp")
+        if temporary.exists() or hidden_temporary.exists():
+            raise RuntimeError("arquivo temporário do incidente técnico já existe")
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        if len(encoded) > MAX_INCIDENT_FILE_BYTES:
+            raise ValueError("estado de incidente técnico excede o limite permitido")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = None
         try:
-            temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
-            with temporary.open("r+b") as handle:
-                handle.flush(); os.fsync(handle.fileno())
+            try:
+                fd = os.open(temporary, flags, 0o600)
+                with os.fdopen(fd, "wb") as handle:
+                    fd = None
+                    handle.write(encoded)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            except FileExistsError as exc:
+                raise RuntimeError("arquivo temporário do incidente técnico já existe") from exc
             os.replace(temporary, self.path)
+            directory_fd = os.open(self.path.parent, os.O_RDONLY)
             try:
-                directory_fd = os.open(self.path.parent, os.O_RDONLY)
-            except OSError:
-                directory_fd = None
-            if directory_fd is not None:
-                try: os.fsync(directory_fd)
-                finally: os.close(directory_fd)
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
+            if fd is not None:
+                os.close(fd)
             try:
-                if temporary.exists(): temporary.unlink()
-            except OSError: pass
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
     def status(self) -> dict[str, object]:
         with self._lock_local, self._file_lock():
@@ -77,7 +113,10 @@ class TechnicalIncidentStore:
         timestamp = now or datetime.now(timezone.utc)
         if timestamp.tzinfo is None: raise ValueError("timestamp deve conter timezone")
         normalized_id = incident_id.strip()
-        payload = {"status":"INCIDENT","incident_id":normalized_id,"reason":reason.strip(),"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
+        normalized_reason = reason.strip()
+        if len(normalized_id) > MAX_INCIDENT_ID_LENGTH or len(normalized_reason) > MAX_INCIDENT_REASON_LENGTH:
+            raise ValueError("estado de incidente técnico excede o limite permitido")
+        payload = {"status":"INCIDENT","incident_id":normalized_id,"reason":normalized_reason,"changed_at":timestamp.astimezone(timezone.utc).isoformat()}
         with self._lock_local, self._file_lock():
             current = self._read()
             if current.get("status") == "INCIDENT" and current.get("incident_id") != normalized_id:

@@ -68,3 +68,41 @@ def test_public_saas_durable_audit_does_not_fallback_on_write_failure(monkeypatc
     database.mkdir()
     with pytest.raises(RuntimeError, match="durable security audit write failed"):
         audit.record(request_id="req-2", method="GET", path="/api/status", status=200, client_key="client")
+
+
+def test_audit_rejects_unbounded_internal_inputs():
+    audit = SecurityAudit(max_events=2)
+    with pytest.raises(ValueError, match="request_id"):
+        audit.record(request_id="x" * 129, method="GET", path="/", status=200, client_key="client")
+    with pytest.raises(ValueError, match="client"):
+        audit.record(request_id="req", method="GET", path="/", status=200, client_key="x" * 257)
+    with pytest.raises(ValueError, match="status"):
+        audit.record(request_id="req", method="GET", path="/", status=99, client_key="client")
+    with pytest.raises(ValueError, match="método"):
+        audit.record(request_id="req", method="X" * 17, path="/", status=200, client_key="client")
+
+
+def test_persistent_audit_rejects_symlink_database(tmp_path):
+    target = tmp_path / "real.sqlite3"
+    target.write_bytes(b"not-a-database")
+    link = tmp_path / "security-audit.sqlite3"
+    link.symlink_to(target)
+    with pytest.raises(RuntimeError, match="durable security audit storage"):
+        SecurityAudit(database_path=str(link), require_durable=True)
+
+
+def test_persistent_audit_rejects_symlinked_database_directory(tmp_path):
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    linked_dir = tmp_path / "linked"
+    linked_dir.symlink_to(real_dir, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="durable security audit storage"):
+        SecurityAudit(database_path=str(linked_dir / "audit.sqlite"), require_durable=True)
+
+
+def test_persistent_audit_uses_delete_journal_mode(tmp_path):
+    database = tmp_path / "audit.sqlite"
+    SecurityAudit(database_path=str(database), require_durable=True)
+    import sqlite3
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0].lower() == "delete"

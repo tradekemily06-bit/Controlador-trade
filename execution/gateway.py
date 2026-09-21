@@ -82,6 +82,10 @@ class ExecutionGateway:
         self._lifecycle = lifecycle
         self._maintenance = maintenance
         self._safety_store = safety_store
+        if safety_store is not None:
+            # Every gateway-owned KillSwitch must mutate under the exact same
+            # cross-process safety fence used by final dispatch.
+            kill_switch.set_change_fence(safety_store.coordination_lock)
         self._incident_manager = incident_manager
         self._risk_state_provider = risk_state_provider
         self._operational_barrier_provider = operational_barrier_provider
@@ -89,7 +93,21 @@ class ExecutionGateway:
         self._decision_freshness_policy = decision_freshness_policy
         self._decision_freshness_policy_locked = decision_freshness_policy is not None
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
-        self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
+        # A durable safety store and REAL/DEMO dispatch must share one fence.
+        # This makes kill-switch activation atomic with the final pre-dispatch
+        # barrier instead of allowing a writer to change safety state midway.
+        # Canonical cross-process dispatch fence is the ledger fence when a
+        # durable REAL ledger exists. The safety-store fence is additionally
+        # acquired in a fixed order so kill-switch writers and recovery cannot
+        # interleave with the final dispatch decision.
+        self._dispatch_lock_path = (
+            ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")
+            if ledger is not None
+            else (safety_store.coordination_lock_path if safety_store is not None else None)
+        )
+        self._safety_coordination_lock_path = (
+            safety_store.coordination_lock_path if safety_store is not None else None
+        )
 
     def set_operational_barrier_provider(
         self, provider: Callable[[], GlobalOperationalBarrier] | None
@@ -117,13 +135,29 @@ class ExecutionGateway:
     def _safe_error(exc: BaseException) -> str:
         return type(exc).__name__
 
-    def _refresh_kill_switch(self) -> str | None:
+    def _refresh_kill_switch(self, *, under_coordination_fence: bool = False) -> str | None:
         if self._safety_store is None:
             return None
+        # Global lock order is always coordination fence -> safety file lock.
+        # Reading the safety file first and then acquiring the coordination
+        # fence would create a cross-thread/process cycle against final dispatch,
+        # which already owns coordination before reading persisted safety state.
         try:
-            _audit, persisted = self._safety_store.load()
-            self._kill_switch.synchronize(persisted.state)
-            return None
+            if under_coordination_fence:
+                _audit, persisted = self._safety_store.load()
+                current = self._kill_switch.state
+                if current.enabled and not persisted.state.enabled:
+                    return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
+                self._kill_switch.synchronize_under_change_fence(persisted.state)
+                return None
+
+            with self._safety_store.coordination_lock():
+                _audit, persisted = self._safety_store.load()
+                current = self._kill_switch.state
+                if current.enabled and not persisted.state.enabled:
+                    return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
+                self._kill_switch.synchronize_under_change_fence(persisted.state)
+                return None
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
 
@@ -166,7 +200,7 @@ class ExecutionGateway:
         global_error = self._global_barrier()
         if global_error is not None:
             return global_error
-        refresh_error = self._refresh_kill_switch()
+        refresh_error = self._refresh_kill_switch(under_coordination_fence=True)
         if refresh_error is not None:
             return refresh_error
         if not self._kill_switch.allows_execution():
@@ -191,16 +225,33 @@ class ExecutionGateway:
         self, request: ExecutionRequest, snapshot: DecisionSnapshot | None, *, now: datetime
     ) -> tuple[ExecutionResult | None, str | None]:
         """Serialize final authoritative checks with the actual executor call."""
-        lock = exclusive_file_lock(self._dispatch_lock_path) if self._dispatch_lock_path is not None else nullcontext()
-        with lock:
-            final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
-            if final_safety_error is not None:
-                return None, final_safety_error
-            try:
-                effective_request = self._request_for_dispatch(request, snapshot)
-            except ValueError:
-                return None, "requisição incompatível com o snapshot; dispatch bloqueado."
-            return self._executor.execute(effective_request), None
+        primary_lock = (
+            exclusive_file_lock(self._dispatch_lock_path)
+            if self._dispatch_lock_path is not None
+            else nullcontext()
+        )
+        # Fixed order: ledger/dispatch fence -> safety-store fence.
+        # Safety writers acquire only the second lock, so no reverse nesting
+        # is introduced and the canonical recovery fence remains effective.
+        secondary_lock = (
+            exclusive_file_lock(self._safety_coordination_lock_path)
+            if self._safety_coordination_lock_path is not None
+            and self._safety_coordination_lock_path != self._dispatch_lock_path
+            else nullcontext()
+        )
+        with primary_lock:
+            # The safety fence must remain held through the actual executor call.
+            # Releasing it after the final check would recreate the exact
+            # check-to-use race we are trying to eliminate.
+            with secondary_lock:
+                final_safety_error = self._final_safety_barrier(now=now, snapshot=snapshot)
+                if final_safety_error is not None:
+                    return None, final_safety_error
+                try:
+                    effective_request = self._request_for_dispatch(request, snapshot)
+                except ValueError:
+                    return None, "requisição incompatível com o snapshot; dispatch bloqueado."
+                return self._executor.execute(effective_request), None
 
     def _abandon_reserved_request(self, request_id: str) -> None:
         if self._ledger is None:

@@ -34,3 +34,46 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def test_checkpoint_rejects_oversized_identifier(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    with pytest.raises(ValueError):
+        store.save(RuntimeCheckpoint("x" * 257, 0, None, datetime.now(timezone.utc)))
+
+
+def test_checkpoint_rejects_oversized_persisted_file(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    path.write_bytes(b"x" * (64 * 1024 + 1))
+    with pytest.raises(ValueError, match="excede o limite permitido"):
+        RuntimeCheckpointStore(path).load()
+
+
+def test_checkpoint_rejects_symlinked_state(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text('{"session_id":"s","last_cycle":0,"last_request_id":null,"updated_at":"2026-09-19T00:00:00+00:00"}', encoding="utf-8")
+    path = tmp_path / "checkpoint.json"
+    try:
+        path.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink não suportado neste ambiente")
+    with pytest.raises(ValueError, match="arquivo regular"):
+        RuntimeCheckpointStore(path).load()
+
+def test_checkpoint_rejects_symlinked_state_and_stale_temp(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_text("{}", encoding="utf-8")
+    state = tmp_path / "checkpoint.json"
+    state.symlink_to(target)
+    store = RuntimeCheckpointStore(state)
+    from datetime import datetime, timezone
+    with pytest.raises(OSError):
+        store.save(RuntimeCheckpoint("s", 1, None, datetime.now(timezone.utc)))
+
+def test_checkpoint_refuses_stale_temporary_file(tmp_path):
+    from datetime import datetime, timezone
+    state = tmp_path / "checkpoint.json"
+    (tmp_path / ".checkpoint.json.tmp").write_text("attacker", encoding="utf-8")
+    store = RuntimeCheckpointStore(state)
+    with pytest.raises(RuntimeError):
+        store.save(RuntimeCheckpoint("s", 1, None, datetime.now(timezone.utc)))

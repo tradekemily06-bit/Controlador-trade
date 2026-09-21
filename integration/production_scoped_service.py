@@ -83,7 +83,11 @@ class ProductionScopedServiceMixin:
             # self.store. Also discard any local process snapshot loaded by the
             # legacy constructor so it cannot be read by a future bypass.
             self.store = _ProductionLocalDecisionStoreBlock()
-            self.memory = []
+            # Keep the legacy in-memory decision snapshot fail-closed as well.
+            # A plain list here would let an inherited method accidentally read
+            # process-local production state and bypass the durable data plane.
+            local_learning_state = _ProductionLocalLearningStateBlock()
+            self.memory = local_learning_state
             # Learning state had the same historical split: the configured
             # service now uses ScopedLearningState, while older inherited
             # methods can still reach the process-local dictionaries/lists.
@@ -91,7 +95,6 @@ class ProductionScopedServiceMixin:
             # accidental fallback cannot create a second production source of
             # truth. DEMO/local mode is untouched because this branch runs only
             # when a production data plane exists.
-            local_learning_state = _ProductionLocalLearningStateBlock()
             self.learning_sources = local_learning_state
             self.learning_resources = local_learning_state
             self.learning_observations = local_learning_state

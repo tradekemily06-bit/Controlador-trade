@@ -23,21 +23,26 @@ class PersistentOperationalRecorder:
         self.store = store
         self.safety_store = safety_store
         self.recorder = recorder or P4OperationalRecorder(memory=store.load())
+        if self.safety_store is not None:
+            # The persisted safety store is the canonical fence for kill-switch
+            # changes. This prevents a writer from persisting "enabled" and
+            # releasing the fence before the in-memory execution gate adopts it.
+            self.kill_switch.set_change_fence(self.safety_store.coordination_lock)
 
     @classmethod
     def from_path(cls, path: str | Path, *, kill_switch: KillSwitch | None = None, safety_path: str | Path | None = None) -> "PersistentOperationalRecorder":
         store = OperationMemoryStore(path)
         safety_store = OperationalSafetyStore(safety_path or f"{path}.safety.json")
-        audit, persisted_kill_switch = safety_store.load()
-        if kill_switch is not None:
-            if persisted_kill_switch.enabled and not kill_switch.state.enabled:
-                kill_switch.activate(persisted_kill_switch.reason or "estado persistido")
-            elif not persisted_kill_switch.enabled and kill_switch.state.enabled:
-                kill_switch.deactivate()
-            active_kill_switch = kill_switch
-        else:
-            active_kill_switch = KillSwitch()
-            active_kill_switch.synchronize(persisted_kill_switch)
+        # Bootstrap is one atomic safety observation: read persisted state and
+        # adopt it while holding the same canonical fence used by dispatch.
+        with safety_store.coordination_lock():
+            audit, persisted_kill_switch = safety_store.load()
+            if kill_switch is not None:
+                kill_switch.set_change_fence(safety_store.coordination_lock)
+                active_kill_switch = kill_switch
+            else:
+                active_kill_switch = KillSwitch(change_fence=safety_store.coordination_lock)
+            active_kill_switch.synchronize_under_change_fence(persisted_kill_switch)
         recorder = P4OperationalRecorder(audit=audit, memory=store.load(), kill_switch=active_kill_switch)
         return cls(store=store, safety_store=safety_store, recorder=recorder)
 
@@ -82,15 +87,22 @@ class PersistentOperationalRecorder:
 
     def activate_kill_switch(self, reason: str):
         if self.safety_store is None:
-            state = self.kill_switch.activate(reason)
-            return state
-        persisted = self.safety_store.set_kill_switch(enabled=True, reason=reason)
-        self.kill_switch.synchronize(persisted)
-        return persisted
+            return self.kill_switch.activate(reason)
+        # Persisting the durable block and publishing it to the in-memory
+        # gate are one critical section. No dispatch can observe the old
+        # in-memory state between these two operations.
+        with self.safety_store.coordination_lock():
+            persisted = self.safety_store.set_kill_switch_under_coordination_fence(enabled=True, reason=reason)
+            self.kill_switch.synchronize_under_change_fence(persisted)
+            return persisted
 
     def deactivate_kill_switch(self):
         if self.safety_store is None:
             return self.kill_switch.deactivate()
-        persisted = self.safety_store.set_kill_switch(enabled=False)
-        self.kill_switch.synchronize(persisted)
-        return persisted
+        # Keep the same atomic boundary for deactivation. A stale "enabled"
+        # state is conservative; atomicity nevertheless prevents split-brain
+        # safety state and makes recovery deterministic.
+        with self.safety_store.coordination_lock():
+            persisted = self.safety_store.set_kill_switch_under_coordination_fence(enabled=False)
+            self.kill_switch.synchronize_under_change_fence(persisted)
+            return persisted

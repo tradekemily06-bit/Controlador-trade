@@ -13,6 +13,12 @@ class MemoryStateStore:
     def put(self, *, tenant_id, subject_id, namespace, payload):
         self.data[(tenant_id, subject_id, namespace)] = dict(payload)
 
+    def update(self, *, tenant_id, subject_id, namespace, updater):
+        key = (tenant_id, subject_id, namespace)
+        value = updater(self.data.get(key))
+        self.data[key] = dict(value)
+        return dict(value)
+
 
 def test_concurrent_scoped_learning_writes_are_merged_not_lost():
     store = MemoryStateStore()

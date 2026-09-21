@@ -1,6 +1,7 @@
 """Global fail-closed barrier for operationally meaningful layers."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable
@@ -50,8 +51,24 @@ class SafetyComponent:
 
 class GlobalOperationalBarrier:
     """Single fail-closed policy independent of broker implementation."""
-    def __init__(self, components: Iterable[SafetyComponent] = ()) -> None:
+    def __init__(self, components: Iterable[SafetyComponent] = (), *, dispatch_fence_provider: Callable[[], object] | None = None) -> None:
         self._components = tuple(components)
+        if dispatch_fence_provider is not None and not callable(dispatch_fence_provider):
+            raise ValueError("dispatch_fence_provider deve ser chamável ou None")
+        self._dispatch_fence_provider = dispatch_fence_provider
+
+    @property
+    def has_dispatch_fence(self) -> bool:
+        return self._dispatch_fence_provider is not None
+
+    def dispatch_fence(self):
+        """Return the canonical fence shared with operational-safety writers."""
+        if self._dispatch_fence_provider is None:
+            return nullcontext()
+        fence = self._dispatch_fence_provider()
+        if not hasattr(fence, "__enter__") or not hasattr(fence, "__exit__"):
+            raise TypeError("dispatch_fence_provider retornou um objeto que não é context manager")
+        return fence
 
     def evaluate(self) -> BarrierDecision:
         blocking: list[str] = []

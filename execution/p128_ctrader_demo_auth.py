@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from typing import Protocol
 
 from execution.p124_broker_session import (
@@ -33,6 +33,7 @@ class CTraderOAuthConfig:
             raise ValueError("client_id obrigatório")
         if not isinstance(self.redirect_uri, str) or not self.redirect_uri.strip():
             raise ValueError("redirect_uri obrigatório")
+        _validate_ctrader_redirect_uri(self.redirect_uri)
         if not isinstance(self.scope, CTraderOAuthScope):
             raise ValueError("scope OAuth inválido")
 
@@ -98,3 +99,19 @@ class CTraderDemoSession(BrokerSessionPort):
             BrokerSessionStatus.AUTHENTICATED,
             "sessão cTrader DEMO autenticada",
         )
+
+
+def _validate_ctrader_redirect_uri(redirect_uri: str) -> None:
+    """Reject unsafe callback URI forms before they enter the OAuth flow.
+
+    cTrader requires the redirect URI to be one registered for the application.
+    This local check is defense in depth: deployment configuration must still
+    use the exact URI registered in the cTrader application.
+    """
+    parsed = urlparse(redirect_uri.strip())
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("redirect_uri deve usar HTTPS e conter um host válido")
+    if parsed.username or parsed.password:
+        raise ValueError("redirect_uri não pode conter credenciais embutidas")
+    if parsed.fragment:
+        raise ValueError("redirect_uri não pode conter fragmento")

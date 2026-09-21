@@ -15,6 +15,12 @@ from core.test_p111_p119_real_release import (
     FakeRealSafetyProvider,
     FakeRiskStateProvider,
 )
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -48,7 +54,7 @@ def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
         ExecutionLedger(ledger_path),
         FakeRiskStateProvider(_risk_state()),
         FakeRealSafetyProvider(safety),
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: _test_real_barrier(),
     )
     request = _request(request_id=request_id)
     result = gateway.execute(

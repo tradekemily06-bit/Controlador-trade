@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,13 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
+
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
 
 class FakeAdapter:
     def __init__(self, result=None, error=False, available=True):
@@ -170,6 +178,32 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
         gateway.reconcile_unknown("missing", executed=True)
 
 
+def test_invalid_reconciliation_request_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="request_id"):
+        gateway.reconcile_unknown_with_evidence("", executed=True, evidence_id="e1", evidence_source="broker")
+    assert gateway._global_barrier_error() is None
+
+
+def test_non_reconcilable_request_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="estado incerto"):
+        gateway.reconcile_unknown_with_evidence("missing", executed=True, evidence_id="e1", evidence_source="broker")
+    assert gateway._global_barrier_error() is None
+
+
+def test_invalid_reconciliation_does_not_poison_gateway_configuration(tmp_path: Path):
+    registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    with pytest.raises(ValueError, match="evidence_id"):
+        gateway.reconcile_unknown_with_evidence("missing", executed=True, evidence_id="", evidence_source="broker")
+    # The failed precondition must not poison the already-bound lifecycle.
+    assert gateway._global_barrier_error() is None
+
+
+
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
     path = tmp_path / "ledger.json"; ExecutionLedger(path).reserve("crashed")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
@@ -213,7 +247,7 @@ def test_real_gateway_blocks_changed_authoritative_risk_before_dispatch(tmp_path
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter")
     state = _risk_state(); provider = FakeRiskStateProvider(state); auth = _authorization("risk-changed"); safety = _safety(auth)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), provider,
-                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: _test_real_barrier())
     provider.state = OperationalState(balance=state.balance, equity=state.equity, realized_pnl=state.realized_pnl,
                                       unrealized_pnl=state.unrealized_pnl, trades_today=1,
                                       consecutive_losses=state.consecutive_losses, open_positions=state.open_positions,
@@ -228,7 +262,7 @@ def test_real_gateway_blocks_provider_failure_without_leaking_detail(tmp_path: P
         def current_risk_state(self): raise RuntimeError("SECRET_RISK_PROVIDER_DETAIL")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("risk-provider-fails"); safety = _safety(auth)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), BrokenProvider(),
-                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   FakeRealSafetyProvider(safety), operational_barrier_provider=lambda: _test_real_barrier())
     result = gateway.execute(broker="fake", request_id="risk-provider-fails", request=_request("risk-provider-fails"), authorization=auth,
                              admission=_admission("risk-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_RISK_PROVIDER_DETAIL" not in result.message
@@ -238,7 +272,7 @@ def test_real_gateway_blocks_stale_safety_before_dispatch(tmp_path: Path):
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-changed"); admitted_safety = _safety(auth)
     provider = FakeRealSafetyProvider(admitted_safety)
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), provider,
-                                   operational_barrier_provider=lambda: GlobalOperationalBarrier())
+                                   operational_barrier_provider=lambda: _test_real_barrier())
     provider.report = RealSafetyGate().evaluate(authorization_active=True, kill_switch_clear=False, market_healthy=True,
                                                 recovery_safe=True, risk_approved=True, broker_available=True)
     result = gateway.execute(broker="fake", request_id="safety-changed", request=_request("safety-changed"), authorization=auth,
@@ -250,7 +284,7 @@ def test_real_gateway_blocks_safety_provider_failure_without_leaking_detail(tmp_
     class BrokenSafetyProvider:
         def current_real_safety(self): raise RuntimeError("SECRET_SAFETY_PROVIDER_DETAIL")
     registry = BrokerRegistry(); adapter = FakeAdapter(); registry.register("fake", adapter, adapter_id="fake-adapter"); auth = _authorization("safety-provider-fails"); safety = _safety(auth)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), FakeRiskStateProvider(_risk_state()), BrokenSafetyProvider(), operational_barrier_provider=lambda: _test_real_barrier())
     result = gateway.execute(broker="fake", request_id="safety-provider-fails", request=_request("safety-provider-fails"), authorization=auth,
                              admission=_admission("safety-provider-fails", auth=auth), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.UNKNOWN and "SECRET_SAFETY_PROVIDER_DETAIL" not in result.message
@@ -290,3 +324,31 @@ def test_real_adapter_identity_mismatch_is_blocked(tmp_path: Path):
         request=_request("adapter-mismatch"), authorization=auth,
         admission=_admission("adapter-mismatch", auth=auth, adapter_id="authorized-adapter"), safety=safety, snapshot=_snapshot())
     assert result.status == RealGatewayStatus.BLOCKED and adapter.calls == 0
+
+
+
+def test_real_gateway_concurrent_same_request_id_dispatches_at_most_once(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = _gateway(registry, ledger)
+    auth = _authorization("concurrent-request")
+    admission = _admission("concurrent-request", auth=auth)
+    safety = _safety(auth)
+    request = _request("concurrent-request")
+    snapshot = _snapshot()
+
+    def dispatch():
+        return gateway.execute(
+            broker="fake", request_id="concurrent-request", request=request,
+            authorization=auth, admission=admission, safety=safety, snapshot=snapshot,
+        )
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(lambda _index: dispatch(), range(16)))
+
+    assert sum(result.status == RealGatewayStatus.ADMITTED for result in results) == 1
+    assert sum(result.status == RealGatewayStatus.BLOCKED for result in results) == 15
+    assert adapter.calls == 1
+    assert ledger.status("concurrent-request") is ExecutionLedgerStatus.ACCEPTED

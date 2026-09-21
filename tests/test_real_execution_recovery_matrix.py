@@ -20,6 +20,13 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
 class CountingAdapter:
     def __init__(self, calls):
         self.calls = calls
@@ -103,7 +110,7 @@ def _gateway(path: Path, calls, verifier=None) -> RealExecutionGateway:
     registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ExecutionLedger(path),
-        RiskProvider(), SafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        RiskProvider(), SafetyProvider(), operational_barrier_provider=lambda: _test_real_barrier(),
         reconciliation_evidence_verifier=verifier,
     )
 
@@ -206,7 +213,7 @@ def test_external_acceptance_process_death_restart_reconcile_and_replay_are_all_
     registry.register("fake", CountingAdapter(calls), adapter_id="fake-adapter")
     crashed = RealExecutionGateway(
         BrokerAdapterGateway(registry), CrashBeforeMarkAcceptedLedger(path),
-        RiskProvider(), SafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        RiskProvider(), SafetyProvider(), operational_barrier_provider=lambda: _test_real_barrier(),
     )
 
     first = crashed.execute(

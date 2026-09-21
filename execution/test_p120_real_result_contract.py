@@ -15,6 +15,13 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
+
 class MissingExternalIdAdapter:
     def is_available(self):
         return True
@@ -76,7 +83,7 @@ def _authorized_context(request_id="req-1", symbol="TEST", broker_id="fake", ada
 def _gateway(registry, ledger, provider, safety):
     return RealExecutionGateway(
         BrokerAdapterGateway(registry), ledger, provider, SafetyProvider(safety),
-        operational_barrier_provider=lambda: GlobalOperationalBarrier(),
+        operational_barrier_provider=lambda: _test_real_barrier(),
     )
 
 
@@ -197,7 +204,7 @@ def test_safety_provider_failure_is_unknown_without_leaking_detail(tmp_path: Pat
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     provider = RiskProvider()
     authorization, admission, safety = _authorized_context()
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider, BrokenSafetyProvider(), operational_barrier_provider=lambda: GlobalOperationalBarrier())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, provider, BrokenSafetyProvider(), operational_barrier_provider=lambda: _test_real_barrier())
     request = _request(risk_fingerprint=risk_state_identity(provider.state))
     result = gateway.execute(
         broker="fake", request_id="req-1", request=request,

@@ -30,12 +30,9 @@ class ProductionDataPlane:
             return None
         if cfg.multi_instance:
             raise RuntimeError("multi-instance production requires a shared auxiliary state provider; SQLiteScopedStateStore is single-instance")
-        if not policy.authorize_write(
-            authenticated=True,
-            tenant_id="configured",
-            subject_id="configured",
-        ):
-            raise RuntimeError("production data plane provider is not authorized by its storage policy")
+        # Deployment configuration is not a runtime identity. Do not exercise the
+        # authorization API with a fabricated tenant/subject pair here: readiness
+        # is established from the concrete durable provider and deployment mode.
         if not cfg.database_path:
             raise RuntimeError("production database path is required for durable auxiliary state")
         return cls(

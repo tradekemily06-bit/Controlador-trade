@@ -36,6 +36,15 @@ class DecisionStore:
             raise RuntimeError("local decision store is unavailable in public SaaS mode")
 
     def _connect(self) -> sqlite3.Connection:
+        if self.database_path:
+            path = Path(self.database_path)
+            parent = path.parent
+            if parent.resolve(strict=True) != parent.absolute():
+                raise RuntimeError("decision database directory must not be a symlink")
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise RuntimeError("decision database must be a regular file")
         return sqlite3.connect(self.database_path or ":memory:", timeout=5)
 
     def _initialize(self) -> None:
@@ -43,6 +52,14 @@ class DecisionStore:
             path = Path(self.database_path or "")
             if path.parent != Path("."):
                 path.parent.mkdir(parents=True, exist_ok=True)
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise OSError("decision database directory must not be a symlink")
+            if path.parent.resolve(strict=True) != path.parent.absolute():
+                raise OSError("decision database directory must not be a symlink")
+            if path.exists():
+                stat = path.lstat()
+                if path.is_symlink() or not path.is_file():
+                    raise OSError("decision database must be a regular file")
             columns = ", ".join([
                 "decision_id TEXT PRIMARY KEY", "created_at TEXT NOT NULL", "symbol TEXT",
                 "timeframe TEXT", "signal TEXT NOT NULL", "score REAL NOT NULL",
@@ -58,6 +75,7 @@ class DecisionStore:
                         connection.execute(f"ALTER TABLE decisions ADD COLUMN {name} {sql_type}")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_tenant ON decisions(tenant_id)")
+            path.chmod(0o600)
         except (OSError, sqlite3.Error) as exc:
             raise RuntimeError("decision storage could not be initialized") from exc
 

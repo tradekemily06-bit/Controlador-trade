@@ -2,9 +2,14 @@ import io
 import json
 
 from app import application
+from security.http_identity import clear_trusted_identity
 
 
 def request(path, method="GET", payload=None):
+    # Each synthetic request starts with no ambient identity. This makes the test
+    # model the production request boundary and avoids relying on cross-test
+    # thread-local state.
+    clear_trusted_identity()
     body = b"" if payload is None else json.dumps(payload).encode("utf-8")
     captured = {}
 

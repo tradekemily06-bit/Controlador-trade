@@ -78,12 +78,14 @@ def build_operational_runtime(
         initial_reason = f"estado de segurança indisponível: {type(exc).__name__}"
         safety_state_valid = False
 
-    kill_switch = KillSwitch()
+    kill_switch = KillSwitch(change_fence=safety_store.coordination_lock)
     if initial_enabled:
         kill_switch.activate(initial_reason or "estado de segurança persistido")
 
     def persist_safety(_state) -> None:
-        safety_store.save(safety_audit, kill_switch)
+        # KillSwitch already owns the canonical coordination fence here; do not
+        # acquire it again or the persistence callback can deadlock.
+        safety_store.save_under_coordination_fence(safety_audit, kill_switch)
 
     kill_switch.set_on_change(persist_safety)
     if not safety_state_valid:
