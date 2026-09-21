@@ -33,6 +33,7 @@ class ExecutionLedger:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
+        self._external_ids: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -42,30 +43,48 @@ class ExecutionLedger:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
-        self._states = self._decode(payload)
+        self._states, self._external_ids = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> dict[str, ExecutionLedgerStatus]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
-            return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}
+            return ({item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {})
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
+        external_ids: dict[str, str] = {}
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
+            if isinstance(raw_status, dict):
+                status_value = raw_status.get("status")
+                external_id = raw_status.get("external_id")
+                if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
+                    raise ValueError("ledger de execução inválido.")
+            else:
+                status_value = raw_status
+                external_id = None
             try:
-                states[request_id] = ExecutionLedgerStatus(raw_status)
+                states[request_id] = ExecutionLedgerStatus(status_value)
             except ValueError as exc:
                 raise ValueError("ledger de execução inválido.") from exc
-        return states
+            if external_id is not None:
+                external_ids[request_id] = external_id.strip()
+        return states, external_ids
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
-        payload = {key: self._states[key].value for key in sorted(self._states)}
+        payload = {
+            key: (
+                {"status": self._states[key].value, "external_id": self._external_ids[key]}
+                if key in self._external_ids
+                else self._states[key].value
+            )
+            for key in sorted(self._states)
+        }
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -138,8 +157,23 @@ class ExecutionLedger:
 
         self._mutate_locked(mutation)
 
-    def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+    def mark_accepted(self, request_id: str, *, external_id: str) -> None:
+        self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id é obrigatório para aceite REAL.")
+
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("transição para ACCEPTED inválida.")
+            normalized = external_id.strip()
+            owner = next((rid for rid, eid in self._external_ids.items() if eid == normalized and rid != request_id), None)
+            if owner is not None:
+                raise ValueError("external_id já está associado a outro request_id.")
+            self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            self._external_ids[request_id] = normalized
+
+        self._mutate_locked(mutation)
 
     def mark_rejected(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.REJECTED)
@@ -163,6 +197,11 @@ class ExecutionLedger:
             )
 
         self._mutate_locked(mutation)
+
+    def external_id(self, request_id: str) -> str | None:
+        self._validate_id(request_id)
+        self._load()
+        return self._external_ids.get(request_id)
 
     def records(self) -> tuple[str, ...]:
         self._load()
