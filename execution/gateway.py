@@ -135,7 +135,7 @@ class ExecutionGateway:
     def _safe_error(exc: BaseException) -> str:
         return type(exc).__name__
 
-    def _refresh_kill_switch(self) -> str | None:
+    def _refresh_kill_switch(self, *, under_coordination_fence: bool = False) -> str | None:
         if self._safety_store is None:
             return None
         try:
@@ -146,7 +146,10 @@ class ExecutionGateway:
             # the same dispatch fence. Fail closed until persistence catches up.
             if current.enabled and not persisted.state.enabled:
                 return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
-            self._kill_switch.synchronize(persisted.state)
+            if under_coordination_fence:
+                self._kill_switch.synchronize_under_change_fence(persisted.state)
+            else:
+                self._kill_switch.synchronize(persisted.state)
             return None
         except (OSError, ValueError, TypeError) as exc:
             return f"estado de segurança indisponível: {self._safe_error(exc)}"
@@ -190,7 +193,7 @@ class ExecutionGateway:
         global_error = self._global_barrier()
         if global_error is not None:
             return global_error
-        refresh_error = self._refresh_kill_switch()
+        refresh_error = self._refresh_kill_switch(under_coordination_fence=True)
         if refresh_error is not None:
             return refresh_error
         if not self._kill_switch.allows_execution():
