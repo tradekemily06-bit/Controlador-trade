@@ -84,7 +84,7 @@ class ExternalOrderReconciliationBoundary:
         observation = query_port.query_order(external_id)
         result = self.reconcile(external_id, observation)
         if result.status is ExternalOrderStatus.EXECUTED:
-            ledger.reconcile(request_id, executed=True)
+            ledger.reconcile(request_id, executed=True, external_id=external_id)
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.ACCEPTED,
@@ -92,7 +92,7 @@ class ExternalOrderReconciliationBoundary:
                 message=result.message,
             )
         elif result.status is ExternalOrderStatus.NOT_EXECUTED:
-            ledger.reconcile(request_id, executed=False)
+            ledger.reconcile(request_id, executed=False, external_id=external_id)
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.REJECTED,
