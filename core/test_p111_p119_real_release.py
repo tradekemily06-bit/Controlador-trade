@@ -238,7 +238,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     assert result.status == RealGatewayStatus.UNKNOWN
     gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
-    assert ledger.external_id("unknown-2") == "external-1"
+    assert ledger.external_id("unknown-2") == "external-reconciled"
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("unknown-2").state is ExecutionLifecycleState.ACCEPTED
 
@@ -754,7 +754,8 @@ def test_real_accept_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert adapter.calls == 1
 
     gateway.reconcile_unknown("persist-crash-accepted", reconciler=FakeReconciler("persist-crash-accepted", executed=True, external_id="external-1"))
-    assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.status("persist-crash-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("persist-crash-accepted") == "external-1"
     assert lifecycle.get("persist-crash-accepted").state is ExecutionLifecycleState.ACCEPTED
 
 
@@ -922,8 +923,8 @@ def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
 
 
 def test_reconciliation_evidence_capability_is_instance_bound():
-    first = RealReconciliationEvidenceBoundary()
-    second = RealReconciliationEvidenceBoundary()
+    first = RealReconciliationEvidenceBoundary._internal()
+    second = RealReconciliationEvidenceBoundary._internal()
     try:
         second.issue(
             request_id="cross-boundary",
@@ -951,7 +952,7 @@ def test_reconciliation_observation_constructor_cannot_mark_itself_issued():
 
 
 def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
-    boundary = RealReconciliationEvidenceBoundary()
+    boundary = RealReconciliationEvidenceBoundary._internal()
     try:
         boundary.issue(
             request_id="forged",
@@ -1012,7 +1013,7 @@ def test_recovery_can_persist_external_identity_discovered_after_bind_crash(tmp_
     assert ledger.external_id("bind-crash") is None
     assert adapter.calls == 1
 
-    boundary = RealReconciliationEvidenceBoundary()
+    boundary = RealReconciliationEvidenceBoundary._internal()
     observation = boundary.issue(
         request_id="bind-crash",
         executed=True,
