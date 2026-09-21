@@ -100,3 +100,17 @@ def test_recovery_checkpoint_never_overrides_pending_execution_state(tmp_path):
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.can_resume is False
     assert assessment.pending_request_ids == ("req-crash",)
+
+
+
+def test_recovery_rejects_accepted_ledger_without_external_identity(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-no-id", ExecutionLifecycleState.ACCEPTED, now)
+    )
+    coordinator.execution_ledger.reserve("req-no-id")
+    coordinator.execution_ledger.mark_accepted("req-no-id")
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.inconsistent_request_ids == ("req-no-id",)
