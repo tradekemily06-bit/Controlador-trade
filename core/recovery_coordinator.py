@@ -82,11 +82,16 @@ class RecoveryCoordinator:
             ledger_status = ledger_states.get(record.request_id)
             if record.state is ExecutionLifecycleState.ACCEPTED and ledger_status is not ExecutionLedgerStatus.ACCEPTED:
                 inconsistent.add(record.request_id)
-            elif record.state is ExecutionLifecycleState.PENDING and ledger_status is not None:
+            elif record.state is ExecutionLifecycleState.PENDING and ledger_status not in (
+                None,
+                ExecutionLedgerStatus.RESERVED,
+            ):
                 inconsistent.add(record.request_id)
             elif record.state is ExecutionLifecycleState.UNKNOWN and ledger_status not in (
                 ExecutionLedgerStatus.RESERVED,
                 ExecutionLedgerStatus.UNKNOWN,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
             ):
                 inconsistent.add(record.request_id)
 
@@ -98,7 +103,9 @@ class RecoveryCoordinator:
                 inconsistent.add(request_id)
                 continue
             if ledger_status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
-                if record.state is not ExecutionLifecycleState.UNKNOWN:
+                if ledger_status is ExecutionLedgerStatus.RESERVED and record.state is ExecutionLifecycleState.PENDING:
+                    pass
+                elif record.state is not ExecutionLifecycleState.UNKNOWN:
                     inconsistent.add(request_id)
             elif ledger_status is ExecutionLedgerStatus.ACCEPTED:
                 if record.state is not ExecutionLifecycleState.ACCEPTED:
