@@ -119,3 +119,17 @@ def test_persisted_lifecycle_rejects_timezone_naive_timestamp(tmp_path):
     )
     with pytest.raises(ValueError, match="timezone-aware"):
         ExecutionLifecycleStore(path)
+
+def test_reconcile_pending_requires_internal_recovery_capability(tmp_path):
+    store = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    now = datetime.now(timezone.utc)
+    store.put(ExecutionLifecycleRecord("req-pending", ExecutionLifecycleState.PENDING, now))
+    with pytest.raises(ValueError, match="capacidade interna"):
+        store.reconcile_pending("req-pending", ExecutionLifecycleState.ACCEPTED, updated_at=now)
+    store.reconcile_pending(
+        "req-pending",
+        ExecutionLifecycleState.ACCEPTED,
+        updated_at=now,
+        capability=LIFECYCLE_RECOVERY_CAPABILITY,
+    )
+    assert store.get("req-pending").state is ExecutionLifecycleState.ACCEPTED
