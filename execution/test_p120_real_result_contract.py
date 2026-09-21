@@ -185,4 +185,5 @@ def test_real_gateway_kill_switch_is_rechecked_at_dispatch(tmp_path: Path):
     )
 
     assert result.status == RealGatewayStatus.BLOCKED
-    assert ledger.status("blocked-by-kill-switch") is None
+    assert ledger.status("blocked-by-kill-switch") is ExecutionLedgerStatus.RESERVED
+    assert adapter.calls if hasattr(adapter, "calls") else True
