@@ -487,7 +487,22 @@ class RealExecutionGateway:
         if not validate_observation(request_id, observation):
             raise ValueError("evidência externa de reconciliação inválida ou contraditória.")
 
-        executed = observation.executed
+        outcome = observation.effective_outcome
+        # Only definitive broker answers may close UNKNOWN. "Not found", delayed
+        # visibility, query failure and ambiguity are deliberately non-terminal.
+        if outcome in (
+            ReconciliationOutcome.NOT_FOUND,
+            ReconciliationOutcome.NOT_VISIBLE_YET,
+            ReconciliationOutcome.QUERY_FAILED,
+            ReconciliationOutcome.AMBIGUOUS,
+        ):
+            return
+        if outcome not in (
+            ReconciliationOutcome.EXECUTED,
+            ReconciliationOutcome.NOT_EXECUTED,
+        ):
+            raise ValueError("resultado de reconciliação desconhecido.")
+        executed = outcome is ReconciliationOutcome.EXECUTED
         ledger_status = self._ledger.status(request_id)
         lifecycle = self._lifecycle.get(request_id)
         desired_ledger = (
@@ -510,6 +525,8 @@ class RealExecutionGateway:
         if executed:
             if not isinstance(observation.external_id, str) or not observation.external_id.strip():
                 raise ValueError("reconciliação EXECUTED exige external_id válido na evidência.")
+            if observation.external_id_kind.value == "UNKNOWN":
+                raise ValueError("reconciliação EXECUTED exige tipo explícito da identidade externa.")
             if durable_external_id is not None and observation.external_id != durable_external_id:
                 raise ValueError("external_id observado difere da identidade externa durável.")
             # A crash can occur after the broker accepts an order but before the
