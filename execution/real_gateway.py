@@ -255,6 +255,10 @@ class RealExecutionGateway:
         )
 
     def recover_lifecycle_from_durable_acceptance(self, request_id: str) -> None:
+        with self._coordination.acquire():
+            self._recover_lifecycle_from_durable_acceptance_locked(request_id)
+
+    def _recover_lifecycle_from_durable_acceptance_locked(self, request_id: str) -> None:
         """Repair only local Lifecycle evidence from an already durable acceptance.
 
         This path never dispatches, never changes Ledger state, and never invents
@@ -297,6 +301,10 @@ class RealExecutionGateway:
             )
 
     def recover_lifecycle_from_durable_rejection(self, request_id: str) -> None:
+        with self._coordination.acquire():
+            self._recover_lifecycle_from_durable_rejection_locked(request_id)
+
+    def _recover_lifecycle_from_durable_rejection_locked(self, request_id: str) -> None:
         """Repair Lifecycle from a durable local rejection without querying or dispatching externally.
 
         A rejection recorded by the Ledger before a Lifecycle write can fail only
