@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import math
 
@@ -66,7 +66,9 @@ class RealExecutionGateway:
                 safety: RealSafetyReport) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
-        if not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip():
+        if request.request_id is not None and (
+            not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip()
+        ):
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id do gateway difere do request_id da ordem.")
         if self._kill_switch is not None and not self._kill_switch.allows_execution():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado; dispatch REAL bloqueado.")
@@ -104,8 +106,16 @@ class RealExecutionGateway:
         if self._kill_switch is not None and not self._kill_switch.allows_execution():
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "kill switch ativado imediatamente antes do dispatch REAL.")
 
+        # Bind the canonical gateway request ID into legacy DTOs that omit it.
+        # A supplied, different ID remains a hard rejection above.
+        dispatch_request = (
+            request
+            if request.request_id is not None
+            else replace(request, request_id=request_id)
+        )
+
         try:
-            result = self._gateway.execute(broker, request)
+            result = self._gateway.execute(broker, dispatch_request)
         except Exception as exc:
             self._mark_unknown(request_id, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
