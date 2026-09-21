@@ -69,6 +69,16 @@ class RecoveryCoordinator:
             request_id: self.execution_ledger.status(request_id)
             for request_id in ledger_ids
         }
+        missing_external_reference = [
+            request_id
+            for request_id, status in ledger_statuses.items()
+            if status in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            )
+            and self.execution_ledger.external_id(request_id) is None
+        ]
         inconsistent = [
             r.request_id
             for r in lifecycle
@@ -92,7 +102,7 @@ class RecoveryCoordinator:
             )
         ]
         orphaned_ledger_ids = sorted(ledger_ids - lifecycle_ids)
-        if unknown or pending or inconsistent or orphaned_ledger_ids:
+        if unknown or pending or inconsistent or orphaned_ledger_ids or missing_external_reference:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -102,6 +112,8 @@ class RecoveryCoordinator:
                 details.append("Ledger e Lifecycle estão inconsistentes; reconciliação obrigatória")
             if orphaned_ledger_ids:
                 details.append("ledger sem lifecycle requer reconciliação")
+            if missing_external_reference:
+                details.append("estado terminal sem external_id durável; reconciliação/auditoria obrigatória")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
