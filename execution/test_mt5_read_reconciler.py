@@ -21,16 +21,17 @@ def _identity():
     )
 
 
-def _raw(kind="DEAL", ticket=123):
+def _raw(kind="DEAL", ticket=123, volume=0.10, order_ticket=None):
     return SimpleNamespace(
         external_id_kind=kind,
         ticket=ticket,
         symbol="EURUSD",
         side="BUY",
-        volume=0.10,
+        volume=volume,
         comment="CTD-abc",
         magic=2609001,
         observed_at=datetime.now(timezone.utc),
+        order_ticket=order_ticket,
     )
 
 
@@ -163,3 +164,27 @@ def test_mt5_lookup_fails_closed_without_durable_recovery_anchor():
     )
     obs = reconciler.lookup("req-1")
     assert obs.effective_outcome is ReconciliationOutcome.QUERY_FAILED
+
+
+def test_mt5_resolver_aggregates_multiple_partial_deals_from_one_order():
+    first = _raw(ticket=123, volume=0.06, order_ticket=900)
+    second = _raw(ticket=124, volume=0.04, order_ticket=900)
+    obs = _reconciler([first, second], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.EXECUTED
+    assert obs.external_id == "900"
+    assert obs.external_id_kind is ExternalIdentityKind.ORDER
+
+
+def test_mt5_resolver_keeps_partial_single_order_open_for_recovery():
+    partial = _raw(ticket=123, volume=0.06, order_ticket=900)
+    obs = _reconciler([partial], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_VISIBLE_YET
+    assert obs.external_id is None
+
+
+def test_mt5_resolver_rejects_two_distinct_orders_even_when_total_volume_matches():
+    first = _raw(ticket=123, volume=0.06, order_ticket=900)
+    second = _raw(ticket=124, volume=0.04, order_ticket=901)
+    obs = _reconciler([first, second], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.AMBIGUOUS
+    assert obs.external_id is None
