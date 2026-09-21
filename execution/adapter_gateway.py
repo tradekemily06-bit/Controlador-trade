@@ -47,7 +47,7 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}", None, True)
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
