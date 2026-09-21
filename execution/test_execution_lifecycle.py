@@ -17,6 +17,19 @@ def test_lifecycle_survives_restart(tmp_path):
     assert ExecutionLifecycleStore(path).get("req-1").state is ExecutionLifecycleState.PENDING
 
 
+def test_stale_store_instances_do_not_lose_lifecycle_updates(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    second.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.PENDING, now))
+
+    restored = ExecutionLifecycleStore(path)
+    assert {r.request_id for r in restored.records()} == {"req-1", "req-2"}
+
+
 def test_unknown_blocks_implicit_transition(tmp_path):
     path = tmp_path / "lifecycle.json"
     now = datetime.now(timezone.utc)
