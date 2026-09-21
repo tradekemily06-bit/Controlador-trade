@@ -30,7 +30,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
-    authorization = RealExecutionAuthorizationBoundary().issue(authorization_id="auth", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=True, real_execution_allowed=True)
+    authorization = RealExecutionAuthorizationBoundary._internal().issue(authorization_id="auth", audit_id="audit", broker_id="fake", adapter_id="adapter", explicitly_enabled=True, real_execution_allowed=True)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
         authorization_active=True, safety_ready=True,
