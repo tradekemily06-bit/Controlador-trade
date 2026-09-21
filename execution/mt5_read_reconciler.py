@@ -165,16 +165,43 @@ class MT5ReadOnlyReconciler:
             if candidate is not None:
                 candidates.append(candidate)
 
-        # A deal is the execution identity. Matching order records are
-        # supporting evidence for that same deal and must not create a second
-        # execution candidate. Distinct deals remain ambiguous.
+        # A market request may be filled by multiple deals. Distinct deals
+        # are not automatically ambiguous when they all belong to exactly one
+        # order: the order ticket is then the aggregate execution identity.
         deals = [c for c in candidates if c.kind is ExternalIdentityKind.DEAL]
         if deals:
             unique = {c.ticket: c for c in deals}
-            if len(unique) != 1:
+            deals = list(unique.values())
+            groups: dict[str, list[MT5HistoryCandidate]] = {}
+            ungrouped: list[MT5HistoryCandidate] = []
+            for candidate in deals:
+                if candidate.order_ticket is None or not str(candidate.order_ticket).strip():
+                    ungrouped.append(candidate)
+                else:
+                    groups.setdefault(str(candidate.order_ticket), []).append(candidate)
+            if len(groups) + len(ungrouped) > 1:
                 return self._negative(identity.request_id, ReconciliationOutcome.AMBIGUOUS)
-            candidate = next(iter(unique.values()))
-            return self._executed(identity, candidate)
+            if len(groups) == 1 and not ungrouped:
+                group = next(iter(groups.values()))
+                total = sum(item.amount for item in group)
+                if math.isclose(total, identity.amount, rel_tol=0.0, abs_tol=1e-9):
+                    aggregate = group[0]
+                    return self._executed(
+                        identity,
+                        aggregate,
+                        external_id=str(aggregate.order_ticket),
+                        external_id_kind=ExternalIdentityKind.ORDER,
+                    )
+                if total < identity.amount:
+                    return self._negative(identity.request_id, ReconciliationOutcome.NOT_VISIBLE_YET)
+                return self._negative(identity.request_id, ReconciliationOutcome.AMBIGUOUS)
+            if len(ungrouped) == 1:
+                candidate = ungrouped[0]
+                if math.isclose(candidate.amount, identity.amount, rel_tol=0.0, abs_tol=1e-9):
+                    return self._executed(identity, candidate)
+                if candidate.amount < identity.amount:
+                    return self._negative(identity.request_id, ReconciliationOutcome.NOT_VISIBLE_YET)
+                return self._negative(identity.request_id, ReconciliationOutcome.AMBIGUOUS)
 
         orders = [c for c in candidates if c.kind is ExternalIdentityKind.ORDER]
         if len(orders) == 1:
@@ -223,7 +250,7 @@ class MT5ReadOnlyReconciler:
             return None
         if not isinstance(amount, (int, float)) or isinstance(amount, bool) or not math.isfinite(float(amount)):
             return None
-        if not math.isclose(float(amount), identity.amount, rel_tol=0.0, abs_tol=1e-9):
+        if float(amount) <= 0 or float(amount) > identity.amount + 1e-9:
             return None
         if not isinstance(correlation, str) or correlation.strip() != identity.correlation:
             return None
@@ -248,15 +275,22 @@ class MT5ReadOnlyReconciler:
             position_id=getattr(raw, "position_id", None),
         )
 
-    def _executed(self, identity: MT5ReconciliationIdentity, candidate: MT5HistoryCandidate):
+    def _executed(
+        self,
+        identity: MT5ReconciliationIdentity,
+        candidate: MT5HistoryCandidate,
+        *,
+        external_id: str | None = None,
+        external_id_kind: ExternalIdentityKind = ExternalIdentityKind.DEAL,
+    ):
         return self._evidence.issue(
             request_id=identity.request_id,
             executed=True,
-            external_id=candidate.ticket,
+            external_id=external_id or candidate.ticket,
             observed_at=candidate.observed_at,
             source=self.source,
             outcome=ReconciliationOutcome.EXECUTED,
-            external_id_kind=ExternalIdentityKind.DEAL,
+            external_id_kind=external_id_kind,
             provider=candidate.provider,
             account_id=candidate.account_id,
             symbol=candidate.symbol,
