@@ -217,7 +217,18 @@ class ScopedLearningState:
         if current is None:
             current = self._cache(scope, self._load(scope))
         if self._state_store is not None:
-            latest = self._load(scope)
-            current = self._merge(latest, current)
+            def updater(payload):
+                latest = LearningScope() if payload is None else self._decode(payload)
+                merged = self._merge(latest, current)
+                return self._encode(merged)
+
+            merged_payload = self._state_store.update(
+                tenant_id=scope[0],
+                subject_id=scope[1],
+                namespace=self.NAMESPACE,
+                updater=updater,
+            )
+            current = self._decode(merged_payload)
         self._cache(scope, current)
-        self._save(scope, current)
+        if self._state_store is None:
+            self._save(scope, current)
