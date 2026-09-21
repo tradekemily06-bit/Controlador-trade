@@ -146,4 +146,4 @@ def test_ledger_persistence_flushes_before_atomic_replace(tmp_path, monkeypatch)
     monkeypatch.setattr(os, "replace", replace)
     ledger.record("req-durable")
     assert calls.index("fsync") < calls.index("replace")
-    assert calls.count("fsync") >= 2
+    assert calls.count("fsync") >= (1 if os.name == "nt" else 2)
