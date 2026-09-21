@@ -81,6 +81,8 @@ class ExecutionLifecycleStore:
                 )
                 self._validate(record)
                 previous = loaded.get(record.request_id)
+                if previous is not None:
+                    raise ValueError("ciclo de execução persistido inválido: request_id duplicado.")
                 if previous is not None and not self._transition_allowed(
                     previous.state, record.state
                 ):
