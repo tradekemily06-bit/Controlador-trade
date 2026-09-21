@@ -222,10 +222,12 @@ class ExecutionLedger:
 
         def mutation() -> None:
             current = self._states.get(request_id)
+            existing = self._external_ids.get(request_id)
+            if not executed and existing is not None:
+                raise ValueError("reconciliação NOT_EXECUTED contradiz external_id durável.")
             if executed:
                 if external_id is None or not isinstance(external_id, str) or not external_id.strip():
                     raise ValueError("reconciliação EXECUTED exige external_id durável.")
-                existing = self._external_ids.get(request_id)
                 observed_external_id = external_id.strip()
                 if existing is not None and existing != observed_external_id:
                     raise ValueError("external_id observado difere do external_id durável.")
