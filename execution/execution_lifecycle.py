@@ -74,6 +74,12 @@ class ExecutionLifecycleStore:
             raise
 
     @staticmethod
+    def _normalize_id(request_id: str) -> str:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id não pode ser vazio.")
+        return request_id.strip()
+
+    @staticmethod
     def _validate(record: ExecutionLifecycleRecord) -> None:
         if not isinstance(record.request_id, str) or not record.request_id.strip():
             raise ValueError("request_id inválido.")
@@ -165,6 +171,11 @@ class ExecutionLifecycleStore:
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
+        canonical_request_id = self._normalize_id(record.request_id)
+        if canonical_request_id != record.request_id:
+            record = ExecutionLifecycleRecord(
+                canonical_request_id, record.state, record.updated_at, record.message
+            )
 
         def mutation() -> None:
             previous = self._records.get(record.request_id)
@@ -188,13 +199,13 @@ class ExecutionLifecycleStore:
         self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id não pode ser vazio.")
+        request_id = self._normalize_id(request_id)
         return self._read_locked(lambda: self._records.get(request_id))
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
+        request_id = self._normalize_id(request_id)
         if not isinstance(updated_at, datetime):
             raise ValueError("timestamp inválido.")
 
@@ -223,8 +234,7 @@ class ExecutionLifecycleStore:
         """
         if capability is not LIFECYCLE_RECOVERY_CAPABILITY:
             raise ValueError("reconciliação ausente exige capacidade interna de recovery.")
-        if not isinstance(request_id, str) or not request_id.strip():
-            raise ValueError("request_id inválido.")
+        request_id = self._normalize_id(request_id)
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação ausente exige estado ACCEPTED ou REJECTED.")
         if not isinstance(updated_at, datetime):
@@ -254,6 +264,7 @@ class ExecutionLifecycleStore:
             raise ValueError("reconciliação PENDING exige capacidade interna de recovery.")
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação PENDING exige estado ACCEPTED ou REJECTED.")
+        request_id = self._normalize_id(request_id)
         if not isinstance(updated_at, datetime):
             raise ValueError("timestamp inválido.")
         result: ExecutionLifecycleRecord | None = None
