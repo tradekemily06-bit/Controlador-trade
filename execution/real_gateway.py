@@ -496,9 +496,39 @@ class RealExecutionGateway:
         if reconciler is None or not callable(getattr(reconciler, "lookup", None)):
             raise ValueError("reconciler REAL somente leitura é obrigatório.")
 
+        context = self._ledger.context(request_id)
+        fingerprint = self._ledger.fingerprint(request_id)
+        if not isinstance(context, dict) or not context or not isinstance(fingerprint, str) or not fingerprint.strip():
+            raise ValueError(
+                "reconciliação REAL exige context/fingerprint duráveis; estado legado sem intenção persistida permanece bloqueado."
+            )
+        if context.get("request_id") != request_id:
+            raise ValueError("context REAL não corresponde ao request_id reconciliado.")
+
         observation = reconciler.lookup(request_id)
         if not validate_observation(request_id, observation):
             raise ValueError("evidência externa de reconciliação inválida ou contraditória.")
+
+        if observation.executed:
+            expected_symbol = context.get("symbol")
+            if not isinstance(expected_symbol, str) or not expected_symbol.strip() or observation.symbol.strip() != expected_symbol.strip():
+                raise ValueError("evidência externa não corresponde ao símbolo persistido da request.")
+            side_map = {"COMPRA": "BUY", "VENDA": "SELL", "BUY": "BUY", "SELL": "SELL"}
+            expected_side = side_map.get(str(context.get("side", "")).strip().upper())
+            observed_side = side_map.get(observation.side.strip().upper())
+            if expected_side is None or observed_side != expected_side:
+                raise ValueError("evidência externa não corresponde ao lado persistido da request.")
+            expected_amount = context.get("amount")
+            if not isinstance(expected_amount, (int, float)) or isinstance(expected_amount, bool) or not math.isfinite(float(expected_amount)):
+                raise ValueError("context REAL possui amount inválido.")
+            if not math.isclose(float(observation.amount), float(expected_amount), rel_tol=0.0, abs_tol=1e-9):
+                raise ValueError("evidência externa não corresponde ao amount persistido da request.")
+            expected_correlation = context.get("correlation")
+            if expected_correlation is not None:
+                if not isinstance(expected_correlation, str) or not expected_correlation.strip():
+                    raise ValueError("context REAL possui correlation inválida.")
+                if observation.correlation.strip() != expected_correlation.strip():
+                    raise ValueError("evidência externa não corresponde à correlation persistida da request.")
 
         outcome = observation.effective_outcome
         # Only definitive broker answers may close UNKNOWN. "Not found", delayed
