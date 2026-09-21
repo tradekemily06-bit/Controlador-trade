@@ -41,6 +41,8 @@ class RealReconciliationObservation:
     request_id: str
     executed: bool
     external_id: str | None
+    observed_at: datetime
+    source: str
     outcome: ReconciliationOutcome | None = None
     external_id_kind: ExternalIdentityKind = ExternalIdentityKind.UNKNOWN
     provider: str | None = None
@@ -49,11 +51,8 @@ class RealReconciliationObservation:
     side: str | None = None
     amount: float | None = None
     correlation: str | None = None
-    observed_at: datetime
-    source: str
     _issuer: object = None
 
-    @property
     @property
     def effective_outcome(self) -> ReconciliationOutcome:
         # Backward-compatible observations issued by the internal boundary are
@@ -62,6 +61,7 @@ class RealReconciliationObservation:
             ReconciliationOutcome.EXECUTED if self.executed else ReconciliationOutcome.NOT_EXECUTED
         )
 
+    @property
     def issued_by_boundary(self) -> bool:
         return self._issuer is _RECONCILIATION_ISSUER
 
