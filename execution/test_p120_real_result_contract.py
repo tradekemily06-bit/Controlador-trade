@@ -49,10 +49,14 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
 
 class AcceptedAdapter:
+    def __init__(self):
+        self.calls = 0
+
     def is_available(self):
         return True
 
     def execute(self, request):
+        self.calls += 1
         return ExecutionResult(True, "accepted", "external-1")
 
 
@@ -186,4 +190,4 @@ def test_real_gateway_kill_switch_is_rechecked_at_dispatch(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.BLOCKED
     assert ledger.status("blocked-by-kill-switch") is ExecutionLedgerStatus.RESERVED
-    assert adapter.calls if hasattr(adapter, "calls") else True
+    assert adapter.calls == 0
