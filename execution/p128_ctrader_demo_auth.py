@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from urllib.parse import urlencode
+import secrets
 from typing import Protocol
 
 from execution.p124_broker_session import (
@@ -36,16 +37,33 @@ class CTraderOAuthConfig:
         if not isinstance(self.scope, CTraderOAuthScope):
             raise ValueError("scope OAuth inválido")
 
-    def authorization_url(self) -> str:
+    def authorization_url(self, *, state: str) -> str:
+        if not isinstance(state, str) or len(state) < 32 or not state.strip():
+            raise ValueError("state OAuth obrigatório e suficientemente aleatório")
         query = urlencode(
             {
                 "client_id": self.client_id,
                 "redirect_uri": self.redirect_uri,
                 "scope": self.scope.value,
                 "product": "web",
+                "state": state,
             }
         )
         return f"{CTRADER_AUTHORIZATION_URL}?{query}"
+
+
+def new_oauth_state() -> str:
+    """Generate a high-entropy OAuth state value for CSRF protection."""
+    return secrets.token_urlsafe(32)
+
+
+def validate_oauth_state(expected_state: str, received_state: str) -> None:
+    if not isinstance(expected_state, str) or not expected_state.strip():
+        raise ValueError("state OAuth esperado obrigatório")
+    if not isinstance(received_state, str) or not received_state.strip():
+        raise ValueError("state OAuth recebido obrigatório")
+    if not secrets.compare_digest(expected_state, received_state):
+        raise ValueError("state OAuth inválido")
 
 
 @dataclass(frozen=True)
