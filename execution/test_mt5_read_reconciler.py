@@ -117,6 +117,8 @@ def test_mt5_resolver_passes_bounded_time_window_to_queries():
     assert seen["deals"]["date_to"] > anchor
     assert seen["orders"]["date_from"] == seen["deals"]["date_from"]
     assert seen["orders"]["date_to"] == seen["deals"]["date_to"]
+    assert seen["deals"]["account_id"] == "123"
+    assert seen["orders"]["account_id"] == "123"
 
 
 def test_mt5_lookup_requires_durable_recovery_identity_and_reservation_anchor():
@@ -189,3 +191,18 @@ def test_mt5_resolver_rejects_two_distinct_orders_even_when_total_volume_matches
     obs = _reconciler([first, second], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
     assert obs.effective_outcome is ReconciliationOutcome.AMBIGUOUS
     assert obs.external_id is None
+
+
+def test_mt5_resolver_ignores_matching_candidate_outside_bounded_window():
+    anchor = datetime.now(timezone.utc)
+    stale = _raw()
+    stale.observed_at = anchor - timedelta(days=3)
+    obs = _reconciler([stale], []).resolve(_identity(), reserved_at=anchor)
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
+
+
+def test_mt5_resolver_rejects_candidate_from_different_account_when_transport_exposes_account():
+    wrong_account = _raw()
+    wrong_account.account_id = "999"
+    obs = _reconciler([wrong_account], []).resolve(_identity(), reserved_at=datetime.now(timezone.utc))
+    assert obs.effective_outcome is ReconciliationOutcome.NOT_FOUND
