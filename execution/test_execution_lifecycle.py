@@ -117,5 +117,5 @@ def test_persisted_lifecycle_rejects_duplicate_request_id(tmp_path):
         '{"request_id":"dup","state":"UNKNOWN","updated_at":"2026-01-01T00:00:01+00:00"}]',
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="request_id duplicado"):
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
         ExecutionLifecycleStore(path)
