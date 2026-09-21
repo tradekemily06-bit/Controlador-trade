@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.file_lock import exclusive_file_lock
+from core.safe_file import read_regular_utf8
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
@@ -125,7 +126,7 @@ class OperationMemoryStore:
                     raise ValueError("arquivo de memória deve ser regular.")
                 if stat.st_size > MAX_MEMORY_FILE_BYTES:
                     raise ValueError("arquivo de memória excede o limite permitido.")
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
+                payload = json.loads(read_regular_utf8(self.path, max_bytes=MAX_MEMORY_FILE_BYTES ))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
                 raise ValueError("arquivo de memória inválido.") from exc
             if not isinstance(payload, list) or len(payload) > MAX_MEMORY_RECORDS:

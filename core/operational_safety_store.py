@@ -8,6 +8,7 @@ from pathlib import Path
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
 from .file_lock import exclusive_file_lock
+from .safe_file import read_regular_utf8
 from .kill_switch import KillSwitch, KillSwitchState
 
 
@@ -100,7 +101,7 @@ class OperationalSafetyStore:
                 raise ValueError("estado de segurança deve ser um arquivo regular.")
             if stat.st_size > MAX_SAFETY_FILE_BYTES:
                 raise ValueError("estado de segurança inválido: excede o limite permitido.")
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(read_regular_utf8(self.path, max_bytes=MAX_SAFETY_FILE_BYTES ))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("estado de segurança inválido.") from exc
         if not isinstance(payload, dict):

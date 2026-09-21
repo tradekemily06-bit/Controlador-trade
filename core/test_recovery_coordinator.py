@@ -167,3 +167,106 @@ def test_recovery_uses_same_dispatch_coordination_lock(tmp_path, monkeypatch):
     coordinator.assess()
 
     assert observed == [ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")]
+
+
+def test_accepted_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-accepted-divergent")
+    coordinator.execution_ledger.mark_accepted("req-accepted-divergent")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-accepted-divergent", ExecutionLifecycleState.PENDING, now, "started")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.pending_request_ids == ("req-accepted-divergent",)
+
+
+def test_rejected_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-rejected-divergent")
+    coordinator.execution_ledger.mark_rejected("req-rejected-divergent")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-rejected-divergent", ExecutionLifecycleState.PENDING, now, "started")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.pending_request_ids == ("req-rejected-divergent",)
+
+
+def test_terminal_ledger_can_repair_pending_lifecycle_without_broker_call(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-repair")
+    coordinator.execution_ledger.mark_accepted("req-repair")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-repair", ExecutionLifecycleState.PENDING, now, "started")
+    )
+
+    repaired = coordinator.repair_terminal_lifecycle("req-repair", updated_at=now)
+
+    assert repaired.state is ExecutionLifecycleState.ACCEPTED
+    assert coordinator.lifecycle_store.get("req-repair").state is ExecutionLifecycleState.ACCEPTED
+    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
+
+
+def test_terminal_ledger_can_repair_missing_lifecycle(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-missing-lifecycle")
+    coordinator.execution_ledger.mark_rejected("req-missing-lifecycle")
+
+    repaired = coordinator.repair_terminal_lifecycle("req-missing-lifecycle", updated_at=now)
+
+    assert repaired.state is ExecutionLifecycleState.REJECTED
+    assert coordinator.lifecycle_store.get("req-missing-lifecycle").state is ExecutionLifecycleState.REJECTED
+    assert coordinator.assess().state is RecoveryState.SAFE_TO_RESUME
+
+
+def test_terminal_lifecycle_repair_is_idempotent(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-idempotent")
+    coordinator.execution_ledger.mark_accepted("req-idempotent")
+    first = coordinator.repair_terminal_lifecycle("req-idempotent", updated_at=now)
+    second = coordinator.repair_terminal_lifecycle("req-idempotent", updated_at=now)
+
+    assert first == second
+    assert second.state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_terminal_mismatch_is_not_auto_repaired(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_accepted("req-mismatch")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.REJECTED, now, "wrong")
+    )
+
+    with pytest.raises(ValueError):
+        coordinator.repair_terminal_lifecycle("req-mismatch", updated_at=now)
+
+    assert coordinator.lifecycle_store.get("req-mismatch").state is ExecutionLifecycleState.REJECTED
+
+
+def test_unknown_lifecycle_is_not_auto_repaired_from_terminal_ledger(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-unknown")
+    coordinator.execution_ledger.mark_accepted("req-unknown")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-unknown", ExecutionLifecycleState.UNKNOWN, now, "uncertain")
+    )
+
+    with pytest.raises(ValueError):
+        coordinator.repair_terminal_lifecycle("req-unknown", updated_at=now)
+
+    assert coordinator.lifecycle_store.get("req-unknown").state is ExecutionLifecycleState.UNKNOWN

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.file_lock import exclusive_file_lock
+from core.safe_file import read_regular_utf8
 
 
 MAX_CHECKPOINT_FILE_BYTES = 64 * 1024
@@ -87,7 +88,7 @@ class RuntimeCheckpointStore:
             if stat.st_size > MAX_CHECKPOINT_FILE_BYTES:
                 raise ValueError("checkpoint excede o limite permitido.")
             try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
+                data = json.loads(read_regular_utf8(self.path, max_bytes=MAX_CHECKPOINT_FILE_BYTES ))
                 if not isinstance(data, dict):
                     raise ValueError
                 checkpoint = RuntimeCheckpoint(

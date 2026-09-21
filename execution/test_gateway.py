@@ -2,6 +2,10 @@ from datetime import datetime, timezone, timedelta
 
 from core.ecosystem_maintenance import MaintenanceManager
 from core.kill_switch import KillSwitch
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
+from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleStore
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
@@ -221,3 +225,94 @@ def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_does_not_downgrade_accepted_ledger_when_lifecycle_persistence_fails(tmp_path):
+    class AcceptingExecutor:
+        def execute(self, _request):
+            return ExecutionResult(accepted=True, message="aceito", external_id="EXT-1")
+
+    class FailingLifecycle:
+        def __init__(self):
+            self.records_seen = 0
+
+        def get(self, _request_id):
+            return None
+
+        def put(self, _record):
+            self.records_seen += 1
+            if self.records_seen >= 2:
+                raise OSError("falha de persistência")
+
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = FailingLifecycle()
+    gateway = ExecutionGateway(
+        AcceptingExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-accepted-persist-failure", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-accepted-persist-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert "Ledger permanece ACCEPTED" in result.message
+    assert lifecycle.records_seen == 2
+
+
+def test_recovery_cannot_return_safe_to_resume_while_execution_holds_dispatch_fence(tmp_path):
+    from threading import Event, Thread
+    import time
+
+    class BlockingExecutor:
+        def __init__(self):
+            self.entered = Event()
+            self.release = Event()
+
+        def execute(self, request):
+            self.entered.set()
+            assert self.release.wait(timeout=2)
+            return ExecutionResult(True, "ok")
+
+    executor = BlockingExecutor()
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger, lifecycle=lifecycle)
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+    )
+    request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=1,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        request_id="req-concurrent-recovery",
+    )
+
+    execution_result = []
+    worker = Thread(target=lambda: execution_result.append(gateway.execute(request.request_id, request)))
+    worker.start()
+    assert executor.entered.wait(timeout=2)
+
+    recovery_result = []
+    recovery_worker = Thread(target=lambda: recovery_result.append(recovery.assess()))
+    recovery_worker.start()
+    time.sleep(0.1)
+
+    # Recovery must wait for the same dispatch fence; it must never observe
+    # an in-flight RESERVED/PENDING execution as SAFE_TO_RESUME.
+    assert recovery_worker.is_alive()
+    executor.release.set()
+
+    worker.join(timeout=2)
+    recovery_worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert not recovery_worker.is_alive()
+    assert execution_result[0].status is GatewayStatus.ACCEPTED
+    assert recovery_result[0].state is not RecoveryState.SAFE_TO_RESUME

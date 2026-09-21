@@ -224,9 +224,21 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             onboarding_mount = (onboarding_html + onboarding_script).encode("utf-8")
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
+    try:
+        _audit(environ, request_id, 200)
+    except RuntimeError:
+        if saas_public_mode():
+            return _json_response(
+                start_response,
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "serviço de auditoria indisponível", "request_id": request_id},
+                request_id,
+                None,
+                audit=False,
+            )
+        raise
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id, script_nonce=script_nonce)
     start_response("200 OK", headers)
-    _audit(environ, request_id, 200)
     return [body]
 
 

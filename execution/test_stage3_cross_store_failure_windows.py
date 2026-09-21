@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
+
 from core.kill_switch import KillSwitch
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleStore, ExecutionLifecycleState
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from core.models import Signal
@@ -52,7 +54,10 @@ def test_accepted_ledger_with_failed_lifecycle_persistence_blocks_recovery(tmp_p
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("cross-accepted") is ExecutionLedgerStatus.ACCEPTED
-    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("cross-accepted").state is ExecutionLifecycleState.UNKNOWN
+    # The accepted outcome is authoritative in the Ledger; Lifecycle remains
+    # PENDING when its terminal persistence fails and must be repaired from the
+    # terminal Ledger, never downgraded to UNKNOWN.
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("cross-accepted").state is ExecutionLifecycleState.PENDING
     assessed = recovery(tmp_path).assess()
     assert assessed.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessed.can_resume is False
@@ -71,3 +76,32 @@ def test_rejected_ledger_with_failed_lifecycle_persistence_blocks_recovery(tmp_p
     assessed = recovery(tmp_path).assess()
     assert assessed.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessed.can_resume is False
+
+
+def test_terminal_ledger_repair_closes_only_the_persistence_gap(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("repair-accepted")
+    ledger.mark_accepted("repair-accepted")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "repair-accepted",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "started",
+        )
+    )
+
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+    )
+    repaired = coordinator.repair_terminal_lifecycle(
+        "repair-accepted",
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    assert repaired.state is ExecutionLifecycleState.ACCEPTED
+    assert ledger.status("repair-accepted") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("repair-accepted").state is ExecutionLifecycleState.ACCEPTED
