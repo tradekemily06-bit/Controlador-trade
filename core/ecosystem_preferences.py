@@ -170,19 +170,42 @@ class EcosystemPreferencesStore:
                 self._state_store.put(tenant_id=scope[0], subject_id=scope[1], namespace=self.NAMESPACE, payload=asdict(value))
         return value
 
+    def _atomic_update(self, builder) -> EcosystemPreferences:
+        scope = self._require_scope_for_durable_state()
+        if scope is None or self._state_store is None:
+            return self._save(builder(self._current()))
+
+        def updater(payload):
+            latest = self._default_preferences if payload is None else self._decode(payload)
+            value = builder(latest)
+            self._validate(value)
+            return asdict(value)
+
+        payload = self._state_store.update(
+            tenant_id=scope[0],
+            subject_id=scope[1],
+            namespace=self.NAMESPACE,
+            updater=updater,
+        )
+        value = self._decode(payload)
+        self._scoped[scope] = value
+        return value
+
     def update(self, **changes) -> EcosystemPreferences:
         with self._lock:
-            return self._save(replace(self._fresh_current(), **changes))
+            return self._atomic_update(lambda current: replace(current, **changes))
 
     def update_candle(self, **changes) -> EcosystemPreferences:
         with self._lock:
-            current = self._fresh_current()
-            return self._save(replace(current, candle=replace(current.candle, **changes)))
+            return self._atomic_update(
+                lambda current: replace(current, candle=replace(current.candle, **changes))
+            )
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
         with self._lock:
-            current = self._fresh_current()
-            return self._save(replace(current, notifications=replace(current.notifications, **changes)))
+            return self._atomic_update(
+                lambda current: replace(current, notifications=replace(current.notifications, **changes))
+            )
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
