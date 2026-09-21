@@ -236,12 +236,9 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     release = RealReleaseClosureBoundary._internal().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
     assert result.status == RealGatewayStatus.UNKNOWN
-    try:
-        gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
-    except ValueError as exc:
-        assert "external_id" in str(exc)
-    else:
-        raise AssertionError("UNKNOWN sem identidade externa não pode ser promovido por ID fornecido pelo reconciliador")
+    gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("unknown-2") == "external-1"
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
 
 
