@@ -96,7 +96,7 @@ class ExternalOrderReconciliationBoundary:
             lifecycle.reconcile(
                 request_id,
                 ExecutionLifecycleState.REJECTED,
-                updated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                updated_at=datetime.now(timezone.utc),
                 message=result.message,
             )
         return result
