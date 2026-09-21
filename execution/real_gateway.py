@@ -238,6 +238,12 @@ class RealExecutionGateway:
 
         try:
             correlation = self._gateway.correlation_for(broker, request)
+            recovery_context = self._gateway.recovery_context_for(broker, request)
+            if not isinstance(recovery_context, dict):
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "adapter REAL retornou recovery context inválido.",
+                )
             # REAL recovery requires a deterministic provider-side correlation.
             # Without it, a later read could match an unrelated execution with
             # the same symbol/side/amount. Never create a REAL request that
@@ -263,6 +269,7 @@ class RealExecutionGateway:
                     # read-side evidence from another provider cannot close
                     # this request accidentally.
                     "provider": broker.strip().lower(),
+                    "recovery_identity": recovery_context,
                 },
             )
             self._lifecycle.put(
