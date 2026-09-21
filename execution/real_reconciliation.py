@@ -42,7 +42,10 @@ class RealReconciliationPort(Protocol):
 class RealReconciliationEvidenceBoundary:
     """Issues observations only after a read-only reconciler has obtained them."""
 
-    _provider_capability = object()
+    def __init__(self) -> None:
+        # Capabilities are instance-bound: one evidence boundary must not be able
+        # to mint observations through another boundary instance.
+        self._provider_capability = object()
 
     @property
     def provider_capability(self) -> object:
