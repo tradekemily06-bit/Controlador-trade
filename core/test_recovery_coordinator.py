@@ -56,3 +56,14 @@ def test_recovery_detects_lifecycle_without_ledger(tmp_path):
     assessment = coordinator.assess()
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert assessment.inconsistent_request_ids == ("req-4",)
+
+
+def test_recovery_allows_pending_lifecycle_with_reserved_ledger(tmp_path):
+    coordinator = _coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(ExecutionLifecycleRecord("req-pending", ExecutionLifecycleState.PENDING, now))
+    coordinator.execution_ledger.reserve("req-pending")
+    assessment = coordinator.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.inconsistent_request_ids == ()
+    assert assessment.pending_request_ids == ("req-pending",)
