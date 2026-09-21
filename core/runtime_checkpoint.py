@@ -6,6 +6,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - non-Windows
+    msvcrt = None
+
 
 @dataclass(frozen=True)
 class RuntimeCheckpoint:
@@ -26,22 +36,28 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with lock_path.open("a+b") as lock_file:
+            self._acquire_lock(lock_file)
+            try:
+                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary.write_text(
+                    json.dumps(
+                        {
+                            "session_id": checkpoint.session_id,
+                            "last_cycle": checkpoint.last_cycle,
+                            "last_request_id": checkpoint.last_request_id,
+                            "updated_at": checkpoint.updated_at.isoformat(),
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                os.replace(temporary, self.path)
+            finally:
+                self._release_lock(lock_file)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
@@ -75,3 +91,29 @@ class RuntimeCheckpointStore:
             raise ValueError("request_id do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):
             raise ValueError("checkpoint inválido.")
+
+
+    @staticmethod
+    def _acquire_lock(lock_file) -> None:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            return
+        if msvcrt is not None:
+            lock_file.seek(0)
+            lock_file.write(b"0")
+            lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            return
+        raise OSError("nenhum mecanismo de lock suportado neste sistema")
+
+    @staticmethod
+    def _release_lock(lock_file) -> None:
+        if fcntl is not None:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            return
+        if msvcrt is not None:
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+        raise OSError("nenhum mecanismo de lock suportado neste sistema")
