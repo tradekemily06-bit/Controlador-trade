@@ -89,6 +89,17 @@ def test_demo_adapter_rejects_non_demo_transport_endpoint():
         raise AssertionError("transport live não pode entrar no adapter DEMO")
 
 
+def test_demo_adapter_rejects_invalid_order_before_transport(tmp_path=None):
+    transport = FakeDemoTransport()
+    adapter = CTraderDemoAdapter(transport)
+
+    result = adapter.execute(ExecutionRequest("EURUSD", Signal.COMPRA, 0, 60, ExecutionMode.DEMO, "bad-amount"))
+
+    assert result.accepted is False
+    assert result.uncertain is False
+    assert transport.orders == []
+
+
 def test_demo_adapter_marks_transport_exception_uncertain():
     class FailingTransport(FakeDemoTransport):
         def place_market_order(self, order):
