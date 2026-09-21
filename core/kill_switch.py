@@ -70,12 +70,18 @@ class KillSwitch:
             self._change_fence = change_fence
 
     def _commit(self, state: KillSwitchState) -> KillSwitchState:
+        # Global lock order is fence -> in-process state lock. Dispatch follows
+        # the same order (coordination fence -> KillSwitch lock). Holding the
+        # RLock first here would create a real cross-thread deadlock:
+        # activate(): RLock -> fence, while dispatch(): fence -> RLock.
         with self._lock:
             fence_provider = self._change_fence
             callback = self._on_change
-            context = fence_provider() if fence_provider is not None else nullcontext()
-            with context:
+        context = fence_provider() if fence_provider is not None else nullcontext()
+        with context:
+            with self._lock:
                 self._state = state
+                callback = self._on_change
                 if callback is not None:
                     callback(state)
                 return state
@@ -92,8 +98,9 @@ class KillSwitch:
             raise KillSwitchValidationError("state deve ser KillSwitchState.")
         with self._lock:
             fence_provider = self._change_fence
-            context = fence_provider() if fence_provider is not None else nullcontext()
-            with context:
+        context = fence_provider() if fence_provider is not None else nullcontext()
+        with context:
+            with self._lock:
                 self._state = state
                 return state
 
