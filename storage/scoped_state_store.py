@@ -110,6 +110,40 @@ class SQLiteScopedStateStore:
         except (TypeError, json.JSONDecodeError, RecursionError) as exc:
             raise RuntimeError("scoped state is corrupt") from exc
 
+    def update(self, *, tenant_id: str | None, subject_id: str | None, namespace: str, updater) -> object:
+        """Atomically read-modify-write one scoped record under a SQLite writer transaction."""
+        tenant, subject = self._scope(tenant_id, subject_id)
+        namespace = self._namespace(namespace)
+        if not callable(updater):
+            raise TypeError("updater must be callable")
+        with self._lock, sqlite3.connect(self.database_path, timeout=5.0) as db:
+            db.execute("PRAGMA busy_timeout=5000")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                row = db.execute(
+                    "SELECT payload FROM scoped_state WHERE tenant_id=? AND subject_id=? AND namespace=?",
+                    (tenant, subject, namespace),
+                ).fetchone()
+                if row is None:
+                    current = None
+                else:
+                    try:
+                        current = json.loads(row[0])
+                    except (TypeError, json.JSONDecodeError, RecursionError) as exc:
+                        raise RuntimeError("scoped state is corrupt") from exc
+                updated = updater(current)
+                encoded = self._encode_payload(updated)
+                db.execute(
+                    "INSERT INTO scoped_state(tenant_id,subject_id,namespace,payload) VALUES(?,?,?,?) "
+                    "ON CONFLICT(tenant_id,subject_id,namespace) DO UPDATE SET payload=excluded.payload",
+                    (tenant, subject, namespace, encoded),
+                )
+                db.commit()
+                return updated
+            except Exception:
+                db.rollback()
+                raise
+
     def put(self, *, tenant_id: str | None, subject_id: str | None, namespace: str, payload: object) -> None:
         tenant, subject = self._scope(tenant_id, subject_id)
         namespace = self._namespace(namespace)
