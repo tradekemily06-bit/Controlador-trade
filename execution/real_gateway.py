@@ -115,6 +115,25 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
         if not result.execution.accepted:
+            # A rejection carrying an external reference is ambiguous: the broker
+            # may have accepted the order while the adapter classified the response
+            # as rejected. Preserve the reference and fail closed into UNKNOWN.
+            if isinstance(result.execution.external_id, str) and result.execution.external_id.strip():
+                try:
+                    self._ledger.attach_external_id(request_id, result.execution.external_id)
+                    self._ledger.mark_unknown(request_id)
+                    self._mark_lifecycle(request_id, ExecutionLifecycleState.UNKNOWN, result.execution.message)
+                except (OSError, ValueError) as exc:
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        f"resultado ambíguo com external_id, mas persistência falhou: {exc}",
+                        result.execution,
+                    )
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    "adapter marcou rejeição com external_id; reconciliação explícita necessária.",
+                    result.execution,
+                )
             try:
                 self._ledger.mark_rejected(request_id)
                 self._mark_lifecycle(request_id, ExecutionLifecycleState.REJECTED, result.execution.message)
