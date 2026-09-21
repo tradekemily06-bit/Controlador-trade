@@ -180,6 +180,9 @@ def _authorize_internal_update(environ) -> tuple[bool, str]:
 def _authorize_public_saas_request(environ, path: str, method: str) -> None:
     if not saas_public_mode():
         return
+    multi_instance = os.environ.get("CONTROLADOR_MULTI_INSTANCE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if multi_instance:
+        raise PublicSaaSNotReady("SaaS público multi-instance exige rate limiting centralizado e data plane compartilhado")
     require_trusted_identity(environ)
     route = (method, path)
     if route in PUBLIC_SAAS_GENERIC:
