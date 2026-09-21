@@ -82,12 +82,24 @@ class ExecutionLifecycleStore:
 
         def mutation() -> None:
             previous = self._records.get(record.request_id)
-            if (
-                previous is not None
-                and previous.state is ExecutionLifecycleState.UNKNOWN
-                and record.state is not ExecutionLifecycleState.UNKNOWN
-            ):
-                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            if previous is not None:
+                allowed = {
+                    ExecutionLifecycleState.PENDING: {
+                        ExecutionLifecycleState.PENDING,
+                        ExecutionLifecycleState.ACCEPTED,
+                        ExecutionLifecycleState.REJECTED,
+                        ExecutionLifecycleState.UNKNOWN,
+                    },
+                    ExecutionLifecycleState.UNKNOWN: {ExecutionLifecycleState.UNKNOWN},
+                    ExecutionLifecycleState.ACCEPTED: {ExecutionLifecycleState.ACCEPTED},
+                    ExecutionLifecycleState.REJECTED: {ExecutionLifecycleState.REJECTED},
+                }
+                if record.state not in allowed[previous.state]:
+                    if previous.state is ExecutionLifecycleState.UNKNOWN:
+                        raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+                    raise ValueError(
+                        f"transição de lifecycle inválida: {previous.state.value} -> {record.state.value}."
+                    )
             self._records[record.request_id] = record
 
         self._mutate_locked(mutation)
