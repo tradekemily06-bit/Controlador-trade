@@ -6,6 +6,10 @@ import re
 from datetime import datetime
 from urllib.parse import quote, urlencode
 
+# Test seam: production uses a fixed-host HTTPS connection. Tests may replace
+# this hook without introducing a runtime-controlled URL transport.
+urlopen = None
+
 from data.feed import MarketDataProvider, MarketDataRequest
 from data.models import Candle
 
@@ -39,15 +43,19 @@ class BiQuoteProvider(MarketDataProvider):
         )
         path = f"{self.BASE_PATH}/{quote(symbol, safe='._-')}/ohlc?{query}"
 
-        connection = http.client.HTTPSConnection(self.HOST, timeout=self._timeout)
-        try:
-            connection.request("GET", path, headers={"Accept": "application/json"})
-            response = connection.getresponse()
-            if response.status < 200 or response.status >= 300:
-                raise RuntimeError(f"BiQuote HTTP status {response.status}")
-            payload = json.loads(response.read().decode("utf-8"))
-        finally:
-            connection.close()
+        if urlopen is not None:
+            with urlopen(path, timeout=self._timeout) as response:
+                payload = json.load(response)
+        else:
+            connection = http.client.HTTPSConnection(self.HOST, timeout=self._timeout)
+            try:
+                connection.request("GET", path, headers={"Accept": "application/json"})
+                response = connection.getresponse()
+                if response.status < 200 or response.status >= 300:
+                    raise RuntimeError(f"BiQuote HTTP status {response.status}")
+                payload = json.loads(response.read().decode("utf-8"))
+            finally:
+                connection.close()
 
         bars = payload.get("bars")
         if not isinstance(bars, list):
