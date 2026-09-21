@@ -1130,6 +1130,10 @@ def test_real_gateway_blocks_same_thread_adapter_reentry_without_second_dispatch
     class ReentrantAdapter:
         adapter_id = "fake-adapter"
 
+        @staticmethod
+        def correlation_for(request):
+            return f"FAKE-{request.request_id.strip()}"
+
         def __init__(self):
             self.calls = 0
             self.gateway = None
