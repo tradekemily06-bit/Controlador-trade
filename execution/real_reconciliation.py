@@ -42,6 +42,12 @@ class RealReconciliationPort(Protocol):
 class RealReconciliationEvidenceBoundary:
     """Issues observations only after a read-only reconciler has obtained them."""
 
+    _provider_capability = object()
+
+    @property
+    def provider_capability(self) -> object:
+        return self._provider_capability
+
     def issue(
         self,
         *,
@@ -50,7 +56,10 @@ class RealReconciliationEvidenceBoundary:
         external_id: str | None,
         observed_at: datetime,
         source: str,
+        provider_capability: object,
     ) -> RealReconciliationObservation:
+        if provider_capability is not self._provider_capability:
+            raise ValueError("evidência REAL exige capability do provider somente leitura.")
         return RealReconciliationObservation(
             request_id=request_id,
             executed=executed,
