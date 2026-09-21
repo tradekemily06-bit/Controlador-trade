@@ -341,6 +341,28 @@ def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Pat
         raise AssertionError("stale ledger must not reserve the same REAL request_id")
 
 
+def test_recovery_blocks_terminal_state_without_durable_intent_context(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text(
+        '{"accepted-no-context":{"state":"ACCEPTED","external_id":"external-1"}}',
+        encoding="utf-8",
+    )
+    lifecycle_path = tmp_path / "lifecycle.json"
+    lifecycle_path.write_text(
+        '[{"request_id":"accepted-no-context","state":"ACCEPTED","updated_at":"2026-09-21T00:00:00+00:00","message":"ok"}]',
+        encoding="utf-8",
+    )
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+        _real_kill_switch(tmp_path),
+    )
+    assert gateway._recovery_safe() is False
+
+
 def test_recovery_blocks_durable_accepted_without_external_id(tmp_path: Path):
     ledger_path = tmp_path / "ledger.json"
     ledger_path.write_text('{"accepted-no-id": "ACCEPTED"}', encoding="utf-8")
