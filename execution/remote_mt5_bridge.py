@@ -29,6 +29,13 @@ class SafeRemoteMT5Executor:
     def __init__(self, bridge: RemoteMT5Bridge) -> None:
         self._bridge = bridge
 
+    @staticmethod
+    def correlation_for(request: ExecutionRequest) -> str:
+        if not isinstance(request, ExecutionRequest) or not isinstance(request.request_id, str) or not request.request_id.strip():
+            raise ValueError("request_id obrigatório para correlation bridge MT5")
+        import hashlib
+        return "CTD-BRIDGE-" + hashlib.sha256(request.request_id.strip().encode("utf-8")).hexdigest()[:24]
+
     def is_available(self) -> bool:
         try:
             health = self._bridge.health()
