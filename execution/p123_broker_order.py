@@ -19,6 +19,7 @@ class BrokerOrderRequest:
     side: BrokerOrderSide
     amount: float
     duration_seconds: int
+    correlation: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
@@ -31,6 +32,8 @@ class BrokerOrderRequest:
             raise ValueError("amount inválido")
         if isinstance(self.duration_seconds, bool) or not isinstance(self.duration_seconds, int) or self.duration_seconds <= 0:
             raise ValueError("duration_seconds inválido")
+        if self.correlation is not None and (not isinstance(self.correlation, str) or not self.correlation.strip()):
+            raise ValueError("correlation inválida")
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,7 @@ class BrokerOrderBoundary:
         signal: Signal,
         amount: float,
         duration_seconds: int,
+        correlation: str | None = None,
     ) -> BrokerOrderRequest:
         if signal is Signal.AGUARDAR:
             raise ValueError("AGUARDAR não pode gerar ordem")
@@ -67,6 +71,7 @@ class BrokerOrderBoundary:
             side=side,
             amount=amount,
             duration_seconds=duration_seconds,
+            correlation=correlation,
         )
 
     @staticmethod
