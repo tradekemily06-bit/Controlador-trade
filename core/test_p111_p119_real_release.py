@@ -81,10 +81,10 @@ class FakeReconciler:
         )
 
 
-def _real_kill_switch(tmp_path: Path) -> KillSwitch:
+def _real_kill_switch(tmp_path: Path, ledger_path: Path | None = None) -> KillSwitch:
     return KillSwitch(
         state_path=tmp_path / "kill-switch.json",
-        coordination_path=tmp_path / "ledger.json",
+        coordination_path=ledger_path or (tmp_path / "ledger.json"),
     )
 
 
@@ -139,7 +139,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), _real_kill_switch(tmp_path))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), _real_kill_switch(tmp_path, ledger_path=tmp_path / "real-ledger.json"))
     p119 = RealReleaseClosureBoundary._internal().close(
         release_id="release", p116_verified=p116.verified, p117_admitted=p117.admitted,
         p118_available=True, multi_broker_boundary=True,
