@@ -65,6 +65,16 @@ def test_unknown_requires_explicit_reconciliation(tmp_path):
     assert ExecutionLifecycleStore(path).get("req-1") == result
 
 
+def test_reconciliation_cannot_rewrite_terminal_state(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    with pytest.raises(ValueError, match="só pode resolver PENDING/UNKNOWN"):
+        store.reconcile("req-1", ExecutionLifecycleState.REJECTED, updated_at=now)
+
+
 def test_invalid_persisted_state_fails_closed(tmp_path):
     path = tmp_path / "lifecycle.json"
     path.write_text('[{"request_id":"req-1","state":"INVALID","updated_at":"bad"}]', encoding="utf-8")
