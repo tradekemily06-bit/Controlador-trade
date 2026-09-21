@@ -316,7 +316,7 @@ def test_explicit_reconciliation_projects_lifecycle(tmp_path: Path):
     result = gateway.execute(
         broker="fake",
         request_id="unknown-lifecycle",
-        request=_request(),
+        request=_request("unknown-lifecycle"),
         authorization=auth,
         admission=admission,
         safety=safety,
