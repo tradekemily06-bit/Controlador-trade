@@ -89,7 +89,13 @@ class ExecutionGateway:
         self._decision_freshness_policy = decision_freshness_policy
         self._decision_freshness_policy_locked = decision_freshness_policy is not None
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
-        self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
+        # A durable safety store and REAL/DEMO dispatch must share one fence.
+        # This makes kill-switch activation atomic with the final pre-dispatch
+        # barrier instead of allowing a writer to change safety state midway.
+        if safety_store is not None:
+            self._dispatch_lock_path = safety_store.coordination_lock_path
+        else:
+            self._dispatch_lock_path = ledger.path.with_name(f".{ledger.path.name}.dispatch.lock") if ledger is not None else None
 
     def set_operational_barrier_provider(
         self, provider: Callable[[], GlobalOperationalBarrier] | None
@@ -122,6 +128,12 @@ class ExecutionGateway:
             return None
         try:
             _audit, persisted = self._safety_store.load()
+            current = self._kill_switch.state
+            # Never let a stale persisted CLEAR state downgrade an in-memory
+            # ACTIVE switch whose persistence callback is still contending for
+            # the same dispatch fence. Fail closed until persistence catches up.
+            if current.enabled and not persisted.state.enabled:
+                return "estado do kill switch ainda não foi persistido; dispatch bloqueado"
             self._kill_switch.synchronize(persisted.state)
             return None
         except (OSError, ValueError, TypeError) as exc:
