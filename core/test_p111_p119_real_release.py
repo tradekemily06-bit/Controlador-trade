@@ -233,3 +233,31 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_explicit_reconciliation_projects_lifecycle(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle,
+        KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    result = gateway.execute(
+        broker="fake",
+        request_id="unknown-lifecycle",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    gateway.reconcile_unknown("unknown-lifecycle", executed=True)
+    assert lifecycle.get("unknown-lifecycle").state.name == "ACCEPTED"
