@@ -179,3 +179,16 @@ def test_gateway_reserves_shared_ledger_before_demo_dispatch(tmp_path):
     assert first_result.status is GatewayStatus.ACCEPTED
     assert second_result.status is GatewayStatus.DUPLICATE
     assert len(executor.executions()) == 1
+
+
+def test_gateway_demo_acceptance_transitions_reserved_ledger_to_accepted(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-terminal-demo", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.status("req-terminal-demo") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_reference_required("req-terminal-demo") is False
