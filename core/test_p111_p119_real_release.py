@@ -389,3 +389,29 @@ def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path
     else:
         raise AssertionError("REAL não pode ser fechado como executado sem referência externa durável")
     assert ledger.status("no-proof") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_monitoring_does_not_promote_accepted_without_external_id():
+    observation = RealMonitoringBoundary().observe(
+        observation_id="obs-missing-proof",
+        request_id="req-missing-proof",
+        result=ExecutionResult(True, "accepted but no reference", None),
+    )
+    assert observation.status is RealOutcomeStatus.UNKNOWN
+    assert observation.external_id is None
+    assert observation.observed_at.tzinfo is not None
+    assert observation.source == "real_execution_gateway"
+
+
+def test_real_monitoring_requires_provenance_fields():
+    try:
+        from datetime import datetime
+        from core.p118_real_monitoring import RealExecutionObservation
+        RealExecutionObservation(
+            "obs", "req", RealOutcomeStatus.ACCEPTED, "external-1", "ok",
+            datetime.now(), "real_execution_gateway",
+        )
+    except ValueError as exc:
+        assert "timezone" in str(exc)
+    else:
+        raise AssertionError("observação sem timezone não pode ser evidência válida")
