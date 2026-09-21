@@ -8,7 +8,7 @@ from core.operational_runtime import OperationalRuntime
 def build_global_operational_barrier(
     runtime: OperationalRuntime | None,
     *,
-    include_recovery: bool = true,
+    include_recovery: bool = True,
 ) -> GlobalOperationalBarrier:
     if runtime is None:
         return GlobalOperationalBarrier((SafetyComponent("operational-runtime", False, "runtime operacional não conectado", RemediationMode.MANUAL_REQUIRED),))
