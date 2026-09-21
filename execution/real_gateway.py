@@ -69,7 +69,7 @@ class RealExecutionGateway:
             or request.request_id.strip() != request_id.strip()
         ):
             return False
-        if request.signal not in (Signal.COMPRA, Signal.VENDA):
+        if type(request.signal) is not Signal or request.signal not in (Signal.COMPRA, Signal.VENDA):
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
