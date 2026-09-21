@@ -104,22 +104,22 @@ def _audit(environ, request_id: str, status: int) -> None:
 
 
 def _json_response(start_response, status: HTTPStatus, payload: dict, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
-    start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None and audit:
         try:
             _audit(environ, request_id, status.value)
         except RuntimeError:
             if saas_public_mode():
-                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "serviço de auditoria indisponível", "request_id": request_id}, request_id, None, audit=False)
-            raise
+                status = HTTPStatus.SERVICE_UNAVAILABLE
+                payload = {"error": "serviço de auditoria indisponível", "request_id": request_id}
+            else:
+                raise
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    headers = [("Content-Type", "application/json; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
+    start_response(f"{status.value} {status.phrase}", headers)
     return [body]
 
 
 def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: str, environ=None, *, audit: bool = True) -> list[bytes]:
-    headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
-    start_response(f"{status.value} {status.phrase}", headers)
     if environ is not None and audit:
         try:
             _audit(environ, request_id, status.value)
@@ -127,6 +127,8 @@ def _text_response(start_response, status: HTTPStatus, body: bytes, request_id: 
             if saas_public_mode():
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "serviço de auditoria indisponível", "request_id": request_id}, request_id, None, audit=False)
             raise
+    headers = [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))] + SECURITY.headers(request_id)
+    start_response(f"{status.value} {status.phrase}", headers)
     return [body]
 
 
