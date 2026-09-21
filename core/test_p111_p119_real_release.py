@@ -327,6 +327,41 @@ def test_explicit_reconciliation_projects_lifecycle(tmp_path: Path):
     assert lifecycle.get("unknown-lifecycle").state.name == "ACCEPTED"
 
 
+def test_real_terminal_ledger_survives_lifecycle_projection_failure(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    original = gateway._mark_lifecycle
+    def fail_once(request_id, state, message):
+        raise OSError("simulated lifecycle crash")
+    gateway._mark_lifecycle = fail_once
+
+    result = gateway.execute(
+        broker="fake", request_id="projection-crash",
+        request=_request("projection-crash"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert ledger.status("projection-crash") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_id("projection-crash") is not None
+
+    gateway._mark_lifecycle = original
+    coordinator = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    coordinator.repair_terminal_lifecycle_projection("projection-crash")
+    assert lifecycle.get("projection-crash").state.name == "ACCEPTED"
+
+
 def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", UnknownAdapter())
