@@ -243,13 +243,15 @@ class ExecutionLifecycleStore:
         assert result is not None
         return result
 
-    def reconcile_pending(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+    def reconcile_pending(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "", capability: object = None) -> ExecutionLifecycleRecord:
         """Close the Ledger-terminal -> Lifecycle-PENDING crash window.
 
         This is intentionally separate from reconcile(): callers must prove the
         Ledger transition first and the REAL gateway holds the shared
         execution coordination lock while performing both mutations.
         """
+        if capability is not LIFECYCLE_RECOVERY_CAPABILITY:
+            raise ValueError("reconciliação PENDING exige capacidade interna de recovery.")
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação PENDING exige estado ACCEPTED ou REJECTED.")
         if not isinstance(updated_at, datetime):
