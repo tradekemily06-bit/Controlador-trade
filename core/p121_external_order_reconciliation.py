@@ -68,7 +68,7 @@ class ExternalOrderReconciliationBoundary:
         lifecycle: ExecutionLifecycleStore,
         query_port: ExternalOrderQueryPort,
     ) -> ReconciliationResult:
-        """Query the broker by the durable external ID and atomically project a terminal result.
+        """Query the broker by the durable external ID and project a terminal result. This is fail-closed if either durable store update fails.
 
         This path is read-only toward the broker: it never resubmits an order.
         """
