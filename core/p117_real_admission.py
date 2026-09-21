@@ -27,6 +27,15 @@ class RealAdmission:
 
 
 class RealAdmissionBoundary:
+    def __init__(self, *, capability: object | None = None) -> None:
+        if capability is not _ADMISSION_ISSUER:
+            raise ValueError("emissor de admissão REAL não pode ser criado por código externo.")
+        self._capability = capability
+
+    @classmethod
+    def _internal(cls) -> "RealAdmissionBoundary":
+        return cls(capability=_ADMISSION_ISSUER)
+
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
               broker_available: bool, broker_id: str) -> RealAdmission:
