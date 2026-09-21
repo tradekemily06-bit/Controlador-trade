@@ -225,24 +225,41 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     assert second.status == RealGatewayStatus.UNKNOWN
 
 
-def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_path: Path):
+def test_real_unknown_reconciles_only_from_trusted_external_evidence(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", UnknownAdapter())
+    adapter = UnknownAdapter()
+    registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, ExecutionLifecycleStore(tmp_path / "lifecycle.json"), KillSwitch())
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    release = RealReleaseClosureBoundary().close(release_id="unknown2-release", p116_verified=True, p117_admitted=True, p118_available=True, multi_broker_boundary=True)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety, release=release)
+    release = RealReleaseClosureBoundary().close(
+        release_id="unknown2-release",
+        p116_verified=True,
+        p117_admitted=True,
+        p118_available=True,
+        multi_broker_boundary=True,
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="unknown-2",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        release=release,
+    )
     assert result.status == RealGatewayStatus.UNKNOWN
-    try:
-        gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
-    except ValueError as exc:
-        assert "external_id" in str(exc)
-    else:
-        raise AssertionError("UNKNOWN sem identidade externa não pode ser promovido por ID fornecido pelo reconciliador")
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
+    gateway.reconcile_unknown(
+        "unknown-2",
+        reconciler=FakeReconciler("unknown-2", executed=True, external_id="external-reconciled"),
+    )
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("unknown-2") == "external-reconciled"
+    assert lifecycle.get("unknown-2").state is ExecutionLifecycleState.ACCEPTED
+
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
