@@ -129,3 +129,53 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_rejects_mismatched_request_identity():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute(
+        "req-gateway",
+        ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=10.0,
+            duration_seconds=60,
+            mode=ExecutionMode.DEMO,
+            request_id="req-order",
+        ),
+    )
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_binds_canonical_request_id_before_executor():
+    seen = []
+
+    class RecordingExecutor:
+        def execute(self, execution_request):
+            seen.append(execution_request.request_id)
+            return ExecutionResult(accepted=True, message="ok", external_id="demo-1")
+
+    gateway = ExecutionGateway(RecordingExecutor(), KillSwitch())
+
+    result = gateway.execute("req-canonical", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert seen == ["req-canonical"]
+
+
+def test_gateway_reserves_shared_ledger_before_demo_dispatch(tmp_path):
+    from execution.execution_ledger import ExecutionLedger
+
+    path = tmp_path / "ledger.json"
+    executor = PaperExecutor()
+    first = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+    second = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+
+    first_result = first.execute("req-shared", request())
+    second_result = second.execute("req-shared", request())
+
+    assert first_result.status is GatewayStatus.ACCEPTED
+    assert second_result.status is GatewayStatus.DUPLICATE
+    assert len(executor.executions()) == 1
