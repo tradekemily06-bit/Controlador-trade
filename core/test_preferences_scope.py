@@ -16,6 +16,12 @@ class MemoryStateStore:
     def put(self, *, tenant_id, subject_id, namespace, payload):
         self.values[(tenant_id, subject_id, namespace)] = payload
 
+    def update(self, *, tenant_id, subject_id, namespace, updater):
+        key = (tenant_id, subject_id, namespace)
+        value = updater(self.values.get(key))
+        self.values[key] = value
+        return value
+
 
 def _identity(tenant_id: str, subject_id: str) -> None:
     require_trusted_identity(
