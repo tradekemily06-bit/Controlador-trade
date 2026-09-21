@@ -1165,14 +1165,14 @@ def test_real_gateway_blocks_same_thread_adapter_reentry_without_second_dispatch
             self.nested_result = None
 
         def recovery_context_for(self, request):
-        return {
-            "symbol": request.symbol,
-            "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
-            "amount": float(request.amount),
-            "correlation": self.correlation_for(request),
-        }
+            return {
+                "symbol": request.symbol,
+                "side": "BUY" if request.signal is Signal.COMPRA else "SELL",
+                "amount": float(request.amount),
+                "correlation": self.correlation_for(request),
+            }
 
-    def is_available(self):
+        def is_available(self):
             return True
 
         def execute(self, request):
