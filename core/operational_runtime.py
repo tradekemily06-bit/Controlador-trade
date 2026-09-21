@@ -156,7 +156,7 @@ def build_operational_runtime(
     )
 
     from core.operational_barrier_factory import build_global_operational_barrier
-    gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime))
+    gateway.set_operational_barrier_provider(lambda: build_global_operational_barrier(runtime, include_recovery=False))
     gateway.set_decision_freshness_policy(
         DecisionFreshnessPolicy(max_age_seconds=30.0, max_future_skew_seconds=2.0)
     )
