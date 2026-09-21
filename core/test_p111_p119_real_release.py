@@ -314,6 +314,26 @@ def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Pat
         raise AssertionError("stale ledger must not reserve the same REAL request_id")
 
 
+def test_recovery_blocks_durable_accepted_without_external_id(tmp_path: Path):
+    ledger_path = tmp_path / "ledger.json"
+    ledger_path.write_text('{"accepted-no-id": "ACCEPTED"}', encoding="utf-8")
+    lifecycle_path = tmp_path / "lifecycle.json"
+    lifecycle_path.write_text(
+        '[{"request_id":"accepted-no-id","state":"ACCEPTED","updated_at":"2026-09-21T00:00:00+00:00","message":"ok"}]',
+        encoding="utf-8",
+    )
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(ledger_path),
+        ExecutionLifecycleStore(lifecycle_path),
+        KillSwitch(),
+    )
+    assert gateway._recovery_safe() is False
+
+
 def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
