@@ -7,6 +7,7 @@ from core.p117_real_admission import RealAdmissionBoundary
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -44,3 +45,97 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-external-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+class AcceptedAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(True, "accepted", "external-1")
+
+
+class RejectedAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(False, "rejected", None)
+
+
+class RaisingAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        raise TimeoutError("timeout")
+
+
+def _auth_and_safety():
+    authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True)
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    safety = RealSafetyGate().evaluate(
+        authorization_active=True, kill_switch_clear=True,
+        market_healthy=True, recovery_safe=True, risk_approved=True,
+        broker_available=True,
+    )
+    return authorization, admission, safety
+
+
+def _request():
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+
+
+def test_real_gateway_projects_accepted_lifecycle(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", AcceptedAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    authorization, admission, safety = _auth_and_safety()
+
+    result = gateway.execute(
+        broker="fake", request_id="accepted-1", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert lifecycle.get("accepted-1").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_projects_rejected_lifecycle(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", RejectedAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    authorization, admission, safety = _auth_and_safety()
+
+    result = gateway.execute(
+        broker="fake", request_id="rejected-1", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.REJECTED
+    assert lifecycle.get("rejected-1").state is ExecutionLifecycleState.REJECTED
+
+
+def test_real_gateway_projects_unknown_lifecycle(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", RaisingAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    authorization, admission, safety = _auth_and_safety()
+
+    result = gateway.execute(
+        broker="fake", request_id="unknown-1", request=_request(),
+        authorization=authorization, admission=admission, safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert lifecycle.get("unknown-1").state is ExecutionLifecycleState.UNKNOWN
