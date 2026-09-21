@@ -87,12 +87,15 @@ class KillSwitch:
         return self._commit(KillSwitchState(enabled=False, reason=None))
 
     def synchronize(self, state: KillSwitchState) -> KillSwitchState:
-        """Adopt trusted persisted state without invoking persistence callbacks."""
+        """Adopt trusted persisted state without bypassing the dispatch fence."""
         if not isinstance(state, KillSwitchState):
             raise KillSwitchValidationError("state deve ser KillSwitchState.")
         with self._lock:
-            self._state = state
-            return state
+            fence_provider = self._change_fence
+            context = fence_provider() if fence_provider is not None else nullcontext()
+            with context:
+                self._state = state
+                return state
 
     def allows_execution(self) -> bool:
         with self._lock:
