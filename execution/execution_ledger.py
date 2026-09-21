@@ -43,6 +43,8 @@ class ExecutionLedger:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("ledger de execução inválido.") from exc
+        except ValueError:
+            raise
         self._states, self._external_ids = self._decode(payload)
 
     @staticmethod
