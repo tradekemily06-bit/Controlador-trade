@@ -8,6 +8,7 @@ from pathlib import Path
 from datetime import datetime
 
 from core.file_lock import exclusive_file_lock
+from core.safe_file import read_regular_utf8
 
 
 MAX_LIFECYCLE_RECORDS = 10_000
@@ -54,7 +55,7 @@ class ExecutionLifecycleStore:
         if stat.st_size > MAX_LIFECYCLE_FILE_BYTES:
             raise ValueError("ciclo de execução persistido inválido.")
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
+            payload = json.loads(read_regular_utf8(self.path, max_bytes=MAX_LIFECYCLE_FILE_BYTES ))
             if not isinstance(payload, list):
                 raise ValueError
             if len(payload) > MAX_LIFECYCLE_RECORDS:
