@@ -895,3 +895,20 @@ def test_durable_rejection_recovery_does_not_query_broker(tmp_path: Path):
 
     assert lifecycle.get("local-reject").state is ExecutionLifecycleState.REJECTED
     assert ledger.status("local-reject") is ExecutionLedgerStatus.REJECTED
+
+
+def test_reconciliation_evidence_boundary_rejects_forged_provider_capability():
+    boundary = RealReconciliationEvidenceBoundary()
+    try:
+        boundary.issue(
+            request_id="forged",
+            executed=False,
+            external_id=None,
+            observed_at=datetime.now(timezone.utc),
+            source="fake",
+            provider_capability=object(),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("evidence issuance must reject a forged provider capability")
