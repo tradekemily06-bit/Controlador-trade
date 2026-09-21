@@ -797,7 +797,7 @@ def test_real_reject_persist_crash_keeps_request_uncertain_until_reconciliation(
     assert lifecycle.get("persist-crash-rejected").state is ExecutionLifecycleState.REJECTED
 
 
-def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_dispatch(tmp_path: Path):
+def test_reconcile_ledger_only_unknown_recovers_external_identity_from_read_only_evidence(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("ledger-only")
@@ -809,14 +809,14 @@ def test_reconcile_ledger_only_unknown_reconstructs_terminal_lifecycle_without_d
         lifecycle,
         KillSwitch(),
     )
-    try:
-        gateway.reconcile_unknown("ledger-only", reconciler=FakeReconciler("ledger-only", executed=True))
-    except ValueError as exc:
-        assert "external_id" in str(exc)
-    else:
-        raise AssertionError("ledger-only UNKNOWN sem identidade não pode aceitar external_id novo")
-    assert ledger.status("ledger-only") is ExecutionLedgerStatus.UNKNOWN
-    assert lifecycle.get("ledger-only") is None
+    gateway.reconcile_unknown(
+        "ledger-only",
+        reconciler=FakeReconciler("ledger-only", executed=True, external_id="external-reconciled"),
+    )
+
+    assert ledger.status("ledger-only") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.external_id("ledger-only") == "external-reconciled"
+    assert lifecycle.get("ledger-only").state is ExecutionLifecycleState.ACCEPTED
 
 
 def test_real_reconciliation_rejects_naked_boolean(tmp_path: Path):
