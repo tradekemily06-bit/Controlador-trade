@@ -122,6 +122,18 @@ def test_executed_reconciliation_requires_the_durable_external_identity(tmp_path
     assert ledger.status("req-reconcile-durable").value == "RECONCILED_EXECUTED"
 
 
+def test_rejected_transition_cannot_persist_external_identity(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-rejected-with-id")
+    ledger.bind_external_id("req-rejected-with-id", "broker-123")
+
+    with pytest.raises(ValueError, match="REJECTED não pode possuir external_id"):
+        ledger.mark_rejected("req-rejected-with-id")
+
+    assert ledger.status("req-rejected-with-id") is ExecutionLedgerStatus.RESERVED
+    assert ledger.external_id("req-rejected-with-id") == "broker-123"
+
+
 def test_external_id_cannot_be_bound_to_terminal_nonexecuted_state(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("req-rejected")
