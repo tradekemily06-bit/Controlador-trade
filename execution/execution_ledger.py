@@ -35,6 +35,7 @@ class ExecutionLedger:
         self._states: dict[str, ExecutionLedgerStatus] = {}
         self._external_ids: dict[str, str] = {}
         self._external_reference_required: dict[str, bool] = {}
+        self._brokers: dict[str, str] = {}
         self._load()
 
     def _load(self) -> None:
@@ -47,7 +48,7 @@ class ExecutionLedger:
         self._states, self._external_ids, self._external_reference_required = self._decode(payload)
 
     @staticmethod
-    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, bool]]:
+    def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str], dict[str, bool], dict[str, str]]:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
@@ -57,6 +58,7 @@ class ExecutionLedger:
         states: dict[str, ExecutionLedgerStatus] = {}
         external_ids: dict[str, str] = {}
         external_reference_required: dict[str, bool] = {}
+        brokers: dict[str, str] = {}
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
@@ -64,6 +66,9 @@ class ExecutionLedger:
                 status_value = raw_status.get("status")
                 external_id = raw_status.get("external_id")
                 external_required = raw_status.get("external_id_required")
+                broker_id = raw_status.get("broker_id")
+                if broker_id is not None and (not isinstance(broker_id, str) or not broker_id.strip()):
+                    raise ValueError("ledger de execução inválido.")
                 if external_required is not None and not isinstance(external_required, bool):
                     raise ValueError("ledger de execução inválido.")
                 if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
@@ -72,6 +77,7 @@ class ExecutionLedger:
                 status_value = raw_status
                 external_id = None
                 external_required = None
+                broker_id = None
             try:
                 states[request_id] = ExecutionLedgerStatus(status_value)
             except ValueError as exc:
@@ -80,17 +86,19 @@ class ExecutionLedger:
                 external_ids[request_id] = external_id.strip()
             if external_required is not None:
                 external_reference_required[request_id] = external_required
-        return states, external_ids, external_reference_required
+            if broker_id is not None:
+                brokers[request_id] = broker_id.strip()
+        return states, external_ids, external_reference_required, brokers
 
     def _write(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = {
             key: (
-                {"status": self._states[key].value, "external_id": self._external_ids[key], "external_id_required": self._external_reference_required.get(key, True)}
+                {"status": self._states[key].value, "external_id": self._external_ids[key], "external_id_required": self._external_reference_required.get(key, True), **({"broker_id": self._brokers[key]} if key in self._brokers else {})}
                 if key in self._external_ids
                 else (
-                    {"status": self._states[key].value, "external_id_required": self._external_reference_required[key]}
+                    {"status": self._states[key].value, "external_id_required": self._external_reference_required[key], **({"broker_id": self._brokers[key]} if key in self._brokers else {})}
                     if key in self._external_reference_required
                     else self._states[key].value
                 )
@@ -162,13 +170,17 @@ class ExecutionLedger:
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
 
-    def reserve(self, request_id: str) -> None:
+    def reserve(self, request_id: str, broker_id: str | None = None) -> None:
         self._validate_id(request_id)
+        if broker_id is not None and (not isinstance(broker_id, str) or not broker_id.strip()):
+            raise ValueError("broker_id inválido.")
 
         def mutation() -> None:
             if request_id in self._states:
                 raise ValueError("request_id já possui estado; replay REAL recusado.")
             self._states[request_id] = ExecutionLedgerStatus.RESERVED
+            if broker_id is not None:
+                self._brokers[request_id] = broker_id.strip()
 
         self._mutate_locked(mutation)
 
@@ -268,6 +280,11 @@ class ExecutionLedger:
             self._external_reference_required[request_id] = True
 
         self._mutate_locked(mutation)
+
+    def broker_id(self, request_id: str) -> str | None:
+        self._validate_id(request_id)
+        self._load()
+        return self._brokers.get(request_id)
 
     def external_reference_required(self, request_id: str) -> bool:
         self._validate_id(request_id)
