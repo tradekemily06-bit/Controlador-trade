@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
@@ -56,6 +57,53 @@ class RecoveryCoordinator:
         self._coordination_lock_path = execution_ledger.path.with_name(
             f".{execution_ledger.path.name}.dispatch.lock"
         )
+
+    def repair_terminal_lifecycle(
+        self,
+        request_id: str,
+        *,
+        updated_at,
+        message: str = "internal persistence repair from authoritative ledger",
+    ):
+        """Repair only a durable Ledger/Lifecycle persistence divergence.
+
+        This never queries or calls a broker. The Ledger must already contain
+        a terminal state, while Lifecycle may be missing or PENDING. Terminal
+        mismatches and UNKNOWN are deliberately not auto-repaired.
+        """
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if not isinstance(updated_at, datetime):
+            raise ValueError("updated_at inválido.")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError("message inválida.")
+
+        with exclusive_file_lock(self._coordination_lock_path):
+            ledger_states = self.execution_ledger.snapshot()
+            ledger_status = ledger_states.get(request_id)
+            target = {
+                ExecutionLedgerStatus.ACCEPTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED: ExecutionLifecycleState.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED: ExecutionLifecycleState.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED: ExecutionLifecycleState.REJECTED,
+            }.get(ledger_status)
+            if target is None:
+                raise ValueError("reparo interno exige estado terminal autoritativo no Ledger.")
+
+            current = self.lifecycle_store.get(request_id)
+            if current is not None:
+                if current.state is target:
+                    return current
+                if current.state is not ExecutionLifecycleState.PENDING:
+                    raise ValueError("divergência terminal não pode ser reparada automaticamente.")
+            record = ExecutionLifecycleRecord(
+                request_id=request_id.strip(),
+                state=target,
+                updated_at=updated_at,
+                message=message.strip(),
+            )
+            self.lifecycle_store.put(record)
+            return record
 
     def assess(self, *, session_id: str | None = None) -> RecoveryAssessment:
         if session_id is not None and (not isinstance(session_id, str) or not session_id.strip()):
