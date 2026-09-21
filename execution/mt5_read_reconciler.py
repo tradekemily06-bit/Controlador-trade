@@ -103,6 +103,9 @@ class MT5ReadOnlyReconciler:
         if not isinstance(context, dict):
             return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
         try:
+            persisted_request_id = context.get("request_id")
+            if persisted_request_id != request_id.strip():
+                return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
             recovery = context.get("recovery_identity")
             if not isinstance(recovery, dict):
                 return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
