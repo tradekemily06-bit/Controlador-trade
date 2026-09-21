@@ -173,6 +173,7 @@ def test_mt5_resolver_aggregates_multiple_partial_deals_from_one_order():
     assert obs.effective_outcome is ReconciliationOutcome.EXECUTED
     assert obs.external_id == "900"
     assert obs.external_id_kind is ExternalIdentityKind.ORDER
+    assert obs.amount == 0.10
 
 
 def test_mt5_resolver_keeps_partial_single_order_open_for_recovery():
