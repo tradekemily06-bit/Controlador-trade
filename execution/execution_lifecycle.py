@@ -188,6 +188,8 @@ class ExecutionLifecycleStore:
                 ExecutionLifecycleState.UNKNOWN,
             ):
                 raise ValueError("transição de PENDING inválida.")
+            if previous is not None and record.updated_at < previous.updated_at:
+                raise ValueError("updated_at não pode retroceder.")
             self._records[record.request_id] = record
 
         self._mutate_locked(mutation)
@@ -212,6 +214,8 @@ class ExecutionLifecycleStore:
                 raise ValueError("execução não encontrada.")
             if current.state is not ExecutionLifecycleState.UNKNOWN:
                 raise ValueError("reconciliação exige estado UNKNOWN.")
+            if updated_at < current.updated_at:
+                raise ValueError("updated_at da reconciliação não pode retroceder.")
             result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
             self._validate(result)
             self._records[request_id] = result
@@ -268,6 +272,8 @@ class ExecutionLifecycleStore:
                 raise ValueError("execução não encontrada.")
             if current.state is not ExecutionLifecycleState.PENDING:
                 raise ValueError("reconciliação PENDING exige estado PENDING.")
+            if updated_at < current.updated_at:
+                raise ValueError("updated_at da reconciliação PENDING não pode retroceder.")
             result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
             self._validate(result)
             self._records[request_id] = result
