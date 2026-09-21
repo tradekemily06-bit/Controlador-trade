@@ -170,8 +170,14 @@ class ExecutionLedger:
             raise ValueError("external_id não pode ser vazio.")
         value = external_id.strip()
         def mutation() -> None:
-            if request_id not in self._states:
+            current = self._states.get(request_id)
+            if current is None:
                 raise ValueError("request_id não foi reservado.")
+            if current in (
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                raise ValueError("external_id não pode ser vinculado a estado terminal não executado.")
             existing = self._external_ids.get(request_id)
             if existing is not None and existing != value:
                 raise ValueError("external_id não pode ser alterado após persistência.")
