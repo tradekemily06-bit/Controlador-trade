@@ -374,6 +374,7 @@ class RealExecutionGateway:
                     ExecutionLifecycleState.REJECTED,
                     updated_at=datetime.now(timezone.utc),
                     message=message,
+                    capability=LIFECYCLE_RECOVERY_CAPABILITY,
                 )
             else:
                 self._lifecycle.reconcile_pending(
@@ -446,6 +447,7 @@ class RealExecutionGateway:
                     "ciclo criado durante reconciliação baseada em evidência externa "
                     f"somente leitura ({observation.source}); nenhum replay permitido."
                 ),
+                capability=LIFECYCLE_RECOVERY_CAPABILITY,
             )
             return
 
