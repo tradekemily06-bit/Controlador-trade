@@ -15,10 +15,12 @@ class FakeMT5:
     TRADE_RETCODE_DONE = 10009
     TRADE_RETCODE_DONE_PARTIAL = 10010
 
-    def __init__(self, check_code=0, send_result=True, send_retcode=None):
+    def __init__(self, check_code=0, send_result=True, send_retcode=None, send_order=123456, send_deal=654321):
         self.check_code = check_code
         self.send_result = send_result
         self.send_retcode = send_retcode
+        self.send_order = send_order
+        self.send_deal = send_deal
         self.calls = []
 
     def initialize(self):
@@ -52,7 +54,7 @@ class FakeMT5:
         self.calls.append(("order_send", payload))
         if not self.send_result:
             return None
-        return SimpleNamespace(retcode=self.send_retcode or self.TRADE_RETCODE_DONE, order=123456, deal=654321)
+        return SimpleNamespace(retcode=self.send_retcode or self.TRADE_RETCODE_DONE, order=self.send_order, deal=self.send_deal)
 
     def last_error(self):
         return (1, "fake error")
@@ -125,3 +127,14 @@ def test_partial_fill_is_ambiguous_not_rejected(tmp_path):
     assert result.ambiguous is True
     assert result.external_id == "123456"
     assert "parte" in result.message
+
+
+def test_success_without_external_id_is_ambiguous_not_rejected():
+    mt5 = FakeMT5(send_order=None, send_deal=None)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert result.ambiguous is True
+    assert "identificador externo" in result.message
