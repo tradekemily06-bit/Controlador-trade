@@ -64,6 +64,8 @@ class ExecutionLifecycleStore:
                     message=item.get("message", ""),
                 )
                 self._validate(record)
+                if record.request_id in records:
+                    raise ValueError("ciclo de execução persistido inválido: request_id duplicado.")
                 records[record.request_id] = record
             self._records = records
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
@@ -75,8 +77,12 @@ class ExecutionLifecycleStore:
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if (
+            not isinstance(record.updated_at, datetime)
+            or record.updated_at.tzinfo is None
+            or record.updated_at.utcoffset() is None
+        ):
+            raise ValueError("timestamp inválido: deve ser timezone-aware.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 
