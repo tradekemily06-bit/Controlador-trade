@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -65,10 +65,31 @@ class RecoveryCoordinator:
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
         lifecycle_ids = {r.request_id for r in lifecycle}
+        ledger_statuses = {
+            request_id: self.execution_ledger.status(request_id)
+            for request_id in ledger_ids
+        }
         inconsistent = [
             r.request_id
             for r in lifecycle
-            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+            if (
+                (r.state is ExecutionLifecycleState.ACCEPTED and ledger_statuses.get(r.request_id) not in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ))
+                or (r.state is ExecutionLifecycleState.REJECTED and ledger_statuses.get(r.request_id) not in (
+                    ExecutionLedgerStatus.REJECTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                ))
+                or (r.state is ExecutionLifecycleState.PENDING and ledger_statuses.get(r.request_id) not in (
+                    ExecutionLedgerStatus.RESERVED,
+                    ExecutionLedgerStatus.UNKNOWN,
+                ))
+                or (r.state is ExecutionLifecycleState.UNKNOWN and ledger_statuses.get(r.request_id) not in (
+                    ExecutionLedgerStatus.UNKNOWN,
+                    ExecutionLedgerStatus.RESERVED,
+                ))
+            )
         ]
         orphaned_ledger_ids = sorted(ledger_ids - lifecycle_ids)
         if unknown or pending or inconsistent or orphaned_ledger_ids:
@@ -78,7 +99,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Ledger e Lifecycle estão inconsistentes; reconciliação obrigatória")
             if orphaned_ledger_ids:
                 details.append("ledger sem lifecycle requer reconciliação")
             return RecoveryAssessment(
