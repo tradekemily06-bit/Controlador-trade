@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 from typing import Any, Callable, Iterable
 
@@ -60,6 +60,8 @@ class MT5ReadOnlyReconciler:
         deals_query: Callable[..., Iterable[Any] | None],
         orders_query: Callable[..., Iterable[Any] | None],
         context_provider: Callable[[str], dict[str, object] | None] | None = None,
+        lookback_seconds: int = 86400,
+        lookahead_seconds: int = 300,
     ) -> None:
         if not isinstance(account_id, str) or not account_id.strip():
             raise ValueError("account_id obrigatório")
@@ -70,7 +72,13 @@ class MT5ReadOnlyReconciler:
         self._provider = provider.strip().lower()
         self._deals_query = deals_query
         self._orders_query = orders_query
+        if not isinstance(lookback_seconds, int) or isinstance(lookback_seconds, bool) or lookback_seconds <= 0:
+            raise ValueError("lookback_seconds inválido")
+        if not isinstance(lookahead_seconds, int) or isinstance(lookahead_seconds, bool) or lookahead_seconds < 0:
+            raise ValueError("lookahead_seconds inválido")
         self._context_provider = context_provider
+        self._lookback = timedelta(seconds=lookback_seconds)
+        self._lookahead = timedelta(seconds=lookahead_seconds)
         self._evidence = RealReconciliationEvidenceBoundary._internal()
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
@@ -110,21 +118,38 @@ class MT5ReadOnlyReconciler:
             return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
         if identity.request_id != request_id.strip():
             return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
-        return self.resolve(identity)
+        reserved_raw = context.get("reserved_at")
+        try:
+            reserved_at = datetime.fromisoformat(str(reserved_raw))
+        except (TypeError, ValueError):
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        if reserved_at.tzinfo is None or reserved_at.utcoffset() is None:
+            return self._negative(request_id.strip(), ReconciliationOutcome.QUERY_FAILED)
+        return self.resolve(identity, reserved_at=reserved_at)
 
-    def resolve(self, identity: MT5ReconciliationIdentity) -> RealReconciliationObservation:
+    def resolve(self, identity: MT5ReconciliationIdentity, *, reserved_at: datetime | None = None) -> RealReconciliationObservation:
         """Resolve an already-persisted identity; never dispatches."""
         if not self._valid_identity(identity):
             return self._negative(identity.request_id, ReconciliationOutcome.QUERY_FAILED)
 
         candidates: list[MT5HistoryCandidate] = []
+        if reserved_at is None or reserved_at.tzinfo is None or reserved_at.utcoffset() is None:
+            return self._negative(identity.request_id, ReconciliationOutcome.QUERY_FAILED)
+        date_from = reserved_at - self._lookback
+        date_to = datetime.now(timezone.utc) + self._lookahead
+        if date_to <= date_from:
+            return self._negative(identity.request_id, ReconciliationOutcome.QUERY_FAILED)
         try:
             deals = self._deals_query(
+                date_from=date_from,
+                date_to=date_to,
                 symbol=identity.symbol,
                 correlation=identity.correlation,
                 magic=identity.magic,
             )
             orders = self._orders_query(
+                date_from=date_from,
+                date_to=date_to,
                 symbol=identity.symbol,
                 correlation=identity.correlation,
                 magic=identity.magic,
