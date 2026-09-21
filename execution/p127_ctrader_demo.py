@@ -69,6 +69,7 @@ class CTraderDemoAdapter:
                 signal=request.signal,
                 amount=request.amount,
                 duration_seconds=request.duration_seconds,
+                correlation=self.correlation_for(request),
             )
         except (TypeError, ValueError) as exc:
             return ExecutionResult(False, f"cTrader DEMO rejeitou a requisição antes do despacho: {exc}")
