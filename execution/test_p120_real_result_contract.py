@@ -24,6 +24,9 @@ def _real_kill_switch(tmp_path: Path) -> KillSwitch:
 class MissingExternalIdAdapter:
     adapter_id = "adapter"
 
+    @staticmethod
+    def correlation_for(request):
+        return f"FAKE-{request.request_id.strip()}"
 
     def is_available(self):
         return True
