@@ -67,7 +67,7 @@ class FakeReconciler:
         self.executed = executed
         self.external_id = external_id
         self.calls = 0
-        self._boundary = RealReconciliationEvidenceBoundary()
+        self._boundary = RealReconciliationEvidenceBoundary._internal()
 
     def lookup(self, request_id: str) -> RealReconciliationObservation:
         self.calls += 1
@@ -239,7 +239,8 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     gateway.reconcile_unknown("unknown-2", reconciler=FakeReconciler("unknown-2", executed=True))
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert ledger.external_id("unknown-2") == "external-1"
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ExecutionLifecycleStore(tmp_path / "lifecycle.json").get("unknown-2").state is ExecutionLifecycleState.ACCEPTED
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -348,6 +349,16 @@ def test_real_release_closure_cannot_be_forged_as_released():
     forged = RealReleaseClosure("forged", RealReleaseState.RELEASED, "P111-P119", ())
     assert forged.released is False
     assert forged.issued_by_boundary is False
+
+
+def test_real_authority_boundaries_cannot_be_constructed_externally():
+    for boundary in (RealExecutionAuthorizationBoundary, RealAdmissionBoundary, RealSafetyGate, RealReleaseClosureBoundary):
+        try:
+            boundary()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("REAL authority boundary must require its internal issuer")
 
 
 def test_real_authority_objects_cannot_be_forged_as_active():
