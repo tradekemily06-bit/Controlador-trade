@@ -6,7 +6,9 @@ import time
 
 from execution.execution_coordination import ExecutionCoordinationLock
 from execution.execution_ledger import ExecutionLedger
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from datetime import datetime, timezone
+
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 
 
 def test_coordination_lock_canonicalizes_equivalent_paths(tmp_path: Path):
@@ -137,10 +139,10 @@ def test_lifecycle_cross_process_terminal_transition_cannot_regress(tmp_path: Pa
     lifecycle_path = tmp_path / "lifecycle.json"
     lifecycle = ExecutionLifecycleStore(lifecycle_path)
     lifecycle.put(
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleRecord"]).ExecutionLifecycleRecord(
+        ExecutionLifecycleRecord(
             "shared-request",
-            __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.PENDING,
-            __import__("datetime", fromlist=["datetime"]).datetime.now(__import__("datetime", fromlist=["timezone"]).timezone.utc),
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
         )
     )
     child = textwrap.dedent(
@@ -161,6 +163,6 @@ def test_lifecycle_cross_process_terminal_transition_cannot_regress(tmp_path: Pa
     results = {first.wait(timeout=10), second.wait(timeout=10)}
     assert results == {0, 3}
     assert ExecutionLifecycleStore(lifecycle_path).get("shared-request").state in (
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.ACCEPTED,
-        __import__("execution.execution_lifecycle", fromlist=["ExecutionLifecycleState"]).ExecutionLifecycleState.REJECTED,
+        ExecutionLifecycleState.ACCEPTED,
+        ExecutionLifecycleState.REJECTED,
     )
