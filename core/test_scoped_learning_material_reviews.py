@@ -18,6 +18,12 @@ class MemoryStateStore:
     def put(self, *, tenant_id, subject_id, namespace, payload):
         self.data[(tenant_id, subject_id, namespace)] = payload
 
+    def update(self, *, tenant_id, subject_id, namespace, updater):
+        key = (tenant_id, subject_id, namespace)
+        value = updater(self.data.get(key))
+        self.data[key] = value
+        return value
+
 
 def _review(resource_id):
     return LearningMaterialReviewer().review(
