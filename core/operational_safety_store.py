@@ -216,25 +216,32 @@ class OperationalSafetyStore:
             with self._lock():
                 self._write_payload({"audit": [], "kill_switch": {"enabled": True, "reason": reason}, "execution_audit": []})
 
-    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+    def _save_under_coordination_fence(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
         if not isinstance(audit, DecisionAudit):
             raise TypeError("audit deve ser DecisionAudit.")
         if not isinstance(kill_switch, (KillSwitch, KillSwitchState)):
             raise TypeError("kill_switch deve ser KillSwitch ou KillSwitchState.")
         state = kill_switch.state
+        with self._lock():
+            payload = self._read_payload()
+            normalized_execution = [self._execution_audit_item(item) for item in payload.get("execution_audit", [])]
+            merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
+            persisted_state = payload.get("kill_switch", {})
+            if not isinstance(persisted_state, dict):
+                raise ValueError("estado do kill switch inválido.")
+            safe_state = {
+                "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
+                "reason": state.reason if state.enabled else persisted_state.get("reason"),
+            }
+            self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
+
+    def save(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
         with self.coordination_lock():
-            with self._lock():
-                payload = self._read_payload()
-                normalized_execution = [self._execution_audit_item(item) for item in payload.get("execution_audit", [])]
-                merged_audit = self._merge_audit_records(payload.get("audit", []), audit.records())
-                persisted_state = payload.get("kill_switch", {})
-                if not isinstance(persisted_state, dict):
-                    raise ValueError("estado do kill switch inválido.")
-                safe_state = {
-                    "enabled": bool(persisted_state.get("enabled", False)) or state.enabled,
-                    "reason": state.reason if state.enabled else persisted_state.get("reason"),
-                }
-                self._write_payload({"audit": merged_audit, "kill_switch": safe_state, "execution_audit": normalized_execution})
+            self._save_under_coordination_fence(audit, kill_switch)
+
+    def save_under_coordination_fence(self, audit: DecisionAudit, kill_switch: KillSwitch | KillSwitchState) -> None:
+        """Persist while the caller already owns the canonical coordination fence."""
+        self._save_under_coordination_fence(audit, kill_switch)
 
     def set_kill_switch(self, *, enabled: bool, reason: str | None = None) -> KillSwitchState:
         if not isinstance(enabled, bool):
