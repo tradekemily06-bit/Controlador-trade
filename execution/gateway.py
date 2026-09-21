@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import threading
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -55,6 +56,7 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
+        self._execution_lock = threading.RLock()
 
     def execute(
         self,
@@ -69,6 +71,8 @@ class ExecutionGateway:
         if validation_error is not None:
             return GatewayResult(GatewayStatus.INVALID_REQUEST, validation_error)
 
+        canonical_request = request if request.request_id is not None else replace(request, request_id=request_id)
+
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
         if snapshot is not None and self._recorder is not None:
@@ -77,8 +81,32 @@ class ExecutionGateway:
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
 
-        if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
-            return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+        with self._execution_lock:
+            # Inspect the lifecycle projection before reserving the ledger. If the
+            # two stores are already inconsistent, do not create a fresh RESERVED
+            # record on top of a pre-existing PENDING/UNKNOWN projection.
+            if self._lifecycle is not None:
+                existing = self._lifecycle.get(request_id)
+                if existing is not None:
+                    if existing.state is ExecutionLifecycleState.UNKNOWN:
+                        return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
+                    if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
+                        return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+            if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
+                return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+            if self._ledger is not None:
+                try:
+                    self._ledger.reserve(request_id)
+                except (OSError, ValueError):
+                    return GatewayResult(GatewayStatus.DUPLICATE, "request_id já reservado/processado; execução duplicada recusada.")
+
+        if not self._kill_switch.allows_execution():
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_unknown(request_id)
+                except (OSError, ValueError):
+                    pass
+            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch antes do dispatch: {self._kill_switch.state.reason}")
 
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
@@ -93,7 +121,7 @@ class ExecutionGateway:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
         try:
-            result = self._executor.execute(request)
+            result = self._executor.execute(canonical_request)
         except Exception as exc:
             self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
@@ -103,13 +131,23 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
+            if self._ledger is not None:
+                try:
+                    self._ledger.mark_rejected(request_id)
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"executor rejeitou, mas ledger não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"rejeição não pôde ser persistida; estado UNKNOWN: {exc}", result)
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                except (OSError, ValueError) as exc:
+                    self._mark_unknown(request_id, event_time, f"executor rejeitou, mas ciclo não foi persistido: {exc}")
+                    return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_demo_accepted(request_id)
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
@@ -147,6 +185,10 @@ class ExecutionGateway:
             return "requisição de execução inválida."
         if request.mode is not ExecutionMode.DEMO:
             return "P5 aceita somente execução DEMO/PAPER nesta etapa."
+        if request.request_id is not None and (
+            not isinstance(request.request_id, str) or request.request_id.strip() != request_id.strip()
+        ):
+            return "request_id do gateway difere do request_id da ordem."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
         if not request.symbol.strip():

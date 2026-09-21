@@ -13,10 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@f8cf4291c8b8e273ddd26e569454615c7315d932
         with:
           python-version: "3.12"
 
