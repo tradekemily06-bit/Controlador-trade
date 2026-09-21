@@ -167,3 +167,35 @@ def test_recovery_uses_same_dispatch_coordination_lock(tmp_path, monkeypatch):
     coordinator.assess()
 
     assert observed == [ledger.path.with_name(f".{ledger.path.name}.dispatch.lock")]
+
+
+def test_accepted_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-accepted-divergent")
+    coordinator.execution_ledger.mark_accepted("req-accepted-divergent")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-accepted-divergent", ExecutionLifecycleState.PENDING, now, "started")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.pending_request_ids == ("req-accepted-divergent",)
+
+
+def test_rejected_ledger_with_pending_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-rejected-divergent")
+    coordinator.execution_ledger.mark_rejected("req-rejected-divergent")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-rejected-divergent", ExecutionLifecycleState.PENDING, now, "started")
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.pending_request_ids == ("req-rejected-divergent",)
