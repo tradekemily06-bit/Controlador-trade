@@ -192,3 +192,28 @@ def test_gateway_demo_acceptance_transitions_reserved_ledger_to_accepted(tmp_pat
     assert result.status is GatewayStatus.ACCEPTED
     assert ledger.status("req-terminal-demo") is ExecutionLedgerStatus.ACCEPTED
     assert ledger.external_reference_required("req-terminal-demo") is False
+
+
+def test_gateway_does_not_reserve_ledger_when_lifecycle_already_pending(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_ledger import ExecutionLedger
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-inconsistent",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "estado pré-existente",
+        )
+    )
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger, lifecycle=lifecycle)
+
+    result = gateway.execute("req-inconsistent", request())
+
+    assert result.status is GatewayStatus.DUPLICATE
+    assert ledger.status("req-inconsistent") is None
+    assert executor.executions() == ()
