@@ -4,15 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from core.global_operational_barrier import GlobalOperationalBarrier
-from core.global_operational_barrier import GlobalOperationalBarrier
 from core.test_p111_p119_real_release import (
-from threading import RLock
-
-_REAL_FENCE = RLock()
-
-def _test_real_barrier() -> GlobalOperationalBarrier:
-    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
-
     _admission,
     _authorization,
     _request,
@@ -22,6 +14,12 @@ def _test_real_barrier() -> GlobalOperationalBarrier:
     FakeRealSafetyProvider,
     FakeRiskStateProvider,
 )
+from threading import RLock
+
+_REAL_FENCE = RLock()
+
+def _test_real_barrier() -> GlobalOperationalBarrier:
+    return GlobalOperationalBarrier(dispatch_fence_provider=lambda: _REAL_FENCE)
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
