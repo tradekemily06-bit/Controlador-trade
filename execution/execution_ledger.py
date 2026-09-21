@@ -50,9 +50,15 @@ class ExecutionLedger:
     @staticmethod
     def _decode(payload: object) -> tuple[dict[str, ExecutionLedgerStatus], dict[str, str]]:
         if isinstance(payload, list):
-            if any(not isinstance(item, str) or not item.strip() for item in payload):
-                raise ValueError("ledger de execução inválido.")
-            return ({item: ExecutionLedgerStatus.ACCEPTED for item in payload}, {})
+            states: dict[str, ExecutionLedgerStatus] = {}
+            for item in payload:
+                if not isinstance(item, str) or not item.strip():
+                    raise ValueError("ledger de execução inválido.")
+                request_id = item.strip()
+                if request_id in states:
+                    raise ValueError("ledger de execução inválido: request_id duplicado após normalização.")
+                states[request_id] = ExecutionLedgerStatus.ACCEPTED
+            return (states, {})
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
         states: dict[str, ExecutionLedgerStatus] = {}
@@ -60,6 +66,9 @@ class ExecutionLedger:
         for request_id, raw_status in payload.items():
             if not isinstance(request_id, str) or not request_id.strip():
                 raise ValueError("ledger de execução inválido.")
+            request_id = request_id.strip()
+            if request_id in states:
+                raise ValueError("ledger de execução inválido: request_id duplicado após normalização.")
             raw_state = raw_status.get("state") if isinstance(raw_status, dict) else raw_status
             external_id = raw_status.get("external_id") if isinstance(raw_status, dict) else None
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
