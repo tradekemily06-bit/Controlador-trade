@@ -80,7 +80,10 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.")
             if states.get(request_id) in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
                 raise ValueError("ledger de execução inválido: estado não executado possui external_id.")
-            external_ids[request_id] = external_id.strip()
+            normalized_external_id = external_id.strip()
+            if normalized_external_id in external_ids.values():
+                raise ValueError("ledger de execução inválido: external_id duplicado.")
+            external_ids[request_id] = normalized_external_id
         for request_id, status in states.items():
             if status is ExecutionLedgerStatus.RECONCILED_EXECUTED and request_id not in external_ids:
                 raise ValueError("ledger de execução inválido: RECONCILED_EXECUTED exige external_id.")
