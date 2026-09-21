@@ -67,8 +67,10 @@ def test_connection_uses_demo_endpoint_and_runtime_credentials():
         provider,
         factory,
     )
-    client = connection.connect()
+    result = connection.connect()
 
+    assert result is None
     assert connection.endpoint == ("demo.ctraderapi.com", 5035)
-    assert client.connected is True
+    assert created[0][2].connected is True
+    assert not hasattr(connection, "send")
     assert created[0][0:2] == ("client", "secret")
