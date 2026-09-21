@@ -113,3 +113,15 @@ def test_real_acceptance_requires_external_reference(tmp_path: Path):
     ledger.reserve("real-1")
     ledger.mark_accepted("real-1", external_id="broker-1")
     assert ledger.external_reference_required("real-1") is True
+
+
+def test_reconciliation_requires_matching_durable_external_reference(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("real-reconcile")
+    with pytest.raises(ValueError, match="external_id"):
+        ledger.reconcile("real-reconcile", executed=True, external_id="not-durable")
+    assert ledger.status("real-reconcile") is ExecutionLedgerStatus.RESERVED
+
+    ledger.attach_external_id("real-reconcile", "broker-reconcile")
+    ledger.reconcile("real-reconcile", executed=True, external_id="broker-reconcile")
+    assert ledger.status("real-reconcile") is ExecutionLedgerStatus.RECONCILED_EXECUTED
