@@ -42,6 +42,10 @@ class FakeAdapter:
 class NoExternalIdAdapter:
     adapter_id = "fake-adapter"
 
+    @staticmethod
+    def correlation_for(request):
+        return f"FAKE-{request.request_id.strip()}"
+
     def is_available(self):
         return True
 
@@ -51,6 +55,10 @@ class NoExternalIdAdapter:
 
 class UnknownAdapter:
     adapter_id = "fake-adapter"
+
+    @staticmethod
+    def correlation_for(request):
+        return f"FAKE-{request.request_id.strip()}"
 
     def __init__(self):
         self.calls = 0
