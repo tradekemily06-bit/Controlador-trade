@@ -95,3 +95,21 @@ def test_external_id_cannot_be_reused_for_another_request(tmp_path: Path):
     ledger.reserve("req-b")
     with pytest.raises(ValueError, match="external_id"):
         ledger.mark_accepted("req-b", external_id="broker-123")
+
+
+def test_demo_record_does_not_require_external_reference_after_restart(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.record("demo-1")
+
+    restored = ExecutionLedger(path)
+    assert restored.status("demo-1").value == "ACCEPTED"
+    assert restored.external_reference_required("demo-1") is False
+    assert restored.external_id("demo-1") is None
+
+
+def test_real_acceptance_requires_external_reference(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("real-1")
+    ledger.mark_accepted("real-1", external_id="broker-1")
+    assert ledger.external_reference_required("real-1") is True
