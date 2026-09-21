@@ -278,6 +278,8 @@ class ExecutionLedger:
                     f"transição terminal inválida de {current.value} para {status.value}; "
                     "UNKNOWN exige reconciliação explícita."
                 )
+            if status is ExecutionLedgerStatus.REJECTED and request_id in self._external_ids:
+                raise ValueError("REJECTED não pode possuir external_id durável.")
             self._states[request_id] = status
 
         self._mutate_locked(mutation)
