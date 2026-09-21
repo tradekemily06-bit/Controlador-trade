@@ -5,9 +5,11 @@ from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint,RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger,ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState,ExecutionLifecycleStore
+from execution.execution_coordination import ExecutionCoordinationLock
 
 class RecoveryState(str,Enum):
     FRESH="FRESH"; SAFE_TO_RESUME="SAFE_TO_RESUME"; REQUIRES_RECONCILIATION="REQUIRES_RECONCILIATION"; INVALID="INVALID"
+
 @dataclass(frozen=True)
 class RecoveryAssessment:
     state:RecoveryState
@@ -27,15 +29,13 @@ class RecoveryCoordinator:
         if not isinstance(execution_ledger,ExecutionLedger): raise ValueError("execution_ledger inválido.")
         if not isinstance(memory,OperationMemory): raise ValueError("memory inválida.")
         self.checkpoint_store=checkpoint_store; self.lifecycle_store=lifecycle_store; self.execution_ledger=execution_ledger; self.memory=memory
+        self._coordination=ExecutionCoordinationLock(execution_ledger.path)
+
     def assess(self):
-        # Observe recovery state under the same durable coordination boundary
-        # used by REAL dispatch/reconciliation; fail-closed snapshots must not
-        # race the cross-store execution critical section.
-        from execution.execution_coordination import ExecutionCoordinationLock
-        with ExecutionCoordinationLock(self.execution_ledger.path).acquire():
+        with self._coordination.acquire():
             return self._assess_locked()
 
-        def _assess_locked(self):
+    def _assess_locked(self):
         try:
             checkpoint=self.checkpoint_store.load()
             lifecycle=self.lifecycle_store.records()
@@ -43,7 +43,9 @@ class RecoveryCoordinator:
             ledger={rid:self.execution_ledger.status(rid) for rid in ids}
         except (OSError,ValueError) as exc:
             return RecoveryAssessment(RecoveryState.INVALID,None,(),(),f"estado persistido inválido: {exc}")
-        by_id={r.request_id:r for r in lifecycle}; pending=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING)); unknown=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        by_id={r.request_id:r for r in lifecycle}
+        pending=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
+        unknown=tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
         bad=set()
         for rid,r in by_id.items():
             ls=ledger.get(rid)
@@ -52,12 +54,12 @@ class RecoveryCoordinator:
             elif r.state is ExecutionLifecycleState.ACCEPTED and ls not in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED): bad.add(rid)
             elif r.state is ExecutionLifecycleState.REJECTED and ls is not ExecutionLedgerStatus.REJECTED: bad.add(rid)
         for rid,ls in ledger.items():
-            if rid not in by_id: bad.add(rid); continue
+            if rid not in by_id:
+                bad.add(rid)
+                continue
             rs=by_id[rid].state
-            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN): bad.add(rid)
-            # A terminal acceptance without a durable external reference cannot be
-            # safely reconciled after restart. Fail closed instead of declaring the
-            # runtime resumable based only on local state.
+            if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED,ExecutionLedgerStatus.REJECTED,ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED) and rs in (ExecutionLifecycleState.PENDING,ExecutionLifecycleState.UNKNOWN):
+                bad.add(rid)
             if ls in (ExecutionLedgerStatus.ACCEPTED,ExecutionLedgerStatus.RECONCILED_EXECUTED) and not self.execution_ledger.external_id(rid):
                 bad.add(rid)
         if pending or unknown or bad:
