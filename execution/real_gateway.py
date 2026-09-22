@@ -156,14 +156,14 @@ class RealExecutionGateway:
             try:
                 result = self._gateway.execute(broker, request)
             except Exception as exc:
-            try:
-                self._mark_uncertain(request_id, event_time, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
-            except (OSError, ValueError) as persist_exc:
-                return RealGatewayResult(
-                    RealGatewayStatus.UNKNOWN,
-                    f"resultado REAL incerto e persistência do estado incompleta; recuperação necessária: {persist_exc}",
-                )
-            return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+                try:
+                    self._mark_uncertain(request_id, event_time, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
+                except (OSError, ValueError) as persist_exc:
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        f"resultado REAL incerto e persistência do estado incompleta; recuperação necessária: {persist_exc}",
+                    )
+                return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
 
         if result.execution is None:
             if not result.dispatch_started:
