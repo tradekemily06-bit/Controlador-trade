@@ -14,6 +14,7 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class MissingExternalIdAdapter:
+    adapter_id = "adapter"
     supports_real_execution = True
     def is_available(self):
         return True
@@ -50,6 +51,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
 
 
 class AcceptedAdapter:
+    adapter_id = "adapter"
     supports_real_execution = True
     def __init__(self):
         self.calls = 0
@@ -63,6 +65,7 @@ class AcceptedAdapter:
 
 
 class RejectedAdapter:
+    adapter_id = "adapter"
     supports_real_execution = True
     def is_available(self):
         return True
@@ -72,6 +75,7 @@ class RejectedAdapter:
 
 
 class RaisingAdapter:
+    adapter_id = "adapter"
     supports_real_execution = True
     def is_available(self):
         return True
