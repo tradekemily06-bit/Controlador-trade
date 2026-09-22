@@ -479,6 +479,7 @@ def test_real_monitoring_rejects_cross_broker_observation(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("cross-broker", broker_id="broker-a")
     ledger.attach_external_id("cross-broker", "ext-1")
+    ledger.mark_unknown("cross-broker")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     lifecycle.put(
         ExecutionLifecycleRecord(
