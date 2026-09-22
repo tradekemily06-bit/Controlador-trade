@@ -181,7 +181,7 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
     auth = RealExecutionAuthorization("auth", "a111", "fake", "wrong-adapter", True, True)
     admission = RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="a116", audit_verified=True,
+        admission_id="adm", audit_id=auth.audit_id, audit_verified=True,
         authorization_active=True, safety_ready=True,
         broker_available=True, broker_id="fake",
     )
