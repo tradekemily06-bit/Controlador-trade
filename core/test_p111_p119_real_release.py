@@ -309,6 +309,14 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     ledger.attach_external_id("crashed", "external-recovered-crashed")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(ExecutionLifecycleRecord("crashed", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
+    class Query(ExternalOrderQueryPort):
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, "not executed", "fake")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch()
+    )
     try:
         gateway.reconcile_unknown("crashed", query_port=Query())
     except ValueError as exc:
@@ -316,19 +324,8 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     else:
         raise AssertionError("RESERVED não pode ser reconciliado enquanto pode representar dispatch em andamento")
     ledger.mark_unknown("crashed")
-    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    lifecycle.put(
-        ExecutionLifecycleRecord(
-            "crashed", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
-        )
-    )
-    gateway = RealExecutionGateway(
-        BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch()
-    )
-    gateway.reconcile_unknown("crashed", executed=False, external_id="external-recovered-crashed")
+    gateway.reconcile_unknown("crashed", query_port=Query())
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
-
-
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
     path = tmp_path / "ledger.json"
     first = ExecutionLedger(path)
@@ -473,12 +470,16 @@ def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path
     registry = BrokerRegistry()
     registry.register("fake", UnknownAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, kill_switch=KillSwitch())
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch())
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="no-proof", request=_request("no-proof"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
+    class Query(ExternalOrderQueryPort):
+        def query_order(self, external_id):
+            raise AssertionError("query must not run without durable external_id")
     try:
         gateway.reconcile_unknown("no-proof", query_port=Query())
     except ValueError as exc:
@@ -486,8 +487,6 @@ def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path
     else:
         raise AssertionError("REAL não pode ser fechado como executado sem referência externa durável")
     assert ledger.status("no-proof") is ExecutionLedgerStatus.UNKNOWN
-
-
 def test_real_monitoring_does_not_promote_accepted_without_external_id():
     observation = RealMonitoringBoundary().observe(
         observation_id="obs-missing-proof",
