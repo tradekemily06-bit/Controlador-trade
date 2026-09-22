@@ -78,7 +78,8 @@ def _authorization():
 
 def _admission(auth):
     return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="a116", audit_verified=True,
+        admission_id="adm", audit_id=auth.audit_id,
+        audit_verified=True,
         authorization_active=auth.active, safety_ready=True,
         broker_available=True, broker_id="fake",
     )
