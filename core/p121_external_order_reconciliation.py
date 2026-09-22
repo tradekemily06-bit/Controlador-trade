@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
@@ -24,6 +24,7 @@ class ExternalOrderObservation:
     broker_id: str | None = None
 
 
+@runtime_checkable
 class ExternalOrderQueryPort(Protocol):
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         ...
