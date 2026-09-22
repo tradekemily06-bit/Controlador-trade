@@ -19,6 +19,9 @@ class MissingExternalIdAdapter:
     def is_available(self):
         return True
 
+    def query_order_by_request_id(self, request_id):
+        return None
+
     def execute(self, request):
         return ExecutionResult(True, "accepted but no durable reference", None)
 
@@ -59,6 +62,9 @@ class AcceptedAdapter:
     def is_available(self):
         return True
 
+    def query_order_by_request_id(self, request_id):
+        return None
+
     def execute(self, request):
         self.calls += 1
         return ExecutionResult(True, "accepted", "external-1")
@@ -70,6 +76,9 @@ class RejectedAdapter:
     def is_available(self):
         return True
 
+    def query_order_by_request_id(self, request_id):
+        return None
+
     def execute(self, request):
         return ExecutionResult(False, "rejected", None)
 
@@ -79,6 +88,9 @@ class RaisingAdapter:
     supports_real_execution = True
     def is_available(self):
         return True
+
+    def query_order_by_request_id(self, request_id):
+        return None
 
     def execute(self, request):
         raise TimeoutError("timeout")
