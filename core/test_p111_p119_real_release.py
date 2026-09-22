@@ -17,7 +17,7 @@ from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseSta
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
-from execution.execution_lifecycle import ExecutionLifecycleStore
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
@@ -194,7 +194,7 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     )
     assert result.status is RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is ExecutionLedgerStatus.RESERVED
+    assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_rejected_with_external_id_becomes_unknown(tmp_path: Path):
