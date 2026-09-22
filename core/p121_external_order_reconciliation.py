@@ -82,8 +82,11 @@ class ExternalOrderReconciliationBoundary:
         if not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle inválido.")
         current_status = ledger.status(request_id)
-        if current_status not in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
+        if current_status is not ExecutionLedgerStatus.UNKNOWN:
+            raise ValueError("reconciliação externa exige Ledger UNKNOWN; RESERVED pode ainda estar em dispatch.")
+        lifecycle_record = lifecycle.get(request_id)
+        if lifecycle_record is None or lifecycle_record.state is not ExecutionLifecycleState.UNKNOWN:
+            raise ValueError("reconciliação externa exige Lifecycle UNKNOWN; dispatch ainda pode estar em andamento.")
         external_id = ledger.external_id(request_id)
         broker_id = ledger.broker_id(request_id)
         if external_id is None:
