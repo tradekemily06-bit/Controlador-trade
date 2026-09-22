@@ -22,6 +22,8 @@ from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 
 
 class FakeAdapter:
+    adapter_id = "fake-adapter"
+
     def __init__(self, available=True):
         self.available = available
         self.supports_real_execution = True
@@ -36,6 +38,7 @@ class FakeAdapter:
 
 
 class NoExternalIdAdapter:
+    adapter_id = "fake-adapter"
     supports_real_execution = True
 
     def is_available(self):
@@ -46,6 +49,7 @@ class NoExternalIdAdapter:
 
 
 class RejectedWithExternalIdAdapter:
+    adapter_id = "fake-adapter"
     supports_real_execution = True
 
     def is_available(self):
@@ -56,6 +60,7 @@ class RejectedWithExternalIdAdapter:
 
 
 class UnknownAdapter:
+    adapter_id = "fake-adapter"
     supports_real_execution = True
 
     def is_available(self):
