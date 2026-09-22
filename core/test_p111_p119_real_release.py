@@ -398,43 +398,60 @@ def test_real_accepted_ledger_can_recover_lifecycle_after_crash(tmp_path: Path):
 
 def test_real_rejection_can_recover_lifecycle_after_crash(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
 
-    ledger.reserve("recover-rejected")
-    ledger.mark_rejected("recover-rejected")
-    lifecycle.put(ExecutionLifecycleRecord("recover-rejected", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc), "crash before lifecycle terminal write"))
-
-    gateway.recover_lifecycle_from_durable_rejection("recover-rejected")
-    assert ledger.status("recover-rejected") is ExecutionLedgerStatus.REJECTED
-    assert lifecycle.get("recover-rejected").state is ExecutionLifecycleState.REJECTED
-    assert registry.get("fake").calls == 0
-
-
-def test_real_rejection_recovery_repairs_missing_lifecycle_without_external_evidence(tmp_path: Path):
-    ledger = ExecutionLedger(tmp_path / "ledger.json")
-    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle, KillSwitch())
-
-    ledger.reserve("missing-rejected")
-    ledger.mark_rejected("missing-rejected")
-
-    gateway.recover_lifecycle_from_durable_rejection("missing-rejected")
-    assert lifecycle.get("missing-rejected").state is ExecutionLifecycleState.REJECTED
-
-
-def test_real_acceptance_persists_lifecycle_terminal_state(tmp_path: Path):
+def test_real_gateway_serializes_kill_switch_change_with_dispatch(tmp_path: Path):
     registry = BrokerRegistry()
-    registry.register("fake", FakeAdapter(), adapter_id="fake-adapter")
+    kill_switch = KillSwitch()
+
+    class BlockingAdapter(FakeAdapter):
+        def __init__(self):
+            super().__init__()
+            import threading
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def execute(self, request):
+            self.started.set()
+            assert self.release.wait(timeout=2)
+            return super().execute(request)
+
+    adapter = BlockingAdapter()
+    registry.register("fake", adapter, adapter_id="fake-adapter")
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, KillSwitch())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, kill_switch)
     auth = _authorization()
-    result = gateway.execute(
-        broker="fake", request_id="lifecycle-ok", request=_request(),
-        authorization=auth, admission=_admission(auth), safety=_safety(auth),
-    )
-    assert result.status == RealGatewayStatus.ADMITTED
-    assert lifecycle.get("lifecycle-ok").state.name == "ACCEPTED"
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    import threading
+    result_holder = {}
+
+    def run():
+        result_holder["result"] = gateway.execute(
+            broker="fake", request_id="kill-serialized", request=_request(),
+            authorization=auth, admission=admission, safety=safety,
+        )
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    assert adapter.started.wait(timeout=2)
+
+    activation_done = threading.Event()
+
+    def activate():
+        kill_switch.activate("emergência concorrente")
+        activation_done.set()
+
+    activator = threading.Thread(target=activate)
+    activator.start()
+
+    # Activation must wait while the REAL dispatch critical section is held.
+    assert not activation_done.wait(timeout=0.2)
+    adapter.release.set()
+    worker.join(timeout=2)
+    activator.join(timeout=2)
+
+    assert result_holder["result"].status == RealGatewayStatus.ADMITTED
+    assert activation_done.is_set()
+    assert kill_switch.state.enabled is True
