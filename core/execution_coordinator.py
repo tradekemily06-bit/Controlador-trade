@@ -42,8 +42,8 @@ class ExecutionCoordinator:
             raise ValueError("request_id não pode ser vazio.")
         if orchestration.decision.decision is not FinalDecision.EXECUTAR:
             raise ValueError("somente decisões EXECUTAR podem gerar plano de execução.")
-        if mode is not ExecutionMode.DEMO:
-            raise ValueError("somente execução DEMO é permitida pelo coordinator nesta etapa.")
+        if not isinstance(mode, ExecutionMode):
+            raise ValueError("modo de execução inválido.")
         if orchestration.senior_context is None:
             raise ValueError("contexto sênior obrigatório antes de criar plano de execução.")
         signal = Signal(orchestration.analysis.signal.value)

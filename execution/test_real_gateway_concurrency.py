@@ -56,7 +56,7 @@ def _worker(ledger_path: str, log_path: str, request_id: str, queue) -> None:
         request_id=request_id,
         request=request,
         authorization=auth,
-        admission=_admission(request_id=request_id),
+        admission=_admission(request_id=request_id, auth=auth),
         safety=safety,
         snapshot=_snapshot(),
     )

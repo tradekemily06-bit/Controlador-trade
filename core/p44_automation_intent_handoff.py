@@ -44,6 +44,10 @@ class AutomationIntentHandoffBoundary:
             reasons.append("execution intent is invalid")
         elif intent.mode.value != "DEMO":
             reasons.append("only DEMO intent can enter automation handoff")
+        elif not isinstance(admission, AutomationAdmissionResult) or not admission.admitted or admission.request is None:
+            reasons.append("approved automation admission is required before cycle binding")
+        elif intent.cycle_id != admission.request.cycle_id:
+            reasons.append("execution intent cycle_id does not match admitted automation cycle")
 
         if reasons:
             return AutomationIntentHandoffResult(False, None, tuple(reasons))

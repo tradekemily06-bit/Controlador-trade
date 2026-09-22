@@ -39,7 +39,13 @@ class CTraderDemoAdapter:
         return type(exc).__name__
 
     def is_available(self) -> bool:
-        return bool(self._transport.is_available())
+        try:
+            available = self._transport.is_available()
+        except Exception as exc:
+            raise RuntimeError(f"transporte cTrader DEMO indisponível: {self._safe_error(exc)}") from exc
+        if not isinstance(available, bool):
+            raise RuntimeError("transporte cTrader DEMO retornou disponibilidade inválida")
+        return available
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if not isinstance(request, ExecutionRequest):
@@ -72,6 +78,8 @@ class CTraderDemoAdapter:
         except Exception as exc:
             return ExecutionResult(False, f"falha técnica cTrader DEMO; execução não confirmada: {self._safe_error(exc)}")
 
+        if validated.accepted and (not isinstance(validated.external_id, str) or not validated.external_id.strip()):
+            return ExecutionResult(False, "cTrader DEMO aceitou sem external_id; execução não confirmada")
         return ExecutionResult(
             accepted=validated.accepted,
             message=validated.message,

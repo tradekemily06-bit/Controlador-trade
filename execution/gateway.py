@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+import math
 from enum import Enum
 from typing import Callable
 
@@ -373,10 +374,10 @@ class ExecutionGateway:
             return "sinal AGUARDAR não pode ser executado."
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if isinstance(request.amount, bool) or not isinstance(request.amount, (int, float)) or not math.isfinite(float(request.amount)) or request.amount <= 0:
+            return "Valor da execução deve ser um número finito positivo."
+        if isinstance(request.duration_seconds, bool) or not isinstance(request.duration_seconds, int) or request.duration_seconds <= 0:
+            return "Duração deve ser um inteiro positivo."
         if request.request_id is not None and request.request_id != request_id:
             return "request_id externo difere da identidade da requisição."
         return None

@@ -39,13 +39,30 @@ class ReconciliationResult:
 class ExternalOrderReconciliationBoundary:
     """Read-only external order reconciliation; it never resubmits an order."""
 
-    def reconcile(self, external_id: str, observation: ExternalOrderObservation) -> ReconciliationResult:
+    def reconcile(
+        self,
+        external_id: str,
+        observation: ExternalOrderObservation,
+        *,
+        expected_request_id: str | None = None,
+        expected_broker_id: str | None = None,
+        expected_symbol: str | None = None,
+    ) -> ReconciliationResult:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido.")
         if not isinstance(observation, ExternalOrderObservation):
             raise ValueError("observação externa inválida.")
         if observation.external_id.strip() != external_id.strip():
             raise ValueError("external_id da observação difere do solicitado.")
+        for name, expected, actual in (
+            ("request_id", expected_request_id, observation.request_id),
+            ("broker_id", expected_broker_id, observation.broker_id),
+            ("symbol", expected_symbol, observation.symbol),
+        ):
+            if expected is not None and (not isinstance(expected, str) or not expected.strip()):
+                raise ValueError(f"{name} esperado inválido.")
+            if expected is not None and actual.strip() != expected.strip():
+                raise ValueError(f"{name} da observação difere do contexto esperado.")
         if not isinstance(observation.status, ExternalOrderStatus):
             raise ValueError("status externo inválido.")
         if not isinstance(observation.request_id, str) or not observation.request_id.strip():
@@ -56,6 +73,8 @@ class ExternalOrderReconciliationBoundary:
             raise ValueError("broker_id da observação externa é obrigatório para reconciliação REAL.")
         if not isinstance(observation.symbol, str) or not observation.symbol.strip():
             raise ValueError("symbol da observação externa é obrigatório para reconciliação REAL.")
+        if not isinstance(observation.message, str) or not observation.message.strip():
+            raise ValueError("message da observação externa é obrigatória.")
 
         return ReconciliationResult(
             external_id=external_id.strip(),

@@ -33,7 +33,7 @@ class FakeMT5:
 
 
 def req():
-    return ExecutionRequest("TEST", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO)
+    return ExecutionRequest("TEST", Signal.COMPRA, 0.01, 60, ExecutionMode.DEMO, "stage3-ambiguous")
 
 
 def test_ambiguous_mt5_outcomes_raise_uncertain_boundary_error():

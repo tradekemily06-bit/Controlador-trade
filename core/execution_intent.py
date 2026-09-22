@@ -19,6 +19,7 @@ class ExecutionIntent:
     duration_seconds: int
     mode: ExecutionMode
     created_at: datetime
+    cycle_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
@@ -37,8 +38,10 @@ class ExecutionIntent:
             raise ValueError("modo de execução inválido.")
         if self.mode is ExecutionMode.REAL:
             raise ValueError("execução REAL permanece bloqueada nesta etapa.")
-        if not isinstance(self.created_at, datetime):
-            raise ValueError("created_at inválido.")
+        if not isinstance(self.created_at, datetime) or self.created_at.tzinfo is None or self.created_at.utcoffset() is None:
+            raise ValueError("created_at deve ser datetime timezone-aware.")
+        if self.cycle_id is not None and (not isinstance(self.cycle_id, str) or not self.cycle_id.strip()):
+            raise ValueError("cycle_id deve ser não vazio quando informado.")
 
     def as_execution_request(self) -> ExecutionRequest:
         """Build the existing port DTO without invoking any execution adapter."""

@@ -18,6 +18,7 @@ def valid_config():
 def test_valid_config_is_immutable_and_defaults_to_demo():
     config = valid_config()
     assert config.mode is ExecutionMode.DEMO
+    assert config.real_enabled is False
     assert config.symbol == "EURUSD"
     with pytest.raises(Exception):
         config.amount = 20.0
@@ -40,9 +41,17 @@ def test_non_finite_amount_is_rejected(amount):
         RuntimeConfig("EURUSD", "5m", amount, 60)
 
 
-def test_real_mode_is_always_rejected():
-    with pytest.raises(ValueError, match="REAL"):
-        RuntimeConfig("EURUSD", "5m", 10, 60, mode=ExecutionMode.REAL)
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"mode": ExecutionMode.REAL},
+        {"mode": ExecutionMode.DEMO, "real_enabled": True},
+        {"mode": ExecutionMode.REAL, "real_enabled": True},
+    ],
+)
+def test_real_enablement_is_always_rejected(kwargs):
+    with pytest.raises(ValueError, match="REAL|habilitação"):
+        RuntimeConfig("EURUSD", "5m", 10, 60, **kwargs)
 
 
 def test_boolean_numeric_values_are_rejected():

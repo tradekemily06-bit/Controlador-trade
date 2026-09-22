@@ -19,6 +19,7 @@ def make_intent() -> ExecutionIntent:
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
         created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+        cycle_id="cycle-44",
     )
 
 
@@ -62,9 +63,12 @@ def test_missing_or_invalid_intent_fails_closed() -> None:
 
 
 def test_real_cycle_cannot_enter_handoff() -> None:
-    result = AutomationIntentHandoffBoundary().handoff(
-        make_admission(mode="REAL"), intent=make_intent()
-    )
+    request = object.__new__(AutomationCycleRequest)
+    object.__setattr__(request, "cycle_id", "cycle-44")
+    object.__setattr__(request, "requested_at", datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc))
+    object.__setattr__(request, "mode", "REAL")
+    admission = AutomationAdmissionResult(True, request, ())
+    result = AutomationIntentHandoffBoundary().handoff(admission, intent=make_intent())
     assert result.handed_off is False
     assert "only DEMO cycle requests can enter automation handoff" in result.reasons
 
@@ -85,3 +89,14 @@ def test_handoff_result_is_immutable() -> None:
     assert result.handoff is not None
     with pytest.raises(AttributeError):
         result.handoff.cycle_id = "changed"  # type: ignore[misc]
+
+
+def test_unbound_demo_intent_cannot_enter_automation_handoff() -> None:
+    intent = ExecutionIntent(
+        request_id="req-unbound", symbol="EURUSD", signal=Signal.COMPRA,
+        amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO,
+        created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+    )
+    result = AutomationIntentHandoffBoundary().handoff(make_admission(), intent=intent)
+    assert result.handed_off is False
+    assert "cycle_id" in result.reasons[0]

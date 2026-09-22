@@ -7,9 +7,10 @@ import pytest
 from core.decision_snapshot import DecisionSnapshot
 from core.models import Signal
 from core.operational_state import OperationalState
-from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
+from core.p116_real_release_audit import RealReleaseAuditBoundary
+from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.risk_state_fingerprint import risk_state_identity
 from core.global_operational_barrier import GlobalOperationalBarrier
 from execution.adapter_gateway import BrokerAdapterGateway
@@ -73,13 +74,34 @@ def gateway(tmp_path: Path, provider: Provider, adapter: Adapter):
 
 
 def authorization(request_id="risk-unchanged"):
-    return RealExecutionAuthorization("auth", "audit", "fake", "adapter", request_id, "TEST", True, True)
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit",
+        pre_real_verified=True,
+        shadow_passed=True,
+        safety_ready=True,
+        broker_boundary_ready=True,
+        explicit_real_contract=True,
+    )
+    return RealAuthorizationIssuer().issue(
+        audit=audit,
+        authorization_id="auth",
+        audit_id="audit",
+        broker_id="fake",
+        adapter_id="adapter",
+        request_id=request_id,
+        symbol="TEST",
+        explicit_approval=True,
+    )
 
 
 def admission(auth):
+    audit = RealReleaseAuditBoundary().audit(
+        audit_id="audit", pre_real_verified=True, shadow_passed=True,
+        safety_ready=True, broker_boundary_ready=True, explicit_real_contract=True,
+    )
     return RealAdmissionBoundary().admit(
-        admission_id="adm", audit_id="audit", audit_verified=True,
-        authorization_active=auth.active, safety_ready=True, broker_available=True,
+        admission_id="adm", audit_id="audit", audit_verified=audit,
+        authorization_active=auth, safety_ready=True, broker_available=True,
         broker_id="fake", adapter_id="adapter", request_id=auth.request_id, symbol=auth.symbol,
     )
 
@@ -161,6 +183,26 @@ def test_real_blocks_missing_decision_risk_identity(tmp_path: Path):
         snapshot=snapshot_without_identity,
     )
     assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_blocks_request_risk_identity_mismatch(tmp_path: Path):
+    original = state()
+    provider = Provider(original)
+    adapter = Adapter()
+    gateway_instance = gateway(tmp_path, provider, adapter)
+    auth = authorization("risk-request-mismatch")
+    stale_request = replace(
+        request("risk-request-mismatch"),
+        risk_state_fingerprint="stale-risk-identity",
+    )
+    result = gateway_instance.execute(
+        broker="fake", request_id="risk-request-mismatch", request=stale_request,
+        authorization=auth, admission=admission(auth), safety=safety(auth),
+        snapshot=snapshot(original),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert "identidade de risco da requisição difere do snapshot" in result.message
     assert adapter.calls == 0
 
 

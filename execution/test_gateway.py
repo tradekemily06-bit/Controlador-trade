@@ -1,10 +1,14 @@
 from datetime import datetime, timezone, timedelta
 
 from core.ecosystem_maintenance import MaintenanceManager
+from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
+from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -221,3 +225,59 @@ def test_gateway_final_maintenance_barrier_ignores_stale_decision_timestamp():
 
     assert result.status is GatewayStatus.BLOCKED
     assert executor.executions() == ()
+
+
+def test_gateway_rejects_non_finite_or_boolean_amount_and_duration():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    for amount in (True, float("nan"), float("inf"), float("-inf")):
+        invalid = ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=amount,
+            duration_seconds=60,
+            mode=ExecutionMode.DEMO,
+        )
+        assert gateway.execute("req-amount-" + str(amount), invalid).status is GatewayStatus.INVALID_REQUEST
+
+    for duration in (True, 0, -1):
+        invalid = ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=10.0,
+            duration_seconds=duration,
+            mode=ExecutionMode.DEMO,
+        )
+        assert gateway.execute("req-duration-" + str(duration), invalid).status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_persistence_failure_after_broker_acceptance_blocks_restart_resume(tmp_path):
+    class LifecycleFailsAfterBrokerAcceptance(ExecutionLifecycleStore):
+        def put(self, record):
+            if record.state is ExecutionLifecycleState.ACCEPTED:
+                raise OSError("falha simulada de persistência")
+            return super().put(record)
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = LifecycleFailsAfterBrokerAcceptance(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(
+        PaperExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    result = gateway.execute("req-persist-fail", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-persist-fail") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("req-persist-fail").state is ExecutionLifecycleState.UNKNOWN
+
+    recovery = RecoveryCoordinator(
+        checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+    )
+    assessment = recovery.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert assessment.can_resume is False

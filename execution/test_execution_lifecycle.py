@@ -36,6 +36,11 @@ def test_unknown_requires_explicit_reconciliation(tmp_path):
     assert ExecutionLifecycleStore(path).get("req-1") == result
 
 
+def test_naive_timestamp_fails_closed(tmp_path):
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, datetime(2026, 1, 1))
+
+
 def test_invalid_persisted_state_fails_closed(tmp_path):
     path = tmp_path / "lifecycle.json"
     path.write_text('[{"request_id":"req-1","state":"INVALID","updated_at":"bad"}]', encoding="utf-8")

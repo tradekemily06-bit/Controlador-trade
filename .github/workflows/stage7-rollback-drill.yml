@@ -1,0 +1,33 @@
+name: Stage 7 rollback drill
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".github/workflows/stage7-rollback-drill.yml"
+      - "scripts/stage7_rollback_drill.sh"
+      - "app.py"
+      - "core/**"
+      - "execution/**"
+
+permissions:
+  contents: read
+
+jobs:
+  rollback-drill:
+    name: Controlled rollback drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Run rollback drill
+        shell: bash
+        run: bash scripts/stage7_rollback_drill.sh
+      - name: Upload rollback evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7-rollback-evidence
+          path: stage7-rollback-artifact/rollback-evidence.json
+          if-no-files-found: error

@@ -24,6 +24,16 @@ class ExecutionLifecycleRecord:
     updated_at: datetime
     message: str = ""
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.request_id, str) or not self.request_id.strip():
+            raise ValueError("request_id inválido.")
+        if not isinstance(self.state, ExecutionLifecycleState):
+            raise ValueError("estado de execução inválido.")
+        if not isinstance(self.updated_at, datetime) or self.updated_at.tzinfo is None or self.updated_at.utcoffset() is None:
+            raise ValueError("timestamp deve ser timezone-aware.")
+        if not isinstance(self.message, str):
+            raise ValueError("mensagem inválida.")
+
 
 class ExecutionLifecycleStore:
     """Durable execution state; UNKNOWN is terminal until explicitly reconciled."""
@@ -67,8 +77,8 @@ class ExecutionLifecycleStore:
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if not isinstance(record.updated_at, datetime) or record.updated_at.tzinfo is None or record.updated_at.utcoffset() is None:
+            raise ValueError("timestamp deve ser timezone-aware.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
 

@@ -30,6 +30,8 @@ class AutomationCycle:
     def __post_init__(self) -> None:
         if not isinstance(self.cycle_id, str) or not self.cycle_id.strip():
             raise ValueError("cycle_id must be non-empty")
+        if not isinstance(self.requested_at, datetime):
+            raise ValueError("requested_at must be datetime")
         if self.requested_at.tzinfo is None or self.requested_at.utcoffset() is None:
             raise ValueError("requested_at must be timezone-aware")
 
