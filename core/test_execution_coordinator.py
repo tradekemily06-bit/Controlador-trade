@@ -149,3 +149,14 @@ def test_coordinator_integrates_with_demo_gateway():
     result = coordinator.execute_plan(plan, orchestration=orchestration)
     assert result.status is GatewayStatus.ACCEPTED
     assert result.execution is not None
+
+
+def test_build_plan_can_represent_explicit_real_selection():
+    plan = ExecutionCoordinator.build_plan(
+        executable_orchestration(),
+        request_id="real-plan-1",
+        amount=10.0,
+        duration_seconds=60,
+        mode=ExecutionMode.REAL,
+    )
+    assert plan.request.mode is ExecutionMode.REAL

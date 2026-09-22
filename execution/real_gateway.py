@@ -32,6 +32,10 @@ class RealGatewayResult:
     message: str
     execution: ExecutionResult | None = None
 
+    @property
+    def accepted(self) -> bool:
+        return self.status == RealGatewayStatus.ADMITTED
+
 
 class RealExecutionGateway:
     """Single REAL dispatch boundary with authoritative identity and safety checks."""

@@ -10,6 +10,8 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
+from execution.ports import ExecutionMode
+from execution.real_gateway import RealGatewayResult, RealGatewayStatus
 
 
 @dataclass
@@ -124,3 +126,51 @@ def test_checkpoint_requires_session_id(tmp_path) -> None:
             request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
             checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
         )
+
+
+class FakeRealCoordinator:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def execute_plan(self, plan, **kwargs):
+        self.calls.append((plan, kwargs))
+        return RealGatewayResult(RealGatewayStatus.ADMITTED, "real-ok")
+
+
+def test_runtime_requires_explicit_real_session_when_real_is_selected():
+    runtime = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=FakeCoordinator())
+    with pytest.raises(ValueError, match="sessão REAL"):
+        runtime.run(
+            request(), operational_state=None, market_context=None, amount=1,
+            duration_seconds=60, mode=ExecutionMode.REAL, explicit_real_approval=True,
+        )
+
+
+def test_runtime_real_selection_requires_explicit_approval():
+    real = FakeRealCoordinator()
+    runtime = TradingRuntime(
+        orchestrator=FakeOrchestrator(executable=True),
+        coordinator=FakeCoordinator(),
+        real_coordinator=real,
+    )
+    with pytest.raises(ValueError, match="aprovação explícita"):
+        runtime.run(
+            request(), operational_state=None, market_context=None, amount=1,
+            duration_seconds=60, mode=ExecutionMode.REAL,
+        )
+
+
+def test_runtime_routes_selected_real_mode_only_to_real_coordinator():
+    real = FakeRealCoordinator()
+    runtime = TradingRuntime(
+        orchestrator=FakeOrchestrator(executable=True),
+        coordinator=FakeCoordinator(),
+        real_coordinator=real,
+    )
+    result = runtime.run(
+        request(), operational_state=None, market_context=None, amount=1,
+        duration_seconds=60, max_cycles=1, mode=ExecutionMode.REAL,
+        explicit_real_approval=True,
+    )
+    assert result.executed_cycles == 1
+    assert len(real.calls) == 1

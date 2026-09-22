@@ -5,10 +5,13 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
+from core.real_execution_coordinator import RealExecutionCoordinator
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.senior_context_cycle import SeniorContextCycle
 from execution.gateway import GatewayResult
+from execution.ports import ExecutionMode
+from execution.real_gateway import RealGatewayResult
 from data.feed import MarketDataRequest
 
 
@@ -18,7 +21,7 @@ class RuntimeCycle:
 
     orchestration: OrchestrationResult
     plan: ExecutionPlan | None
-    execution: GatewayResult | None
+    execution: GatewayResult | RealGatewayResult | None
 
 
 @dataclass(frozen=True)
@@ -37,13 +40,14 @@ class RuntimeResult:
 class TradingRuntime:
     """Executa ciclos controlados do ecossistema sem conhecer corretoras."""
 
-    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator) -> None:
+    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator, real_coordinator: RealExecutionCoordinator | None = None) -> None:
         if orchestrator is None:
             raise ValueError("orchestrator é obrigatório.")
         if coordinator is None:
             raise ValueError("coordinator é obrigatório.")
         self.orchestrator = orchestrator
         self.coordinator = coordinator
+        self.real_coordinator = real_coordinator
 
     def run(
         self,
@@ -64,7 +68,15 @@ class TradingRuntime:
         entry_conditions: tuple[str, ...] = (),
         checkpoint_store: RuntimeCheckpointStore | None = None,
         session_id: str | None = None,
+        mode: ExecutionMode = ExecutionMode.DEMO,
+        explicit_real_approval: bool = False,
     ) -> RuntimeResult:
+        if not isinstance(mode, ExecutionMode):
+            raise ValueError("modo de execução inválido.")
+        if mode is ExecutionMode.REAL and self.real_coordinator is None:
+            raise ValueError("modo REAL selecionado, mas a sessão REAL não foi configurada.")
+        if mode is ExecutionMode.REAL and explicit_real_approval is not True:
+            raise ValueError("modo REAL exige seleção/aprovação explícita.")
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
         if checkpoint_store is not None and not isinstance(checkpoint_store, RuntimeCheckpointStore):
@@ -100,12 +112,20 @@ class TradingRuntime:
                     request_id=request_id,
                     amount=amount,
                     duration_seconds=duration_seconds,
+                    mode=mode,
                 )
-                execution_result = self.coordinator.execute_plan(
-                    plan,
-                    orchestration=orchestration,
-                    entry_conditions=entry_conditions,
-                )
+                if mode is ExecutionMode.REAL:
+                    execution_result = self.real_coordinator.execute_plan(
+                        plan,
+                        orchestration=orchestration,
+                        explicit_approval=explicit_real_approval,
+                    )
+                else:
+                    execution_result = self.coordinator.execute_plan(
+                        plan,
+                        orchestration=orchestration,
+                        entry_conditions=entry_conditions,
+                    )
             cycles.append(RuntimeCycle(orchestration=orchestration, plan=plan, execution=execution_result))
 
             if checkpoint_store is not None:
