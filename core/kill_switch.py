@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+from threading import RLock
+from typing import Iterator
 
 
 class KillSwitchValidationError(ValueError):
@@ -22,26 +25,43 @@ class KillSwitchState:
 
 
 class KillSwitch:
-    """Safety gate independent from broker or execution adapter."""
+    """Safety gate independent from broker or execution adapter.
+
+    The execution guard closes the in-process race between the final safety
+    check and external dispatch. Cross-process coordination still belongs to
+    the durable execution boundary.
+    """
 
     def __init__(self) -> None:
         self._state = KillSwitchState()
+        self._execution_lock = RLock()
 
     @property
     def state(self) -> KillSwitchState:
-        return self._state
+        with self._execution_lock:
+            return self._state
 
     def activate(self, reason: str) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=True, reason=reason)
-        return self._state
+        with self._execution_lock:
+            self._state = KillSwitchState(enabled=True, reason=reason)
+            return self._state
 
     def deactivate(self) -> KillSwitchState:
-        self._state = KillSwitchState(enabled=False, reason=None)
-        return self._state
+        with self._execution_lock:
+            self._state = KillSwitchState(enabled=False, reason=None)
+            return self._state
 
     def allows_execution(self) -> bool:
-        return not self._state.enabled
+        with self._execution_lock:
+            return not self._state.enabled
+
+    @contextmanager
+    def execution_guard(self) -> Iterator[None]:
+        """Serialize kill-switch changes with a critical dispatch section."""
+        with self._execution_lock:
+            yield
 
     def guard(self) -> None:
-        if self._state.enabled:
-            raise RuntimeError(f"execução bloqueada pelo kill switch: {self._state.reason}")
+        with self._execution_lock:
+            if self._state.enabled:
+                raise RuntimeError(f"execução bloqueada pelo kill switch: {self._state.reason}")
