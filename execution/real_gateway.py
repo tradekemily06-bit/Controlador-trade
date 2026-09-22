@@ -13,6 +13,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary
 
 
 class RealGatewayStatus(str):
@@ -198,19 +199,15 @@ class RealExecutionGateway:
             # the secondary lifecycle projection cannot be persisted.
             pass
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str) -> None:
-        """Close an uncertain REAL request only with a durable external reference; never resubmits."""
-        if self._ledger.status(request_id) is not ExecutionLedgerStatus.UNKNOWN:
-            raise ValueError("reconciliação REAL exige Ledger UNKNOWN; RESERVED pode ainda estar em dispatch.")
-        if self._lifecycle is not None:
-            lifecycle_record = self._lifecycle.get(request_id)
-            if lifecycle_record is None or lifecycle_record.state is not ExecutionLifecycleState.UNKNOWN:
-                raise ValueError("reconciliação REAL exige Lifecycle UNKNOWN; dispatch ainda pode estar em andamento.")
-        self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
-        if self._lifecycle is not None:
-            self._lifecycle.reconcile(
-                request_id,
-                ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED,
-                updated_at=datetime.now(timezone.utc),
-                message="reconciliação explícita; nenhuma nova ordem foi enviada",
-            )
+    def reconcile_unknown(self, request_id: str, *, query_port: ExternalOrderQueryPort):
+        """Reconcile only through the external-evidence boundary; never accepts caller-supplied execution flags."""
+        if self._lifecycle is None:
+            raise ValueError("reconciliação REAL exige Lifecycle persistente.")
+        if not isinstance(query_port, ExternalOrderQueryPort):
+            raise ValueError("query_port de reconciliação inválido.")
+        return ExternalOrderReconciliationBoundary().reconcile_request(
+            request_id=request_id,
+            ledger=self._ledger,
+            lifecycle=self._lifecycle,
+            query_port=query_port,
+        )
