@@ -6,15 +6,21 @@ from core.models import Signal
 
 class FakeAdapter:
     adapter_id = "fake-adapter"
-    def __init__(self, available=True, result=None, error=False):
+    def __init__(self, available=True, result=None, error=False, correlated=True):
         self.available = available
         self.supports_real_execution = True
         self.result = result or ExecutionResult(True, "ok", "FAKE-1")
         self.error = error
+        self.correlated = correlated
         self.calls = 0
 
     def is_available(self):
         return self.available
+
+    def query_order_by_request_id(self, request_id):
+        if not self.correlated:
+            raise RuntimeError("correlation unavailable")
+        return None
 
     def execute(self, request):
         self.calls += 1
@@ -88,6 +94,15 @@ def test_adapter_gateway_blocks_real_without_explicit_opt_in():
     adapter.supports_real_execution = False
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
     assert result.accepted is False
+    assert adapter.calls == 0
+
+
+def test_adapter_gateway_blocks_real_without_durable_request_correlation():
+    adapter = FakeAdapter(correlated=False)
+    del adapter.query_order_by_request_id
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
+    assert result.accepted is False
+    assert "correlação durável" in result.message
     assert adapter.calls == 0
 
 
