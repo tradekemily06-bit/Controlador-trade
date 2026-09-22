@@ -238,6 +238,41 @@ def test_real_gateway_blocks_admission_audit_mismatch(tmp_path: Path):
     assert adapter.calls == 0
 
 
+def test_real_gateway_does_not_reserve_when_lifecycle_exists_without_ledger(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    ledger = ExecutionLedger(tmp_path / "real-ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "real-lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "lifecycle-only",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        lifecycle=lifecycle,
+        kill_switch=KillSwitch(),
+    )
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake",
+        request_id="lifecycle-only",
+        request=_request("lifecycle-only"),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert adapter.calls == 0
+    assert ledger.status("lifecycle-only") is None
+
+
 def test_real_rejected_with_external_id_becomes_unknown(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", RejectedWithExternalIdAdapter())
