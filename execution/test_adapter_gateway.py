@@ -11,15 +11,14 @@ class FakeAdapter:
         self.supports_real_execution = True
         self.result = result or ExecutionResult(True, "ok", "FAKE-1")
         self.error = error
-        self.correlated = correlated
+        if not correlated:
+            self.query_order_by_request_id = None
         self.calls = 0
 
     def is_available(self):
         return self.available
 
     def query_order_by_request_id(self, request_id):
-        if not self.correlated:
-            raise RuntimeError("correlation unavailable")
         return None
 
     def execute(self, request):
@@ -41,18 +40,14 @@ def gateway_with(adapter):
 
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
-
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
-
     assert result.accepted is False
     assert adapter.calls == 0
 
 
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
-
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
-
     assert result.accepted is True
     assert result.execution is not None
     assert result.execution.external_id == "FAKE-1"
@@ -61,9 +56,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
 
 def test_adapter_gateway_handles_adapter_exception_fail_closed():
     adapter = FakeAdapter(error=True)
-
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
-
     assert result.accepted is False
     assert result.execution is None
     assert result.ambiguous is True
@@ -72,9 +65,7 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
 
 def test_adapter_gateway_rejects_invalid_adapter_result():
     adapter = FakeAdapter(result="invalid")
-
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
-
     assert result.accepted is False
     assert result.execution is None
 
@@ -82,9 +73,7 @@ def test_adapter_gateway_rejects_invalid_adapter_result():
 def test_adapter_gateway_unknown_broker_does_not_execute():
     registry = BrokerRegistry()
     gateway = BrokerAdapterGateway(registry)
-
     result = gateway.execute("missing", request())
-
     assert result.accepted is False
     assert result.execution is None
 
@@ -99,7 +88,6 @@ def test_adapter_gateway_blocks_real_without_explicit_opt_in():
 
 def test_adapter_gateway_blocks_real_without_durable_request_correlation():
     adapter = FakeAdapter(correlated=False)
-    del adapter.query_order_by_request_id
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
     assert result.accepted is False
     assert "correlação durável" in result.message
@@ -108,9 +96,7 @@ def test_adapter_gateway_blocks_real_without_durable_request_correlation():
 
 def test_adapter_gateway_rejects_accepted_result_without_external_id():
     adapter = FakeAdapter(result=ExecutionResult(True, "accepted", None))
-
     result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
-
     assert result.accepted is False
     assert result.execution is not None
     assert result.ambiguous is True
