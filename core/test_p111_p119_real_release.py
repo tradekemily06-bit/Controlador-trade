@@ -20,6 +20,7 @@ from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus, ExternalOrderQueryPort
 
 
 class FakeAdapter:
@@ -283,7 +284,13 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request("unknown-2"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     ledger.attach_external_id("unknown-2", "external-recovered-2")
-    gateway.reconcile_unknown("unknown-2", executed=True, external_id="external-recovered-2")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(ExecutionLifecycleRecord("unknown-2", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
+    class Query(ExternalOrderQueryPort):
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "reconciled", "fake")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch())
+    gateway.reconcile_unknown("unknown-2", query_port=Query())
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
@@ -303,7 +310,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert adapter.calls == 0
     ledger.attach_external_id("crashed", "external-recovered-crashed")
     try:
-        gateway.reconcile_unknown("crashed", executed=False, external_id="external-recovered-crashed")
+        gateway.reconcile_unknown("crashed", query_port=Query())
     except ValueError as exc:
         assert "Ledger UNKNOWN" in str(exc)
     else:
@@ -420,7 +427,10 @@ def test_explicit_reconciliation_projects_lifecycle(tmp_path: Path):
     )
     assert result.status == RealGatewayStatus.UNKNOWN
     ledger.attach_external_id("unknown-lifecycle", "external-recovered-lifecycle")
-    gateway.reconcile_unknown("unknown-lifecycle", executed=True, external_id="external-recovered-lifecycle")
+    class Query(ExternalOrderQueryPort):
+        def query_order(self, external_id):
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "reconciled", "fake")
+    gateway.reconcile_unknown("unknown-lifecycle", query_port=Query())
     assert lifecycle.get("unknown-lifecycle").state.name == "ACCEPTED"
 
 
@@ -470,7 +480,7 @@ def test_real_reconciliation_without_external_reference_stays_uncertain(tmp_path
     result = gateway.execute(broker="fake", request_id="no-proof", request=_request("no-proof"), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     try:
-        gateway.reconcile_unknown("no-proof", executed=True, external_id="missing-proof")
+        gateway.reconcile_unknown("no-proof", query_port=Query())
     except ValueError as exc:
         assert "external_id" in str(exc)
     else:
