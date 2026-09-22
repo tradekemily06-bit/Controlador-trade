@@ -115,7 +115,11 @@ class RealExecutionGateway:
         )
 
         try:
-            result = self._gateway.execute(broker, dispatch_request)
+            result = self._gateway.execute(
+                broker,
+                dispatch_request,
+                expected_adapter_id=authorization.adapter_id,
+            )
         except Exception as exc:
             self._mark_unknown(request_id, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
