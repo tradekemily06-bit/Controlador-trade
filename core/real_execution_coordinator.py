@@ -8,7 +8,7 @@ from core.p114_real_safety_gate import RealSafetyReport
 from core.p116_real_release_audit import RealReleaseAudit
 from core.real_authorization_issuer import RealAuthorizationIssuer
 from core.senior_context_cycle import SeniorContextCycle
-from execution.p124_broker_session import BrokerSessionBoundary, BrokerSessionObservation
+from execution.p124_broker_session import BrokerSessionBoundary, BrokerSessionPort
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult, RealGatewayStatus
 from execution.ports import ExecutionRequest
 from core.execution_coordinator import ExecutionPlan
@@ -24,7 +24,7 @@ class RealExecutionCoordinator:
     authorization_issuer: RealAuthorizationIssuer
     admission_boundary: RealAdmissionBoundary
     release_audit: RealReleaseAudit
-    broker_session: BrokerSessionObservation
+    broker_session: BrokerSessionPort
     real_safety_provider: RealSafetyProvider
     broker_id: str
     adapter_id: str
@@ -40,10 +40,8 @@ class RealExecutionCoordinator:
             raise ValueError("auditoria P116 é obrigatória.")
         if not self.release_audit.verified:
             raise ValueError("somente auditoria P116 VERIFIED pode habilitar a sessão REAL.")
-        if not isinstance(self.broker_session, BrokerSessionObservation):
+        if not callable(getattr(self.broker_session, "check_session", None)):
             raise ValueError("sessão da corretora inválida.")
-        if not BrokerSessionBoundary.is_usable(self.broker_session):
-            raise ValueError("sessão REAL da corretora não está autenticada.")
         if not isinstance(self.real_safety_provider, RealSafetyProvider):
             raise ValueError("provedor de segurança REAL é obrigatório.")
         for name, value in (("broker_id", self.broker_id), ("adapter_id", self.adapter_id)):
@@ -65,6 +63,12 @@ class RealExecutionCoordinator:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "contexto sênior obrigatório antes do REAL.")
         if explicit_approval is not True:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "seleção REAL exige aprovação explícita.")
+        try:
+            session = self.broker_session.check_session()
+            if not BrokerSessionBoundary.is_usable(session):
+                return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL da corretora não está autenticada.")
+        except (ValueError, TypeError, RuntimeError):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL da corretora não pôde ser validada.")
         if plan.request.mode.value != "REAL":
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "sessão REAL recebeu um plano que não está em modo REAL.")
 
