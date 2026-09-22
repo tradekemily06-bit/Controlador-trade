@@ -262,6 +262,22 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     ledger.attach_external_id("crashed", "external-recovered-crashed")
+    try:
+        gateway.reconcile_unknown("crashed", executed=False, external_id="external-recovered-crashed")
+    except ValueError as exc:
+        assert "Ledger UNKNOWN" in str(exc)
+    else:
+        raise AssertionError("RESERVED não pode ser reconciliado enquanto pode representar dispatch em andamento")
+    ledger.mark_unknown("crashed")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "crashed", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
+        )
+    )
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry), ledger, lifecycle=lifecycle, kill_switch=KillSwitch()
+    )
     gateway.reconcile_unknown("crashed", executed=False, external_id="external-recovered-crashed")
     assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
 
