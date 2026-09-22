@@ -46,11 +46,20 @@ class BrokerAdapterGateway:
                 return AdapterExecutionResult(False, "adapter REAL sem identidade explícita; dispatch bloqueado.")
             if actual_adapter_id.strip() != expected_adapter_id.strip():
                 return AdapterExecutionResult(False, "adapter REAL diferente do adapter autorizado; dispatch bloqueado.")
-        if request.mode.value == "REAL" and getattr(adapter, "supports_real_execution", False) is not True:
-            return AdapterExecutionResult(
-                False,
-                "adapter não possui opt-in explícito para execução REAL; dispatch bloqueado.",
-            )
+            if getattr(adapter, "supports_real_execution", False) is not True:
+                return AdapterExecutionResult(
+                    False,
+                    "adapter não possui opt-in explícito para execução REAL; dispatch bloqueado.",
+                )
+            # A REAL adapter must expose a broker-side correlation path capable of
+            # locating an order by the canonical request_id after a crash that occurs
+            # before external_id is returned/persisted. Without this capability,
+            # accepting a REAL adapter would create an unrecoverable ambiguity window.
+            if not callable(getattr(adapter, "query_order_by_request_id", None)):
+                return AdapterExecutionResult(
+                    False,
+                    "adapter REAL sem correlação durável por request_id; dispatch bloqueado.",
+                )
 
         try:
             result = adapter.execute(request)
