@@ -48,3 +48,74 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_terminal_states_cannot_be_reopened(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+    for state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN):
+        with pytest.raises(ValueError, match="transição"):
+            store.put(ExecutionLifecycleRecord("req-1", state, now))
+
+
+def test_rejected_is_terminal(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="transição"):
+        store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now))
+
+
+def test_concurrent_store_instances_do_not_overwrite_newer_state(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    second = ExecutionLifecycleStore(path)
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now, "accepted"))
+
+    with pytest.raises(ValueError, match="transição"):
+        second.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now, "stale writer"))
+
+    assert ExecutionLifecycleStore(path).get("req-1").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconcile_uses_latest_persisted_state(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    first = ExecutionLifecycleStore(path)
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now))
+    stale = ExecutionLifecycleStore(path)
+
+    first.reconcile(
+        "req-1",
+        ExecutionLifecycleState.REJECTED,
+        updated_at=now,
+        message="broker confirmed rejection",
+    )
+
+    with pytest.raises(ValueError, match="somente UNKNOWN/PENDING"):
+        stale.reconcile(
+            "req-1",
+            ExecutionLifecycleState.ACCEPTED,
+            updated_at=now,
+            message="stale reconciliation",
+        )
+
+
+def test_persisted_lifecycle_rejects_duplicate_request_id(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    path.write_text(
+        '[{"request_id":"dup","state":"PENDING","updated_at":"2026-01-01T00:00:00+00:00"},'
+        '{"request_id":"dup","state":"UNKNOWN","updated_at":"2026-01-01T00:00:01+00:00"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)

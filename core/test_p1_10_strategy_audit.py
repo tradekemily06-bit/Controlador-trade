@@ -75,7 +75,7 @@ def make_demo_flow(risk_manager=None):
     logger = AuditLogger()
     executor = PaperExecutor()
     kill_switch = KillSwitch()
-    gateway = ExecutionGateway(executor, kill_switch)
+    gateway = ExecutionGateway(executor, kill_switch, allow_ephemeral=True)
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
     flow = DemoFlow(

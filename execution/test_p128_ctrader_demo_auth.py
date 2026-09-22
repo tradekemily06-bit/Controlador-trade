@@ -4,6 +4,8 @@ from execution.p128_ctrader_demo_auth import (
     CTraderOAuthConfig,
     CTraderOAuthScope,
     CTraderTokenSnapshot,
+    new_oauth_state,
+    validate_oauth_state,
 )
 
 
@@ -22,7 +24,8 @@ def test_authorization_url_is_demo_safe_and_requests_trading_scope():
         scope=CTraderOAuthScope.TRADING,
     )
 
-    url = config.authorization_url()
+    state = new_oauth_state()
+    url = config.authorization_url(state=state)
 
     assert "client_id=39411" in url
     assert "scope=trading" in url
@@ -58,3 +61,22 @@ def test_session_rejects_expired_token():
     observation = session.check_session()
 
     assert observation.status is BrokerSessionStatus.EXPIRED
+
+
+def test_oauth_state_is_unpredictable_and_must_match():
+    first = new_oauth_state()
+    second = new_oauth_state()
+    assert len(first) >= 32
+    assert first != second
+    validate_oauth_state(first, first)
+
+    import pytest
+    with pytest.raises(ValueError, match="state OAuth inválido"):
+        validate_oauth_state(first, second)
+
+
+def test_authorization_url_requires_state():
+    config = CTraderOAuthConfig(client_id="39411", redirect_uri="https://example.test/callback")
+    import pytest
+    with pytest.raises(ValueError, match="state OAuth obrigatório"):
+        config.authorization_url(state="short")

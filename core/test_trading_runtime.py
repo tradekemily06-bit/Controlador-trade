@@ -85,12 +85,15 @@ def test_runtime_stops_after_rejected_execution() -> None:
     assert result.executed_cycles == 0
 
 
-def test_runtime_uses_deterministic_request_ids() -> None:
+def test_runtime_uses_unique_request_ids() -> None:
     coordinator = FakeCoordinator(accepted=True)
     result = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=coordinator).run(
         request(), operational_state=None, market_context=None, amount=1, duration_seconds=60, max_cycles=2
     )
-    assert [call[1]["request_id"] for call in coordinator.build_calls] == ["runtime-000001", "runtime-000002"]
+    request_ids = [call[1]["request_id"] for call in coordinator.build_calls]
+    assert len(request_ids) == 2
+    assert request_ids[0] != request_ids[1]
+    assert all(request_id.startswith("runtime-") for request_id in request_ids)
     assert result.executed_cycles == 2
     assert not result.stopped
 
@@ -115,7 +118,9 @@ def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
         request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
         max_cycles=1, checkpoint_store=store, session_id="session-2",
     )
-    assert store.load().last_request_id == "runtime-000001"
+    checkpoint_request_id = store.load().last_request_id
+    assert checkpoint_request_id is not None
+    assert checkpoint_request_id == "runtime-session-2-000001"
 
 
 def test_checkpoint_requires_session_id(tmp_path) -> None:

@@ -1,9 +1,46 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from contextlib import contextmanager
+from typing import Iterator
+
+
+@contextmanager
+def process_file_lock(path: str | Path) -> Iterator[None]:
+    """Cross-platform process lock for local durable state files."""
+    lock_path = Path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if os.name == "nt":
+        import msvcrt
+        with lock_path.open("a+b") as lock_file:
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+
+    try:
+        import fcntl
+    except ImportError as exc:  # pragma: no cover
+        raise OSError("bloqueio de processo não suportado neste sistema.") from exc
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -25,8 +62,23 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with process_file_lock(lock_path):
+            current = self.load()
+            if current is not None:
+                if (
+                    current.session_id == checkpoint.session_id
+                    and checkpoint.last_cycle < current.last_cycle
+                ):
+                    raise ValueError(
+                        "checkpoint obsoleto: last_cycle não pode regredir."
+                    )
+                if checkpoint.updated_at < current.updated_at:
+                    raise ValueError(
+                        "checkpoint obsoleto: updated_at não pode regredir."
+                    )
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            payload = json.dumps(
                 {
                     "session_id": checkpoint.session_id,
                     "last_cycle": checkpoint.last_cycle,
@@ -36,9 +88,20 @@ class RuntimeCheckpointStore:
                 ensure_ascii=False,
                 indent=2,
                 sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+            )
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
+            try:
+                directory_fd = os.open(self.path.parent, os.O_RDONLY)
+            except OSError:
+                return
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
@@ -70,5 +133,9 @@ class RuntimeCheckpointStore:
             not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
         ):
             raise ValueError("request_id do checkpoint inválido.")
-        if not isinstance(checkpoint.updated_at, datetime):
-            raise ValueError("checkpoint inválido.")
+        if (
+            not isinstance(checkpoint.updated_at, datetime)
+            or checkpoint.updated_at.tzinfo is None
+            or checkpoint.updated_at.utcoffset() is None
+        ):
+            raise ValueError("checkpoint deve usar timestamp timezone-aware.")

@@ -78,3 +78,14 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 
     assert result.accepted is False
     assert result.execution is None
+
+
+def test_adapter_gateway_marks_dispatch_started_only_after_entering_adapter():
+    unavailable = gateway_with(FakeAdapter(available=False)).execute("fake", request())
+    assert unavailable.dispatch_started is False
+
+    available = gateway_with(FakeAdapter()).execute("fake", request())
+    assert available.dispatch_started is True
+
+    failed = gateway_with(FakeAdapter(error=True)).execute("fake", request())
+    assert failed.dispatch_started is True

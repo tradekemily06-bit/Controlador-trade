@@ -42,7 +42,7 @@ def make_request() -> ExecutionRequest:
 
 def test_gateway_audits_before_memory_and_reuses_same_audit_event():
     recorder = P4OperationalRecorder()
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), recorder)
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), recorder, allow_ephemeral=True)
     timestamp = datetime(2026, 9, 8, tzinfo=timezone.utc)
 
     result = gateway.execute(
@@ -69,7 +69,7 @@ def test_blocked_execution_is_audited_but_not_written_to_operation_memory():
     recorder = P4OperationalRecorder()
     kill_switch = KillSwitch()
     kill_switch.activate("emergência")
-    gateway = ExecutionGateway(PaperExecutor(), kill_switch, recorder)
+    gateway = ExecutionGateway(PaperExecutor(), kill_switch, recorder, allow_ephemeral=True)
 
     result = gateway.execute(
         "req-blocked-1",
@@ -84,7 +84,7 @@ def test_blocked_execution_is_audited_but_not_written_to_operation_memory():
 
 def test_invalid_request_is_not_audit_event():
     recorder = P4OperationalRecorder()
-    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), recorder)
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), recorder, allow_ephemeral=True)
     invalid = ExecutionRequest(
         symbol="BTCUSD",
         signal=Signal.AGUARDAR,

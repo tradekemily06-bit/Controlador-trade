@@ -18,14 +18,21 @@ def exchange_authorization_code(
     credentials: CTraderCredentials,
     authorization_code: str,
     redirect_uri: str,
+    *,
+    expected_state: str | None = None,
+    received_state: str | None = None,
 ) -> InMemoryTokenProvider:
     """Exchange the short-lived OAuth code for a runtime-only token."""
     if not authorization_code.strip():
         raise ValueError("authorization_code obrigatório")
     if not redirect_uri.strip():
         raise ValueError("redirect_uri obrigatório")
+    if expected_state is None or received_state is None:
+        raise ValueError("state OAuth é obrigatório para troca do código")
+    from execution.p128_ctrader_demo_auth import validate_oauth_state
+    validate_oauth_state(expected_state, received_state)
 
-    query = urlencode({
+    body = urlencode({
         "grant_type": "authorization_code",
         "code": authorization_code,
         "redirect_uri": redirect_uri,
@@ -33,9 +40,13 @@ def exchange_authorization_code(
         "client_secret": credentials.client_secret,
     })
     request = Request(
-        f"{CTRADER_TOKEN_URL}?{query}",
-        headers={"Accept": "application/json"},
-        method="GET",
+        CTRADER_TOKEN_URL,
+        data=body.encode("ascii"),
+        headers={
+            "Accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
     )
     with urlopen(request, timeout=15) as response:
         payload = json.loads(response.read().decode("utf-8"))

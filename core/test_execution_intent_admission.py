@@ -59,7 +59,7 @@ def make_senior_context(quality=SeniorContextQuality.COMPLETE):
 
 def test_admission_preserves_contract_and_uses_gateway():
     executor = RecordingExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     result = ExecutionIntentAdmission(gateway).admit(make_intent(), senior_context=make_senior_context())
     assert result.status is GatewayStatus.ACCEPTED
     assert executor.calls == 1
@@ -67,7 +67,7 @@ def test_admission_preserves_contract_and_uses_gateway():
 
 def test_same_intent_is_not_executed_twice():
     executor = RecordingExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     admission = ExecutionIntentAdmission(gateway)
     intent = make_intent()
     context = make_senior_context()
@@ -80,7 +80,7 @@ def test_same_intent_is_not_executed_twice():
 
 def test_invalid_input_fails_closed_before_gateway():
     executor = RecordingExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     with pytest.raises(ValueError, match="intent"):
         ExecutionIntentAdmission(gateway).admit(object(), senior_context=make_senior_context())
     assert executor.calls == 0
@@ -88,7 +88,7 @@ def test_invalid_input_fails_closed_before_gateway():
 
 def test_missing_senior_context_fails_closed_before_gateway():
     executor = RecordingExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     with pytest.raises(ValueError, match="contexto sênior obrigatório"):
         ExecutionIntentAdmission(gateway).admit(make_intent())
     assert executor.calls == 0
@@ -96,7 +96,7 @@ def test_missing_senior_context_fails_closed_before_gateway():
 
 def test_incomplete_senior_context_fails_closed_before_gateway():
     executor = RecordingExecutor()
-    gateway = ExecutionGateway(executor, KillSwitch())
+    gateway = ExecutionGateway(executor, KillSwitch(), allow_ephemeral=True)
     with pytest.raises(ValueError, match="contexto sênior incompleto"):
         ExecutionIntentAdmission(gateway).admit(
             make_intent(),
@@ -109,7 +109,7 @@ def test_kill_switch_blocks_before_executor():
     executor = RecordingExecutor()
     switch = KillSwitch()
     switch.activate("P27 test")
-    gateway = ExecutionGateway(executor, switch)
+    gateway = ExecutionGateway(executor, switch, allow_ephemeral=True)
     result = ExecutionIntentAdmission(gateway).admit(make_intent(), senior_context=make_senior_context())
     assert result.status is GatewayStatus.BLOCKED
     assert executor.calls == 0

@@ -27,6 +27,21 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    ambiguous: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.accepted, bool):
+            raise ValueError("accepted inválido.")
+        if not isinstance(self.ambiguous, bool):
+            raise ValueError("ambiguous inválido.")
+        if self.accepted and self.ambiguous:
+            raise ValueError("resultado não pode ser simultaneamente aceito e ambíguo.")
+        if not isinstance(self.message, str) or not self.message.strip():
+            raise ValueError("message inválida.")
+        if self.external_id is not None and (
+            not isinstance(self.external_id, str) or not self.external_id.strip()
+        ):
+            raise ValueError("external_id inválido.")
 
 
 class ExecutionPort(Protocol):

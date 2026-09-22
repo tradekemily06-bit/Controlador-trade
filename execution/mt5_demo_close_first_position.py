@@ -1,60 +1,50 @@
 from __future__ import annotations
 
-import MetaTrader5 as mt5
+from dataclasses import dataclass
 
-MAGIC = 2609001
-SYMBOL = "EURUSD"
+from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest
+
+
+@dataclass(frozen=True)
+class DemoCloseIntent:
+    """Non-dispatching description of a future DEMO close operation."""
+
+    request_id: str
+    position_ticket: int
+    symbol: str
+    volume: float
+    signal: Signal = Signal.VENDA
+
+
+def build_close_intent(*, request_id: str, position_ticket: int, symbol: str, volume: float) -> DemoCloseIntent:
+    if not isinstance(request_id, str) or not request_id.strip():
+        raise ValueError("request_id obrigatório.")
+    if not isinstance(position_ticket, int) or position_ticket <= 0:
+        raise ValueError("position_ticket inválido.")
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise ValueError("symbol inválido.")
+    if not isinstance(volume, (int, float)) or volume <= 0:
+        raise ValueError("volume inválido.")
+    return DemoCloseIntent(request_id, position_ticket, symbol.strip(), float(volume))
+
+
+def as_execution_request(intent: DemoCloseIntent) -> ExecutionRequest:
+    """Convert only to the governed request contract; never sends to MT5."""
+    return ExecutionRequest(
+        symbol=intent.symbol,
+        signal=intent.signal,
+        amount=intent.volume,
+        duration_seconds=1,
+        mode=ExecutionMode.DEMO,
+        request_id=intent.request_id,
+    )
 
 
 def main() -> None:
-    if not mt5.initialize():
-        print(f"MT5 indisponível: {mt5.last_error()}")
-        return
-
-    try:
-        account = mt5.account_info()
-        if account is None or account.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO:
-            print("BLOQUEADO: conta não confirmada como DEMO.")
-            return
-        positions = mt5.positions_get(symbol=SYMBOL) or ()
-        candidates = [p for p in positions if getattr(p, "magic", None) == MAGIC]
-        if len(candidates) != 1:
-            print(f"BLOQUEADO: esperado exatamente 1 posição do Controlador; encontrado={len(candidates)}")
-            return
-        position = candidates[0]
-        tick = mt5.symbol_info_tick(position.symbol)
-        if tick is None:
-            print("BLOQUEADO: cotação indisponível.")
-            return
-        is_buy = position.type == mt5.POSITION_TYPE_BUY
-        request = {
-            "action": mt5.TRADE_ACTION_DEAL,
-            "symbol": position.symbol,
-            "volume": float(position.volume),
-            "type": mt5.ORDER_TYPE_SELL if is_buy else mt5.ORDER_TYPE_BUY,
-            "position": int(position.ticket),
-            "price": tick.bid if is_buy else tick.ask,
-            "deviation": 20,
-            "magic": MAGIC,
-            "comment": "ControladorTrading-DEMO-CLOSE",
-            "type_time": mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        check = mt5.order_check(request)
-        print(f"CLOSE_ORDER_CHECK={check}")
-        if check is None or getattr(check, "retcode", 0) != 0:
-            print("FECHAMENTO BLOQUEADO: order_check não aprovado.")
-            return
-        result = mt5.order_send(request)
-        print(f"CLOSE_ORDER_RESULT={result}")
-        if result is None or getattr(result, "retcode", None) != mt5.TRADE_RETCODE_DONE:
-            print("FECHAMENTO NÃO CONFIRMADO pelo MT5.")
-            return
-        remaining = mt5.positions_get(symbol=SYMBOL) or ()
-        remaining_ours = [p for p in remaining if getattr(p, "magic", None) == MAGIC]
-        print(f"CLOSE_CONFIRMED=True; REMAINING_CONTROLADOR_POSITIONS={len(remaining_ours)}; DEMO_ONLY=True; REAL=False")
-    finally:
-        mt5.shutdown()
+    print("CLOSE DEMO DIRECT DISPATCH DISABLED.")
+    print("A posição deve ser fechada somente pelo fluxo de execução governado.")
+    print("Este módulo não inicializa MT5 e não chama order_send().")
 
 
 if __name__ == "__main__":

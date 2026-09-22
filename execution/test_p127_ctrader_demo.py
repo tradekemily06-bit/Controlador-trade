@@ -35,6 +35,17 @@ def test_demo_adapter_accepts_demo_result_and_preserves_external_id():
     assert transport.orders[0].side.value == "BUY"
 
 
+def test_demo_adapter_propagates_ambiguous_transport_result():
+    transport = FakeDemoTransport(result=BrokerOrderResult(False, "pending", "demo-pending", ambiguous=True))
+    adapter = CTraderDemoAdapter(transport)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert result.ambiguous is True
+    assert result.external_id == "demo-pending"
+
+
 def test_demo_adapter_rejects_real_mode():
     transport = FakeDemoTransport()
     adapter = CTraderDemoAdapter(transport)
@@ -73,3 +84,14 @@ def test_demo_adapter_does_not_send_aguardar():
 
     assert result.accepted is False
     assert transport.orders == []
+
+
+def test_demo_adapter_marks_malformed_transport_response_ambiguous():
+    transport = FakeDemoTransport(result=object())
+    adapter = CTraderDemoAdapter(transport)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert result.ambiguous is True
+    assert result.external_id is None

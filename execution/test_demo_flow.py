@@ -73,7 +73,7 @@ def make_flow() -> tuple[DemoFlow, AuditLogger, PaperExecutor, KillSwitch]:
     logger = AuditLogger()
     executor = PaperExecutor()
     kill_switch = KillSwitch()
-    gateway = ExecutionGateway(executor, kill_switch)
+    gateway = ExecutionGateway(executor, kill_switch, allow_ephemeral=True)
     readiness = DemoReadiness(UnifiedSafetyGate(kill_switch=kill_switch))
     coordinator = DemoExecutionCoordinator(readiness=readiness, gateway=gateway)
     return DemoFlow(decision_engine=DecisionEngine(RiskManager()), demo_coordinator=coordinator, audit_logger=logger, request_id_factory=lambda: "demo-flow-1", clock=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc)), logger, executor, kill_switch
