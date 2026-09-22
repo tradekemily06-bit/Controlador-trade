@@ -95,13 +95,14 @@ class ExecutionLedger:
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         payload = {
             key: (
-                {"status": self._states[key].value, "external_id": self._external_ids[key], "external_id_required": self._external_reference_required.get(key, True), **({"broker_id": self._brokers[key]} if key in self._brokers else {})}
-                if key in self._external_ids
-                else (
-                    {"status": self._states[key].value, "external_id_required": self._external_reference_required[key], **({"broker_id": self._brokers[key]} if key in self._brokers else {})}
-                    if key in self._external_reference_required
-                    else self._states[key].value
-                )
+                {
+                    "status": self._states[key].value,
+                    **({"external_id": self._external_ids[key]} if key in self._external_ids else {}),
+                    **({"external_id_required": self._external_reference_required[key]} if key in self._external_reference_required else {}),
+                    **({"broker_id": self._brokers[key]} if key in self._brokers else {}),
+                }
+                if key in self._external_ids or key in self._external_reference_required or key in self._brokers
+                else self._states[key].value
             )
             for key in sorted(self._states)
         }
