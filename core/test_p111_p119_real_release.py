@@ -197,6 +197,46 @@ def test_real_gateway_rejects_adapter_identity_mismatch(tmp_path: Path):
     assert ExecutionLedger(tmp_path / "ledger.json").status("adapter-mismatch") is ExecutionLedgerStatus.UNKNOWN
 
 
+def test_real_gateway_rejects_admission_broker_mismatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="a111", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="other-broker",
+    )
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="admission-broker-mismatch", request=_request("admission-broker-mismatch"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.REJECTED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_blocks_admission_audit_mismatch(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"), kill_switch=KillSwitch())
+    auth = _authorization()
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="different-audit", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+    )
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="admission-audit-mismatch", request=_request("admission-audit-mismatch"),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
 def test_real_rejected_with_external_id_becomes_unknown(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", RejectedWithExternalIdAdapter())
