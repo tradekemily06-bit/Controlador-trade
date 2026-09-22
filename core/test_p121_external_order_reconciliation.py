@@ -67,3 +67,35 @@ def test_reconciliation_rejects_blank_message():
                 request_id="req-1", evidence_source="broker", broker_id="broker", symbol="EURUSD"
             ),
         )
+
+
+from core.real_reconciliation_authority import BrokerReconciliationEvidenceAuthority
+
+
+class _QueryPort:
+    def query_order(self, external_id: str) -> ExternalOrderObservation:
+        return observation(external_id)
+
+
+def test_evidence_authority_rejects_non_boolean_executed_flag():
+    authority = BrokerReconciliationEvidenceAuthority(_QueryPort(), evidence_source="broker")
+    assert authority.verify(
+        request_id="req-1",
+        evidence_id="ext-1",
+        evidence_source="broker",
+        broker_id="broker",
+        symbol="EURUSD",
+        executed="false",  # type: ignore[arg-type]
+    ) is False
+
+
+def test_evidence_authority_accepts_strict_boolean_outcome():
+    authority = BrokerReconciliationEvidenceAuthority(_QueryPort(), evidence_source="broker")
+    assert authority.verify(
+        request_id="req-1",
+        evidence_id="ext-1",
+        evidence_source="broker",
+        broker_id="broker",
+        symbol="EURUSD",
+        executed=True,
+    ) is True
