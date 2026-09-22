@@ -90,6 +90,28 @@ def test_reconcile_request_uses_durable_external_id_and_projects_terminal_state(
     assert lifecycle.get("req-42").state is ExecutionLifecycleState.ACCEPTED
 
 
+def test_reconcile_request_refuses_active_pending_lifecycle(tmp_path):
+    class Query:
+        def query_order(self, external_id):
+            raise AssertionError("query must not run while dispatch may still be active")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-pending")
+    ledger.attach_external_id("req-pending", "broker-pending")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+    ledger.mark_unknown("req-pending")
+
+    with pytest.raises(ValueError, match="Lifecycle UNKNOWN"):
+        ExternalOrderReconciliationBoundary().reconcile_request(
+            request_id="req-pending", ledger=ledger, lifecycle=lifecycle, query_port=Query()
+        )
+
+
 def test_reconcile_request_requires_durable_external_id(tmp_path):
     class Query:
         def query_order(self, external_id):
@@ -98,6 +120,11 @@ def test_reconcile_request_requires_durable_external_id(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("req-no-id")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-no-id", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
+        )
+    )
 
     with pytest.raises(ValueError, match="external_id durável"):
         ExternalOrderReconciliationBoundary().reconcile_request(
