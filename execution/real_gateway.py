@@ -196,11 +196,12 @@ class RealExecutionGateway:
 
     def reconcile_unknown(self, request_id: str, *, executed: bool, external_id: str) -> None:
         """Close an uncertain REAL request only with a durable external reference; never resubmits."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
+        if self._ledger.status(request_id) is not ExecutionLedgerStatus.UNKNOWN:
+            raise ValueError("reconciliação REAL exige Ledger UNKNOWN; RESERVED pode ainda estar em dispatch.")
+        if self._lifecycle is not None:
+            lifecycle_record = self._lifecycle.get(request_id)
+            if lifecycle_record is None or lifecycle_record.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("reconciliação REAL exige Lifecycle UNKNOWN; dispatch ainda pode estar em andamento.")
         self._ledger.reconcile(request_id, executed=executed, external_id=external_id)
         if self._lifecycle is not None:
             self._lifecycle.reconcile(
