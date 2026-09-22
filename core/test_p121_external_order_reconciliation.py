@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 import pytest
 
 from core.p121_external_order_reconciliation import (
@@ -46,4 +49,88 @@ def test_invalid_external_id_fails_closed():
         ExternalOrderReconciliationBoundary().reconcile(
             " ",
             ExternalOrderObservation("ext", ExternalOrderStatus.UNKNOWN, "unknown"),
+        )
+
+
+def test_reconcile_request_uses_durable_external_id_and_projects_terminal_state(tmp_path):
+    class Query:
+        def query_order(self, external_id):
+            assert external_id == "broker-42"
+            return ExternalOrderObservation("broker-42", ExternalOrderStatus.EXECUTED, "broker confirmed")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-42")
+    ledger.attach_external_id("req-42", "broker-42")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-42",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+    ledger.mark_unknown("req-42")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-42",
+            ExecutionLifecycleState.UNKNOWN,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    result = ExternalOrderReconciliationBoundary().reconcile_request(
+        request_id="req-42",
+        ledger=ledger,
+        lifecycle=lifecycle,
+        query_port=Query(),
+    )
+
+    assert result.reconciled is True
+    assert ledger.status("req-42") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("req-42").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconcile_request_refuses_active_pending_lifecycle(tmp_path):
+    class Query:
+        def query_order(self, external_id):
+            raise AssertionError("query must not run while dispatch may still be active")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-pending")
+    ledger.attach_external_id("req-pending", "broker-pending")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-pending", ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)
+        )
+    )
+    ledger.mark_unknown("req-pending")
+
+    with pytest.raises(ValueError, match="Lifecycle UNKNOWN"):
+        ExternalOrderReconciliationBoundary().reconcile_request(
+            request_id="req-pending", ledger=ledger, lifecycle=lifecycle, query_port=Query()
+        )
+
+
+def test_reconcile_request_requires_durable_external_id(tmp_path):
+    class Query:
+        def query_order(self, external_id):
+            raise AssertionError("query must not run")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-no-id")
+    ledger.mark_unknown("req-no-id")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-no-id", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
+        )
+    )
+
+    with pytest.raises(ValueError, match="external_id durável"):
+        ExternalOrderReconciliationBoundary().reconcile_request(
+            request_id="req-no-id",
+            ledger=ledger,
+            lifecycle=lifecycle,
+            query_port=Query(),
         )

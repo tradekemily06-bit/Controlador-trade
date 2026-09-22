@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import http.client
 import json
 import time
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from execution.ctrader_demo_connection import (
     CTraderCredentials,
@@ -11,7 +11,8 @@ from execution.ctrader_demo_connection import (
     CTraderDemoConnection,
 )
 
-CTRADER_TOKEN_URL = "https://openapi.ctrader.com/apps/token"
+CTRADER_TOKEN_HOST = "openapi.ctrader.com"
+CTRADER_TOKEN_PATH = "/apps/token"
 
 
 def exchange_authorization_code(
@@ -32,13 +33,23 @@ def exchange_authorization_code(
         "client_id": credentials.client_id,
         "client_secret": credentials.client_secret,
     })
-    request = Request(
-        f"{CTRADER_TOKEN_URL}?{query}",
-        headers={"Accept": "application/json"},
-        method="GET",
-    )
-    with urlopen(request, timeout=15) as response:
+
+    connection = http.client.HTTPSConnection(CTRADER_TOKEN_HOST, timeout=15)
+    try:
+        connection.request(
+            "GET",
+            f"{CTRADER_TOKEN_PATH}?{query}",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+        )
+        response = connection.getresponse()
+        if response.status < 200 or response.status >= 300:
+            raise RuntimeError(f"cTrader OAuth HTTP status {response.status}")
         payload = json.loads(response.read().decode("utf-8"))
+    finally:
+        connection.close()
 
     if payload.get("errorCode"):
         raise RuntimeError(

@@ -129,3 +129,91 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_rejects_mismatched_request_identity():
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch())
+
+    result = gateway.execute(
+        "req-gateway",
+        ExecutionRequest(
+            symbol="BTCUSD",
+            signal=Signal.COMPRA,
+            amount=10.0,
+            duration_seconds=60,
+            mode=ExecutionMode.DEMO,
+            request_id="req-order",
+        ),
+    )
+
+    assert result.status is GatewayStatus.INVALID_REQUEST
+
+
+def test_gateway_binds_canonical_request_id_before_executor():
+    seen = []
+
+    class RecordingExecutor:
+        def execute(self, execution_request):
+            seen.append(execution_request.request_id)
+            return ExecutionResult(accepted=True, message="ok", external_id="demo-1")
+
+    gateway = ExecutionGateway(RecordingExecutor(), KillSwitch())
+
+    result = gateway.execute("req-canonical", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert seen == ["req-canonical"]
+
+
+def test_gateway_reserves_shared_ledger_before_demo_dispatch(tmp_path):
+    from execution.execution_ledger import ExecutionLedger
+
+    path = tmp_path / "ledger.json"
+    executor = PaperExecutor()
+    first = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+    second = ExecutionGateway(executor, KillSwitch(), ledger=ExecutionLedger(path))
+
+    first_result = first.execute("req-shared", request())
+    second_result = second.execute("req-shared", request())
+
+    assert first_result.status is GatewayStatus.ACCEPTED
+    assert second_result.status is GatewayStatus.DUPLICATE
+    assert len(executor.executions()) == 1
+
+
+def test_gateway_demo_acceptance_transitions_reserved_ledger_to_accepted(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-terminal-demo", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert ledger.status("req-terminal-demo") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger.external_reference_required("req-terminal-demo") is False
+
+
+def test_gateway_does_not_reserve_ledger_when_lifecycle_already_pending(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_ledger import ExecutionLedger
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "req-inconsistent",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+            "estado pré-existente",
+        )
+    )
+    executor = PaperExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger, lifecycle=lifecycle)
+
+    result = gateway.execute("req-inconsistent", request())
+
+    assert result.status is GatewayStatus.DUPLICATE
+    assert ledger.status("req-inconsistent") is None
+    assert executor.executions() == ()
