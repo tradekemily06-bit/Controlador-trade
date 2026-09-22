@@ -66,6 +66,13 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, amount=0.01):
     )
 
 
+def test_adapter_declares_demo_only_capability():
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=FakeMT5())
+
+    assert adapter.adapter_id == "icmarkets-mt5-demo"
+    assert adapter.supports_real_execution is False
+
+
 def test_demo_buy_is_sent_after_order_check():
     fake = FakeMT5()
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
