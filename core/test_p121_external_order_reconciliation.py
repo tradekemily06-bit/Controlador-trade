@@ -120,6 +120,7 @@ def test_reconcile_request_requires_durable_external_id(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
     ledger.reserve("req-no-id")
+    ledger.mark_unknown("req-no-id")
     lifecycle.put(
         ExecutionLifecycleRecord(
             "req-no-id", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
