@@ -330,6 +330,8 @@ class RealExecutionGateway:
             raise ValueError("evidência externa exige evidence_id")
         if not isinstance(evidence_source, str) or not evidence_source.strip():
             raise ValueError("evidence_source da evidência externa é obrigatório")
+        if not isinstance(executed, bool):
+            raise ValueError("executed da reconciliação REAL deve ser booleano")
         verifier = self._reconciliation_evidence_verifier
         if verifier is None:
             raise RuntimeError("autoridade de evidência REAL não configurada; reconciliação bloqueada")
