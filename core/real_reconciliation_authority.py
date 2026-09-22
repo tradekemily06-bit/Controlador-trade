@@ -48,6 +48,8 @@ class BrokerReconciliationEvidenceAuthority:
         executed: bool,
     ) -> bool:
         values = (request_id, evidence_id, evidence_source, broker_id, symbol)
+        if not isinstance(executed, bool):
+            return False
         if any(not isinstance(value, str) or not value.strip() for value in values):
             return False
         request_id = request_id.strip()
