@@ -463,6 +463,11 @@ def test_real_monitoring_rejects_cross_broker_observation(tmp_path: Path):
     ledger.reserve("cross-broker", broker_id="broker-a")
     ledger.attach_external_id("cross-broker", "ext-1")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    lifecycle.put(
+        ExecutionLifecycleRecord(
+            "cross-broker", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)
+        )
+    )
 
     try:
         ExternalOrderReconciliationBoundary().reconcile_request(
