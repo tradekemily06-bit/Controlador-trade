@@ -90,6 +90,22 @@ class RealExecutionGateway:
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
 
+        # A durable Lifecycle record is authoritative evidence that this request already
+        # has an execution cycle. Never create a fresh Ledger reservation on top of
+        # PENDING/UNKNOWN/terminal Lifecycle state, even if the Ledger is missing.
+        if self._lifecycle is not None:
+            existing_lifecycle = self._lifecycle.get(request_id)
+            if existing_lifecycle is not None:
+                if existing_lifecycle.state is ExecutionLifecycleState.UNKNOWN:
+                    return RealGatewayResult(
+                        RealGatewayStatus.UNKNOWN,
+                        "Lifecycle UNKNOWN requer reconciliação explícita; novo dispatch REAL bloqueado.",
+                    )
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "request_id já possui ciclo Lifecycle; novo dispatch REAL recusado.",
+                )
+
         current_status = self._ledger.status(request_id)
         if current_status is not None:
             self._processed_request_ids.add(request_id)
@@ -103,7 +119,17 @@ class RealExecutionGateway:
         try:
             self._ledger.reserve(request_id, broker_id=broker.strip())
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+                try:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, datetime.now(timezone.utc)))
+                except (OSError, ValueError) as exc:
+                    try:
+                        self._ledger.mark_unknown(request_id)
+                    except (OSError, ValueError):
+                        pass
+                    return RealGatewayResult(
+                        RealGatewayStatus.BLOCKED,
+                        f"ciclo Lifecycle não pôde ser iniciado com segurança; dispatch REAL não realizado: {exc}",
+                    )
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
