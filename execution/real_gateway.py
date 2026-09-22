@@ -6,6 +6,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.kill_switch import KillSwitch
+from core.models import Signal
 from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -60,6 +61,8 @@ class RealExecutionGateway:
         if not isinstance(request.amount, (int, float)) or not math.isfinite(request.amount) or request.amount <= 0:
             return False
         if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+            return False
+        if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return False
         return True
 
