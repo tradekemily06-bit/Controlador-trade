@@ -45,7 +45,7 @@ def test_adapter_gateway_checks_availability_before_execution():
 def test_adapter_gateway_delegates_only_to_available_adapter():
     adapter = FakeAdapter()
 
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
 
     assert result.accepted is True
     assert result.execution is not None
@@ -56,7 +56,7 @@ def test_adapter_gateway_delegates_only_to_available_adapter():
 def test_adapter_gateway_handles_adapter_exception_fail_closed():
     adapter = FakeAdapter(error=True)
 
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
 
     assert result.accepted is False
     assert result.execution is None
@@ -67,7 +67,7 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
 def test_adapter_gateway_rejects_invalid_adapter_result():
     adapter = FakeAdapter(result="invalid")
 
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
 
     assert result.accepted is False
     assert result.execution is None
@@ -86,7 +86,7 @@ def test_adapter_gateway_unknown_broker_does_not_execute():
 def test_adapter_gateway_blocks_real_without_explicit_opt_in():
     adapter = FakeAdapter()
     adapter.supports_real_execution = False
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
     assert result.accepted is False
     assert adapter.calls == 0
 
@@ -94,7 +94,7 @@ def test_adapter_gateway_blocks_real_without_explicit_opt_in():
 def test_adapter_gateway_rejects_accepted_result_without_external_id():
     adapter = FakeAdapter(result=ExecutionResult(True, "accepted", None))
 
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
 
     assert result.accepted is False
     assert result.execution is not None
