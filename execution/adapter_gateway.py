@@ -24,7 +24,7 @@ class BrokerAdapterGateway:
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
-    def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
+    def execute(self, broker: str, request: ExecutionRequest, *, expected_adapter_id: str | None = None) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
         except BrokerRegistryError as exc:
@@ -38,6 +38,14 @@ class BrokerAdapterGateway:
         if not available:
             return AdapterExecutionResult(False, "adapter indisponível; execução não encaminhada.")
 
+        if request.mode.value == "REAL":
+            if not isinstance(expected_adapter_id, str) or not expected_adapter_id.strip():
+                return AdapterExecutionResult(False, "execução REAL exige adapter_id autorizado.")
+            actual_adapter_id = getattr(adapter, "adapter_id", None)
+            if not isinstance(actual_adapter_id, str) or not actual_adapter_id.strip():
+                return AdapterExecutionResult(False, "adapter REAL sem identidade explícita; dispatch bloqueado.")
+            if actual_adapter_id.strip() != expected_adapter_id.strip():
+                return AdapterExecutionResult(False, "adapter REAL diferente do adapter autorizado; dispatch bloqueado.")
         if request.mode.value == "REAL" and getattr(adapter, "supports_real_execution", False) is not True:
             return AdapterExecutionResult(
                 False,
