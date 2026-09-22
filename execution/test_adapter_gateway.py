@@ -5,6 +5,7 @@ from core.models import Signal
 
 
 class FakeAdapter:
+    adapter_id = "fake-adapter"
     def __init__(self, available=True, result=None, error=False):
         self.available = available
         self.supports_real_execution = True
@@ -35,7 +36,7 @@ def gateway_with(adapter):
 def test_adapter_gateway_checks_availability_before_execution():
     adapter = FakeAdapter(available=False)
 
-    result = gateway_with(adapter).execute("fake", request())
+    result = gateway_with(adapter).execute("fake", request(), expected_adapter_id="fake-adapter")
 
     assert result.accepted is False
     assert adapter.calls == 0
