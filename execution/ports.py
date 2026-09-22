@@ -35,6 +35,7 @@ class ExecutionPort(Protocol):
 
 
 class BrokerAdapter(Protocol):
+    adapter_id: str
     supports_real_execution: bool
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
