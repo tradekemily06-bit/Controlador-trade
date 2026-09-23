@@ -51,6 +51,8 @@ class ExecutionLedger:
         if isinstance(payload, list):
             if any(not isinstance(item, str) or not item.strip() for item in payload):
                 raise ValueError("ledger de execução inválido.")
+            if len(payload) != len(set(payload)):
+                raise ValueError("ledger de execução inválido.")
             return {item: ExecutionLedgerStatus.ACCEPTED for item in payload}
         if not isinstance(payload, dict):
             raise ValueError("ledger de execução inválido.")
