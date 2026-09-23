@@ -144,7 +144,11 @@ class EcosystemService:
             raise ValueError("duration_seconds deve ser inteiro positivo")
         rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
         decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
-        if decision is not None and decision.signal != selected_signal.value:
+        if decision is None:
+            raise ValueError("decision_id é obrigatório: a execução deve estar vinculada a uma decisão registrada")
+        if not decision.is_actionable:
+            raise ValueError("a decisão vinculada não está confirmada como COMPRA/VENDA")
+        if decision.signal != selected_signal.value:
             raise ValueError("decision_id não corresponde ao sinal selecionado")
         if decision is not None and decision.symbol and decision.symbol != symbol.strip():
             raise ValueError("decision_id não corresponde ao símbolo selecionado")
