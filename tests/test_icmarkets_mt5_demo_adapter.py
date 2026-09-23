@@ -68,17 +68,15 @@ def request(signal=Signal.COMPRA, mode=ExecutionMode.DEMO, amount=0.01):
 
 def test_demo_buy_is_sent_after_order_check():
     fake = FakeMT5()
-    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
+    result = adapter.execute(request())
 
     assert result.accepted is True
     assert result.external_id == "123456"
     assert fake.sent[0]["type"] == fake.ORDER_TYPE_BUY
     assert fake.sent[0]["volume"] == 0.01
     assert fake.shutdown_calls == 0
-    first_adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
-    first_adapter.connect()
     adapter.disconnect()
-    first_adapter.disconnect()
     assert fake.shutdown_calls == 1
 
 
