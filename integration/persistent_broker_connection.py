@@ -21,6 +21,8 @@ class PersistentBrokerConnectionRuntime:
 
     A manual disconnect is a persistent local latch for the runtime process.
     Reconnect checks happen automatically until the user explicitly disconnects.
+    Adapter connect/disconnect calls share one lifecycle lock so a terminal
+    cannot be torn down concurrently with initialization.
     """
 
     def __init__(self, adapter: BrokerAdapter, *, poll_seconds: float = 5.0) -> None:
@@ -32,7 +34,7 @@ class PersistentBrokerConnectionRuntime:
         self._poll_seconds = float(poll_seconds)
         self._stop = threading.Event()
         self._lock = threading.Lock()
-        self._connect_lock = threading.Lock()
+        self._adapter_lifecycle_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._user_disconnected = False
         self._available = False
@@ -50,7 +52,7 @@ class PersistentBrokerConnectionRuntime:
                 return
 
         connected = False
-        with self._connect_lock:
+        with self._adapter_lifecycle_lock:
             if callable(connect):
                 try:
                     connected = bool(connect())
@@ -63,10 +65,11 @@ class PersistentBrokerConnectionRuntime:
                 if connected:
                     disconnect = getattr(self._adapter, "disconnect", None)
                     if callable(disconnect):
-                        try:
-                            disconnect()
-                        except Exception:
-                            pass
+                        with self._adapter_lifecycle_lock:
+                            try:
+                                disconnect()
+                            except Exception:
+                                pass
                 return
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -86,10 +89,11 @@ class PersistentBrokerConnectionRuntime:
             self._generation += 1
         disconnect = getattr(self._adapter, "disconnect", None)
         if callable(disconnect):
-            try:
-                disconnect()
-            except Exception:
-                pass
+            with self._adapter_lifecycle_lock:
+                try:
+                    disconnect()
+                except Exception:
+                    pass
 
     def status(self) -> BrokerConnectionStatus:
         with self._lock:
