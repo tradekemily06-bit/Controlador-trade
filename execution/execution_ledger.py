@@ -161,6 +161,10 @@ class ExecutionLedger:
     def records(self) -> tuple[str, ...]:
         return self._read_locked(lambda: tuple(sorted(self._states)))
 
+    def snapshot(self) -> dict[str, ExecutionLedgerStatus]:
+        """Return one consistent persisted snapshot of every ledger state."""
+        return self._read_locked(lambda: dict(self._states))
+
     def _read_locked(self, reader):
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
