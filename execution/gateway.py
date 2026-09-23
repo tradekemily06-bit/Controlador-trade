@@ -88,7 +88,7 @@ class ExecutionGateway:
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada", decision_id=request.decision_id, symbol=request.symbol, signal=request.signal.value, amount=request.amount, mode=request.mode.value))
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
@@ -104,7 +104,7 @@ class ExecutionGateway:
 
         if not result.accepted:
             if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message, decision_id=request.decision_id, symbol=request.symbol, signal=request.signal.value, amount=request.amount, mode=request.mode.value, external_id=result.external_id))
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
@@ -115,7 +115,7 @@ class ExecutionGateway:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
         if self._lifecycle is not None:
             try:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message, decision_id=request.decision_id, symbol=request.symbol, signal=request.signal.value, amount=request.amount, mode=request.mode.value, external_id=result.external_id))
             except (OSError, ValueError) as exc:
                 self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
