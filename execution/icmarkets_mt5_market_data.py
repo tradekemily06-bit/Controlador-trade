@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from core.p122_broker_market_data import BrokerMarketDataPort, BrokerMarketDataRequest
+from execution.mt5_session import MT5SessionConflict, coordinator_for
 from data.models import Candle
 from data.normalizer import normalize_candle
 
@@ -33,6 +34,9 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
     def __init__(self, mt5_module: Any = None) -> None:
         self._mt5 = mt5_module
         self._connected = False
+        self._session = coordinator_for(self._mt5) if self._mt5 is not None else None
+        self._session_module = self._mt5
+        self._owner = f"market-data:{id(self)}"
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -43,6 +47,9 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
                     "MetaTrader5 não instalado; este adapter precisa de um runtime com MT5."
                 ) from exc
             self._mt5 = mt5
+        if self._session_module is None:
+            self._session_module = self._mt5
+            self._session = coordinator_for(self._session_module)
         return self._mt5
 
     def _timeframe(self, timeframe: str) -> Any:
@@ -65,13 +72,16 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         mt5 = self._module()
         if self._connected:
             return True
-        self._connected = bool(mt5.initialize())
+        try:
+            self._connected = self._session.acquire(mt5, mode="DEMO", owner=self._owner)
+        except MT5SessionConflict:
+            self._connected = False
         return self._connected
 
     def disconnect(self) -> None:
         if self._connected:
             try:
-                self._module().shutdown()
+                self._session.release(self._module(), owner=self._owner)
             finally:
                 self._connected = False
 
@@ -79,7 +89,8 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         try:
             if not self.connect():
                 return False
-            account = self._module().account_info()
+            with self._session.operation(self._module(), mode="DEMO", owner=self._owner):
+                account = self._module().account_info()
             return account is not None and self._is_demo_account(account, self._module())
         except Exception:
             self.disconnect()
@@ -95,7 +106,8 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
-            account = mt5.account_info()
+            with self._session.operation(mt5, mode="DEMO", owner=self._owner):
+                account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5MarketDataError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
 
