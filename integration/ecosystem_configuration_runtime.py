@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.ecosystem_image_store import EcosystemImageStore
+from core.leverage_operation import LeverageRequest, assess_leverage
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore, EcosystemUseMode
 from core.models import AnalysisResult, Signal
@@ -96,6 +97,34 @@ class ConfiguredEcosystemService(EcosystemService):
     def update_notification_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
+
+    def assess_leverage(self, payload: dict[str, Any]) -> dict[str, Any]:
+        request = LeverageRequest(
+            request_id=str(payload.get("request_id", "ui-leverage")),
+            profile_id=str(payload.get("profile_id", "")),
+            symbol=str(payload.get("symbol", "")),
+            requested_leverage=payload.get("requested_leverage", 0),
+            capital_allocated=payload.get("capital_allocated", 0),
+            quantity=payload.get("quantity", 0),
+            price=payload.get("price", 0),
+            stop_distance=payload.get("stop_distance"),
+            value_per_price_unit=payload.get("value_per_price_unit"),
+            maximum_loss=payload.get("maximum_loss"),
+            environment="DEMO",
+        )
+        result = assess_leverage(request)
+        return {
+            "request_id": result.request_id,
+            "profile_id": result.profile_id,
+            "status": result.status.value,
+            "exposure": str(result.exposure) if result.exposure is not None else None,
+            "margin_required": str(result.margin_required) if result.margin_required is not None else None,
+            "loss_at_stop": str(result.loss_at_stop) if result.loss_at_stop is not None else None,
+            "loss_ratio": str(result.loss_ratio) if result.loss_ratio is not None else None,
+            "reasons": list(result.reasons),
+            "scoped_block": result.scoped_block,
+            "execution_authorized": False,
+        }
 
     def save_ecosystem_image(self, kind: str, payload: bytes, mime: str) -> str:
         if self.images is None:
