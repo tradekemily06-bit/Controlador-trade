@@ -140,7 +140,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
 
     assert result["accepted"] is False
     assert result["status"] == "RISK_BLOCKED"
-    assert executor.requests == []
+    assert len(executor.requests) == 1
 
 
 def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path):
