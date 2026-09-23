@@ -9,6 +9,7 @@ from core.p114_real_safety_gate import RealSafetyReport
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+from execution.external_execution_registry import ExternalExecutionRegistry
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -29,16 +30,19 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None, external_registry: ExternalExecutionRegistry | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle inválido.")
+        if external_registry is not None and not isinstance(external_registry, ExternalExecutionRegistry):
+            raise ValueError("external_registry inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._external_registry = external_registry
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -147,6 +151,8 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
+            if self._external_registry is not None:
+                self._external_registry.bind(request_id, broker, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
             if self._lifecycle is not None:
                 from datetime import datetime, timezone
