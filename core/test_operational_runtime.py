@@ -72,3 +72,29 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "enabled": True,
         "reason": "teste de segurança",
     }
+
+def test_terminal_operation_checkpoint_persists_across_runtime_rebuild(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    assert runtime.checkpoint_operation("req-001") is True
+
+    checkpoint = runtime.checkpoint_store.load()
+    assert checkpoint is not None
+    assert checkpoint.last_cycle == 1
+    assert checkpoint.last_request_id == "req-001"
+    assert checkpoint.session_id == runtime.session_id
+
+    rebuilt = build_operational_runtime(tmp_path)
+    assert rebuilt.recovery.assess().state.value == "SAFE_TO_RESUME"
+    assert rebuilt.checkpoint_store.load().last_cycle == 1
+    assert rebuilt.checkpoint_store.load().last_request_id == "req-001"
+    assert rebuilt.checkpoint_store.load().session_id != runtime.session_id
+
+
+def test_checkpoint_cycles_increase_without_replaying_execution(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.checkpoint_operation("req-001")
+    runtime.checkpoint_operation("req-002")
+
+    checkpoint = runtime.checkpoint_store.load()
+    assert checkpoint.last_cycle == 2
+    assert checkpoint.last_request_id == "req-002"
