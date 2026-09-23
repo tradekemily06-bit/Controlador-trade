@@ -43,3 +43,15 @@ def test_preferences_cannot_enable_real_or_autonomy():
         pass
     else:
         raise AssertionError("autonomy must remain outside preferences")
+
+
+def test_use_mode_and_safe_preferences_persist_without_granting_authority(tmp_path):
+    from core.ecosystem_preferences import EcosystemPreferencesStore, EcosystemUseMode
+    db = tmp_path / "preferences.sqlite3"
+    first = EcosystemPreferencesStore(database_path=str(db))
+    first.update(use_mode=EcosystemUseMode.STUDY, trader_psychology_enabled=False)
+    second = EcosystemPreferencesStore(database_path=str(db))
+    assert second.preferences.use_mode is EcosystemUseMode.STUDY
+    assert second.preferences.trader_psychology_enabled is False
+    assert second.preferences.real_execution_enabled is False
+    assert second.preferences.autonomous_operation_enabled is False
