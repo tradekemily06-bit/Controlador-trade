@@ -135,6 +135,8 @@ class EcosystemService:
         decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
         if decision is not None and decision.signal != selected_signal.value:
             raise ValueError("decision_id não corresponde ao sinal selecionado")
+        if decision is not None and decision.symbol and decision.symbol != symbol.strip():
+            raise ValueError("decision_id não corresponde ao símbolo selecionado")
         request = ExecutionRequest(
             symbol=symbol.strip(),
             signal=selected_signal,
