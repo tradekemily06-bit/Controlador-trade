@@ -132,12 +132,12 @@ class MT5RealAdapter:
 
         try:
             with self._session.operation(mt5, mode="REAL", owner=self._owner):
-                account = mt5.account_info()
-            if account is None or not self._is_real_account(account, mt5):
-                return ExecutionResult(False, "conta MT5 não confirmada como REAL; ordem bloqueada.")
-            if not self._server_matches(account):
-                return ExecutionResult(False, "servidor MT5 não corresponde ao servidor REAL configurado.")
-
+                    account = mt5.account_info()
+                    if account is None or not self._is_real_account(account, mt5):
+                        return ExecutionResult(False, "conta MT5 não confirmada como REAL; ordem bloqueada.")
+                    if not self._server_matches(account):
+                        return ExecutionResult(False, "servidor MT5 não corresponde ao servidor REAL configurado.")
+    
             symbol = self.config.symbol or request.symbol
             if not isinstance(symbol, str) or not symbol.strip():
                 return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
