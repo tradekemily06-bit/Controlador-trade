@@ -130,7 +130,7 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
-        body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
+        body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"))
         if path == WEB_DIR / "index.html":
             notification_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
             notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
