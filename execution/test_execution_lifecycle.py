@@ -62,3 +62,24 @@ def test_lifecycle_second_process_view_refreshes_from_disk(tmp_path):
     first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now, "uncertain"))
     assert second.get("req-1").state is ExecutionLifecycleState.UNKNOWN
     assert second.records()[0].state is ExecutionLifecycleState.UNKNOWN
+
+
+def test_lifecycle_duplicate_request_ids_fail_closed(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc).isoformat()
+    path.write_text(
+        '[{"request_id":"dup","state":"PENDING","updated_at":"' + now + '"},'
+        '{"request_id":"dup","state":"UNKNOWN","updated_at":"' + now + '"}]',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="ciclo de execução persistido inválido"):
+        ExecutionLifecycleStore(path)
+
+
+def test_lifecycle_nonfinite_amount_fails_closed(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValueError, match="amount inválido"):
+        ExecutionLifecycleStore(path).put(
+            ExecutionLifecycleRecord("req-nan", ExecutionLifecycleState.PENDING, now, amount=float("nan"))
+        )
