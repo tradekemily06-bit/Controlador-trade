@@ -13,6 +13,9 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from core.p122_broker_market_data import BrokerMarketDataBoundary
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -24,6 +27,21 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+
+MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_markets_mt5_demo").strip().lower()
+MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
+if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo":
+    market_adapter = ICMarketsMT5DemoMarketDataAdapter()
+    market_boundary = BrokerMarketDataBoundary(market_adapter, "IC_MARKETS_MT5_DEMO")
+    MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
+        market_boundary,
+        OPERATIONAL_RUNTIME.market_data,
+        MarketDataRuntimeConfig(
+            symbol=EXECUTION_SYMBOL or "EURUSD",
+            timeframe=os.environ.get("CONTROLADOR_EXECUTION_TIMEFRAME", "5m"),
+        ),
+    )
+    MARKET_DATA_RUNTIME.start()
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -115,7 +133,22 @@ def application(environ, start_response):
         if path == "/api/health" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+            status = SERVICE.system_status()
+            if MARKET_DATA_RUNTIME is not None:
+                status["market_data_runtime"] = MARKET_DATA_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
+        if path == "/api/market-data" and method == "GET":
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                MARKET_DATA_RUNTIME.status() if MARKET_DATA_RUNTIME is not None else {
+                    "runtime": "DISABLED",
+                    "health": "NOT_CONNECTED",
+                    "safe_for_analysis": False,
+                },
+                request_id,
+                environ,
+            )
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
@@ -162,7 +195,10 @@ def application(environ, start_response):
         if path == "/api/news" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
         if path == "/api/connections" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
+            connections = SERVICE.connections()
+            if MARKET_DATA_RUNTIME is not None:
+                connections["market_data"] = MARKET_DATA_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, connections, request_id, environ)
         if path == "/api/learning" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.learning_summary(), request_id, environ)
         if path == "/api/learning/resources" and method == "GET":
