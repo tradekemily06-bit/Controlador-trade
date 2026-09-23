@@ -38,10 +38,10 @@ class OperationalRuntime:
     risk_manager: RiskManager
 
 
-def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None) -> OperationalRuntime:
+def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None, kill_switch: KillSwitch | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
-    kill_switch = KillSwitch()
+    kill_switch = kill_switch or KillSwitch()
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
