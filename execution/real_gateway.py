@@ -57,6 +57,12 @@ class RealExecutionGateway:
                     state=state,
                     updated_at=datetime.now(timezone.utc),
                     message=message,
+                    decision_id=None if request is None else request.decision_id,
+                    symbol=None if request is None else request.symbol,
+                    signal=None if request is None else request.signal.value,
+                    amount=None if request is None else request.amount,
+                    mode=None if request is None else request.mode.value,
+                    external_id=external_id,
                 )
             )
             return True
