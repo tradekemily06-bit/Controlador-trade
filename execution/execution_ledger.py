@@ -74,6 +74,8 @@ class ExecutionLedger:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
