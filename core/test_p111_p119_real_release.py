@@ -286,6 +286,26 @@ def test_real_accepted_lifecycle_projection_failure_does_not_downgrade_ledger(tm
     assert ledger.status("projection-failure") is ExecutionLedgerStatus.ACCEPTED
     assert external.get("projection-failure") == ("fake", "external-1")
 
+def test_real_uncertain_execution_result_is_not_treated_as_rejection(tmp_path: Path):
+    class UncertainAdapter(FakeAdapter):
+        def execute(self, request):
+            return ExecutionResult(False, "accepted but identity unavailable", None, True)
+
+    registry = BrokerRegistry()
+    registry.register("fake", UncertainAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="uncertain-result", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("uncertain-result") is ExecutionLedgerStatus.UNKNOWN
+
+
 def test_real_unknown_can_be_resolved_by_matching_external_evidence(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve("evidence")
