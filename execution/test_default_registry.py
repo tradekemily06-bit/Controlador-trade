@@ -38,7 +38,7 @@ def test_ic_markets_demo_gateway_is_composed_without_connecting(tmp_path):
     assert gateway is not None
 
 
-def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
+def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access(tmp_path):
     class UnusedMT5:
         def initialize(self):
             raise AssertionError("REAL must be blocked before MT5 access")
@@ -68,6 +68,7 @@ def test_ic_markets_demo_gateway_kill_switch_blocks_before_adapter(tmp_path):
     gateway = build_ic_markets_mt5_demo_gateway(
         mt5_module=UnusedMT5(),
         kill_switch=kill_switch,
+        runtime_root=tmp_path,
     )
     request = ExecutionRequest(
         symbol="EURUSD",
