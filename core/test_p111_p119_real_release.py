@@ -39,6 +39,15 @@ class NoExternalIdAdapter:
         return ExecutionResult(True, "accepted but reference missing", None)
 
 
+
+
+class _FailingLifecycle:
+    def get(self, request_id):
+        return None
+
+    def put(self, record):
+        raise OSError("lifecycle write failed")
+
 class UnknownAdapter:
     def is_available(self):
         return True
@@ -249,6 +258,26 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
 
+
+
+
+def test_real_accepted_lifecycle_projection_failure_does_not_downgrade_ledger(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    lifecycle = _FailingLifecycle()
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, external)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="projection-failure", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert ledger.status("projection-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert external.get("projection-failure") == ("fake", "external-1")
 
 def test_real_unknown_can_be_resolved_by_matching_external_evidence(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
