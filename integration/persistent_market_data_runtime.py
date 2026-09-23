@@ -85,12 +85,6 @@ class PersistentMarketDataRuntime:
             }
 
     def _run(self) -> None:
-        provider = getattr(self._boundary, "_provider", None)
-        if provider is not None:
-            connect = getattr(provider, "connect", None)
-            if callable(connect):
-                try: connect()
-                except Exception: pass
         request = BrokerMarketDataRequest(
             symbol=self._config.symbol,
             timeframe=self._config.timeframe,
