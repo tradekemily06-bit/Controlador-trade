@@ -30,9 +30,10 @@ class LearningStore:
     def __init__(self, database_path: str | None = None) -> None:
         self.database_path = database_path if database_path is not None else (
             os.environ.get("CONTROLADOR_LEARNING_DB")
-            or os.environ.get("CONTROLADOR_DECISION_DB")
+            or str(Path(".runtime") / "learning.sqlite3")
         )
         self._lock = Lock()
+        self.health = "DISABLED" if not self.database_path else "UNKNOWN"
         if self.database_path:
             self._initialize()
 
@@ -49,8 +50,9 @@ class LearningStore:
                     "CREATE TABLE IF NOT EXISTS learning_state "
                     "(state_key TEXT PRIMARY KEY, payload TEXT NOT NULL)"
                 )
+            self.health = "HEALTHY"
         except (OSError, sqlite3.Error):
-            self.database_path = None
+            self.health = "UNAVAILABLE"
 
     def save(
         self,
@@ -83,8 +85,9 @@ class LearningStore:
                     ("ecosystem", json.dumps(state, ensure_ascii=False, separators=(",", ":"))),
                 )
         except (sqlite3.Error, TypeError, ValueError):
-            # Learning persistence must never authorize, retry, or alter trading.
-            return
+            # Never overwrite or reconstruct uncertain pedagogical history. This
+            # failure is control-plane only and must never affect execution.
+            self.health = "UNAVAILABLE"
 
     def load(self) -> tuple[
         dict[str, LearningSource],
