@@ -9,7 +9,7 @@ from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
 from core.risk_manager import RiskDecision
@@ -165,6 +165,16 @@ class ExecutionGateway:
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+        # Every uncertain broker outcome must be durable even when one of the
+        # projection stores is absent. UNKNOWN is the terminal safety boundary
+        # that prevents an automatic replay after restart.
+        if self._ledger is not None:
+            try:
+                status = self._ledger.status(request_id)
+                if status is ExecutionLedgerStatus.RESERVED:
+                    self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
         if self._lifecycle is None:
             return
         try:
