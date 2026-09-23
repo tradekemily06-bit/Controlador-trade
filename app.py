@@ -131,6 +131,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.notification_summary(), request_id, environ)
         if path == "/api/notifications/all" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
+        if path == "/api/journal" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.daily_journal(_query_limit(environ, 100)), request_id, environ)
         if path == "/api/updates" and method == "POST":
             authorized, reason = _authorize_internal_update(environ)
             if not authorized:
