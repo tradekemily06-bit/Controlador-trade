@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 import os
 import threading
 from dataclasses import dataclass
@@ -93,7 +94,7 @@ class ExecutionLifecycleStore:
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        with self._thread_lock:
+        with self._thread_lock, self._file_lock():
             self._load()
             previous = self._records.get(record.request_id)
             if previous is not None:
@@ -102,8 +103,7 @@ class ExecutionLifecycleStore:
                 if not transition.allowed:
                     raise ValueError(transition.reason)
             self._records[record.request_id] = record
-            self._save_locked()
-
+            self._write_locked()
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
@@ -112,7 +112,7 @@ class ExecutionLifecycleStore:
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
-        with self._thread_lock:
+        with self._thread_lock, self._file_lock():
             self._load()
             current = self._records.get(request_id)
             if current is None:
@@ -122,13 +122,13 @@ class ExecutionLifecycleStore:
             record = ExecutionLifecycleRecord(request_id, state, updated_at, message, decision_id=current.decision_id, symbol=current.symbol, signal=current.signal, amount=current.amount, mode=current.mode, external_id=current.external_id)
             self._validate(record)
             self._records[request_id] = record
-            self._save_locked()
+            self._write_locked()
             return record
-
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         return tuple(self._records[key] for key in sorted(self._records))
 
-    def _save_locked(self) -> None:
+    @contextmanager
+    def _file_lock(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with lock_path.open("a+b") as lock_file:
@@ -144,16 +144,19 @@ class ExecutionLifecycleStore:
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
                     locked = True
-                payload = [
-                    {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
-                    for r in self.records()
-                ]
-                temporary = self.path.with_name(f".{self.path.name}.tmp")
-                temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-                os.replace(temporary, self.path)
+                yield
             finally:
                 if fcntl is not None and locked:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
                 elif msvcrt is not None and locked:
                     lock_file.seek(0)
                     msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+
+    def _write_locked(self) -> None:
+        payload = [
+            {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
+            for r in self.records()
+        ]
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.path)
