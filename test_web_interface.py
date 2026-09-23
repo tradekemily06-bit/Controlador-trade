@@ -103,5 +103,26 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertIn("image/svg+xml", headers.get("Content-Type", ""))
         self.assertIn(b"<svg", body)
 
+    def test_leverage_assessment_is_risk_only(self):
+        status, _, body = self.request(
+            "/api/leverage/assess",
+            method="POST",
+            payload={
+                "request_id": "ui-test",
+                "profile_id": "p1",
+                "symbol": "EURUSD",
+                "requested_leverage": 2,
+                "capital_allocated": 1000,
+                "quantity": 1,
+                "price": 100,
+                "stop_distance": 1,
+                "value_per_price_unit": 1,
+                "maximum_loss": 100,
+            },
+        )
+        self.assertEqual(status, "200 OK")
+        data = json.loads(body)
+        self.assertFalse(data["execution_authorized"])
+
 if __name__ == "__main__":
     unittest.main()
