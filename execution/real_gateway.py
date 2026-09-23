@@ -10,6 +10,7 @@ from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.external_execution_registry import ExternalExecutionRegistry
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -237,11 +238,43 @@ class RealExecutionGateway:
             )
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(
+        self,
+        request_id: str,
+        *,
+        observation: ExternalOrderObservation,
+    ) -> None:
+        """Reconcile only from explicit external evidence; never resubmits."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
+        if not isinstance(observation, ExternalOrderObservation):
+            raise ValueError("evidência externa obrigatória para reconciliação.")
+        binding = self._external_registry.get(request_id)
+        if binding is None:
+            raise ValueError(
+                "não existe external_id durável para vincular a evidência externa."
+            )
+        _broker, external_id = binding
+        if observation.external_id.strip() != external_id:
+            raise ValueError("external_id da evidência não corresponde ao request_id.")
+        if observation.status not in (
+            ExternalOrderStatus.EXECUTED,
+            ExternalOrderStatus.NOT_EXECUTED,
+        ):
+            raise ValueError(
+                "evidência externa ainda é PENDING/UNKNOWN; estado permanece incerto."
+            )
+
+        from datetime import datetime, timezone
+        executed = observation.status is ExternalOrderStatus.EXECUTED
         self._ledger.reconcile(request_id, executed=executed)
+        if self._lifecycle is not None:
+            self._lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED,
+                updated_at=datetime.now(timezone.utc),
+                message=observation.message,
+            )
