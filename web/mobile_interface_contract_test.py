@@ -67,6 +67,16 @@ def test_mobile_inputs_avoid_small_text_zoom_and_support_accessibility():
     assert "prefers-reduced-motion:reduce" in HTML
 
 
+def test_web_components_do_not_store_operational_state_in_browser_storage():
+    components = Path(__file__).parent / "components"
+    offenders = []
+    for script in components.glob("*.js"):
+        source = script.read_text(encoding="utf-8")
+        if "localStorage" in source or "sessionStorage" in source or "indexedDB" in source:
+            offenders.append(script.name)
+    assert offenders == []
+
+
 def test_onboarding_is_not_device_local_state():
     onboarding = (Path(__file__).parent / "components" / "onboarding.js").read_text(encoding="utf-8")
     assert "localStorage" not in onboarding
