@@ -62,6 +62,17 @@ class EcosystemService:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
+    def _current_risk_decision(self):
+        runtime = self.operational_runtime
+        if runtime is not None and runtime.risk_state_provider is not None:
+            try:
+                state = runtime.risk_state_provider()
+            except Exception as exc:
+                from core.risk_manager import RiskDecision
+                return RiskDecision(False, f"Estado operacional de risco indisponível: {type(exc).__name__}")
+            return self.risk.evaluate(state=state)
+        return self.risk.evaluate()
+
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
@@ -145,7 +156,7 @@ class EcosystemService:
             mode=ExecutionMode.DEMO,
             request_id=rid,
         )
-        risk_decision = self.risk.evaluate()
+        risk_decision = self._current_risk_decision()
         if not risk_decision.allowed:
             try:
                 self.operational_runtime.daily_journal.append(
@@ -321,7 +332,7 @@ class EcosystemService:
         return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": [asdict(item) for item in self.learning_attempts], "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True}
 
     def risk_status(self) -> dict[str, Any]:
-        decision = self.risk.evaluate()
+        decision = self._current_risk_decision()
         return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "UNCONFIGURED"}
 
     def news_status(self, limit: int = 10) -> dict[str, Any]:
