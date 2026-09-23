@@ -23,7 +23,7 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, preferences_path=RUNTIME_DIR / "ecosystem-preferences.json", image_directory=RUNTIME_DIR / "ecosystem-images")
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -91,12 +91,18 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
             onboarding_html = (WEB_DIR / "components" / "onboarding.html").read_text(encoding="utf-8").encode("utf-8")
             onboarding_js = (WEB_DIR / "components" / "onboarding.js").read_text(encoding="utf-8")
+            leverage_html = (WEB_DIR / "components" / "leverage-and-media.html").read_text(encoding="utf-8").encode("utf-8")
+            leverage_js = (WEB_DIR / "components" / "leverage-and-media.js").read_text(encoding="utf-8")
             notification_script = f'<script nonce="{script_nonce}">{notification_js}</script>'.encode("utf-8")
             onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
+            leverage_script = f'<script nonce="{script_nonce}">{leverage_js}</script>'.encode("utf-8")
             notification_mount = notification_html + notification_script
             onboarding_mount = onboarding_html + onboarding_script
+            leverage_mount = leverage_html + leverage_script
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
+            config_anchor = '<div class="section" id="config">Configurações</div>'.encode("utf-8")
+            body = body.replace(config_anchor, leverage_mount + config_anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
@@ -119,6 +125,32 @@ def application(environ, start_response):
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
+        if path == "/api/leverage/assess" and method == "POST":
+            data = _read_json(environ)
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.assess_leverage(data), request_id, environ)
+        if path == "/api/ecosystem-image" and method == "GET":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", ["profile"])[-1]
+            image = SERVICE.read_ecosystem_image(kind)
+            if image is None:
+                return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "imagem não configurada", "request_id": request_id}, request_id, environ)
+            body, content_type = image
+            headers = [("Content-Type", content_type), ("Content-Length", str(len(body))), ("Cache-Control", "no-store")]
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        if path == "/api/ecosystem-image" and method == "POST":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", [""])[-1]
+            raw_length = environ.get("CONTENT_LENGTH") or "0"
+            length = int(raw_length)
+            from core.ecosystem_image_store import EcosystemImageStore
+            if length <= 0 or length > EcosystemImageStore.MAX_BYTES:
+                raise ValueError("imagem deve ter entre 1 byte e 5 MB")
+            payload = environ["wsgi.input"].read(length)
+            if len(payload) != length:
+                raise ValueError("payload de imagem incompleto")
+            mime = SERVICE.save_ecosystem_image(kind, payload, str(environ.get("CONTENT_TYPE", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"saved": True, "content_type": mime, "request_id": request_id}, request_id, environ)
         if path == "/api/preferences" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
         if path == "/api/preferences" and method == "POST":
@@ -209,6 +241,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+        if path in {"/icons/icon.svg", "/apple-touch-icon.svg"} and method == "GET":
+            return _file_response(start_response, WEB_DIR / "icons" / "icon.svg", "image/svg+xml", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 

@@ -72,6 +72,63 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertEqual(data["symbol"], "EURUSD")
         self.assertEqual(data["timeframe"], "5m")
 
+    def test_ecosystem_image_round_trip_is_server_persisted(self):
+        body = b"demo-image-bytes"
+        captured = {}
+
+        def start_response(status, headers):
+            captured["status"] = status
+            captured["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/api/ecosystem-image",
+            "QUERY_STRING": "kind=profile",
+            "CONTENT_TYPE": "image/png",
+            "CONTENT_LENGTH": str(len(body)),
+            "wsgi.input": io.BytesIO(body),
+        }
+        response = b"".join(application(environ, start_response))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertTrue(json.loads(response)["saved"])
+
+        captured = {}
+
+        def start_response_get(status, headers):
+            captured["status"] = status
+            captured["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/api/ecosystem-image",
+            "QUERY_STRING": "kind=profile",
+            "CONTENT_TYPE": "",
+            "CONTENT_LENGTH": "0",
+            "wsgi.input": io.BytesIO(b""),
+        }
+        response = b"".join(application(environ, start_response_get))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertEqual(captured["headers"]["Content-Type"], "image/png")
+        self.assertEqual(response, body)
+
+    def test_index_mounts_existing_settings_media_component(self):
+        captured = {}
+
+        def start_response(status, headers):
+            captured["status"] = status
+
+        environ = {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/",
+            "QUERY_STRING": "",
+            "wsgi.input": io.BytesIO(b""),
+        }
+        response = b"".join(application(environ, start_response)).decode("utf-8")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('id="personalizacao-imagem"', response)
+        self.assertIn('id="ecosystemImage"', response)
+        self.assertIn("/api/ecosystem-image", response)
+
 
 if __name__ == "__main__":
     unittest.main()

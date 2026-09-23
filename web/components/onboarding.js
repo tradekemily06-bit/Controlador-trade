@@ -1,6 +1,5 @@
 (function () {
   "use strict";
-  const STORAGE_KEY = "controlador:first-use:onboarding-complete";
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[char]);
 
   async function refresh(force = false) {
@@ -9,7 +8,6 @@
     const completion = document.getElementById("onboardingCompletion");
     const close = document.getElementById("onboardingClose");
     if (!center || !steps || !completion) return;
-    if (!force && localStorage.getItem(STORAGE_KEY) === "true") return;
     try {
       const response = await fetch("/api/onboarding", { headers: { Accept: "application/json" } });
       if (!response.ok) throw new Error("onboarding indisponível");
@@ -19,7 +17,7 @@
       steps.innerHTML = guide.steps.map((step, index) => `<div class="item"><div class="label">${index + 1} · ${escapeHtml(step.location)}</div><strong>${escapeHtml(step.title)}</strong><div class="muted">${escapeHtml(step.purpose)}</div><div class="muted">${escapeHtml(step.action_hint)}</div></div>`).join("");
       completion.textContent = escapeHtml(guide.completion_message || "");
       center.classList.remove("hidden");
-      close?.addEventListener("click", () => { localStorage.setItem(STORAGE_KEY, "true"); center.classList.add("hidden"); }, { once: true });
+      close?.addEventListener("click", () => { center.classList.add("hidden"); }, { once: true });
     } catch (_) {
       center.classList.add("hidden");
     }
@@ -33,7 +31,7 @@
     const card = document.createElement("article");
     card.className = "card wide";
     card.id = "onboardingReopenControl";
-    card.innerHTML = '<div class="module-title">Modo de Usar</div><div class="muted">Reabra o guia de primeira utilização quando quiser. Ele é apenas educativo e não autoriza execução.</div><button class="btn small alt" id="onboardingReopen" type="button" style="margin-top:10px">ABRIR MODO DE USAR</button>';
+    card.innerHTML = '<div class="module-title">Modo de Usar</div><div class="muted">Reabra o guia de utilização quando quiser. Ele é apenas educativo e não autoriza execução.</div><button class="btn small alt" id="onboardingReopen" type="button" style="margin-top:10px">ABRIR MODO DE USAR</button>';
     grid.appendChild(card);
     document.getElementById("onboardingReopen")?.addEventListener("click", () => refresh(true));
   }
