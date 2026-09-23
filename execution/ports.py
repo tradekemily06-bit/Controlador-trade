@@ -20,6 +20,7 @@ class ExecutionRequest:
     duration_seconds: int
     mode: ExecutionMode
     request_id: str | None = None
+    decision_id: str | None = None
 
 
 @dataclass(frozen=True)
