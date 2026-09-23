@@ -83,7 +83,8 @@ def test_fetch_returns_normalized_completed_candles(rates):
     assert candles[0].close == 103.0
     assert candles[0].volume == 12.0
     assert candles[0].timestamp.tzinfo is not None
-    assert mt5.shutdown_called is True
+    assert mt5.shutdown_called is False
+    adapter.disconnect()
     assert mt5.selected == [("BTCUSD", True)]
 
 
@@ -96,7 +97,8 @@ def test_real_account_is_blocked_for_market_data(rates):
             BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
         )
 
-    assert mt5.shutdown_called is True
+    assert mt5.shutdown_called is False
+    adapter.disconnect()
 
 
 def test_unsupported_timeframe_is_rejected():
