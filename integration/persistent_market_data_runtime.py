@@ -95,6 +95,12 @@ class PersistentMarketDataRuntime:
                     self._last_success = snapshot.received_at
                     self._last_error = None
             except Exception as exc:
+                self._state.invalidate(
+                    source=self._boundary._source if hasattr(self._boundary, "_source") else "market_data_provider",
+                    symbol=self._config.symbol,
+                    timeframe=self._config.timeframe,
+                    message=f"falha ao atualizar dados de mercado: {type(exc).__name__}: {exc}",
+                )
                 with self._lock:
                     self._last_error = str(exc)
             self._stop.wait(self._config.poll_seconds)
