@@ -125,17 +125,13 @@ def test_real_disabled_never_reaches_adapter(tmp_path):
     runtime, connection, adapter = build_runtime(tmp_path, real_enabled=False)
     runtime.start()
     runtime.select_mode(ExecutionMode.REAL)
-    confirmation = runtime.request_confirmation(request_id="r3", phrase="CONFIRMO REAL")
     try:
-        result = runtime.execute_confirmed(
-            request_id="r3",
-            symbol="EURUSD",
-            signal=Signal.COMPRA,
-            amount=0.01,
-            duration_seconds=60,
-            confirmation_id=confirmation.confirmation_id,
-        )
-        assert result.status is RealGatewayStatus.BLOCKED
+        try:
+            runtime.request_confirmation(request_id="r3", phrase="CONFIRMO REAL")
+        except ValueError as exc:
+            assert "desabilitada" in str(exc)
+        else:
+            raise AssertionError("disabled REAL must reject confirmation")
         assert adapter.calls == 0
     finally:
         connection.user_disconnect()
