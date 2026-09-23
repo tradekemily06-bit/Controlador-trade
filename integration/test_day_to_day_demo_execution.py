@@ -107,6 +107,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
 
     decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
@@ -140,6 +141,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
     decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
         symbol="EURUSD",
@@ -172,6 +174,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
     decision = service.analyze({
         "score": 88,
         "confirmed": True,
