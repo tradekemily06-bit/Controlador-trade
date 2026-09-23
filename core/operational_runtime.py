@@ -11,6 +11,7 @@ from core.operation_memory import OperationMemory
 from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
+from core.risk_manager import RiskManager
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
@@ -34,6 +35,7 @@ class OperationalRuntime:
     market_data: MarketDataRuntimeState
     daily_journal: DailyOperationJournal
     risk_state_provider: Callable[[], OperationalState] | None
+    risk_manager: RiskManager
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None) -> OperationalRuntime:
@@ -57,15 +59,17 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         recovery=recovery,
     )
     selected_executor = executor or PaperExecutor()
+    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
+    provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
+    risk_manager = RiskManager()
     gateway = ExecutionGateway(
         selected_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        risk_check=lambda: risk_manager.evaluate(state=provider() if callable(provider) else None),
     )
-    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
-    daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
-    provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -77,4 +81,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         market_data=market_data,
         daily_journal=daily_journal,
         risk_state_provider=provider if callable(provider) else None,
+        risk_manager=risk_manager,
     )
