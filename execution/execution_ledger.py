@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from enum import Enum
 from pathlib import Path
 
@@ -9,6 +10,11 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -28,6 +34,7 @@ class ExecutionLedger:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._states: dict[str, ExecutionLedgerStatus] = {}
+        self._thread_lock = threading.RLock()
         self._load()
 
     def _load(self) -> None:
@@ -68,19 +75,35 @@ class ExecutionLedger:
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
-        """Serialize read/modify/write so two processes cannot reserve the same ID."""
+        """Serialize read/modify/write across threads and supported OS processes."""
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
-                mutation()
-                self._write()
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        with self._thread_lock:
+            with lock_path.open("a+b") as lock_file:
+                locked_with_os = False
+                try:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                        locked_with_os = True
+                    elif msvcrt is not None:
+                        # Windows has no fcntl. Lock one stable byte in a shared
+                        # sidecar file so separate processes cannot reserve the
+                        # same request_id concurrently.
+                        lock_file.seek(0)
+                        lock_file.write(b"0")
+                        lock_file.flush()
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                        locked_with_os = True
+                    self._load()
+                    mutation()
+                    self._write()
+                finally:
+                    if fcntl is not None and locked_with_os:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    elif msvcrt is not None and locked_with_os:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
