@@ -140,10 +140,14 @@ class ExecutionLifecycleStore:
             if previous is not None:
                 if previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
                     raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-                if previous.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED) and record.state is not ExecutionLifecycleState.UNKNOWN:
-                    raise ValueError("request_id já possui ciclo ativo; replay concorrente recusado.")
-                if previous.state is ExecutionLifecycleState.REJECTED and record.state is not ExecutionLifecycleState.UNKNOWN:
-                    raise ValueError("request_id já possui ciclo terminal; replay recusado.")
+                allowed = {
+                    ExecutionLifecycleState.PENDING: {ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED, ExecutionLifecycleState.UNKNOWN},
+                    ExecutionLifecycleState.ACCEPTED: {ExecutionLifecycleState.ACCEPTED},
+                    ExecutionLifecycleState.REJECTED: {ExecutionLifecycleState.REJECTED},
+                    ExecutionLifecycleState.UNKNOWN: {ExecutionLifecycleState.UNKNOWN},
+                }
+                if record.state not in allowed[previous.state]:
+                    raise ValueError("transição de lifecycle inválida; reconciliação explícita obrigatória.")
             self._records[record.request_id] = record
         self._mutate(mutation)
 
