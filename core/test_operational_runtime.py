@@ -72,3 +72,10 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "enabled": True,
         "reason": "teste de segurança",
     }
+
+
+def test_runtime_exposes_authoritative_runtime_directory(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+
+    assert runtime.runtime_dir == tmp_path
+    assert tmp_path.exists()
