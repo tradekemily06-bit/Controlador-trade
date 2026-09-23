@@ -1,6 +1,6 @@
 """User-facing ecosystem preferences kept separate from trading authority.
 
-Preferences control presentation, chart appearance, notifications and analysis
+Preferences control presentation, chart appearance, notifications and learning
 convenience. They never grant execution, risk override, autonomy or security
 permission.
 """
@@ -65,6 +65,7 @@ class EcosystemPreferences:
     candle: CandleAppearance = CandleAppearance()
     notifications: NotificationPreferences = NotificationPreferences()
     show_technical_details_by_default: bool = False
+    trader_psychology_enabled: bool = True
     autonomous_operation_enabled: bool = False
     real_execution_enabled: bool = False
 
@@ -106,6 +107,8 @@ class EcosystemPreferencesStore:
             raise ValueError("default_symbol is required")
         if not value.default_timeframe.strip():
             raise ValueError("default_timeframe is required")
+        if not isinstance(value.trader_psychology_enabled, bool):
+            raise ValueError("trader_psychology_enabled must be boolean")
         if value.autonomous_operation_enabled:
             raise ValueError("autonomous operation requires its dedicated authorization flow")
         if value.real_execution_enabled:
