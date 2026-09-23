@@ -64,15 +64,40 @@ class RecoveryCoordinator:
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
         unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        lifecycle_by_id = {r.request_id: r for r in lifecycle}
+        ledger_reserved = set()
+        ledger_unknown = set()
+        ledger_accepted = set()
+        for request_id in ledger_ids:
+            status = self.execution_ledger.status(request_id)
+            if status is not None and status.value == "RESERVED":
+                ledger_reserved.add(request_id)
+            elif status is not None and status.value == "UNKNOWN":
+                ledger_unknown.add(request_id)
+            elif status is not None and status.value == "ACCEPTED":
+                ledger_accepted.add(request_id)
+
+        inconsistent = [
+            r.request_id for r in lifecycle
+            if (
+                (r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_accepted)
+                or (r.state is ExecutionLifecycleState.PENDING and r.request_id not in ledger_reserved and r.request_id not in ledger_unknown)
+            )
+        ]
+        orphan_ledger = sorted(
+            request_id for request_id in ledger_ids
+            if request_id not in lifecycle_by_id and request_id in (ledger_reserved | ledger_unknown | ledger_accepted)
+        )
+        if unknown or pending or inconsistent or orphan_ledger:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Ledger/Lifecycle divergentes requerem reconciliação")
+            if orphan_ledger:
+                details.append("estado do Ledger sem projeção de Lifecycle requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
