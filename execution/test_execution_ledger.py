@@ -67,3 +67,28 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+class _FakeMsvcrt:
+    LK_LOCK = 1
+    LK_UNLCK = 2
+
+    def __init__(self):
+        self.calls = []
+
+    def locking(self, fd, mode, size):
+        self.calls.append((fd, mode, size))
+
+
+def test_windows_lock_fallback_serializes_mutation(monkeypatch, tmp_path: Path):
+    import execution.execution_ledger as ledger_module
+
+    fake = _FakeMsvcrt()
+    monkeypatch.setattr(ledger_module, "fcntl", None)
+    monkeypatch.setattr(ledger_module, "msvcrt", fake)
+
+    ledger = ledger_module.ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-windows")
+
+    assert ledger.status("req-windows") is ledger_module.ExecutionLedgerStatus.RESERVED
+    assert [(mode, size) for _, mode, size in fake.calls] == [(fake.LK_LOCK, 1), (fake.LK_UNLCK, 1)]
