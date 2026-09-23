@@ -5,6 +5,7 @@ from pathlib import Path
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operational_runtime import build_operational_runtime
+from core.risk_manager import RiskManager
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -95,3 +96,24 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     assert len(executor.requests) == 1
     assert len(runtime.daily_journal.entries()) == 2
     assert runtime.daily_journal.entries()[0].status == "DUPLICATE"
+
+
+def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    executor = FakeDemoExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    service = EcosystemService(operational_runtime=runtime)
+    service.risk = RiskManager(max_operations=1)
+
+    result = service.execute_demo(
+        symbol="EURUSD",
+        signal="COMPRA",
+        amount=0.01,
+        duration_seconds=60,
+        request_id="risk-blocked",
+    )
+
+    assert result["accepted"] is False
+    assert result["status"] == "RISK_BLOCKED"
+    assert executor.requests == []
