@@ -5,7 +5,7 @@ import math
 from typing import Any
 
 from core.models import Signal
-from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionAction, ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class MT5AdapterError(RuntimeError):
@@ -122,8 +122,22 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(False, f"cotação indisponível para {symbol}.")
 
             is_buy = request.signal is Signal.COMPRA
-            order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
-            price = tick.ask if is_buy else tick.bid
+            if request.action is ExecutionAction.CLOSE:
+                positions = mt5.positions_get(symbol=symbol) or ()
+                candidates = [p for p in positions if getattr(p, "magic", None) == self.config.magic]
+                if request.position_id is not None:
+                    candidates = [p for p in candidates if int(getattr(p, "ticket", -1)) == int(request.position_id)]
+                if len(candidates) != 1:
+                    return ExecutionResult(False, f"fechamento bloqueado: esperado 1 posição do Controlador, encontrado={len(candidates)}")
+                position = candidates[0]
+                closing_buy = int(getattr(position, "type", -1)) == int(mt5.POSITION_TYPE_BUY)
+                order_type = mt5.ORDER_TYPE_SELL if closing_buy else mt5.ORDER_TYPE_BUY
+                price = tick.bid if closing_buy else tick.ask
+                close_position = int(getattr(position, "ticket", 0))
+            else:
+                order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
+                price = tick.ask if is_buy else tick.bid
+                close_position = None
             if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
                 return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
 
@@ -135,7 +149,8 @@ class ICMarketsMT5DemoAdapter:
                 "price": price,
                 "deviation": self.config.deviation,
                 "magic": self.config.magic,
-                "comment": "ControladorTrading-DEMO",
+                "position": close_position,
+                "comment": "ControladorTrading-DEMO-CLOSE" if request.action is ExecutionAction.CLOSE else "ControladorTrading-DEMO",
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
