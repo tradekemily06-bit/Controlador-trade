@@ -112,6 +112,14 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    first = service.execute_demo(
+        symbol="EURUSD",
+        signal="COMPRA",
+        amount=0.01,
+        duration_seconds=60,
+        request_id="risk-seed",
+    )
+    assert first["accepted"] is True
     service.risk = RiskManager(max_operations=1)
 
     result = service.execute_demo(
