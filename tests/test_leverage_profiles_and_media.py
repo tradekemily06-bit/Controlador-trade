@@ -18,3 +18,10 @@ def test_image_size_bounded():
     with pytest.raises(ValueError,match="image_size_out_of_bounds"): EcosystemImage("img1",MediaKind.PROFILE,"image/jpeg",5*1024*1024+1,"media/img1.jpg").validate()
 def test_path_traversal_reference_rejected():
     with pytest.raises(ValueError,match="unsafe_storage_reference"): EcosystemImage("img1",MediaKind.LOGO,"image/png",100,"media/../img.png").validate()
+
+
+def test_leverage_assessment_never_authorizes_execution():
+    from core.leverage_operation import LeverageRequest, assess_leverage
+    result = assess_leverage(LeverageRequest("r1","p1","EURUSD",Decimal("2"),Decimal("1000"),Decimal("1"),Decimal("100"),Decimal("1"),Decimal("1"),Decimal("100")))
+    assert result.status.value == "acceptable"
+    assert result.execution_authorized is False
