@@ -88,8 +88,12 @@ class ExecutionLifecycleStore:
             raise ValueError("request_id inválido.")
         if not isinstance(record.state, ExecutionLifecycleState):
             raise ValueError("estado de execução inválido.")
-        if not isinstance(record.updated_at, datetime):
-            raise ValueError("timestamp inválido.")
+        if (
+            not isinstance(record.updated_at, datetime)
+            or record.updated_at.tzinfo is None
+            or record.updated_at.utcoffset() is None
+        ):
+            raise ValueError("timestamp deve ser timezone-aware.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
         for value, name in ((record.decision_id, "decision_id"), (record.symbol, "symbol"), (record.signal, "signal"), (record.mode, "mode"), (record.external_id, "external_id")):
@@ -171,4 +175,6 @@ class ExecutionLifecycleStore:
         ]
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
         os.replace(temporary, self.path)
