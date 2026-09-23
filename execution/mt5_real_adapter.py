@@ -57,12 +57,9 @@ class MT5RealAdapter:
         self._mt5 = mt5_module
         self._connected = False
         self._lock = threading.RLock()
-        self._session = coordinator_for(self._module_placeholder())
-        self._session_module = None
+        self._session = coordinator_for(self._mt5) if self._mt5 is not None else None
+        self._session_module = self._mt5
         self._owner = f"real:{id(self)}"
-
-    def _module_placeholder(self) -> Any:
-        return self._mt5 if self._mt5 is not None else object()
 
     def _module(self) -> Any:
         if self._mt5 is None:
