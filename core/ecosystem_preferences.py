@@ -1,16 +1,17 @@
-"""User-facing ecosystem preferences kept separate from trading authority.
+"""Persistent user-facing preferences kept separate from trading authority.
 
 Preferences control presentation, chart appearance, notifications and learning
 convenience. They never grant execution, risk override, autonomy or security
 permission.
 """
 from __future__ import annotations
+
 from dataclasses import asdict, dataclass, replace
+from enum import Enum
 import json
 import os
-import sqlite3
 from pathlib import Path
-from enum import Enum
+import sqlite3
 
 
 class CandleStyle(str, Enum):
@@ -24,12 +25,6 @@ class CandleColorMode(str, Enum):
     DEFAULT = "DEFAULT"
     CUSTOM = "CUSTOM"
     MONOCHROME = "MONOCHROME"
-
-
-class EcosystemUseMode(str, Enum):
-    COCKPIT = "COCKPIT"
-    ANALYSIS = "ANALYSIS"
-    STUDY = "STUDY"
 
 
 class EcosystemUseMode(str, Enum):
@@ -79,7 +74,6 @@ class EcosystemPreferences:
     require_filters: bool = True
     chart_theme: ChartTheme = ChartTheme.DARK
     use_mode: EcosystemUseMode = EcosystemUseMode.COCKPIT
-    use_mode: EcosystemUseMode = EcosystemUseMode.COCKPIT
     candle: CandleAppearance = CandleAppearance()
     notifications: NotificationPreferences = NotificationPreferences()
     show_technical_details_by_default: bool = False
@@ -89,19 +83,31 @@ class EcosystemPreferences:
 
 
 class EcosystemPreferencesStore:
-    """Validated, persistent user preferences; security-critical permissions remain immutable."""
+    """Validated persistent preferences; never an execution-authority store."""
 
     def __init__(self, preferences: EcosystemPreferences | None = None, database_path: str | None = None) -> None:
-        self.database_path = database_path if database_path is not None else (os.environ.get("CONTROLADOR_PREFERENCES_DB") or str(Path(".runtime") / "preferences.sqlite3"))
-        self._preferences = preferences or self._load() or EcosystemPreferences()
+        self.database_path = database_path or (
+            os.environ.get("CONTROLADOR_PREFERENCES_DB")
+            or str(Path(".runtime") / "preferences.sqlite3")
+        )
+        self._storage_corrupted = False
+        loaded = None if preferences is not None else self._load()
+        self._preferences = preferences or loaded or EcosystemPreferences()
         self._validate(self._preferences)
-        self._save()
+        if preferences is not None or not self._storage_corrupted:
+            self._save()
 
     @property
     def preferences(self) -> EcosystemPreferences:
         return self._preferences
 
+    @property
+    def storage_corrupted(self) -> bool:
+        return self._storage_corrupted
+
     def update(self, **changes) -> EcosystemPreferences:
+        if "autonomous_operation_enabled" in changes or "real_execution_enabled" in changes:
+            raise ValueError("execution authority is not configurable through preferences")
         candidate = replace(self._preferences, **changes)
         self._validate(candidate)
         self._preferences = candidate
@@ -121,63 +127,30 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, notifications=notifications)
         self._validate(candidate)
         self._preferences = candidate
+        self._save()
         return candidate
 
-    def _save(self) -> None:
-        try:
-            path = Path(self.database_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = asdict(self._preferences)
-            payload["chart_theme"] = self._preferences.chart_theme.value
-            payload["use_mode"] = self._preferences.use_mode.value
-            payload["candle"]["style"] = self._preferences.candle.style.value
-            payload["candle"]["color_mode"] = self._preferences.candle.color_mode.value
-            with sqlite3.connect(self.database_path, timeout=5) as db:
-                db.execute("CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)")
-                db.execute("INSERT OR REPLACE INTO preferences(id,payload) VALUES(1,?)", (json.dumps(payload, ensure_ascii=False),))
-        except (OSError, sqlite3.Error, TypeError, ValueError):
-            pass
+    def _payload(self) -> dict:
+        payload = asdict(self._preferences)
+        payload["chart_theme"] = self._preferences.chart_theme.value
+        payload["use_mode"] = self._preferences.use_mode.value
+        payload["candle"]["style"] = self._preferences.candle.style.value
+        payload["candle"]["color_mode"] = self._preferences.candle.color_mode.value
+        return payload
 
-    def _load(self) -> EcosystemPreferences | None:
-        try:
-            with sqlite3.connect(self.database_path, timeout=5) as db:
-                row = db.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
-            if not row:
-                return None
-            data = json.loads(row[0])
-            candle = data.get("candle", {})
-            notifications = data.get("notifications", {})
-            return EcosystemPreferences(
-                default_symbol=str(data.get("default_symbol", "EURUSD")),
-                default_timeframe=str(data.get("default_timeframe", "5m")),
-                require_closed_candle=bool(data.get("require_closed_candle", True)),
-                require_filters=bool(data.get("require_filters", True)),
-                chart_theme=ChartTheme(str(data.get("chart_theme", "DARK"))),
-                use_mode=EcosystemUseMode(str(data.get("use_mode", "COCKPIT"))),
-                candle=CandleAppearance(style=CandleStyle(str(candle.get("style", "CANDLESTICK"))), color_mode=CandleColorMode(str(candle.get("color_mode", "DEFAULT"))), bullish_color=str(candle.get("bullish_color", "#58d68d")), bearish_color=str(candle.get("bearish_color", "#ff7676")), wick_color=str(candle.get("wick_color", "#aab5c8")), border_enabled=bool(candle.get("border_enabled", True)), show_wicks=bool(candle.get("show_wicks", True)), show_bodies=bool(candle.get("show_bodies", True))),
-                notifications=NotificationPreferences(**{k: bool(v) for k,v in notifications.items() if k in NotificationPreferences.__dataclass_fields__}),
-                show_technical_details_by_default=bool(data.get("show_technical_details_by_default", False)),
-                trader_psychology_enabled=bool(data.get("trader_psychology_enabled", True)),
-                autonomous_operation_enabled=False,
-                real_execution_enabled=False,
+    def _save(self) -> None:
+        path = Path(self.database_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(self._payload(), ensure_ascii=False, sort_keys=True)
+        with sqlite3.connect(self.database_path, timeout=5) as db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS preferences "
+                "(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)"
             )
-        except (OSError, sqlite3.Error, TypeError, ValueError, KeyError, json.JSONDecodeError):
-            return None
-
-    def _save(self) -> None:
-        try:
-            path = Path(self.database_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            payload = asdict(self._preferences)
-            payload["chart_theme"] = self._preferences.chart_theme.value
-            payload["use_mode"] = self._preferences.use_mode.value
-            payload["candle"]["style"] = self._preferences.candle.style.value
-            payload["candle"]["color_mode"] = self._preferences.candle.color_mode.value
-            with sqlite3.connect(self.database_path, timeout=5) as db:
-                db.execute("CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)")
-                db.execute("INSERT OR REPLACE INTO preferences(id,payload) VALUES(1,?)", (json.dumps(payload, ensure_ascii=False),))
-        except (OSError, sqlite3.Error, TypeError, ValueError):
-            pass
+            db.execute(
+                "INSERT OR REPLACE INTO preferences(id,payload) VALUES(1,?)",
+                (payload,),
+            )
 
     def _load(self) -> EcosystemPreferences | None:
         try:
@@ -186,8 +159,12 @@ class EcosystemPreferencesStore:
             if not row:
                 return None
             data = json.loads(row[0])
+            if not isinstance(data, dict):
+                raise ValueError("preferences payload must be an object")
             candle = data.get("candle", {})
             notifications = data.get("notifications", {})
+            if not isinstance(candle, dict) or not isinstance(notifications, dict):
+                raise ValueError("invalid nested preferences")
             return EcosystemPreferences(
                 default_symbol=str(data.get("default_symbol", "EURUSD")),
                 default_timeframe=str(data.get("default_timeframe", "5m")),
@@ -205,20 +182,24 @@ class EcosystemPreferencesStore:
                     show_wicks=bool(candle.get("show_wicks", True)),
                     show_bodies=bool(candle.get("show_bodies", True)),
                 ),
-                notifications=NotificationPreferences(**{k: bool(v) for k,v in notifications.items() if k in NotificationPreferences.__dataclass_fields__}),
+                notifications=NotificationPreferences(
+                    **{k: bool(v) for k, v in notifications.items()
+                       if k in NotificationPreferences.__dataclass_fields__}
+                ),
                 show_technical_details_by_default=bool(data.get("show_technical_details_by_default", False)),
                 trader_psychology_enabled=bool(data.get("trader_psychology_enabled", True)),
                 autonomous_operation_enabled=False,
                 real_execution_enabled=False,
             )
         except (OSError, sqlite3.Error, TypeError, ValueError, KeyError, json.JSONDecodeError):
+            self._storage_corrupted = True
             return None
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
-        if not value.default_symbol.strip():
+        if not isinstance(value.default_symbol, str) or not value.default_symbol.strip():
             raise ValueError("default_symbol is required")
-        if not value.default_timeframe.strip():
+        if not isinstance(value.default_timeframe, str) or not value.default_timeframe.strip():
             raise ValueError("default_timeframe is required")
         if not isinstance(value.trader_psychology_enabled, bool):
             raise ValueError("trader_psychology_enabled must be boolean")
@@ -228,6 +209,14 @@ class EcosystemPreferencesStore:
             raise ValueError("REAL execution cannot be enabled by preferences")
         if not value.notifications.critical_enabled:
             raise ValueError("critical notifications cannot be disabled")
-        for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
-            if not isinstance(field, str) or not field.startswith("#") or len(field) not in (4, 7):
+        for field in (
+            value.candle.bullish_color,
+            value.candle.bearish_color,
+            value.candle.wick_color,
+        ):
+            if (
+                not isinstance(field, str)
+                or not field.startswith("#")
+                or len(field) not in (4, 7)
+            ):
                 raise ValueError("candle colors must be hex values")
