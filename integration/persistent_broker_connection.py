@@ -41,6 +41,7 @@ class PersistentBrokerConnectionRuntime:
         self._last_check: float | None = None
         self._last_error: str | None = None
         self._generation = 0
+        self._disconnect_generation: int | None = None
 
     def start(self) -> None:
         connect = getattr(self._adapter, "connect", None)
@@ -48,6 +49,7 @@ class PersistentBrokerConnectionRuntime:
             self._user_disconnected = False
             self._generation += 1
             generation = self._generation
+            self._disconnect_generation = None
             if self._thread is not None and self._thread.is_alive():
                 return
 
@@ -61,8 +63,9 @@ class PersistentBrokerConnectionRuntime:
 
         with self._lock:
             stale_start = generation != self._generation or self._user_disconnected
+            disconnect_already_handled = self._disconnect_generation == self._generation
             if stale_start:
-                if connected:
+                if connected and not disconnect_already_handled:
                     disconnect = getattr(self._adapter, "disconnect", None)
                     if callable(disconnect):
                         with self._adapter_lifecycle_lock:
@@ -87,6 +90,7 @@ class PersistentBrokerConnectionRuntime:
             self._user_disconnected = True
             self._available = False
             self._generation += 1
+            generation = self._generation
         disconnect = getattr(self._adapter, "disconnect", None)
         if callable(disconnect):
             with self._adapter_lifecycle_lock:
@@ -94,6 +98,8 @@ class PersistentBrokerConnectionRuntime:
                     disconnect()
                 except Exception:
                     pass
+                with self._lock:
+                    self._disconnect_generation = generation
 
     def status(self) -> BrokerConnectionStatus:
         with self._lock:
