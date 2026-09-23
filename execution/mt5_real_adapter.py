@@ -53,6 +53,7 @@ class MT5RealAdapter:
     def __init__(self, config: MT5RealConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or MT5RealConfig()
         self._mt5 = mt5_module
+        self._connected = False
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -65,12 +66,26 @@ class MT5RealAdapter:
             self._mt5 = mt5
         return self._mt5
 
+    def connect(self) -> bool:
+        mt5 = self._module()
+        if self._connected:
+            return True
+        self._connected = bool(mt5.initialize())
+        return self._connected
+
+    def disconnect(self) -> None:
+        if self._connected:
+            try:
+                self._module().shutdown()
+            finally:
+                self._connected = False
+
     def is_available(self) -> bool:
         mt5 = None
         try:
-            mt5 = self._module()
-            if not mt5.initialize():
+            if not self.connect():
                 return False
+            mt5 = self._module()
             account = mt5.account_info()
             if account is None or not self._is_real_account(account, mt5):
                 return False
@@ -92,8 +107,11 @@ class MT5RealAdapter:
         if not math.isfinite(request.amount) or request.amount <= 0:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
+        if not self.connect():
+            mt5 = self._module()
+            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         mt5 = self._module()
-        if not mt5.initialize():
+        if False:
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
