@@ -52,3 +52,42 @@ def test_preferences_cannot_disable_critical_notifications():
     with pytest.raises(ValueError):
         store.update_notifications(critical_enabled=False)
     assert store.preferences.notifications.critical_enabled is True
+
+
+def test_preferences_persist_use_mode_notifications_and_psychology(tmp_path):
+    from core.ecosystem_preferences import EcosystemUseMode
+
+    db = tmp_path / "preferences.sqlite3"
+    store = EcosystemPreferencesStore(database_path=str(db))
+    store.update(use_mode=EcosystemUseMode.STUDY, trader_psychology_enabled=False)
+    store.update_notifications(risk_enabled=False, info_enabled=True)
+
+    restored = EcosystemPreferencesStore(database_path=str(db))
+    assert restored.preferences.use_mode is EcosystemUseMode.STUDY
+    assert restored.preferences.trader_psychology_enabled is False
+    assert restored.preferences.notifications.risk_enabled is False
+    assert restored.preferences.notifications.info_enabled is True
+    assert restored.preferences.notifications.critical_enabled is True
+
+
+def test_corrupt_preferences_do_not_get_silently_overwritten(tmp_path):
+    db = tmp_path / "preferences.sqlite3"
+    import sqlite3
+
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE preferences (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)")
+        conn.execute("INSERT INTO preferences(id, payload) VALUES(1, ?)", ("{not-json",))
+
+    store = EcosystemPreferencesStore(database_path=str(db))
+    assert store.storage_corrupted is True
+    with sqlite3.connect(db) as conn:
+        payload = conn.execute("SELECT payload FROM preferences WHERE id=1").fetchone()[0]
+    assert payload == "{not-json"
+
+
+def test_preferences_store_never_persists_execution_authority(tmp_path):
+    db = tmp_path / "preferences.sqlite3"
+    store = EcosystemPreferencesStore(database_path=str(db))
+    restored = EcosystemPreferencesStore(database_path=str(db))
+    assert restored.preferences.real_execution_enabled is False
+    assert restored.preferences.autonomous_operation_enabled is False
