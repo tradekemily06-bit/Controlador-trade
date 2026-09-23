@@ -96,7 +96,7 @@ class PersistentMarketDataRuntime:
                     self._last_error = None
             except Exception as exc:
                 self._state.invalidate(
-                    source=self._boundary._source if hasattr(self._boundary, "_source") else "market_data_provider",
+                    source=self._boundary.source,
                     symbol=self._config.symbol,
                     timeframe=self._config.timeframe,
                     message=f"falha ao atualizar dados de mercado: {type(exc).__name__}: {exc}",
