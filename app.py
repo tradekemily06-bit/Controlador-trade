@@ -93,16 +93,20 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
             onboarding_js = (WEB_DIR / "components" / "onboarding.js").read_text(encoding="utf-8")
             leverage_html = (WEB_DIR / "components" / "leverage-and-media.html").read_text(encoding="utf-8").encode("utf-8")
             leverage_js = (WEB_DIR / "components" / "leverage-and-media.js").read_text(encoding="utf-8")
+            kill_switch_html = (WEB_DIR / "components" / "kill-switch.html").read_text(encoding="utf-8").encode("utf-8")
+            kill_switch_js = (WEB_DIR / "components" / "kill-switch.js").read_text(encoding="utf-8")
             notification_script = f'<script nonce="{script_nonce}">{notification_js}</script>'.encode("utf-8")
             onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
             leverage_script = f'<script nonce="{script_nonce}">{leverage_js}</script>'.encode("utf-8")
+            kill_switch_script = f'<script nonce="{script_nonce}">{kill_switch_js}</script>'.encode("utf-8")
             notification_mount = notification_html + notification_script
             onboarding_mount = onboarding_html + onboarding_script
             leverage_mount = leverage_html + leverage_script
+            kill_switch_mount = kill_switch_html + kill_switch_script
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
             config_anchor = '<div class="section" id="config">Configurações</div>'.encode("utf-8")
-            body = body.replace(config_anchor, leverage_mount + config_anchor, 1)
+            body = body.replace(config_anchor, leverage_mount + kill_switch_mount + config_anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
@@ -122,6 +126,25 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/kill-switch" and method == "GET":
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                return _json_response(start_response, HTTPStatus.OK, {"enabled": True, "reason": "runtime operacional não conectado"}, request_id, environ)
+            state = runtime.kill_switch.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
+        if path == "/api/kill-switch" and method == "POST":
+            data = _read_json(environ)
+            action = str(data.get("action", "")).strip().lower()
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                raise RuntimeError("runtime operacional não conectado")
+            if action != "activate":
+                raise ValueError("somente ativação do Kill switch está disponível pela interface")
+            reason = str(data.get("reason", "")).strip()
+            if not reason:
+                raise ValueError("reason é obrigatório")
+            state = runtime.kill_switch.activate(reason)
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
