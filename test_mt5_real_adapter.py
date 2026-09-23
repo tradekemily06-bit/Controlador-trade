@@ -71,7 +71,9 @@ def test_real_adapter_accepts_only_real_accounts():
     assert result.accepted is True
     assert result.external_id == "987654"
     assert mt5.sent == 1
-    assert mt5.shutdowns == 2
+    assert mt5.shutdowns == 0
+    adapter.disconnect()
+    assert mt5.shutdowns == 1
 
 
 def test_real_adapter_rejects_demo_requests_without_sending():
