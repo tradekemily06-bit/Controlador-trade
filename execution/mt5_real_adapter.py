@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from typing import Any
+import threading
 
 from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -54,6 +55,7 @@ class MT5RealAdapter:
         self.config = config or MT5RealConfig()
         self._mt5 = mt5_module
         self._connected = False
+        self._lock = threading.RLock()
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -67,34 +69,41 @@ class MT5RealAdapter:
         return self._mt5
 
     def connect(self) -> bool:
-        mt5 = self._module()
-        if self._connected:
-            return True
-        self._connected = bool(mt5.initialize())
-        return self._connected
+        with self._lock:
+            mt5 = self._module()
+            if self._connected:
+                return True
+            self._connected = bool(mt5.initialize())
+            return self._connected
 
     def disconnect(self) -> None:
-        if self._connected:
-            try:
-                self._module().shutdown()
-            finally:
-                self._connected = False
+        with self._lock:
+            if self._connected:
+                try:
+                    self._module().shutdown()
+                finally:
+                    self._connected = False
 
     def is_available(self) -> bool:
-        mt5 = None
-        try:
+        with self._lock:
+            mt5 = None
+            try:
             if not self.connect():
                 return False
             mt5 = self._module()
             account = mt5.account_info()
             if account is None or not self._is_real_account(account, mt5):
                 return False
-            return self._server_matches(account)
-        except Exception:
-            self.disconnect()
-            return False
+                return self._server_matches(account)
+            except Exception:
+                self.disconnect()
+                return False
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        with self._lock:
+            return self._execute_locked(request)
+
+    def _execute_locked(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.REAL:
             return ExecutionResult(False, "adapter MT5 REAL aceita somente requests REAL.")
         if request.signal is Signal.AGUARDAR:
@@ -171,7 +180,8 @@ class MT5RealAdapter:
 
             return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", str(external_id))
         finally:
-            mt5.shutdown()
+            # PersistentBrokerConnectionRuntime owns disconnect/reconnect.
+            pass
 
     def _server_matches(self, account: Any) -> bool:
         expected = self.config.expected_server
