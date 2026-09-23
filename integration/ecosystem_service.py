@@ -338,6 +338,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning()
         return activity
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
