@@ -12,7 +12,14 @@ from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
-from integration.execution_provider import build_demo_execution_port
+from integration.execution_provider import build_demo_execution_port, build_real_execution_adapter
+from integration.persistent_broker_connection import PersistentBrokerConnectionRuntime
+from integration.real_execution_runtime import RealExecutionRuntime
+from execution.broker_registry import BrokerRegistry
+from execution.adapter_gateway import BrokerAdapterGateway
+from execution.real_gateway import RealExecutionGateway
+from core.models import Signal
+from execution.ports import ExecutionMode
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -24,7 +31,30 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+
 ONBOARDING = EcosystemOnboarding()
+
+REAL_BROKER_ID = os.environ.get("CONTROLADOR_REAL_BROKER", "mt5_real").strip().lower()
+REAL_ADAPTER_ID = os.environ.get("CONTROLADOR_REAL_ADAPTER", "mt5_real").strip().lower()
+REAL_ENABLED = os.environ.get("CONTROLADOR_REAL_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+REAL_SYMBOL = os.environ.get("CONTROLADOR_REAL_SYMBOL") or EXECUTION_SYMBOL
+REAL_SERVER = os.environ.get("CONTROLADOR_REAL_SERVER") or None
+REAL_ADAPTER = build_real_execution_adapter(REAL_ADAPTER_ID, symbol=REAL_SYMBOL, expected_server=REAL_SERVER)
+REAL_REGISTRY = BrokerRegistry()
+REAL_REGISTRY.register(REAL_BROKER_ID, REAL_ADAPTER)
+REAL_CONNECTION = PersistentBrokerConnectionRuntime(REAL_ADAPTER, poll_seconds=float(os.environ.get("CONTROLADOR_REAL_CONNECTION_POLL", "5")))
+REAL_GATEWAY = RealExecutionGateway(BrokerAdapterGateway(REAL_REGISTRY), OPERATIONAL_RUNTIME.execution_ledger, OPERATIONAL_RUNTIME.execution_lifecycle)
+REAL_RUNTIME = RealExecutionRuntime(
+    broker_id=REAL_BROKER_ID, adapter_id=REAL_ADAPTER_ID, broker_connection=REAL_CONNECTION,
+    gateway=REAL_GATEWAY, ledger=OPERATIONAL_RUNTIME.execution_ledger, lifecycle=OPERATIONAL_RUNTIME.execution_lifecycle,
+    real_enabled=REAL_ENABLED,
+    audit_verified=os.environ.get("CONTROLADOR_REAL_AUDIT_VERIFIED", "false").strip().lower() in {"1", "true", "yes", "on"},
+    recovery_safe=lambda: OPERATIONAL_RUNTIME.recovery.assess().can_resume,
+    market_healthy=lambda: bool(OPERATIONAL_RUNTIME.market_data.status().get("safe_for_analysis", False)),
+    risk_approved=lambda: bool(SERVICE.risk_status().get("allowed", False)),
+    kill_switch_clear=lambda: OPERATIONAL_RUNTIME.kill_switch.allows_execution(),
+)
+REAL_RUNTIME.start()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -161,6 +191,43 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
+        if path == "/api/real/status" and method == "GET":
+            status = REAL_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, {
+                "mode": status.mode.value, "real_enabled": status.real_enabled,
+                "broker_state": status.broker_state, "broker_available": status.broker_available,
+                "authorization_active": status.authorization_active,
+                "pending_confirmation_ids": list(status.pending_confirmation_ids),
+                "ledger_unknown_request_ids": list(status.ledger_unknown_request_ids),
+                "lifecycle_unknown_request_ids": list(status.lifecycle_unknown_request_ids),
+                "message": status.message,
+            }, request_id, environ)
+        if path == "/api/real/mode" and method == "POST":
+            data = _read_json(environ)
+            REAL_RUNTIME.select_mode(ExecutionMode(str(data.get("mode", "")).upper()))
+            return _json_response(start_response, HTTPStatus.OK, {"mode": REAL_RUNTIME.status().mode.value}, request_id, environ)
+        if path == "/api/real/disconnect" and method == "POST":
+            REAL_RUNTIME.user_disconnect()
+            return _json_response(start_response, HTTPStatus.OK, {"disconnected": True}, request_id, environ)
+        if path == "/api/real/reconnect" and method == "POST":
+            REAL_RUNTIME.start()
+            return _json_response(start_response, HTTPStatus.OK, {"connected_check_started": True}, request_id, environ)
+        if path == "/api/real/confirm" and method == "POST":
+            data = _read_json(environ)
+            confirmation = REAL_RUNTIME.request_confirmation(request_id=str(data.get("request_id", "")), phrase=str(data.get("phrase", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"confirmation_id": confirmation.confirmation_id, "request_id": confirmation.request_id, "mode": confirmation.mode.value, "confirmed_at": confirmation.confirmed_at.isoformat()}, request_id, environ)
+        if path == "/api/real/execute" and method == "POST":
+            data = _read_json(environ)
+            result = REAL_RUNTIME.execute_confirmed(
+                request_id=str(data.get("request_id", "")), symbol=str(data.get("symbol", "")),
+                signal=Signal(str(data.get("signal", "")).upper()), amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)), confirmation_id=str(data.get("confirmation_id", "")),
+            )
+            status_code = HTTPStatus.OK if result.status in {"ADMITTED", "REJECTED"} else HTTPStatus.CONFLICT
+            return _json_response(start_response, status_code, {
+                "status": result.status, "message": result.message,
+                "execution": None if result.execution is None else {"accepted": result.execution.accepted, "message": result.execution.message, "external_id": result.execution.external_id},
+            }, request_id, environ)
         if path == "/api/connections" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
         if path == "/api/learning" and method == "GET":
