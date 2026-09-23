@@ -21,6 +21,7 @@ from execution.paper import PaperExecutor
 class OperationalRuntime:
     """Single authoritative DEMO runtime state shared by execution and observability."""
 
+    runtime_dir: Path
     kill_switch: KillSwitch
     execution_ledger: ExecutionLedger
     execution_lifecycle: ExecutionLifecycleStore
@@ -34,6 +35,7 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
+    root.mkdir(parents=True, exist_ok=True)
     kill_switch = KillSwitch()
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
@@ -59,6 +61,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
+        runtime_dir=root,
         kill_switch=kill_switch,
         execution_ledger=ledger,
         execution_lifecycle=lifecycle,
