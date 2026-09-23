@@ -75,3 +75,22 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_reserved_ledger_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reserved")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.pending_request_ids == ("req-reserved",)
+    assert result.can_resume is False
+
+
+def test_unknown_ledger_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-unknown")
+    coordinator.execution_ledger.mark_unknown("req-unknown")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.unknown_request_ids == ("req-unknown",)
+    assert result.can_resume is False
