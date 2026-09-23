@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -36,6 +48,7 @@ class ExecutionLifecycleStore:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._records: dict[str, ExecutionLifecycleRecord] = {}
+        self._thread_lock = threading.RLock()
         self._load()
 
     def _load(self) -> None:
@@ -80,11 +93,16 @@ class ExecutionLifecycleStore:
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        previous = self._records.get(record.request_id)
-        if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+        with self._thread_lock:
+            self._load()
+            previous = self._records.get(record.request_id)
+            if previous is not None:
+                from core.execution_lifecycle_guard import ExecutionLifecycleGuard
+                transition = ExecutionLifecycleGuard().validate(previous, record.state)
+                if not transition.allowed:
+                    raise ValueError(transition.reason)
+            self._records[record.request_id] = record
+            self._save_locked()
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
@@ -94,24 +112,48 @@ class ExecutionLifecycleStore:
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("execução não encontrada.")
-        record = ExecutionLifecycleRecord(request_id, state, updated_at, message, decision_id=current.decision_id, symbol=current.symbol, signal=current.signal, amount=current.amount, mode=current.mode, external_id=current.external_id)
-        self._validate(record)
-        self._records[request_id] = record
-        self._save()
-        return record
+        with self._thread_lock:
+            self._load()
+            current = self._records.get(request_id)
+            if current is None:
+                raise ValueError("execução não encontrada.")
+            if current.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("reconciliação exige estado UNKNOWN.")
+            record = ExecutionLifecycleRecord(request_id, state, updated_at, message, decision_id=current.decision_id, symbol=current.symbol, signal=current.signal, amount=current.amount, mode=current.mode, external_id=current.external_id)
+            self._validate(record)
+            self._records[request_id] = record
+            self._save_locked()
+            return record
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
         return tuple(self._records[key] for key in sorted(self._records))
 
-    def _save(self) -> None:
+    def _save_locked(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
-                for r in self.records()
-            ], ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        with lock_path.open("a+b") as lock_file:
+            locked = False
+            try:
+                if fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                    locked = True
+                elif msvcrt is not None:
+                    lock_file.seek(0)
+                    lock_file.write(b"0")
+                    lock_file.flush()
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    locked = True
+                payload = [
+                    {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
+                    for r in self.records()
+                ]
+                temporary = self.path.with_name(f".{self.path.name}.tmp")
+                temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+                os.replace(temporary, self.path)
+            finally:
+                if fcntl is not None and locked:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None and locked:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
