@@ -17,7 +17,7 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.preferences = EcosystemPreferencesStore()
+        self.preferences = EcosystemPreferencesStore(path=self.operational_runtime.runtime_dir / "ecosystem-preferences.json")
         self.notifications = EcosystemNotificationCenter()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
