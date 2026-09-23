@@ -208,6 +208,15 @@ class EcosystemPreferencesStore:
             raise ValueError("default_symbol is required")
         if not isinstance(value.default_timeframe, str) or not value.default_timeframe.strip():
             raise ValueError("default_timeframe is required")
+        for name in ("require_closed_candle", "require_filters", "show_technical_details_by_default", "trader_psychology_enabled", "autonomous_operation_enabled", "real_execution_enabled"):
+            if not isinstance(getattr(value, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        for name in NotificationPreferences.__dataclass_fields__:
+            if not isinstance(getattr(value.notifications, name), bool):
+                raise ValueError(f"notifications.{name} must be boolean")
+        for name in ("border_enabled", "show_wicks", "show_bodies"):
+            if not isinstance(getattr(value.candle, name), bool):
+                raise ValueError(f"candle.{name} must be boolean")
         if not isinstance(value.trader_psychology_enabled, bool):
             raise ValueError("trader_psychology_enabled must be boolean")
         if value.autonomous_operation_enabled:
