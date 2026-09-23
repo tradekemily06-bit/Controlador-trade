@@ -43,7 +43,7 @@ def _state(*, health: MarketDataHealth, symbol: str = "EURUSD") -> MarketDataRun
         timeframe="5m",
         candles=(Candle(datetime.now(timezone.utc), 1, 1, 1, 1, 1),),
         source="TEST",
-        received_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        received_at=datetime.now(timezone.utc),
     )
     return state
 
