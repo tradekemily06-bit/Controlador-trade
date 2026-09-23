@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 from core.kill_switch import KillSwitch
 from core.operational_state import OperationalState
@@ -38,6 +40,23 @@ class OperationalRuntime:
     daily_journal: DailyOperationJournal
     risk_state_provider: Callable[[], OperationalState] | None
     risk_manager: RiskManager
+    session_id: str
+
+    def checkpoint_operation(self, request_id: str) -> bool:
+        """Persist the last terminal operation without authorizing or replaying it."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido para checkpoint")
+        previous = self.checkpoint_store.load()
+        next_cycle = (previous.last_cycle + 1) if previous is not None else 1
+        self.checkpoint_store.save(
+            RuntimeCheckpoint(
+                session_id=self.session_id,
+                last_cycle=next_cycle,
+                last_request_id=request_id.strip(),
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        return True
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None, kill_switch: KillSwitch | None = None) -> OperationalRuntime:
@@ -86,4 +105,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         daily_journal=daily_journal,
         risk_state_provider=provider if callable(provider) else None,
         risk_manager=risk_manager,
+        session_id=uuid4().hex,
     )
