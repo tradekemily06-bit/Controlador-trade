@@ -10,6 +10,11 @@ try:
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX path
+    msvcrt = None
+
 
 class ExecutionLedgerStatus(str, Enum):
     RESERVED = "RESERVED"
@@ -65,6 +70,8 @@ class ExecutionLedger:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        with temporary.open("rb") as file_handle:
+            os.fsync(file_handle.fileno())
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
@@ -74,6 +81,12 @@ class ExecutionLedger:
         with lock_path.open("a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            elif msvcrt is not None:
+                lock_file.seek(0)
+                lock_file.write("0")
+                lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
             try:
                 self._load()
                 mutation()
@@ -81,6 +94,12 @@ class ExecutionLedger:
             finally:
                 if fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    lock_file.seek(0)
+                    try:
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
