@@ -107,8 +107,7 @@ class ExecutionLedger:
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
-        self._load()
-        return self._states.get(request_id)
+        return self._read_locked(lambda: self._states.get(request_id))
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -160,8 +159,33 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
-        self._load()
-        return tuple(sorted(self._states))
+        return self._read_locked(lambda: tuple(sorted(self._states)))
+
+    def _read_locked(self, reader):
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._thread_lock:
+            with lock_path.open("a+b") as lock_file:
+                locked_with_os = False
+                try:
+                    if fcntl is not None:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                        locked_with_os = True
+                    elif msvcrt is not None:
+                        lock_file.seek(0)
+                        lock_file.write(b"0")
+                        lock_file.flush()
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                        locked_with_os = True
+                    self._load()
+                    return reader()
+                finally:
+                    if fcntl is not None and locked_with_os:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    elif msvcrt is not None and locked_with_os:
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
