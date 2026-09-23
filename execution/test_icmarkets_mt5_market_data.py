@@ -97,7 +97,9 @@ def test_real_account_is_blocked_for_market_data(rates):
             BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
         )
 
-    assert mt5.shutdown_called is False
+    # The adapter acquired the sole session owner before discovering the account mismatch,
+    # so it must release that ownership and shut down the shared MT5 session.
+    assert mt5.shutdown_called is True
     adapter.disconnect()
 
 
