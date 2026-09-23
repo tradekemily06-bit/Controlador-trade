@@ -53,6 +53,9 @@ class ExecutionLifecycleStore:
                     state=ExecutionLifecycleState(item["state"]),
                     updated_at=datetime.fromisoformat(item["updated_at"]),
                     message=item.get("message", ""),
+                    decision_id=item.get("decision_id"), symbol=item.get("symbol"),
+                    signal=item.get("signal"), amount=item.get("amount"), mode=item.get("mode"),
+                    external_id=item.get("external_id"),
                 )
                 self._validate(record)
                 self._records[record.request_id] = record
@@ -69,6 +72,11 @@ class ExecutionLifecycleStore:
             raise ValueError("timestamp inválido.")
         if not isinstance(record.message, str):
             raise ValueError("mensagem inválida.")
+        for value, name in ((record.decision_id, "decision_id"), (record.symbol, "symbol"), (record.signal, "signal"), (record.mode, "mode"), (record.external_id, "external_id")):
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} inválido.")
+        if record.amount is not None and (isinstance(record.amount, bool) or not isinstance(record.amount, (int, float))):
+            raise ValueError("amount inválido.")
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
@@ -89,7 +97,7 @@ class ExecutionLifecycleStore:
         current = self.get(request_id)
         if current is None:
             raise ValueError("execução não encontrada.")
-        record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
+        record = ExecutionLifecycleRecord(request_id, state, updated_at, message, decision_id=current.decision_id, symbol=current.symbol, signal=current.signal, amount=current.amount, mode=current.mode, external_id=current.external_id)
         self._validate(record)
         self._records[request_id] = record
         self._save()
@@ -102,7 +110,7 @@ class ExecutionLifecycleStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             json.dumps([
-                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
+                {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
                 for r in self.records()
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
