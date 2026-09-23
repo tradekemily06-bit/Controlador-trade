@@ -102,7 +102,7 @@ class LearningStore:
                     ("ecosystem",),
                 ).fetchone()
             if not row:
-                return {}, {}, [], {}, {}
+                return {}, {}, [], {}, []
             payload: dict[str, Any] = json.loads(row[0])
             sources = {
                 item["source_id"]: LearningSource(
@@ -113,6 +113,7 @@ class LearningStore:
                     content_verified=bool(item.get("content_verified", False)),
                     security_checked=bool(item.get("security_checked", False)),
                     knowledge_validated=bool(item.get("knowledge_validated", False)),
+                    operation_eligible=False,
                 )
                 for item in payload.get("sources", [])
             }
