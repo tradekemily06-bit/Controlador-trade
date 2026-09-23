@@ -127,7 +127,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
         decision_id=decision.decision_id,
     )
     assert first["accepted"] is True
-    service.risk = RiskManager(max_operations=1)
+    service.risk.max_operations = 1
 
     result = service.execute_demo(
         symbol="EURUSD",
