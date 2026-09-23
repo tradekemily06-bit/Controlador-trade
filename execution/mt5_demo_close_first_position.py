@@ -2,16 +2,22 @@ from __future__ import annotations
 
 import MetaTrader5 as mt5
 
+from execution.mt5_session import coordinator_for
+
 MAGIC = 2609001
 SYMBOL = "EURUSD"
 
 
 def main() -> None:
-    if not mt5.initialize():
-        print(f"MT5 indisponível: {mt5.last_error()}")
+    owner=f"close-demo:{id(mt5)}"
+    coordinator=coordinator_for(mt5)
+    acquired=coordinator.acquire(mt5, mode="DEMO", owner=owner)
+    if not acquired:
+        print("BLOQUEADO: sessão MT5 DEMO ocupada por outro componente.")
         return
 
     try:
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
         account = mt5.account_info()
         if account is None or account.trade_mode != mt5.ACCOUNT_TRADE_MODE_DEMO:
             print("BLOQUEADO: conta não confirmada como DEMO.")
@@ -54,7 +60,7 @@ def main() -> None:
         remaining_ours = [p for p in remaining if getattr(p, "magic", None) == MAGIC]
         print(f"CLOSE_CONFIRMED=True; REMAINING_CONTROLADOR_POSITIONS={len(remaining_ours)}; DEMO_ONLY=True; REAL=False")
     finally:
-        mt5.shutdown()
+        coordinator.release(mt5, owner=owner)
 
 
 if __name__ == "__main__":
