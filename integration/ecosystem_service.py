@@ -22,6 +22,7 @@ from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
+from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.news_provider import UnconfiguredNewsProvider
@@ -55,6 +56,7 @@ class EcosystemService:
             self.learning_attempts,
         ) = self.learning_store.load()
         self.senior_context = SeniorContextOrchestrator()
+        self.senior_analysis_gate = SeniorAnalysisGate()
         self.strategy_pipeline = StrategyPipeline()
         self.market_data_boundary = BrokerMarketDataBoundary(market_data_provider, market_data_source) if market_data_provider is not None else None
 
@@ -86,23 +88,66 @@ class EcosystemService:
         minimum_candles = 20
         if len(snapshot.candles) < minimum_candles:
             raise ValueError(f"candles insuficientes para análise: {len(snapshot.candles)} < {minimum_candles}")
+        candles = list(snapshot.candles)
         result = self.strategy_pipeline.evaluate(
-            list(snapshot.candles),
+            candles,
             confirmed=True,
             filters_ok=True,
             symbol=snapshot.symbol,
             timeframe=snapshot.timeframe,
         )
+
+        # Build senior context only from facts actually available at this boundary.
+        # Missing domains are not invented merely to make a candidate pass.
+        operational_risk = self._current_risk_decision()
+        risk_observations = (
+            RiskObservation(
+                RiskDomain.DATA_QUALITY,
+                "Market candles passed provider boundary validation, timeframe validation and minimum-history checks.",
+                True,
+                ("market_data_boundary",),
+            ),
+            RiskObservation(
+                RiskDomain.OPERATIONAL,
+                operational_risk.reason,
+                bool(operational_risk.allowed),
+                ("operational_risk_manager",),
+            ),
+        )
+        available_risk_domains = tuple(item.domain for item in risk_observations)
+        context = self.senior_context.assess(
+            SeniorContextInput(
+                context_id=f"market:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}",
+                candles=tuple(candles),
+                available_nodes=("market_data", "price_history", "risk", "execution", "security"),
+                observed_nodes=("market_data", "price_history", "risk"),
+                gaps={},
+                relationships_reviewed=(
+                    "price-structure",
+                    "structure-volatility",
+                    "price-liquidity",
+                    "post_breakout-behavior",
+                ),
+                risk_observations=risk_observations,
+                available_risk_domains=available_risk_domains,
+            )
+        )
+        gated = self.senior_analysis_gate.evaluate(
+            analysis=result,
+            senior_context=context,
+            operational_risk=operational_risk,
+        )
+
         payload = {
-            "score": result.score,
-            "confirmed": result.confirmed,
-            "filters_ok": True,
+            "score": gated.score,
+            "confirmed": gated.confirmed,
+            "filters_ok": gated.signal is not Signal.AGUARDAR,
             "symbol": snapshot.symbol,
             "timeframe": snapshot.timeframe,
-            "candles": [asdict(candle) | {"timestamp": candle.timestamp.isoformat()} for candle in snapshot.candles],
+            "candles": [asdict(candle) | {"timestamp": candle.timestamp.isoformat()} for candle in candles],
             "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
-            "observed_nodes": ["market_data", "price_history"],
-            "relationships_reviewed": ["price_history"],
+            "observed_nodes": ["market_data", "price_history", "risk"],
+            "relationships_reviewed": ["price-structure", "structure-volatility", "price-liquidity", "post_breakout-behavior"],
         }
         return self.analyze(payload)
 
