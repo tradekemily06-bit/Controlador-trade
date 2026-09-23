@@ -32,6 +32,7 @@ class PersistentBrokerConnectionRuntime:
         self._poll_seconds = float(poll_seconds)
         self._stop = threading.Event()
         self._lock = threading.Lock()
+        self._connect_lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._user_disconnected = False
         self._available = False
@@ -49,11 +50,12 @@ class PersistentBrokerConnectionRuntime:
                 return
 
         connected = False
-        if callable(connect):
-            try:
-                connected = bool(connect())
-            except Exception:
-                connected = False
+        with self._connect_lock:
+            if callable(connect):
+                try:
+                    connected = bool(connect())
+                except Exception:
+                    connected = False
 
         with self._lock:
             stale_start = generation != self._generation or self._user_disconnected
