@@ -70,6 +70,11 @@ class EcosystemService:
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
+    def market_data_status(self) -> dict[str, object]:
+        if self.operational_runtime is None:
+            return {"health": "NOT_CONNECTED", "safe_for_analysis": False, "message": "runtime operacional não conectado"}
+        return self.operational_runtime.market_data.status()
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
