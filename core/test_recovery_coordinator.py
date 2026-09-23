@@ -94,3 +94,27 @@ def test_unknown_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.unknown_request_ids == ("req-unknown",)
     assert result.can_resume is False
+
+
+
+def test_lifecycle_and_ledger_terminal_states_must_match(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.ACCEPTED, now)
+    )
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_rejected("req-mismatch")
+
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "req-mismatch" not in result.pending_request_ids
+
+
+def test_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-orphan")
+
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.pending_request_ids == ("req-orphan",)
