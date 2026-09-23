@@ -131,8 +131,16 @@ def application(environ, start_response):
             _audit(environ, request_id, 200)
             return [body]
         if path == "/api/ecosystem-image" and method == "POST":
-            data = _read_json(environ)
-            mime = SERVICE.save_ecosystem_image(str(data.get("kind", "")), str(data.get("data_url", "")))
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", [""])[-1]
+            raw_length = environ.get("CONTENT_LENGTH") or "0"
+            length = int(raw_length)
+            from core.ecosystem_image_store import EcosystemImageStore
+            if length <= 0 or length > EcosystemImageStore.MAX_BYTES:
+                raise ValueError("imagem deve ter entre 1 byte e 5 MB")
+            payload = environ["wsgi.input"].read(length)
+            if len(payload) != length:
+                raise ValueError("payload de imagem incompleto")
+            mime = SERVICE.save_ecosystem_image(kind, payload, str(environ.get("CONTENT_TYPE", "")))
             return _json_response(start_response, HTTPStatus.OK, {"saved": True, "content_type": mime, "request_id": request_id}, request_id, environ)
         if path == "/api/preferences" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
