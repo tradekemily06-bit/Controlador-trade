@@ -26,7 +26,13 @@ def test_fresh_session_is_safe(tmp_path):
 
 def test_checkpoint_allows_safe_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
-    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", datetime.now(timezone.utc)))
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-3")
+    coordinator.execution_ledger.mark_accepted("req-3")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.ACCEPTED, now)
+    )
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", now))
     result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
     assert result.checkpoint.last_cycle == 3
@@ -94,7 +100,6 @@ def test_unknown_ledger_requires_reconciliation(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.unknown_request_ids == ("req-unknown",)
     assert result.can_resume is False
-
 
 
 def test_lifecycle_and_ledger_terminal_states_must_match(tmp_path):
