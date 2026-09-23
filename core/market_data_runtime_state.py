@@ -5,6 +5,7 @@ import threading
 from datetime import datetime
 
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity, MarketDataRuntimeReport
+from core.p23_market_data_integrity import MarketDataHealth
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 
 
@@ -33,6 +34,21 @@ class MarketDataRuntimeState:
             self.snapshot = snapshot
             self.report = report
         return report
+
+    def invalidate(self, *, source: str, symbol: str, timeframe: str, message: str) -> None:
+        """Fail closed when the provider cannot refresh the authoritative snapshot."""
+        with self._lock:
+            previous_count = self.report.candle_count if self.report is not None else 0
+            self.report = MarketDataRuntimeReport(
+                source=source,
+                symbol=symbol,
+                timeframe=timeframe,
+                health=MarketDataHealth.UNKNOWN,
+                candle_count=previous_count,
+                gap_count=0,
+                stale=True,
+                message=message,
+            )
 
     def validated_snapshot(self, *, symbol: str, timeframe: str) -> BrokerMarketDataSnapshot | None:
         """Return the same validated snapshot represented by the current healthy report."""
