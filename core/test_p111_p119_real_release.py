@@ -232,3 +232,24 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+
+def test_reconcile_unknown_is_retry_safe_after_partial_lifecycle_failure(tmp_path):
+    # Simulate a crash after the ledger was reconciled but before lifecycle was updated.
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("partial")
+    ledger.mark_unknown("partial")
+    lifecycle.put(ExecutionLifecycleRecord("partial", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
+
+    gateway = make_gateway(ledger=ledger, lifecycle=lifecycle)
+    gateway.reconcile_unknown("partial", executed=True)
+    gateway.reconcile_unknown("partial", executed=True)
+
+    assert ledger.status("partial") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("partial").state is ExecutionLifecycleState.ACCEPTED
