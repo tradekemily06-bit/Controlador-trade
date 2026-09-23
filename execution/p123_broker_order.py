@@ -38,6 +38,7 @@ class BrokerOrderResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    uncertain: bool = False
 
 
 class BrokerOrderBoundary:
@@ -77,6 +78,8 @@ class BrokerOrderBoundary:
             raise ValueError("accepted inválido")
         if not isinstance(result.message, str) or not result.message.strip():
             raise ValueError("message inválida")
+        if not isinstance(result.uncertain, bool):
+            raise ValueError("uncertain inválido")
         if result.external_id is not None and (
             not isinstance(result.external_id, str) or not result.external_id.strip()
         ):
