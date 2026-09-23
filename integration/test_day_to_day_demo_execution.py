@@ -42,6 +42,10 @@ def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Pa
     assert len(executor.requests) == 1
     assert executor.requests[0].mode is ExecutionMode.DEMO
     assert executor.requests[0].signal is Signal.COMPRA
+    journal = runtime.daily_journal.entries()
+    assert len(journal) == 1
+    assert journal[0].request_id == "ui-demo-1"
+    assert journal[0].external_id == "ext-demo-1"
 
 
 def test_execute_demo_rejects_aguardar(tmp_path: Path):
@@ -89,3 +93,5 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     assert second["accepted"] is False
     assert second["status"] == "DUPLICATE"
     assert len(executor.requests) == 1
+    assert len(runtime.daily_journal.entries()) == 2
+    assert runtime.daily_journal.entries()[0].status == "DUPLICATE"
