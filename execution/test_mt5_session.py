@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from execution.mt5_session import MT5SessionConflict, MT5SessionCoordinator
@@ -36,6 +34,33 @@ def test_same_mode_shares_session_and_shutdowns_only_after_last_owner() -> None:
     coordinator.release(mt5, owner="execution")
     assert mt5.shutdown_calls == 1
     assert coordinator.status()["state"] == "DISCONNECTED"
+
+
+def test_same_owner_nested_acquire_requires_matching_releases() -> None:
+    mt5 = FakeMT5()
+    coordinator = MT5SessionCoordinator()
+
+    assert coordinator.acquire(mt5, mode="DEMO", owner="runtime") is True
+    assert coordinator.acquire(mt5, mode="DEMO", owner="runtime") is True
+    assert coordinator.status()["owners"] == 1
+
+    coordinator.release(mt5, owner="runtime")
+    assert mt5.shutdown_calls == 0
+    assert coordinator.is_owned(mt5, owner="runtime") is True
+
+    coordinator.release(mt5, owner="runtime")
+    assert mt5.shutdown_calls == 1
+    assert coordinator.is_owned(mt5, owner="runtime") is False
+
+
+def test_unknown_release_does_not_disturb_other_owners() -> None:
+    mt5 = FakeMT5()
+    coordinator = MT5SessionCoordinator()
+
+    assert coordinator.acquire(mt5, mode="DEMO", owner="runtime") is True
+    coordinator.release(mt5, owner="unknown")
+    assert coordinator.status()["owners"] == 1
+    assert mt5.shutdown_calls == 0
 
 
 def test_demo_real_conflict_is_fail_closed() -> None:
