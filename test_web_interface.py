@@ -72,6 +72,31 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertEqual(data["symbol"], "EURUSD")
         self.assertEqual(data["timeframe"], "5m")
 
+    def test_ecosystem_image_round_trip_is_server_persisted(self):
+        body = b"demo-image-bytes"
+        captured = {}
+
+        def start_response(status, headers):
+            captured["status"] = status
+            captured["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/api/ecosystem-image",
+            "QUERY_STRING": "kind=profile",
+            "CONTENT_TYPE": "image/png",
+            "CONTENT_LENGTH": str(len(body)),
+            "wsgi.input": io.BytesIO(body),
+        }
+        response = b"".join(application(environ, start_response))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertTrue(json.loads(response)["saved"])
+
+        status, headers, response = self.request("/api/ecosystem-image?kind=profile")
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(headers["Content-Type"], "image/png")
+        self.assertEqual(response, body)
+
 
 if __name__ == "__main__":
     unittest.main()
