@@ -24,7 +24,8 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, notification_database_path=NOTIFICATION_DB)
 ONBOARDING = EcosystemOnboarding()
 
 
