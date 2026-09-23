@@ -117,3 +117,32 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     assert result["accepted"] is False
     assert result["status"] == "RISK_BLOCKED"
     assert executor.requests == []
+
+
+def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    executor = FakeDemoExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    service = EcosystemService(operational_runtime=runtime)
+    decision = service.analyze({
+        "score": 88,
+        "confirmed": True,
+        "filters_ok": True,
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+    })
+
+    result = service.execute_demo(
+        symbol="EURUSD",
+        signal=decision.signal.value,
+        amount=0.01,
+        duration_seconds=60,
+        decision_id=decision.decision_id,
+    )
+
+    assert result["accepted"] is True
+    journal = runtime.daily_journal.entries()[0]
+    assert journal.decision_id == decision.decision_id
+    assert journal.timeframe == "5m"
+    assert journal.score == 88
