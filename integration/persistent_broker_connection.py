@@ -41,14 +41,31 @@ class PersistentBrokerConnectionRuntime:
 
     def start(self) -> None:
         connect = getattr(self._adapter, "connect", None)
-        if callable(connect):
-            try:
-                connect()
-            except Exception:
-                pass
         with self._lock:
             self._user_disconnected = False
             self._generation += 1
+            generation = self._generation
+            if self._thread is not None and self._thread.is_alive():
+                return
+
+        connected = False
+        if callable(connect):
+            try:
+                connected = bool(connect())
+            except Exception:
+                connected = False
+
+        with self._lock:
+            stale_start = generation != self._generation or self._user_disconnected
+            if stale_start:
+                if connected:
+                    disconnect = getattr(self._adapter, "disconnect", None)
+                    if callable(disconnect):
+                        try:
+                            disconnect()
+                        except Exception:
+                            pass
+                return
             if self._thread is not None and self._thread.is_alive():
                 return
             self._stop.clear()
