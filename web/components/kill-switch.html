@@ -1,0 +1,14 @@
+<section id="kill-switch-control" class="card wide" aria-label="Parada de emergência">
+  <div class="row">
+    <div>
+      <div class="module-title">Parada de emergência</div>
+      <div class="muted">Ative o Kill switch para bloquear imediatamente novas execuções DEMO. Ele não habilita REAL.</div>
+    </div>
+    <span id="killSwitchState" class="danger">VERIFICANDO</span>
+  </div>
+  <div class="controls">
+    <label>Motivo <input id="killSwitchReason" maxlength="240" placeholder="Ex.: condição operacional insegura"></label>
+    <button class="btn alt" id="activateKillSwitch" type="button">ATIVAR KILL SWITCH</button>
+    <div id="killSwitchResult" class="muted" aria-live="polite"></div>
+  </div>
+</section>
