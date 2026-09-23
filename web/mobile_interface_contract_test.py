@@ -65,3 +65,9 @@ def test_mobile_inputs_avoid_small_text_zoom_and_support_accessibility():
     assert "font-size:16px" in HTML
     assert ".btn:focus-visible,.nav a:focus-visible" in HTML
     assert "prefers-reduced-motion:reduce" in HTML
+
+
+def test_onboarding_is_not_device_local_state():
+    onboarding = (Path(__file__).parent / "components" / "onboarding.js").read_text(encoding="utf-8")
+    assert "localStorage" not in onboarding
+    assert "/api/onboarding" in onboarding
