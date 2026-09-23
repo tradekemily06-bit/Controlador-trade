@@ -247,7 +247,7 @@ def test_reconcile_unknown_is_retry_safe_after_partial_lifecycle_failure(tmp_pat
     ledger.mark_unknown("partial")
     lifecycle.put(ExecutionLifecycleRecord("partial", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
 
-    gateway = make_gateway(ledger=ledger, lifecycle=lifecycle)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
     gateway.reconcile_unknown("partial", executed=True)
     gateway.reconcile_unknown("partial", executed=True)
 
