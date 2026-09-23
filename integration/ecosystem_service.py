@@ -327,6 +327,12 @@ class EcosystemService:
             # Bookkeeping is deliberately fail-soft: it can never turn an
             # already-completed execution into an operational retry/error.
             journal_recorded = False
+        checkpoint_recorded = True
+        if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"}:
+            try:
+                self.operational_runtime.checkpoint_operation(rid)
+            except (OSError, ValueError, TypeError):
+                checkpoint_recorded = False
         return {
             "request_id": rid,
             "status": result.status.value,
@@ -336,7 +342,8 @@ class EcosystemService:
             "mode": "DEMO",
             "real": False,
             "journal_recorded": journal_recorded,
-            "maintenance_required": not journal_recorded,
+            "checkpoint_recorded": checkpoint_recorded,
+            "maintenance_required": not journal_recorded or not checkpoint_recorded,
         }
 
     def daily_journal(self, limit: int = 100) -> dict[str, Any]:
