@@ -248,3 +248,50 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_unknown_can_be_resolved_by_matching_external_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("evidence")
+    ledger.mark_unknown("evidence")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    external.bind("evidence", "fake", "external-evidence")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        external_registry=external,
+    )
+    gateway.reconcile_unknown(
+        "evidence",
+        observation=ExternalOrderObservation(
+            "external-evidence",
+            ExternalOrderStatus.EXECUTED,
+            "broker confirmou execução",
+        ),
+    )
+    assert ledger.status("evidence") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_real_unknown_stays_unknown_for_pending_external_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("pending-evidence")
+    ledger.mark_unknown("pending-evidence")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    external.bind("pending-evidence", "fake", "external-pending")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        external_registry=external,
+    )
+    try:
+        gateway.reconcile_unknown(
+            "pending-evidence",
+            observation=ExternalOrderObservation(
+                "external-pending", ExternalOrderStatus.PENDING, "ainda pendente"
+            ),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("PENDING externo não pode resolver UNKNOWN")
+    assert ledger.status("pending-evidence") is ExecutionLedgerStatus.UNKNOWN
