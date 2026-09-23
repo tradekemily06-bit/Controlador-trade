@@ -192,13 +192,17 @@ class RealExecutionGateway:
         target_lifecycle = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
 
         ledger_state = self._ledger.status(request_id)
+        compatible_ledger = (
+            (executed and ledger_state in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED))
+            or (not executed and ledger_state in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED))
+        )
         if ledger_state in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
             self._ledger.reconcile(request_id, executed=executed)
             ledger_state = self._ledger.status(request_id)
         elif ledger_state is None:
             raise ValueError("request_id não existe no ledger.")
-        elif ledger_state is not target_ledger:
-            expected = "RECONCILED_EXECUTED" if executed else "RECONCILED_NOT_EXECUTED"
+        elif not (ledger_state is target_ledger or compatible_ledger):
+            expected = "estado final compatível com a reconciliação"
             raise ValueError(f"ledger incompatível com a reconciliação esperada: {ledger_state.value} != {expected}.")
 
         if self._lifecycle is None:
@@ -206,7 +210,7 @@ class RealExecutionGateway:
         lifecycle = self._lifecycle.get(request_id)
         if lifecycle is None:
             raise ValueError("request_id não existe no lifecycle.")
-        if lifecycle.state is ExecutionLifecycleState.UNKNOWN:
+        if lifecycle.state in (ExecutionLifecycleState.UNKNOWN, ExecutionLifecycleState.PENDING):
             self._lifecycle.reconcile(
                 request_id,
                 target_lifecycle,
