@@ -28,6 +28,7 @@ class CSPWebTests(unittest.TestCase):
         self.assertTrue(nonce)
         self.assertIn(f'<script nonce="{nonce}">', body)
         self.assertNotIn("<script>", body)
+        self.assertNotIn('<script src=', body)
 
 
 if __name__ == "__main__":
