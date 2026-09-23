@@ -20,6 +20,7 @@ class ExecutionRequest:
     duration_seconds: int
     mode: ExecutionMode
     request_id: str | None = None
+    decision_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    uncertain: bool = False
 
 
 class ExecutionPort(Protocol):

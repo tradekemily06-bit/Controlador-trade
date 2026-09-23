@@ -29,6 +29,14 @@ class FakeAdapter:
         return ExecutionResult(True, "fake real execution accepted", "external-1")
 
 
+class UncertainResultAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(False, "dispatch sem confirmação", None, uncertain=True)
+
+
 class NoExternalIdAdapter:
     def is_available(self):
         return True
@@ -232,3 +240,87 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+
+def test_reconcile_unknown_is_retry_safe_after_partial_lifecycle_failure(tmp_path):
+    # Simulate a crash after the ledger was reconciled but before lifecycle was updated.
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+    from datetime import datetime, timezone
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("partial")
+    ledger.mark_unknown("partial")
+    lifecycle.put(ExecutionLifecycleRecord("partial", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc)))
+
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
+    gateway.reconcile_unknown("partial", executed=True)
+    gateway.reconcile_unknown("partial", executed=True)
+
+    assert ledger.status("partial") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("partial").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_marks_explicitly_uncertain_adapter_result_as_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UncertainResultAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake",
+        request_id="uncertain-result",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("uncertain-result") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_reconcile_accepts_ledger_accepted_with_pending_lifecycle(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("accepted-pending")
+    ledger.mark_accepted("accepted-pending")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "accepted-pending",
+        ExecutionLifecycleState.PENDING,
+        datetime.now(timezone.utc),
+        external_id="external-1",
+    ))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
+
+    gateway.reconcile_unknown("accepted-pending", executed=True)
+
+    assert ledger.status("accepted-pending") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("accepted-pending").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconcile_accepts_ledger_rejected_with_pending_lifecycle(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("rejected-pending")
+    ledger.mark_rejected("rejected-pending")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "rejected-pending",
+        ExecutionLifecycleState.PENDING,
+        datetime.now(timezone.utc),
+    ))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
+
+    gateway.reconcile_unknown("rejected-pending", executed=False)
+
+    assert ledger.status("rejected-pending") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("rejected-pending").state is ExecutionLifecycleState.REJECTED

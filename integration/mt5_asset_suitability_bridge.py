@@ -4,6 +4,7 @@ from typing import Any, Iterable
 
 from core.senior_asset_suitability import AssetSuitability, AssetSuitabilityObservation, SeniorAssetAssessment, prioritize_assets
 from execution.mt5_asset_selector import MT5AssetCandidate
+from execution.mt5_session import coordinator_for
 from execution.mt5_instrument_universe import MT5InstrumentStatus
 
 
@@ -37,36 +38,48 @@ def build_asset_suitability_observations(
     mt5: Any,
     statuses: Iterable[MT5InstrumentStatus],
 ) -> tuple[AssetSuitabilityObservation, ...]:
-    """Translate broker observations into the senior suitability boundary."""
-    observations: list[AssetSuitabilityObservation] = []
-    for status in statuses:
-        spread, liquidity, timestamped = _tick_evidence(mt5, status.symbol)
-        if status.state == "OPEN":
-            session_open: bool | None = True
-        elif status.state == "CLOSED":
-            session_open = False
-        else:
-            session_open = None
-        observations.append(
-            AssetSuitabilityObservation(
-                symbol=status.symbol,
-                asset_class=status.asset_class,
-                tradeable=status.tradeable,
-                quote_available=status.quote_available,
-                session_open=session_open,
-                weekend_capable=status.weekend_capable,
-                quote_fresh=None,
-                quote_timestamped=timestamped if timestamped else None,
-                spread_observed=spread,
-                liquidity_observed=liquidity,
-                data_quality_ok=status.quote_available,
-                domain_expertise_available=False,
-                unresolved_questions=(
-                    "expertise de domínio requer admissão por teste/validação/memória",
-                ),
-            )
-        )
-    return tuple(observations)
+    """Translate broker observations into the senior suitability boundary.
+
+    Quote evidence is read under a shared DEMO session lease so this bridge
+    cannot accidentally query a terminal whose lifecycle it does not own.
+    """
+    owner = f"asset-suitability:{id(statuses)}"
+    coordinator = coordinator_for(mt5)
+    if not coordinator.acquire(mt5, mode="DEMO", owner=owner):
+        raise RuntimeError("MT5 DEMO ocupado por outra sessão; suitability bloqueada.")
+    try:
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
+            observations: list[AssetSuitabilityObservation] = []
+            for status in statuses:
+                spread, liquidity, timestamped = _tick_evidence(mt5, status.symbol)
+                if status.state == "OPEN":
+                    session_open: bool | None = True
+                elif status.state == "CLOSED":
+                    session_open = False
+                else:
+                    session_open = None
+                observations.append(
+                    AssetSuitabilityObservation(
+                        symbol=status.symbol,
+                        asset_class=status.asset_class,
+                        tradeable=status.tradeable,
+                        quote_available=status.quote_available,
+                        session_open=session_open,
+                        weekend_capable=status.weekend_capable,
+                        quote_fresh=None,
+                        quote_timestamped=timestamped if timestamped else None,
+                        spread_observed=spread,
+                        liquidity_observed=liquidity,
+                        data_quality_ok=status.quote_available,
+                        domain_expertise_available=False,
+                        unresolved_questions=(
+                            "expertise de domínio requer admissão por teste/validação/memória",
+                        ),
+                    )
+                )
+            return tuple(observations)
+    finally:
+        coordinator.release(mt5, owner=owner)
 
 
 def prioritize_mt5_assets(

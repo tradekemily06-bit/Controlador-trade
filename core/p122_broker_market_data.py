@@ -51,6 +51,15 @@ class BrokerMarketDataBoundary:
         self._provider = provider
         self._source = source.strip()
 
+    def connect(self) -> bool:
+        connect = getattr(self._provider, "connect", None)
+        return bool(connect()) if callable(connect) else True
+
+    def disconnect(self) -> None:
+        disconnect = getattr(self._provider, "disconnect", None)
+        if callable(disconnect):
+            disconnect()
+
     def fetch(
         self,
         request: BrokerMarketDataRequest,

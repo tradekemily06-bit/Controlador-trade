@@ -12,7 +12,17 @@ from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
-from integration.execution_provider import build_demo_execution_port
+from integration.execution_provider import build_demo_execution_port, build_real_execution_adapter
+from integration.persistent_broker_connection import PersistentBrokerConnectionRuntime
+from integration.real_execution_runtime import RealExecutionRuntime
+from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from core.p122_broker_market_data import BrokerMarketDataBoundary
+from execution.broker_registry import BrokerRegistry
+from execution.adapter_gateway import BrokerAdapterGateway
+from execution.real_gateway import RealExecutionGateway
+from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -24,7 +34,42 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+
 ONBOARDING = EcosystemOnboarding()
+
+REAL_BROKER_ID = os.environ.get("CONTROLADOR_REAL_BROKER", "mt5_real").strip().lower()
+REAL_ADAPTER_ID = os.environ.get("CONTROLADOR_REAL_ADAPTER", "mt5_real").strip().lower()
+REAL_ENABLED = os.environ.get("CONTROLADOR_REAL_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+REAL_SYMBOL = os.environ.get("CONTROLADOR_REAL_SYMBOL") or EXECUTION_SYMBOL
+REAL_SERVER = os.environ.get("CONTROLADOR_REAL_SERVER") or None
+REAL_ADAPTER = build_real_execution_adapter(REAL_ADAPTER_ID, symbol=REAL_SYMBOL, expected_server=REAL_SERVER)
+REAL_REGISTRY = BrokerRegistry()
+REAL_REGISTRY.register(REAL_BROKER_ID, REAL_ADAPTER)
+REAL_CONNECTION = PersistentBrokerConnectionRuntime(REAL_ADAPTER, poll_seconds=float(os.environ.get("CONTROLADOR_REAL_CONNECTION_POLL", "5")))
+REAL_GATEWAY = RealExecutionGateway(BrokerAdapterGateway(REAL_REGISTRY), OPERATIONAL_RUNTIME.execution_ledger, OPERATIONAL_RUNTIME.execution_lifecycle)
+REAL_RUNTIME = RealExecutionRuntime(
+    broker_id=REAL_BROKER_ID, adapter_id=REAL_ADAPTER_ID, broker_connection=REAL_CONNECTION,
+    gateway=REAL_GATEWAY, ledger=OPERATIONAL_RUNTIME.execution_ledger, lifecycle=OPERATIONAL_RUNTIME.execution_lifecycle,
+    real_enabled=REAL_ENABLED,
+    audit_verified=os.environ.get("CONTROLADOR_REAL_AUDIT_VERIFIED", "false").strip().lower() in {"1", "true", "yes", "on"},
+    recovery_safe=lambda: OPERATIONAL_RUNTIME.recovery.assess().can_resume,
+    market_healthy=lambda: bool(OPERATIONAL_RUNTIME.market_data.status().get("safe_for_analysis", False)),
+    risk_approved=lambda: bool(SERVICE.risk_status().get("allowed", False)),
+    kill_switch_clear=lambda: OPERATIONAL_RUNTIME.kill_switch.allows_execution(),
+)
+REAL_RUNTIME.start()
+
+MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
+    BrokerMarketDataBoundary(ICMarketsMT5DemoMarketDataAdapter(), source="ic_markets_mt5_demo"),
+    OPERATIONAL_RUNTIME.market_data,
+    MarketDataRuntimeConfig(
+        symbol=os.environ.get("CONTROLADOR_MARKET_SYMBOL", "EURUSD"),
+        timeframe=os.environ.get("CONTROLADOR_MARKET_TIMEFRAME", "5m"),
+        limit=int(os.environ.get("CONTROLADOR_MARKET_LIMIT", "100")),
+        poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_POLL", "5")),
+    ),
+)
+MARKET_DATA_RUNTIME.start()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -85,7 +130,7 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     body = path.read_bytes()
     script_nonce = SECURITY.script_nonce() if content_type.startswith("text/html") else None
     if script_nonce:
-        body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
+        body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"))
         if path == WEB_DIR / "index.html":
             notification_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
             notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
@@ -161,6 +206,96 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
+        if path == "/api/demo/execute" and method == "POST":
+            data = _read_json(environ)
+            signal = Signal(str(data.get("signal", "")).upper())
+            request = ExecutionRequest(
+                symbol=str(data.get("symbol", "")), signal=signal, amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)), mode=ExecutionMode.DEMO,
+                request_id=str(data.get("request_id", "")).strip() or request_id,
+                decision_id=str(data.get("decision_id", "")).strip() or None,
+            )
+            result = OPERATIONAL_RUNTIME.gateway.execute(request.request_id, request)
+            status_code = HTTPStatus.OK if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"} else HTTPStatus.CONFLICT
+            return _json_response(start_response, status_code, {
+                "status": result.status.value, "accepted": result.accepted, "message": result.message,
+                "request_id": request.request_id,
+                "decision_id": request.decision_id,
+                "execution": None if result.execution is None else {
+                    "accepted": result.execution.accepted, "message": result.execution.message,
+                    "external_id": result.execution.external_id,
+                },
+            }, request_id, environ)
+        if path == "/api/orders" and method == "GET":
+            lifecycle = OPERATIONAL_RUNTIME.execution_lifecycle.records()
+            ledger = OPERATIONAL_RUNTIME.execution_ledger
+            decisions = {item.get("decision_id"): item for item in SERVICE.memory_view(200) if item.get("decision_id")}
+            items = []
+            for record in lifecycle:
+                items.append({
+                    "request_id": record.request_id,
+                    "decision_id": record.decision_id,
+                    "symbol": record.symbol,
+                    "signal": record.signal,
+                    "amount": record.amount,
+                    "mode": record.mode,
+                    "external_id": record.external_id,
+                    "state": record.state.value,
+                    "updated_at": record.updated_at.isoformat(),
+                    "message": record.message,
+                    "ledger_state": None if ledger.status(record.request_id) is None else ledger.status(record.request_id).value,
+                    "decision": decisions.get(record.decision_id),
+                })
+            known = {item["request_id"] for item in items}
+            for request_id in ledger.records():
+                if request_id not in known:
+                    state = ledger.status(request_id)
+                    items.append({"request_id": request_id, "decision_id": None, "symbol": None, "signal": None, "amount": None, "mode": None, "external_id": None, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value, "decision": None})
+            return _json_response(start_response, HTTPStatus.OK, {"orders": items[-50:]}, request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, MARKET_DATA_RUNTIME.status(), request_id, environ)
+        if path == "/api/runtime/status" and method == "GET":
+            real = REAL_RUNTIME.status()
+            market = MARKET_DATA_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, {"real": {"mode": real.mode.value, "enabled": real.real_enabled, "broker_state": real.broker_state, "available": real.broker_available, "unknown": list(real.ledger_unknown_request_ids)}, "market": market, "orders": len(OPERATIONAL_RUNTIME.execution_lifecycle.records()), "runtime_dir": str(OPERATIONAL_RUNTIME.runtime_dir)}, request_id, environ)
+        if path == "/api/real/status" and method == "GET":
+            status = REAL_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, {
+                "mode": status.mode.value, "real_enabled": status.real_enabled,
+                "broker_state": status.broker_state, "broker_available": status.broker_available,
+                "authorization_active": status.authorization_active,
+                "pending_confirmation_ids": list(status.pending_confirmation_ids),
+                "ledger_unknown_request_ids": list(status.ledger_unknown_request_ids),
+                "lifecycle_unknown_request_ids": list(status.lifecycle_unknown_request_ids),
+                "message": status.message,
+            }, request_id, environ)
+        if path == "/api/real/mode" and method == "POST":
+            data = _read_json(environ)
+            REAL_RUNTIME.select_mode(ExecutionMode(str(data.get("mode", "")).upper()))
+            return _json_response(start_response, HTTPStatus.OK, {"mode": REAL_RUNTIME.status().mode.value}, request_id, environ)
+        if path == "/api/real/disconnect" and method == "POST":
+            REAL_RUNTIME.user_disconnect()
+            return _json_response(start_response, HTTPStatus.OK, {"disconnected": True}, request_id, environ)
+        if path == "/api/real/reconnect" and method == "POST":
+            REAL_RUNTIME.start()
+            return _json_response(start_response, HTTPStatus.OK, {"connected_check_started": True}, request_id, environ)
+        if path == "/api/real/confirm" and method == "POST":
+            data = _read_json(environ)
+            confirmation = REAL_RUNTIME.request_confirmation(request_id=str(data.get("request_id", "")), phrase=str(data.get("phrase", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"confirmation_id": confirmation.confirmation_id, "request_id": confirmation.request_id, "mode": confirmation.mode.value, "confirmed_at": confirmation.confirmed_at.isoformat()}, request_id, environ)
+        if path == "/api/real/execute" and method == "POST":
+            data = _read_json(environ)
+            result = REAL_RUNTIME.execute_confirmed(
+                request_id=str(data.get("request_id", "")), symbol=str(data.get("symbol", "")),
+                signal=Signal(str(data.get("signal", "")).upper()), amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)), confirmation_id=str(data.get("confirmation_id", "")),
+                decision_id=str(data.get("decision_id", "")).strip() or None,
+            )
+            status_code = HTTPStatus.OK if result.status in {"ADMITTED", "REJECTED"} else HTTPStatus.CONFLICT
+            return _json_response(start_response, status_code, {
+                "status": result.status, "message": result.message,
+                "execution": None if result.execution is None else {"accepted": result.execution.accepted, "message": result.execution.message, "external_id": result.execution.external_id},
+            }, request_id, environ)
         if path == "/api/connections" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
         if path == "/api/learning" and method == "GET":
@@ -208,7 +343,11 @@ def application(environ, start_response):
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
-            return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+            return _file_response(start_response, ROOT / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+        if path == "/sw.js" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "sw.js", "application/javascript; charset=utf-8", request_id, environ)
+        if path == "/icons/icon.svg" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "icons" / "icon.svg", "image/svg+xml", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 

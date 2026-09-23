@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
-from core.runtime_checkpoint import RuntimeCheckpointStore
+from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
@@ -107,6 +107,7 @@ def test_runtime_persists_last_safe_cycle(tmp_path) -> None:
     assert checkpoint.last_cycle == 3
     assert checkpoint.last_request_id is None
     assert isinstance(checkpoint.updated_at, datetime)
+    assert checkpoint.updated_at.tzinfo is not None
 
 
 def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
@@ -115,7 +116,30 @@ def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
         request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
         max_cycles=1, checkpoint_store=store, session_id="session-2",
     )
-    assert store.load().last_request_id == "runtime-000001"
+    assert store.load().last_request_id == "session-2:000001"
+
+
+def test_runtime_rejects_checkpoint_from_another_session(tmp_path) -> None:
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    store.save(RuntimeCheckpoint("session-a", 7, "session-a:000007", datetime.now(timezone.utc)))
+    with pytest.raises(ValueError, match="outra sessão"):
+        TradingRuntime(orchestrator=FakeOrchestrator(), coordinator=FakeCoordinator()).run(
+            request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
+            max_cycles=1, checkpoint_store=store, session_id="session-b",
+        )
+
+
+def test_runtime_resumes_cycle_and_request_sequence_from_checkpoint(tmp_path) -> None:
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    store.save(RuntimeCheckpoint("session-r", 7, "session-r:000007", datetime.now(timezone.utc)))
+    coordinator = FakeCoordinator(accepted=True)
+    result = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=coordinator).run(
+        request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
+        max_cycles=2, checkpoint_store=store, session_id="session-r",
+    )
+    assert len(result.cycles) == 2
+    assert [call[1]["request_id"] for call in coordinator.build_calls] == ["session-r:000008", "session-r:000009"]
+    assert store.load().last_cycle == 9
 
 
 def test_checkpoint_requires_session_id(tmp_path) -> None:

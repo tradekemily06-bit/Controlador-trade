@@ -34,7 +34,7 @@ def test_service_discovers_suitable_demo_assets_and_evaluates_them():
     service = build_ic_markets_mt5_demo_analysis_service(mt5_module=runtime, timeframe="5m", candle_limit=2, analysis_limit=2, evaluator=evaluator)
     results = service()
     assert len(results) == 2 and {item.result.symbol for item in results} == {"BTCUSD", "EURUSD"}
-    assert all(item.result.signal is Signal.COMPRA for item in results) and runtime.shutdowns == 2
+    assert all(item.result.signal is Signal.COMPRA for item in results) and runtime.shutdowns == 0
 
 def test_service_rejects_invalid_configuration():
     with pytest.raises(ValueError): build_ic_markets_mt5_demo_analysis_service(candle_limit=0)

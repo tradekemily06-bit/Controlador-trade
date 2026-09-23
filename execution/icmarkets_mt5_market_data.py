@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+import threading
 
+from execution.mt5_session import MT5SessionConflict, coordinator_for
 from core.p122_broker_market_data import BrokerMarketDataPort, BrokerMarketDataRequest
 from data.models import Candle
 from data.normalizer import normalize_candle
@@ -13,12 +15,7 @@ class MT5MarketDataError(RuntimeError):
 
 
 class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
-    """Read-only IC Markets MT5 DEMO market-data adapter.
-
-    It reads completed OHLCV bars from a running MT5 terminal and never
-    places, modifies, or closes orders. The broker-specific details stay at
-    the execution boundary; the core receives normalized Candle objects.
-    """
+    """Read-only IC Markets MT5 DEMO market-data adapter."""
 
     _TIMEFRAMES = {
         "1m": "TIMEFRAME_M1",
@@ -32,6 +29,11 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
     def __init__(self, mt5_module: Any = None) -> None:
         self._mt5 = mt5_module
+        self._connected = False
+        self._session = coordinator_for(self._mt5) if self._mt5 is not None else None
+        self._session_module = self._mt5
+        self._owner = f"market-data:{id(self)}"
+        self._lock = threading.RLock()
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -42,6 +44,9 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
                     "MetaTrader5 não instalado; este adapter precisa de um runtime com MT5."
                 ) from exc
             self._mt5 = mt5
+        if self._session_module is None:
+            self._session_module = self._mt5
+            self._session = coordinator_for(self._session_module)
         return self._mt5
 
     def _timeframe(self, timeframe: str) -> Any:
@@ -60,51 +65,105 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
+    def connect(self) -> bool:
+        with self._lock:
+            mt5 = self._module()
+            if self._connected:
+                return True
+            try:
+                self._connected = self._session.acquire(mt5, mode="DEMO", owner=self._owner)
+                if not self._connected:
+                    return False
+                with self._session.operation(mt5, mode="DEMO", owner=self._owner):
+                    account = mt5.account_info()
+                    if account is None or not self._is_demo_account(account, mt5):
+                        self._session.release(mt5, owner=self._owner)
+                        self._connected = False
+                        return False
+                return True
+            except MT5SessionConflict:
+                self._connected = False
+                return False
+            except Exception:
+                self._session.release(mt5, owner=self._owner)
+                self._connected = False
+                return False
+
+    def disconnect(self) -> None:
+        with self._lock:
+            if self._connected:
+                try:
+                    self._session.release(self._module(), owner=self._owner)
+                finally:
+                    self._connected = False
+
+    def is_available(self) -> bool:
+        with self._lock:
+            try:
+                if not self.connect():
+                    return False
+                mt5 = self._module()
+                with self._session.operation(mt5, mode="DEMO", owner=self._owner):
+                    account = mt5.account_info()
+                    return account is not None and self._is_demo_account(account, mt5)
+            except Exception:
+                self.disconnect()
+                return False
+
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
-        if not isinstance(request, BrokerMarketDataRequest):
-            raise TypeError("request deve ser BrokerMarketDataRequest")
+        with self._lock:
+            if not isinstance(request, BrokerMarketDataRequest):
+                raise TypeError("request deve ser BrokerMarketDataRequest")
 
-        mt5 = self._module()
-        timeframe = self._timeframe(request.timeframe)
-        if not mt5.initialize():
-            raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
-
-        try:
-            account = mt5.account_info()
-            if account is None or not self._is_demo_account(account, mt5):
-                raise MT5MarketDataError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
-
-            if not mt5.symbol_select(request.symbol, True):
-                raise MT5MarketDataError(f"símbolo não disponível no MT5: {request.symbol}")
-
-            # start_pos=1 excludes the currently forming candle so analysis
-            # never treats an unfinished bar as a confirmed candle.
-            rates = mt5.copy_rates_from_pos(request.symbol, timeframe, 1, request.limit)
-            if rates is None:
-                raise MT5MarketDataError(
-                    f"dados indisponíveis para {request.symbol}: {self._last_error(mt5)}"
-                )
-
-            candles: list[Candle] = []
-            for rate in rates:
-                timestamp = datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc)
-                volume = rate["tick_volume"]
-                if volume is None:
-                    volume = rate["real_volume"]
-                candles.append(
-                    normalize_candle(
-                        timestamp=timestamp,
-                        open=rate["open"],
-                        high=rate["high"],
-                        low=rate["low"],
-                        close=rate["close"],
-                        volume=volume,
+            mt5 = self._module()
+            timeframe = self._timeframe(request.timeframe)
+            if not self.connect():
+                try:
+                    account = mt5.account_info()
+                except Exception:
+                    account = None
+                if account is not None and not self._is_demo_account(account, mt5):
+                    raise MT5MarketDataError(
+                        "conta MT5 não é DEMO; leitura de market-data DEMO bloqueada."
                     )
-                )
+                raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
-            return tuple(candles)
-        finally:
-            mt5.shutdown()
+            try:
+                with self._session.operation(mt5, mode="DEMO", owner=self._owner):
+                    account = mt5.account_info()
+                    if account is None or not self._is_demo_account(account, mt5):
+                        raise MT5MarketDataError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
+
+                    if not mt5.symbol_select(request.symbol, True):
+                        raise MT5MarketDataError(f"símbolo não disponível no MT5: {request.symbol}")
+
+                    # start_pos=1 excludes the currently forming candle.
+                    rates = mt5.copy_rates_from_pos(request.symbol, timeframe, 1, request.limit)
+                    if rates is None:
+                        raise MT5MarketDataError(
+                            f"dados indisponíveis para {request.symbol}: {self._last_error(mt5)}"
+                        )
+
+                    candles: list[Candle] = []
+                    for rate in rates:
+                        timestamp = datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc)
+                        volume = rate["tick_volume"]
+                        if volume is None:
+                            volume = rate["real_volume"]
+                        candles.append(
+                            normalize_candle(
+                                timestamp=timestamp,
+                                open=rate["open"],
+                                high=rate["high"],
+                                low=rate["low"],
+                                close=rate["close"],
+                                volume=volume,
+                            )
+                        )
+                    return tuple(candles)
+            finally:
+                # Persistent runtime owns the MT5 session lifecycle.
+                pass
 
     @staticmethod
     def _last_error(mt5: Any) -> str:

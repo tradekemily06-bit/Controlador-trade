@@ -15,6 +15,7 @@ class AdapterExecutionResult:
     accepted: bool
     message: str
     execution: ExecutionResult | None = None
+    uncertain: bool = False
 
 
 class BrokerAdapterGateway:
@@ -40,9 +41,18 @@ class BrokerAdapterGateway:
         try:
             result = adapter.execute(request)
         except Exception as exc:
-            return AdapterExecutionResult(False, f"adapter falhou; execução não confirmada: {exc}")
+            return AdapterExecutionResult(
+                False,
+                f"adapter falhou; resultado externo é incerto: {type(exc).__name__}: {exc}",
+                uncertain=True,
+            )
 
         if not isinstance(result, ExecutionResult):
             return AdapterExecutionResult(False, "adapter retornou resultado inválido.")
 
-        return AdapterExecutionResult(result.accepted, result.message, result)
+        return AdapterExecutionResult(
+            result.accepted,
+            result.message,
+            result,
+            uncertain=result.uncertain,
+        )

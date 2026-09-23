@@ -34,3 +34,15 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+
+def test_naive_timestamp_is_rejected(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        store.save(RuntimeCheckpoint("session", 1, None, datetime.now()))
+
+
+def test_blank_request_id_is_rejected(tmp_path):
+    store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    with pytest.raises(ValueError):
+        store.save(RuntimeCheckpoint("session", 1, " ", datetime.now(timezone.utc)))

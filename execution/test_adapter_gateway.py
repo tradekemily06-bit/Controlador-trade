@@ -58,6 +58,7 @@ def test_adapter_gateway_handles_adapter_exception_fail_closed():
 
     assert result.accepted is False
     assert result.execution is None
+    assert result.uncertain is True
     assert adapter.calls == 1
 
 

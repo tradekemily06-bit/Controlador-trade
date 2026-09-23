@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -57,22 +57,63 @@ class RecoveryCoordinator:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
-            ledger_ids = set(self.execution_ledger.records())
+            ledger_state = self.execution_ledger.snapshot()
+            ledger_ids = set(ledger_state)
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
-        pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+        lifecycle_pending = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING}
+        lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
+        checkpoint_orphan: set[str] = set()
+        if checkpoint is not None and checkpoint.last_request_id is not None:
+            if checkpoint.last_request_id not in lifecycle_by_id and checkpoint.last_request_id not in ledger_ids:
+                checkpoint_orphan.add(checkpoint.last_request_id)
+        ledger_reserved = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.RESERVED}
+        ledger_unknown = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.UNKNOWN}
+        pending = tuple(sorted(lifecycle_pending | ledger_reserved))
+        unknown = tuple(sorted(lifecycle_unknown | ledger_unknown))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent:
+        inconsistent: set[str] = set()
+        lifecycle_without_ledger: set[str] = set()
+        ledger_without_lifecycle: set[str] = set()
+        for request_id, record in lifecycle_by_id.items():
+            state = ledger_state.get(request_id)
+            if record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                if state not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                    lifecycle_without_ledger.add(request_id)
+            elif record.state is ExecutionLifecycleState.ACCEPTED:
+                if state not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
+                    inconsistent.add(request_id)
+            elif record.state is ExecutionLifecycleState.REJECTED:
+                if state not in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
+                    inconsistent.add(request_id)
+
+        for request_id, state in ledger_state.items():
+            if request_id not in lifecycle_by_id and state in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                ledger_without_lifecycle.add(request_id)
+
+        if unknown or pending or inconsistent or lifecycle_without_ledger or ledger_without_lifecycle or checkpoint_orphan:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
             if pending:
-                details.append("PENDING requer verificação")
+                details.append("PENDING/RESERVED requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("ledger/lifecycle com estados incompatíveis")
+            if lifecycle_without_ledger:
+                details.append("lifecycle sem estado correspondente no ledger")
+            if ledger_without_lifecycle:
+                details.append("ledger sem lifecycle correspondente")
+            if checkpoint_orphan:
+                details.append("checkpoint aponta para request_id sem estado persistido")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
@@ -80,7 +121,6 @@ class RecoveryCoordinator:
                 unknown,
                 "; ".join(details),
             )
-
         state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
         message = "nenhum estado pendente; retomada segura sem replay automático" if checkpoint else "nenhum checkpoint; sessão pode iniciar com segurança"
         return RecoveryAssessment(state, checkpoint, (), (), message)

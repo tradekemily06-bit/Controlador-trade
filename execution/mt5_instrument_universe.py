@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
+from execution.mt5_session import coordinator_for
+
 
 @dataclass(frozen=True)
 class MT5InstrumentStatus:
@@ -138,75 +140,83 @@ def discover_mt5_instruments(
 ) -> tuple[MT5InstrumentStatus, ...]:
     """Discover the broker's current MT5 symbol universe without trading.
 
-    No static asset list is imposed: every symbol returned by the broker is
-    inspected. Visibility, quote and session state determine eligibility;
-    broker metadata determines the asset class whenever possible.
+    The discovery boundary owns a DEMO MT5 session lease for its complete
+    read-only scan. Callers may already hold another owner; the coordinator
+    reference-counts the nested ownership and prevents premature shutdown.
     """
-    symbols = mt5.symbols_get()
-    if symbols is None:
-        return ()
+    owner = f"instrument-universe:{id(mt5)}"
+    coordinator = coordinator_for(mt5)
+    if not coordinator.acquire(mt5, mode="DEMO", owner=owner):
+        raise RuntimeError("MT5 DEMO ocupado por outra sessão; descoberta bloqueada.")
+    try:
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
+            symbols = mt5.symbols_get()
+            if symbols is None:
+                return ()
 
-    current = now or datetime.now(timezone.utc)
-    result: list[MT5InstrumentStatus] = []
-    disabled_modes = {
-        value
-        for value in (
-            getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", None),
-            getattr(mt5, "SYMBOL_TRADE_MODE_CLOSEONLY", None),
-        )
-        if value is not None
-    }
+            current = now or datetime.now(timezone.utc)
+            result: list[MT5InstrumentStatus] = []
+            disabled_modes = {
+                value
+                for value in (
+                    getattr(mt5, "SYMBOL_TRADE_MODE_DISABLED", None),
+                    getattr(mt5, "SYMBOL_TRADE_MODE_CLOSEONLY", None),
+                )
+                if value is not None
+            }
 
-    for item in symbols:
-        symbol = str(getattr(item, "name", "")).strip()
-        if not symbol:
-            continue
-        info = mt5.symbol_info(symbol)
-        if info is None:
-            continue
+            for item in symbols:
+                symbol = str(getattr(item, "name", "")).strip()
+                if not symbol:
+                    continue
+                info = mt5.symbol_info(symbol)
+                if info is None:
+                    continue
 
-        visible = bool(getattr(info, "visible", False))
-        if not visible and not include_invisible:
-            continue
+                visible = bool(getattr(info, "visible", False))
+                if not visible and not include_invisible:
+                    continue
 
-        tick = mt5.symbol_info_tick(symbol)
-        quote_available = tick is not None and any(
-            getattr(tick, field, 0) for field in ("bid", "ask", "last")
-        )
-        session_open = _has_open_session(mt5, symbol, current)
-        disabled = getattr(info, "trade_mode", None) in disabled_modes
-        tradeable = not disabled and quote_available and session_open is not False
+                tick = mt5.symbol_info_tick(symbol)
+                quote_available = tick is not None and any(
+                    getattr(tick, field, 0) for field in ("bid", "ask", "last")
+                )
+                session_open = _has_open_session(mt5, symbol, current)
+                disabled = getattr(info, "trade_mode", None) in disabled_modes
+                tradeable = not disabled and quote_available and session_open is not False
 
-        if session_open is False:
-            state, reason = "CLOSED", "sessão de negociação fechada"
-        elif disabled:
-            state, reason = "DISABLED", "símbolo sem negociação"
-        elif not quote_available:
-            state, reason = "NO_QUOTE", "cotação indisponível"
-        else:
-            state, reason = "OPEN", "símbolo disponível para análise"
+                if session_open is False:
+                    state, reason = "CLOSED", "sessão de negociação fechada"
+                elif disabled:
+                    state, reason = "DISABLED", "símbolo sem negociação"
+                elif not quote_available:
+                    state, reason = "NO_QUOTE", "cotação indisponível"
+                else:
+                    state, reason = "OPEN", "símbolo disponível para análise"
 
-        asset_class = _asset_class(mt5, symbol, info)
-        weekend_session = _has_weekend_session(mt5, symbol)
-        weekend_capable = (
-            weekend_session
-            if weekend_session is not None
-            else asset_class == "crypto"
-        )
-        result.append(
-            MT5InstrumentStatus(
-                symbol=symbol,
-                asset_class=asset_class,
-                visible=visible,
-                tradeable=tradeable,
-                quote_available=quote_available,
-                weekend_capable=weekend_capable,
-                state=state,
-                reason=reason,
-            )
-        )
+                asset_class = _asset_class(mt5, symbol, info)
+                weekend_session = _has_weekend_session(mt5, symbol)
+                weekend_capable = (
+                    weekend_session
+                    if weekend_session is not None
+                    else asset_class == "crypto"
+                )
+                result.append(
+                    MT5InstrumentStatus(
+                        symbol=symbol,
+                        asset_class=asset_class,
+                        visible=visible,
+                        tradeable=tradeable,
+                        quote_available=quote_available,
+                        weekend_capable=weekend_capable,
+                        state=state,
+                        reason=reason,
+                    )
+                )
 
-    return tuple(sorted(result, key=lambda item: (not item.tradeable, item.symbol)))
+            return tuple(sorted(result, key=lambda item: (not item.tradeable, item.symbol)))
+    finally:
+        coordinator.release(mt5, owner=owner)
 
 
 def eligible_mt5_instruments(

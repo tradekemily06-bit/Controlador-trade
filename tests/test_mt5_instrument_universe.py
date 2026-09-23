@@ -13,6 +13,8 @@ class FakeMT5:
     SYMBOL_CALC_MODE_CFD_BONDS = 14
 
     def __init__(self, *, weekend=False):
+        self.initialize_calls = 0
+        self.shutdown_calls = 0
         self.weekend = weekend
         self.items = [
             SimpleNamespace(name="EURUSD"),
@@ -30,6 +32,13 @@ class FakeMT5:
             "BTCUSD": SimpleNamespace(path="Crypto", description="Bitcoin", trade_mode=2, trade_calc_mode=99, visible=True),
             "UNKNOWN1": SimpleNamespace(path="", description="", trade_mode=2, trade_calc_mode=99, visible=True),
         }
+
+    def initialize(self):
+        self.initialize_calls += 1
+        return True
+
+    def shutdown(self):
+        self.shutdown_calls += 1
 
     def symbols_get(self):
         return self.items
