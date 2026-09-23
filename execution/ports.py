@@ -34,6 +34,7 @@ class ExecutionResult:
     accepted: bool
     message: str
     external_id: str | None = None
+    uncertain: bool = False
 
 
 class ExecutionPort(Protocol):
