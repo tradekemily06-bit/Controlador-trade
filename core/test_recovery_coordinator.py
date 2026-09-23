@@ -118,3 +118,22 @@ def test_ledger_without_lifecycle_requires_reconciliation(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.pending_request_ids == ("req-orphan",)
+
+
+def test_checkpoint_request_without_execution_state_blocks_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint("s1", 4, "missing-request", datetime.now(timezone.utc))
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_recovery_allows_checkpoint_without_request_id(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint("s1", 4, None, datetime.now(timezone.utc))
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.SAFE_TO_RESUME
