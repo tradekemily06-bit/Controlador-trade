@@ -227,6 +227,7 @@ class EcosystemService:
             "mode": "DEMO",
             "real": False,
             "journal_recorded": journal_recorded,
+            "maintenance_required": not journal_recorded,
         }
 
     def daily_journal(self, limit: int = 100) -> dict[str, Any]:
