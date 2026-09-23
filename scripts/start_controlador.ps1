@@ -8,6 +8,7 @@ if (-not $python) {
 }
 $resolvedPython = [System.IO.Path]::GetFullPath($python)
 $trustedRoots = @(
+    [System.IO.Path]::GetFullPath("$env:WINDIR"),
     [System.IO.Path]::GetFullPath("$env:ProgramFiles\Python"),
     [System.IO.Path]::GetFullPath("$env:LOCALAPPDATA\Programs\Python")
 )
