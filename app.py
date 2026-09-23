@@ -154,6 +154,7 @@ def application(environ, start_response):
                 amount=data.get("amount", 0),
                 duration_seconds=data.get("duration_seconds", 60),
                 request_id=data.get("request_id"),
+                decision_id=data.get("decision_id"),
             )
             return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay" and method == "POST":
