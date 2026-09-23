@@ -2,7 +2,7 @@
   "use strict";
   const escapeHtml = (value) => String(value ?? "").replace(/[&<>\"']/g, (char) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[char]);
 
-  async function refresh() {
+  async function refresh(force = false) {
     const center = document.getElementById("onboardingCenter");
     const steps = document.getElementById("onboardingSteps");
     const completion = document.getElementById("onboardingCompletion");
@@ -33,10 +33,10 @@
     card.id = "onboardingReopenControl";
     card.innerHTML = '<div class="module-title">Modo de Usar</div><div class="muted">Reabra o guia de utilização quando quiser. Ele é apenas educativo e não autoriza execução.</div><button class="btn small alt" id="onboardingReopen" type="button" style="margin-top:10px">ABRIR MODO DE USAR</button>';
     grid.appendChild(card);
-    document.getElementById("onboardingReopen")?.addEventListener("click", () => refresh());
+    document.getElementById("onboardingReopen")?.addEventListener("click", () => refresh(true));
   }
 
-  window.ControladorOnboarding = Object.freeze({ refresh, reopen: refresh });
+  window.ControladorOnboarding = Object.freeze({ refresh, reopen: () => refresh(true) });
   const boot = () => { installReopenControl(); refresh(); };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true }); else boot();
 })();
