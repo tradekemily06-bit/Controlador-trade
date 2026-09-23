@@ -53,6 +53,7 @@ class ExecutionLifecycleStore:
         self._load()
 
     def _load(self) -> None:
+        self._records.clear()
         if not self.path.exists():
             return
         try:
@@ -159,7 +160,7 @@ class ExecutionLifecycleStore:
     def _write_locked(self) -> None:
         payload = [
             {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message, "decision_id": r.decision_id, "symbol": r.symbol, "signal": r.signal, "amount": r.amount, "mode": r.mode, "external_id": r.external_id}
-            for r in self.records()
+            for r in (self._records[key] for key in sorted(self._records))
         ]
         temporary = self.path.with_name(f".{self.path.name}.tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
