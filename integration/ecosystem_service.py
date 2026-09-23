@@ -138,18 +138,10 @@ class EcosystemService:
             operational_risk=operational_risk,
         )
 
-        payload = {
-            "score": gated.score,
-            "confirmed": gated.confirmed,
-            "filters_ok": gated.signal is not Signal.AGUARDAR,
-            "symbol": snapshot.symbol,
-            "timeframe": snapshot.timeframe,
-            "candles": [asdict(candle) | {"timestamp": candle.timestamp.isoformat()} for candle in candles],
-            "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
-            "observed_nodes": ["market_data", "price_history", "risk"],
-            "relationships_reviewed": ["price-structure", "structure-volatility", "price-liquidity", "post_breakout-behavior"],
-        }
-        return self.analyze(payload)
+        record = DecisionRecord.from_analysis(gated)
+        self.memory.append(record)
+        self.store.save(record)
+        return record
 
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
