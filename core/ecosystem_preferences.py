@@ -165,11 +165,21 @@ class EcosystemPreferencesStore:
             notifications = data.get("notifications", {})
             if not isinstance(candle, dict) or not isinstance(notifications, dict):
                 raise ValueError("invalid nested preferences")
+            def strict_bool(mapping: dict, key: str, default: bool) -> bool:
+                value = mapping.get(key, default)
+                if not isinstance(value, bool):
+                    raise ValueError(f"{key} must be boolean")
+                return value
+
+            notification_values = {
+                key: strict_bool(notifications, key, getattr(NotificationPreferences(), key))
+                for key in NotificationPreferences.__dataclass_fields__
+            }
             return EcosystemPreferences(
                 default_symbol=str(data.get("default_symbol", "EURUSD")),
                 default_timeframe=str(data.get("default_timeframe", "5m")),
-                require_closed_candle=bool(data.get("require_closed_candle", True)),
-                require_filters=bool(data.get("require_filters", True)),
+                require_closed_candle=strict_bool(data, "require_closed_candle", True),
+                require_filters=strict_bool(data, "require_filters", True),
                 chart_theme=ChartTheme(str(data.get("chart_theme", "DARK"))),
                 use_mode=EcosystemUseMode(str(data.get("use_mode", "COCKPIT"))),
                 candle=CandleAppearance(
@@ -178,16 +188,13 @@ class EcosystemPreferencesStore:
                     bullish_color=str(candle.get("bullish_color", "#58d68d")),
                     bearish_color=str(candle.get("bearish_color", "#ff7676")),
                     wick_color=str(candle.get("wick_color", "#aab5c8")),
-                    border_enabled=bool(candle.get("border_enabled", True)),
-                    show_wicks=bool(candle.get("show_wicks", True)),
-                    show_bodies=bool(candle.get("show_bodies", True)),
+                    border_enabled=strict_bool(candle, "border_enabled", True),
+                    show_wicks=strict_bool(candle, "show_wicks", True),
+                    show_bodies=strict_bool(candle, "show_bodies", True),
                 ),
-                notifications=NotificationPreferences(
-                    **{k: bool(v) for k, v in notifications.items()
-                       if k in NotificationPreferences.__dataclass_fields__}
-                ),
-                show_technical_details_by_default=bool(data.get("show_technical_details_by_default", False)),
-                trader_psychology_enabled=bool(data.get("trader_psychology_enabled", True)),
+                notifications=NotificationPreferences(**notification_values),
+                show_technical_details_by_default=strict_bool(data, "show_technical_details_by_default", False),
+                trader_psychology_enabled=strict_bool(data, "trader_psychology_enabled", True),
                 autonomous_operation_enabled=False,
                 real_execution_enabled=False,
             )
