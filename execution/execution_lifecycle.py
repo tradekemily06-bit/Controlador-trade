@@ -107,7 +107,9 @@ class ExecutionLifecycleStore:
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
-        return self._records.get(request_id)
+        with self._thread_lock, self._file_lock():
+            self._load()
+            return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
@@ -125,7 +127,9 @@ class ExecutionLifecycleStore:
             self._write_locked()
             return record
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
-        return tuple(self._records[key] for key in sorted(self._records))
+        with self._thread_lock, self._file_lock():
+            self._load()
+            return tuple(self._records[key] for key in sorted(self._records))
 
     @contextmanager
     def _file_lock(self):
