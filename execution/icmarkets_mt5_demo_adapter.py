@@ -69,8 +69,6 @@ class ICMarketsMT5DemoAdapter:
             account = mt5.account_info()
             return account is not None and self._is_demo_account(account, mt5)
         except Exception:
-            return False
-        except Exception:
             self.disconnect()
             return False
 
@@ -113,8 +111,6 @@ class ICMarketsMT5DemoAdapter:
             mt5 = self._module()
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         mt5 = self._module()
-        if False:
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
             account = mt5.account_info()
