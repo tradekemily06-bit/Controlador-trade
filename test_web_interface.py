@@ -42,6 +42,8 @@ class WebInterfaceSmokeTests(unittest.TestCase):
             'id="conexoes"',
             "/api/analyze",
             "/api/replay",
+            "kill-switch-control",
+            "/api/kill-switch",
         ):
             self.assertIn(marker, html)
 
@@ -53,6 +55,26 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertFalse(data["execution_allowed"])
         self.assertEqual(data["mt5_demo"], "DEMO_VALIDADO")
         self.assertEqual(data["real"], "DESABILITADO")
+
+    def test_kill_switch_endpoint_activates_fail_closed_stop(self):
+        status, _, body = self.request("/api/kill-switch")
+        self.assertEqual(status, "200 OK")
+        self.assertFalse(json.loads(body)["enabled"])
+
+        status, _, body = self.request(
+            "/api/kill-switch",
+            method="POST",
+            payload={"action": "activate", "reason": "teste de parada de emergência"},
+        )
+        self.assertEqual(status, "200 OK")
+        data = json.loads(body)
+        self.assertTrue(data["enabled"])
+        self.assertFalse(data["execution_allowed"])
+        self.assertEqual(data["reason"], "teste de parada de emergência")
+
+        status, _, body = self.request("/api/kill-switch")
+        self.assertEqual(status, "200 OK")
+        self.assertTrue(json.loads(body)["enabled"])
 
     def test_analyze_endpoint_returns_decision(self):
         status, _, body = self.request(
