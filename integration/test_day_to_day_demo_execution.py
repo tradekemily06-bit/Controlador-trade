@@ -169,3 +169,23 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     assert journal.decision_id == decision.decision_id
     assert journal.timeframe == "5m"
     assert journal.score == 88
+
+
+def test_execute_demo_requires_registered_confirmed_decision(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    executor = FakeDemoExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    service = EcosystemService(operational_runtime=runtime)
+
+    try:
+        service.execute_demo(
+            symbol="EURUSD",
+            signal="COMPRA",
+            amount=0.01,
+            duration_seconds=60,
+        )
+    except ValueError as exc:
+        assert "decision_id" in str(exc)
+    else:
+        raise AssertionError("execution without a decision must be blocked")
