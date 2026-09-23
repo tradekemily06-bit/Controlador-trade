@@ -15,6 +15,9 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port, build_real_execution_adapter
 from integration.persistent_broker_connection import PersistentBrokerConnectionRuntime
 from integration.real_execution_runtime import RealExecutionRuntime
+from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from core.p122_broker_market_data import BrokerMarketDataBoundary
 from execution.broker_registry import BrokerRegistry
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.real_gateway import RealExecutionGateway
@@ -55,6 +58,18 @@ REAL_RUNTIME = RealExecutionRuntime(
     kill_switch_clear=lambda: OPERATIONAL_RUNTIME.kill_switch.allows_execution(),
 )
 REAL_RUNTIME.start()
+
+MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
+    BrokerMarketDataBoundary(ICMarketsMT5DemoMarketDataAdapter(), source="ic_markets_mt5_demo"),
+    OPERATIONAL_RUNTIME.market_data,
+    MarketDataRuntimeConfig(
+        symbol=os.environ.get("CONTROLADOR_MARKET_SYMBOL", "EURUSD"),
+        timeframe=os.environ.get("CONTROLADOR_MARKET_TIMEFRAME", "5m"),
+        limit=int(os.environ.get("CONTROLADOR_MARKET_LIMIT", "100")),
+        poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_POLL", "5")),
+    ),
+)
+MARKET_DATA_RUNTIME.start()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -209,6 +224,8 @@ def application(environ, start_response):
                     "external_id": result.execution.external_id,
                 },
             }, request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, MARKET_DATA_RUNTIME.status(), request_id, environ)
         if path == "/api/real/status" and method == "GET":
             status = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, {
