@@ -56,15 +56,16 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         checkpoint_store=checkpoint,
         recovery=recovery,
     )
+    selected_executor = executor or PaperExecutor()
     gateway = ExecutionGateway(
-        executor or PaperExecutor(),
+        selected_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
-    provider = risk_state_provider or getattr(executor or PaperExecutor(), "read_operational_state", None)
+    provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
