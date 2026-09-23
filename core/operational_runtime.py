@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.kill_switch import KillSwitch
+from core.operational_state import OperationalState
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
@@ -16,6 +17,7 @@ from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
 from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -31,9 +33,10 @@ class OperationalRuntime:
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
     daily_journal: DailyOperationJournal
+    risk_state_provider: Callable[[], OperationalState] | None
 
 
-def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
+def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
     kill_switch = KillSwitch()
@@ -61,6 +64,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
+    provider = risk_state_provider or getattr(executor or PaperExecutor(), "read_operational_state", None)
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -71,4 +75,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         gateway=gateway,
         market_data=market_data,
         daily_journal=daily_journal,
+        risk_state_provider=provider if callable(provider) else None,
     )
