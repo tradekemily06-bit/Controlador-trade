@@ -61,29 +61,53 @@ class RecoveryCoordinator:
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
         lifecycle_pending = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING}
         lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
-        ledger_reserved = {request_id for request_id in ledger_ids if self.execution_ledger.status(request_id) is ExecutionLedgerStatus.RESERVED}
-        ledger_unknown = {request_id for request_id in ledger_ids if self.execution_ledger.status(request_id) is ExecutionLedgerStatus.UNKNOWN}
+        ledger_state = {request_id: self.execution_ledger.status(request_id) for request_id in ledger_ids}
+        ledger_reserved = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.RESERVED}
+        ledger_unknown = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.UNKNOWN}
         pending = tuple(sorted(lifecycle_pending | ledger_reserved))
         unknown = tuple(sorted(lifecycle_unknown | ledger_unknown))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
-        lifecycle_without_ledger = [r.request_id for r in lifecycle if r.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN) and r.request_id not in ledger_ids]
-        if unknown or pending or inconsistent or lifecycle_without_ledger:
+        inconsistent: set[str] = set()
+        lifecycle_without_ledger: set[str] = set()
+        ledger_without_lifecycle: set[str] = set()
+        for request_id, record in lifecycle_by_id.items():
+            state = ledger_state.get(request_id)
+            if record.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.UNKNOWN):
+                if state not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                    lifecycle_without_ledger.add(request_id)
+            elif record.state is ExecutionLifecycleState.ACCEPTED:
+                if state not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
+                    inconsistent.add(request_id)
+            elif record.state is ExecutionLifecycleState.REJECTED:
+                if state not in (ExecutionLedgerStatus.REJECTED, ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED):
+                    inconsistent.add(request_id)
+
+        for request_id, state in ledger_state.items():
+            if request_id not in lifecycle_by_id and state in (
+                ExecutionLedgerStatus.RESERVED,
+                ExecutionLedgerStatus.UNKNOWN,
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.REJECTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                ledger_without_lifecycle.add(request_id)
+
+        if unknown or pending or inconsistent or lifecycle_without_ledger or ledger_without_lifecycle:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
             if pending:
-                details.append("PENDING requer verificação")
+                details.append("PENDING/RESERVED requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
-            if ledger_reserved:
-                details.append("RESERVED no ledger requer reconciliação")
-            if ledger_unknown:
-                details.append("UNKNOWN no ledger requer reconciliação")
+                details.append("ledger/lifecycle com estados incompatíveis")
             if lifecycle_without_ledger:
-                details.append("lifecycle sem ledger requer reconciliação")
+                details.append("lifecycle sem estado correspondente no ledger")
+            if ledger_without_lifecycle:
+                details.append("ledger sem lifecycle correspondente")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
@@ -91,7 +115,6 @@ class RecoveryCoordinator:
                 unknown,
                 "; ".join(details),
             )
-
         state = RecoveryState.FRESH if checkpoint is None else RecoveryState.SAFE_TO_RESUME
         message = "nenhum estado pendente; retomada segura sem replay automático" if checkpoint else "nenhum checkpoint; sessão pode iniciar com segurança"
         return RecoveryAssessment(state, checkpoint, (), (), message)
