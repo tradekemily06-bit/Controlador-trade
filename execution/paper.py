@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from core.operational_state import OperationalState
 from execution.ports import (
     ExecutionMode,
     ExecutionRequest,
@@ -70,3 +71,21 @@ class PaperExecutor:
 
     def executions(self) -> tuple[PaperExecution, ...]:
         return tuple(self._executions)
+
+
+    def read_operational_state(self) -> OperationalState:
+        """Return only facts known by the paper executor.
+
+        Unknown financial fields remain None so configured P&L/loss limits
+        fail closed instead of being guessed.
+        """
+        today = datetime.now(timezone.utc).date()
+        executions_today = sum(
+            item.timestamp.astimezone(timezone.utc).date() == today
+            for item in self._executions
+        )
+        return OperationalState(
+            trades_today=executions_today,
+            consecutive_losses=None,
+            realized_pnl=None,
+        )
