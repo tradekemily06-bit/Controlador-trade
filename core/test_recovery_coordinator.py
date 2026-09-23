@@ -137,3 +137,19 @@ def test_recovery_allows_checkpoint_without_request_id(tmp_path):
     )
     result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
+
+
+def test_recovery_uses_single_ledger_snapshot(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("snapshot")
+    snapshot_calls = {"count": 0}
+    original = coordinator.execution_ledger.snapshot
+
+    def counted_snapshot():
+        snapshot_calls["count"] += 1
+        return original()
+
+    coordinator.execution_ledger.snapshot = counted_snapshot
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert snapshot_calls["count"] == 1
