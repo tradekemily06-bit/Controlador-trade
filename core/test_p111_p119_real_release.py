@@ -29,6 +29,14 @@ class FakeAdapter:
         return ExecutionResult(True, "fake real execution accepted", "external-1")
 
 
+class UncertainResultAdapter:
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        return ExecutionResult(False, "dispatch sem confirmação", None, uncertain=True)
+
+
 class NoExternalIdAdapter:
     def is_available(self):
         return True
@@ -253,3 +261,23 @@ def test_reconcile_unknown_is_retry_safe_after_partial_lifecycle_failure(tmp_pat
 
     assert ledger.status("partial") is ExecutionLedgerStatus.RECONCILED_EXECUTED
     assert lifecycle.get("partial").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_real_gateway_marks_explicitly_uncertain_adapter_result_as_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UncertainResultAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake",
+        request_id="uncertain-result",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("uncertain-result") is ExecutionLedgerStatus.UNKNOWN
