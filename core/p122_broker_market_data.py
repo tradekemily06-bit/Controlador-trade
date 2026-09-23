@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol, Sequence
 
 from data.models import Candle
@@ -55,6 +55,7 @@ class BrokerMarketDataBoundary:
         self,
         request: BrokerMarketDataRequest,
         received_at: datetime | None = None,
+        expected_interval: timedelta | None = None,
     ) -> BrokerMarketDataSnapshot:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
@@ -77,8 +78,11 @@ class BrokerMarketDataBoundary:
             )
             for c in raw
         )
-        if not validate_candles(list(normalized)):
+        if not validate_candles(list(normalized), expected_interval=expected_interval):
             raise ValueError("provider retornou sequência de candles inválida")
+        clock = received_at or datetime.now().astimezone()
+        if any(candle.timestamp > clock for candle in normalized):
+            raise ValueError("provider retornou candle futuro")
 
         if len(normalized) > request.limit:
             normalized = normalized[-request.limit:]
