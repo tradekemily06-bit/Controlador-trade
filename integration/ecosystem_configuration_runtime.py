@@ -18,11 +18,10 @@ from integration.p137_operational_risk_bridge import OperationalRiskBridge
 class ConfiguredEcosystemService(EcosystemService):
     """Ecosystem service with preferences, notifications and senior analysis wired in."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, notification_database_path: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
-        notification_db = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(Path(".runtime") / "notifications.sqlite3")
-        self.notifications = EcosystemNotificationCenter(database_path=notification_db)
+        self.notifications = EcosystemNotificationCenter(database_path=notification_database_path)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
