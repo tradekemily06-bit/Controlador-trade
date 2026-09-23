@@ -107,16 +107,22 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
         if path == WEB_DIR / "index.html":
+            kill_switch_html = (WEB_DIR / "components" / "kill-switch.html").read_text(encoding="utf-8").encode("utf-8")
+            kill_switch_js = (WEB_DIR / "components" / "kill-switch.js").read_text(encoding="utf-8")
             notification_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
             notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
             onboarding_html = (WEB_DIR / "components" / "onboarding.html").read_text(encoding="utf-8").encode("utf-8")
             onboarding_js = (WEB_DIR / "components" / "onboarding.js").read_text(encoding="utf-8")
+            kill_switch_script = f'<script nonce="{script_nonce}">{kill_switch_js}</script>'.encode("utf-8")
             notification_script = f'<script nonce="{script_nonce}">{notification_js}</script>'.encode("utf-8")
             onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
+            kill_switch_mount = kill_switch_html + kill_switch_script
             notification_mount = notification_html + notification_script
             onboarding_mount = onboarding_html + onboarding_script
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
+            config_anchor = '<div class="section" id="config">Configurações</div>'.encode("utf-8")
+            body = body.replace(config_anchor, kill_switch_mount + config_anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
@@ -142,9 +148,50 @@ def application(environ, start_response):
             data = _read_json(environ)
             record = SERVICE.analyze_market(symbol=str(data.get("symbol", "")), timeframe=str(data.get("timeframe", "")), limit=int(data.get("limit", 120)))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/kill-switch" and method == "GET":
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                return _json_response(start_response, HTTPStatus.OK, {"enabled": True, "reason": "runtime operacional não conectado", "execution_allowed": False}, request_id, environ)
+            state = runtime.kill_switch.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
+        if path == "/api/kill-switch" and method == "POST":
+            data = _read_json(environ)
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                raise RuntimeError("runtime operacional não conectado")
+            if str(data.get("action", "")).strip().lower() != "activate":
+                raise ValueError("somente ativação do Kill switch está disponível pela interface")
+            reason = str(data.get("reason", "")).strip()
+            if not reason:
+                raise ValueError("reason é obrigatório")
+            state = runtime.kill_switch.activate(reason)
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
+        if path == "/api/ecosystem-image" and method == "GET":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", ["profile"])[-1]
+            image = SERVICE.read_ecosystem_image(kind)
+            if image is None:
+                return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "imagem não configurada", "request_id": request_id}, request_id, environ)
+            body, content_type = image
+            headers = [("Content-Type", content_type), ("Content-Length", str(len(body))), ("Cache-Control", "no-store")]
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        if path == "/api/ecosystem-image" and method == "POST":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", [""])[-1]
+            raw_length = environ.get("CONTENT_LENGTH") or "0"
+            length = int(raw_length)
+            from core.ecosystem_image_store import EcosystemImageStore
+            if length <= 0 or length > EcosystemImageStore.MAX_BYTES:
+                raise ValueError("imagem deve ter entre 1 byte e 5 MB")
+            payload = environ["wsgi.input"].read(length)
+            if len(payload) != length:
+                raise ValueError("payload de imagem incompleto")
+            mime = SERVICE.save_ecosystem_image(kind, payload, str(environ.get("CONTENT_TYPE", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"saved": True, "content_type": mime, "request_id": request_id}, request_id, environ)
         if path == "/api/preferences" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
         if path == "/api/preferences" and method == "POST":
