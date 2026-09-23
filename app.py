@@ -6,7 +6,8 @@ import os
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
-from wsgiref.simple_server import make_server
+from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
@@ -232,9 +233,16 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
+class ThreadedWSGIServer(ThreadingMixIn, WSGIServer):
+    """Allow independent mobile polling/health requests without blocking execution."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port, application, server_class=ThreadedWSGIServer) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 
