@@ -42,8 +42,9 @@ def test_real_and_demo_adapters_cannot_own_same_mt5_session_at_once() -> None:
     market.disconnect()
     assert fake.shutdown_calls == 1
 
-    assert real.connect() is True
-    assert fake.initialize_calls == 2
+    # The fake terminal remains DEMO after reconnect; REAL must stay fail-closed.
+    assert real.connect() is False
+    assert fake.initialize_calls == 1
     real.disconnect()
     assert fake.shutdown_calls == 2
 
