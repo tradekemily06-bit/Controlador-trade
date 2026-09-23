@@ -13,7 +13,8 @@ from core.learning_content import ContentType, LearningActivity, LearningAttempt
 from core.learning_store import LearningStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
-from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot, BrokerMarketDataPort
+from analysis.pipeline import StrategyPipeline
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
@@ -33,7 +34,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured") -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -54,6 +55,8 @@ class EcosystemService:
             self.learning_attempts,
         ) = self.learning_store.load()
         self.senior_context = SeniorContextOrchestrator()
+        self.strategy_pipeline = StrategyPipeline()
+        self.market_data_boundary = BrokerMarketDataBoundary(market_data_provider, market_data_source) if market_data_provider is not None else None
 
     def _persist_learning(self) -> None:
         self.learning_store.save(
@@ -69,6 +72,32 @@ class EcosystemService:
 
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
+
+    def analyze_market(self, *, symbol: str, timeframe: str, limit: int = 120) -> DecisionRecord:
+        """Fetch broker candles, run the technical pipeline, then pass the result through the normal analysis boundary."""
+        if self.market_data_boundary is None:
+            raise RuntimeError("market data provider não configurado")
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        snapshot = self.market_data_boundary.fetch(request)
+        result = self.strategy_pipeline.evaluate(
+            list(snapshot.candles),
+            confirmed=True,
+            filters_ok=True,
+            symbol=snapshot.symbol,
+            timeframe=snapshot.timeframe,
+        )
+        payload = {
+            "score": result.score,
+            "confirmed": result.confirmed,
+            "filters_ok": True,
+            "symbol": snapshot.symbol,
+            "timeframe": snapshot.timeframe,
+            "candles": [asdict(candle) | {"timestamp": candle.timestamp.isoformat()} for candle in snapshot.candles],
+            "available_nodes": ["market_data", "price_history", "risk", "execution", "security"],
+            "observed_nodes": ["market_data", "price_history"],
+            "relationships_reviewed": ["price_history"],
+        }
+        return self.analyze(payload)
 
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
