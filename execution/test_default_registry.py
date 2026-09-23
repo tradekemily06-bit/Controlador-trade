@@ -28,12 +28,12 @@ def test_default_demo_registry_can_override_symbol():
     assert adapter.config.symbol == "EURUSD"
 
 
-def test_ic_markets_demo_gateway_is_composed_without_connecting():
+def test_ic_markets_demo_gateway_is_composed_without_connecting(tmp_path):
     class UnusedMT5:
         def initialize(self):
             raise AssertionError("gateway construction must not initialize MT5")
 
-    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5(), symbol="EURUSD")
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5(), symbol="EURUSD", runtime_root=tmp_path)
 
     assert gateway is not None
 
@@ -43,7 +43,7 @@ def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
         def initialize(self):
             raise AssertionError("REAL must be blocked before MT5 access")
 
-    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5())
+    gateway = build_ic_markets_mt5_demo_gateway(mt5_module=UnusedMT5(), runtime_root=tmp_path)
     request = ExecutionRequest(
         symbol="EURUSD",
         signal=Signal.COMPRA,
@@ -58,7 +58,7 @@ def test_ic_markets_demo_gateway_keeps_real_blocked_before_adapter_access():
     assert result.status is GatewayStatus.INVALID_REQUEST
 
 
-def test_ic_markets_demo_gateway_kill_switch_blocks_before_adapter():
+def test_ic_markets_demo_gateway_kill_switch_blocks_before_adapter(tmp_path):
     class UnusedMT5:
         def initialize(self):
             raise AssertionError("kill switch must block before MT5 access")
