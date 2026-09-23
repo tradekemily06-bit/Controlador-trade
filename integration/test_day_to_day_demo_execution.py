@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from core.kill_switch import KillSwitch
+from core.models import Signal
+from core.operational_runtime import build_operational_runtime
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+
+
+class FakeDemoExecutor:
+    def __init__(self):
+        self.requests = []
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        self.requests.append(request)
+        return ExecutionResult(True, "DEMO accepted", "ext-demo-1")
+
+
+def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    executor = FakeDemoExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    service = EcosystemService(operational_runtime=runtime)
+
+    result = service.execute_demo(
+        symbol="EURUSD",
+        signal="COMPRA",
+        amount=0.01,
+        duration_seconds=60,
+        request_id="ui-demo-1",
+    )
+
+    assert result["accepted"] is True
+    assert result["mode"] == "DEMO"
+    assert result["real"] is False
+    assert result["external_id"] == "ext-demo-1"
+    assert len(executor.requests) == 1
+    assert executor.requests[0].mode is ExecutionMode.DEMO
+    assert executor.requests[0].signal is Signal.COMPRA
+
+
+def test_execute_demo_rejects_aguardar(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    runtime = build_operational_runtime(tmp_path, executor=FakeDemoExecutor())
+    service = EcosystemService(operational_runtime=runtime)
+
+    try:
+        service.execute_demo(
+            symbol="EURUSD",
+            signal="AGUARDAR",
+            amount=0.01,
+            duration_seconds=60,
+        )
+    except ValueError as exc:
+        assert "AGUARDAR" in str(exc)
+    else:
+        raise AssertionError("AGUARDAR should never reach the gateway")
+
+
+def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
+    from integration.ecosystem_service import EcosystemService
+
+    executor = FakeDemoExecutor()
+    runtime = build_operational_runtime(tmp_path, executor=executor)
+    service = EcosystemService(operational_runtime=runtime)
+
+    first = service.execute_demo(
+        symbol="EURUSD",
+        signal="COMPRA",
+        amount=0.01,
+        duration_seconds=60,
+        request_id="duplicate-demo",
+    )
+    second = service.execute_demo(
+        symbol="EURUSD",
+        signal="COMPRA",
+        amount=0.01,
+        duration_seconds=60,
+        request_id="duplicate-demo",
+    )
+
+    assert first["accepted"] is True
+    assert second["accepted"] is False
+    assert second["status"] == "DUPLICATE"
+    assert len(executor.requests) == 1
