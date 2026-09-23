@@ -43,8 +43,12 @@ class RealExecutionGateway:
             raise ValueError("ledger é obrigatório para execução REAL.")
         if lifecycle is not None and not isinstance(lifecycle, ExecutionLifecycleStore):
             raise ValueError("lifecycle inválido.")
+        if external_registry is None:
+            external_registry = ExternalExecutionRegistry(
+                ledger.path.with_name(f"{ledger.path.stem}.external.json")
+            )
         if not isinstance(external_registry, ExternalExecutionRegistry):
-            raise ValueError("external_registry é obrigatório para execução REAL.")
+            raise ValueError("external_registry inválido.")
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._lifecycle = lifecycle
