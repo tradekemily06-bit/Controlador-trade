@@ -118,6 +118,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
