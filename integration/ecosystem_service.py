@@ -111,7 +111,7 @@ class EcosystemService:
             results.append({"step": index, **record.to_dict()})
         return results
 
-    def execute_demo(self, *, symbol: str, signal: str, amount: float, duration_seconds: int, request_id: str | None = None) -> dict[str, Any]:
+    def execute_demo(self, *, symbol: str, signal: str, amount: float, duration_seconds: int, request_id: str | None = None, decision_id: str | None = None) -> dict[str, Any]:
         """Execute one explicit user-confirmed DEMO operation through the shared gateway.
 
         REAL is structurally impossible here: the request is constructed as DEMO and
@@ -132,6 +132,9 @@ class EcosystemService:
         if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
             raise ValueError("duration_seconds deve ser inteiro positivo")
         rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
+        decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
+        if decision is not None and decision.signal != selected_signal.value:
+            raise ValueError("decision_id não corresponde ao sinal selecionado")
         request = ExecutionRequest(
             symbol=symbol.strip(),
             signal=selected_signal,
@@ -155,6 +158,10 @@ class EcosystemService:
                     accepted=False,
                     external_id=None,
                     message=risk_decision.reason,
+                    decision_id=decision.decision_id if decision is not None else None,
+                    timeframe=decision.timeframe if decision is not None else None,
+                    score=decision.score if decision is not None else None,
+                    reason=decision.reason if decision is not None else None,
                 )
             except (OSError, ValueError, TypeError):
                 pass
@@ -185,6 +192,10 @@ class EcosystemService:
                 accepted=result.accepted,
                 external_id=external_id,
                 message=result.message,
+                decision_id=decision.decision_id if decision is not None else None,
+                timeframe=decision.timeframe if decision is not None else None,
+                score=decision.score if decision is not None else None,
+                reason=decision.reason if decision is not None else None,
             )
         except (OSError, ValueError, TypeError):
             # Bookkeeping is deliberately fail-soft: it can never turn an
