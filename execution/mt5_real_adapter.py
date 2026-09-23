@@ -91,8 +91,6 @@ class MT5RealAdapter:
                 return False
             return self._server_matches(account)
         except Exception:
-            return False
-        except Exception:
             self.disconnect()
             return False
 
