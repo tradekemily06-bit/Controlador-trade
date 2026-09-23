@@ -36,7 +36,7 @@ class EcosystemService:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
-        self.risk = RiskManager()
+        self.risk = operational_runtime.risk_manager if operational_runtime is not None else RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
