@@ -21,6 +21,24 @@ def test_preferences_support_candle_appearance_changes_without_execution_authori
     assert result.autonomous_operation_enabled is False
 
 
+def test_trader_psychology_can_be_manually_enabled_or_disabled():
+    store = EcosystemPreferencesStore()
+    assert store.preferences.trader_psychology_enabled is True
+
+    disabled = store.update(trader_psychology_enabled=False)
+    assert disabled.trader_psychology_enabled is False
+    assert disabled.real_execution_enabled is False
+
+    enabled = store.update(trader_psychology_enabled=True)
+    assert enabled.trader_psychology_enabled is True
+
+
+def test_trader_psychology_toggle_requires_boolean():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError):
+        store.update(trader_psychology_enabled="false")
+
+
 def test_preferences_cannot_enable_real_or_autonomous_operation():
     store = EcosystemPreferencesStore()
     with pytest.raises(ValueError):
