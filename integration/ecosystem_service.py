@@ -31,7 +31,12 @@ class EcosystemService:
 
     def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
         self.engine = engine or SignalEngine()
-        self.store = decision_store or DecisionStore()
+        if decision_store is not None:
+            self.store = decision_store
+        elif operational_runtime is not None:
+            self.store = DecisionStore(operational_runtime.runtime_dir / "decisions.sqlite")
+        else:
+            self.store = DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
         self.risk = RiskManager()
         self.news = UnconfiguredNewsProvider()
