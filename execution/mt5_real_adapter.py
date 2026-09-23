@@ -92,12 +92,9 @@ class MT5RealAdapter:
             return self._server_matches(account)
         except Exception:
             return False
-        finally:
-            if mt5 is not None:
-                try:
-                    mt5.shutdown()
-                except Exception:
-                    pass
+        except Exception:
+            self.disconnect()
+            return False
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.REAL:
@@ -111,8 +108,6 @@ class MT5RealAdapter:
             mt5 = self._module()
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         mt5 = self._module()
-        if False:
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
             account = mt5.account_info()
