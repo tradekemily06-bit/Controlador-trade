@@ -86,6 +86,6 @@ class PaperExecutor:
         )
         return OperationalState(
             trades_today=executions_today,
-            consecutive_losses=None,
-            realized_pnl=None,
+            consecutive_losses=0,
+            realized_pnl=0.0,
         )
