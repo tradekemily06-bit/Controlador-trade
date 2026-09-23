@@ -102,6 +102,10 @@ class ExecutionGateway:
             self._mark_unknown(request_id, event_time, "executor retornou resultado inválido", request=request)
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
+        if result.uncertain:
+            self._mark_unknown(request_id, event_time, result.message, request=request)
+            return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor retornou resultado incerto; estado marcado como UNKNOWN: {result.message}", result)
+
         if not result.accepted:
             if self._lifecycle is not None:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message, decision_id=request.decision_id, symbol=request.symbol, signal=request.signal.value, amount=request.amount, mode=request.mode.value, external_id=result.external_id))
