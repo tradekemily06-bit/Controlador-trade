@@ -24,7 +24,7 @@ class MT5SessionCoordinator:
         self._lock = RLock()
         self._initialized = False
         self._mode: str | None = None
-        self._owners: set[str] = set()
+        self._owners: dict[str, int] = {}
         self._module: Any = None
 
     def acquire(self, module: Any, *, mode: str, owner: str) -> bool:
@@ -40,7 +40,7 @@ class MT5SessionCoordinator:
                     raise MT5SessionConflict("módulo MT5 diferente já possui a sessão ativa.")
                 if self._mode != normalized_mode:
                     return False
-                self._owners.add(owner)
+                self._owners[owner] = self._owners.get(owner, 0) + 1
                 return True
 
             if not bool(module.initialize()):
@@ -49,14 +49,20 @@ class MT5SessionCoordinator:
             self._initialized = True
             self._module = module
             self._mode = normalized_mode
-            self._owners = {owner}
+            self._owners = {owner: 1}
             return True
 
     def release(self, module: Any, *, owner: str) -> None:
         with self._lock:
             if not self._initialized or self._module is not module:
                 return
-            self._owners.discard(owner)
+            count = self._owners.get(owner)
+            if count is None:
+                return
+            if count > 1:
+                self._owners[owner] = count - 1
+                return
+            self._owners.pop(owner, None)
             if self._owners:
                 return
             try:
@@ -74,7 +80,7 @@ class MT5SessionCoordinator:
                 not self._initialized
                 or self._module is not module
                 or self._mode != normalized_mode
-                or owner not in self._owners
+                or self._owners.get(owner, 0) <= 0
             ):
                 raise MT5SessionConflict(
                     "sessão MT5 não pertence ao adapter; operação bloqueada."
@@ -83,7 +89,7 @@ class MT5SessionCoordinator:
 
     def is_owned(self, module: Any, *, owner: str) -> bool:
         with self._lock:
-            return self._initialized and self._module is module and owner in self._owners
+            return self._initialized and self._module is module and self._owners.get(owner, 0) > 0
 
     def status(self) -> dict[str, object]:
         with self._lock:
