@@ -92,9 +92,23 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertTrue(json.loads(response)["saved"])
 
-        status, headers, response = self.request("/api/ecosystem-image?kind=profile")
-        self.assertEqual(status, "200 OK")
-        self.assertEqual(headers["Content-Type"], "image/png")
+        captured = {}
+
+        def start_response_get(status, headers):
+            captured["status"] = status
+            captured["headers"] = dict(headers)
+
+        environ = {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": "/api/ecosystem-image",
+            "QUERY_STRING": "kind=profile",
+            "CONTENT_TYPE": "",
+            "CONTENT_LENGTH": "0",
+            "wsgi.input": io.BytesIO(b""),
+        }
+        response = b"".join(application(environ, start_response_get))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertEqual(captured["headers"]["Content-Type"], "image/png")
         self.assertEqual(response, body)
 
 
