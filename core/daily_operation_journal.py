@@ -23,6 +23,10 @@ class DailyOperationJournalEntry:
     accepted: bool
     external_id: str | None
     message: str
+    decision_id: str | None = None
+    timeframe: str | None = None
+    score: float | None = None
+    reason: str | None = None
 
 
 class DailyOperationJournal:
@@ -68,6 +72,10 @@ class DailyOperationJournal:
         accepted: bool,
         external_id: str | None,
         message: str,
+        decision_id: str | None = None,
+        timeframe: str | None = None,
+        score: float | None = None,
+        reason: str | None = None,
         timestamp: datetime | None = None,
     ) -> DailyOperationJournalEntry:
         entry = DailyOperationJournalEntry(
@@ -83,6 +91,10 @@ class DailyOperationJournal:
             accepted=bool(accepted),
             external_id=None if external_id is None else str(external_id),
             message=str(message),
+            decision_id=None if decision_id is None else str(decision_id),
+            timeframe=None if timeframe is None else str(timeframe),
+            score=None if score is None else float(score),
+            reason=None if reason is None else str(reason),
         )
         with self._lock:
             self._entries.append(entry)
