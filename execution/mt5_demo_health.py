@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from execution.mt5_session import coordinator_for
 
 
 @dataclass(frozen=True)
@@ -13,10 +14,15 @@ class MT5DemoHealth:
 
 def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
     """Perform a read-only preflight; never sends or modifies an order."""
+    owner=f"health:{id(mt5)}"
+    coordinator=coordinator_for(mt5)
+    acquired=False
     try:
-        if not mt5.initialize():
+        acquired=coordinator.acquire(mt5, mode="DEMO", owner=owner)
+        if not acquired:
             return MT5DemoHealth(False, False, f"MT5 indisponível: {mt5.last_error()}")
-        account = mt5.account_info()
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
+            account = mt5.account_info()
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         is_demo = (
             account is not None
@@ -29,10 +35,8 @@ def check_mt5_demo_health(mt5: Any) -> MT5DemoHealth:
     except Exception as exc:
         return MT5DemoHealth(False, False, f"falha no preflight MT5: {exc}")
     finally:
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
+        if acquired:
+            coordinator.release(mt5, owner=owner)
 
 
 if __name__ == "__main__":
