@@ -14,7 +14,7 @@ from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.risk_manager import RiskManager
-from core.runtime_checkpoint import RuntimeCheckpointStore
+from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
