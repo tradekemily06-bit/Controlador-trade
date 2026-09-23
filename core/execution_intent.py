@@ -13,13 +13,13 @@ class ExecutionIntent:
     """Validated, immutable request boundary; creating it never executes anything."""
 
     request_id: str
-    decision_id: str | None
     symbol: str
     signal: Signal
     amount: float
     duration_seconds: int
     mode: ExecutionMode
     created_at: datetime
+    decision_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
