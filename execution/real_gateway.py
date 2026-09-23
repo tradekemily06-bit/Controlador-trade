@@ -175,18 +175,34 @@ class RealExecutionGateway:
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
-        if self._lifecycle is not None:
-            state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
+        """Reconcile both durable projections idempotently; never resubmit."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        target_ledger = ExecutionLedgerStatus.RECONCILED_EXECUTED if executed else ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+        target_lifecycle = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
+
+        ledger_state = self._ledger.status(request_id)
+        if ledger_state in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+            self._ledger.reconcile(request_id, executed=executed)
+            ledger_state = self._ledger.status(request_id)
+        elif ledger_state is None:
+            raise ValueError("request_id não existe no ledger.")
+        elif ledger_state is not target_ledger:
+            expected = "RECONCILED_EXECUTED" if executed else "RECONCILED_NOT_EXECUTED"
+            raise ValueError(f"ledger incompatível com a reconciliação esperada: {ledger_state.value} != {expected}.")
+
+        if self._lifecycle is None:
+            return
+        lifecycle = self._lifecycle.get(request_id)
+        if lifecycle is None:
+            raise ValueError("request_id não existe no lifecycle.")
+        if lifecycle.state is ExecutionLifecycleState.UNKNOWN:
             self._lifecycle.reconcile(
                 request_id,
-                state,
+                target_lifecycle,
                 updated_at=datetime.now(timezone.utc),
                 message="reconciliação explícita; nenhuma nova ordem foi enviada.",
             )
+            return
+        if lifecycle.state is not target_lifecycle:
+            raise ValueError("lifecycle incompatível com a reconciliação esperada.")
