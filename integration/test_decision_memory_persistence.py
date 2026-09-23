@@ -22,3 +22,20 @@ def test_ecosystem_service_restores_decisions_and_outcomes(tmp_path):
     assert restored[0]["decision_id"] == record.decision_id
     assert restored[0]["outcome"] == "WIN"
     assert second.statistics()["total"] == 1
+
+
+def test_ecosystem_service_uses_runtime_directory_for_default_decision_persistence(tmp_path):
+    runtime = __import__("core.operational_runtime", fromlist=["build_operational_runtime"]).build_operational_runtime(tmp_path)
+    first = EcosystemService(operational_runtime=runtime)
+    record = first.analyze({
+        "score": 77,
+        "confirmed": True,
+        "filters_ok": True,
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+    })
+
+    second = EcosystemService(operational_runtime=__import__("core.operational_runtime", fromlist=["build_operational_runtime"]).build_operational_runtime(tmp_path))
+
+    assert first.store.database_path == str(tmp_path / "decisions.sqlite")
+    assert second.memory_view()[0]["decision_id"] == record.decision_id
