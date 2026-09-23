@@ -7,10 +7,19 @@ from integration.mt5_asset_suitability_bridge import build_asset_suitability_obs
 
 class FakeMT5:
     def __init__(self):
+        self.initialize_calls = 0
+        self.shutdown_calls = 0
         self.ticks = {
             "EURUSD": SimpleNamespace(bid=1.1000, ask=1.1002, time_msc=1000, volume=12, volume_real=0),
             "XAUUSD": SimpleNamespace(bid=2500.0, ask=2500.5, time_msc=2000, volume=8, volume_real=0),
         }
+
+    def initialize(self):
+        self.initialize_calls += 1
+        return True
+
+    def shutdown(self):
+        self.shutdown_calls += 1
 
     def symbol_info_tick(self, symbol):
         return self.ticks.get(symbol)
