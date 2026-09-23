@@ -22,7 +22,7 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def __init__(self, *args: Any, notification_database_path: str | None = None, preferences_path: str | None = None, image_directory: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.preferences = EcosystemPreferencesStore(path=preferences_path)
+        self.preferences = EcosystemPreferencesStore(database_path=preferences_path)
         self.images = EcosystemImageStore(image_directory) if image_directory is not None else None
         self.notifications = EcosystemNotificationCenter(database_path=notification_database_path)
         self.senior_analysis_gate = SeniorAnalysisGate()
