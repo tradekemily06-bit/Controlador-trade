@@ -50,3 +50,23 @@ def test_gap_snapshot_is_not_safe() -> None:
     assert report.health.value == "GAP"
     assert report.safe_for_analysis is False
     assert state.status()["gap_count"] == 1
+
+
+def test_refresh_failure_invalidates_previous_healthy_snapshot() -> None:
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    state.update(
+        snapshot(0, 1, 2),
+        now=datetime(2026, 1, 1, 0, 3, tzinfo=timezone.utc),
+        expected_interval_seconds=60,
+    )
+    assert state.validated_snapshot(symbol="EURUSD", timeframe="1m") is not None
+
+    state.invalidate(
+        source="TEST_PROVIDER",
+        symbol="EURUSD",
+        timeframe="1m",
+        message="provider offline",
+    )
+
+    assert state.status()["safe_for_analysis"] is False
+    assert state.validated_snapshot(symbol="EURUSD", timeframe="1m") is None

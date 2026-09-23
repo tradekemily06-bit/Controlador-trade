@@ -36,4 +36,9 @@ class MarketDataExecutionGuard:
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.",
             )
+        if self.market_data.validated_snapshot_for_symbol(symbol=request.symbol) is None:
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "execução bloqueada: o snapshot validado não está disponível no runtime.",
+            )
         return self.gateway.execute(request_id, request, **kwargs)

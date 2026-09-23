@@ -15,6 +15,8 @@ from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
+from core.p122_broker_market_data import BrokerMarketDataBoundary
+from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -24,9 +26,22 @@ RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtim
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
-MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "none").strip().lower()
+MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_markets_mt5_demo").strip().lower()
 MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
+MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
+if MARKET_DATA is not None:
+    MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
+        BrokerMarketDataBoundary(MARKET_DATA, MARKET_DATA_PROVIDER),
+        OPERATIONAL_RUNTIME.market_data,
+        MarketDataRuntimeConfig(
+            symbol=EXECUTION_SYMBOL or "EURUSD",
+            timeframe=os.environ.get("CONTROLADOR_EXECUTION_TIMEFRAME", "5m"),
+            limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_LIMIT", "120")),
+            poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_DATA_POLL_SECONDS", "5")),
+        ),
+    )
+    MARKET_DATA_RUNTIME.start()
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB)
 ONBOARDING = EcosystemOnboarding()

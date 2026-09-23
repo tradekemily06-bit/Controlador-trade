@@ -58,7 +58,9 @@ class EcosystemService:
         self.senior_context = SeniorContextOrchestrator()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.strategy_pipeline = StrategyPipeline()
-        self.market_data_boundary = BrokerMarketDataBoundary(market_data_provider, market_data_source) if market_data_provider is not None else None
+        # Broker market data is owned by the persistent runtime; these constructor
+        # arguments remain accepted for compatibility but do not create a second path.
+        self.market_data_boundary = None
 
     def _persist_learning(self) -> None:
         self.learning_store.save(
@@ -76,19 +78,35 @@ class EcosystemService:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
     def analyze_market(self, *, symbol: str, timeframe: str, limit: int = 120) -> DecisionRecord:
-        """Fetch broker candles, run the technical pipeline, then pass the result through the normal analysis boundary."""
-        if self.market_data_boundary is None:
-            raise RuntimeError("market data provider não configurado")
-        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
-        intervals = {"1m": timedelta(minutes=1), "5m": timedelta(minutes=5), "15m": timedelta(minutes=15), "30m": timedelta(minutes=30), "1h": timedelta(hours=1), "4h": timedelta(hours=4), "1d": timedelta(days=1)}
-        expected_interval = intervals.get(timeframe.strip().lower())
-        if expected_interval is None:
+        """Analyze only the validated snapshot owned by the shared operational runtime.
+
+        The service never creates a second broker-data path for operational analysis.
+        The persistent market-data runtime is the single source of candles here.
+        """
+        runtime = self.operational_runtime
+        if runtime is None:
+            raise ValueError("runtime operacional não conectado")
+        requested_symbol = symbol.strip()
+        requested_timeframe = timeframe.strip().lower()
+        if not requested_symbol:
+            raise ValueError("symbol é obrigatório")
+        if requested_timeframe not in {"1m", "5m", "15m", "30m", "1h", "4h", "1d"}:
             raise ValueError("timeframe não suportado para análise de mercado")
-        snapshot = self.market_data_boundary.fetch(request, expected_interval=expected_interval)
-        minimum_candles = 20
-        if len(snapshot.candles) < minimum_candles:
-            raise ValueError(f"candles insuficientes para análise: {len(snapshot.candles)} < {minimum_candles}")
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 20:
+            raise ValueError("limit deve ser inteiro maior ou igual a 20")
+
+        snapshot = runtime.market_data.validated_snapshot(
+            symbol=requested_symbol,
+            timeframe=requested_timeframe,
+        )
+        if snapshot is None:
+            raise ValueError(
+                "dados de mercado ainda não estão validados para o símbolo/timeframe solicitado"
+            )
         candles = list(snapshot.candles)
+        if len(candles) < 20:
+            raise ValueError(f"candles insuficientes para análise: {len(candles)} < 20")
+
         result = self.strategy_pipeline.evaluate(
             candles,
             confirmed=True,
@@ -97,15 +115,13 @@ class EcosystemService:
             timeframe=snapshot.timeframe,
         )
 
-        # Build senior context only from facts actually available at this boundary.
-        # Missing domains are not invented merely to make a candidate pass.
         operational_risk = self._current_risk_decision()
         risk_observations = (
             RiskObservation(
                 RiskDomain.DATA_QUALITY,
-                "Market candles passed provider boundary validation, timeframe validation and minimum-history checks.",
+                "Market snapshot is owned by the persistent runtime and passed provider/timeframe/integrity validation.",
                 True,
-                ("market_data_boundary",),
+                ("shared_market_data_runtime",),
             ),
             RiskObservation(
                 RiskDomain.OPERATIONAL,
@@ -285,7 +301,7 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
-        result = self.operational_runtime.gateway.execute(rid, request)
+        result = self.operational_runtime.market_data_execution_guard.execute(rid, request)
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
         journal_recorded = True

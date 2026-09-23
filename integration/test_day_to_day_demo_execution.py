@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from data.models import Candle
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
@@ -9,6 +13,24 @@ from core.operational_runtime import build_operational_runtime
 from core.risk_manager import RiskManager
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
+
+def seed_healthy_market_data(runtime):
+    now = datetime.now(timezone.utc)
+    candles = tuple(
+        Candle(
+            timestamp=now - timedelta(minutes=5 * (29 - index) + 1),
+            open=1.1000 + index * 0.0001,
+            high=1.1005 + index * 0.0001,
+            low=1.0995 + index * 0.0001,
+            close=1.1002 + index * 0.0001,
+            volume=100 + index,
+        )
+        for index in range(30)
+    )
+    runtime.market_data.update(
+        BrokerMarketDataSnapshot("EURUSD", "5m", candles, "TEST", now),
+        now=now,
+    )
 
 class FakeDemoExecutor:
     def __init__(self):
@@ -35,6 +57,7 @@ def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Pa
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
 
     decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     result = service.execute_demo(
@@ -84,6 +107,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
 
     decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
@@ -117,6 +141,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
     decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
         symbol="EURUSD",
@@ -149,6 +174,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    seed_healthy_market_data(runtime)
     decision = service.analyze({
         "score": 88,
         "confirmed": True,

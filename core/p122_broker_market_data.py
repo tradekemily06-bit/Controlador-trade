@@ -51,6 +51,10 @@ class BrokerMarketDataBoundary:
         self._provider = provider
         self._source = source.strip()
 
+    @property
+    def source(self) -> str:
+        return self._source
+
     def fetch(
         self,
         request: BrokerMarketDataRequest,
