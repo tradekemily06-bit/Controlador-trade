@@ -81,6 +81,10 @@ class MT5SessionCoordinator:
                 )
             yield
 
+    def is_owned(self, module: Any, *, owner: str) -> bool:
+        with self._lock:
+            return self._initialized and self._module is module and owner in self._owners
+
     def status(self) -> dict[str, object]:
         with self._lock:
             return {
@@ -91,14 +95,25 @@ class MT5SessionCoordinator:
 
 
 _coordinators: WeakKeyDictionary[Any, MT5SessionCoordinator] = WeakKeyDictionary()
+_fallback_coordinators: dict[int, tuple[Any, MT5SessionCoordinator]] = {}
 _registry_lock = RLock()
 
 
 def coordinator_for(module: Any) -> MT5SessionCoordinator:
     """Return the coordinator shared by all adapters using the same module."""
     with _registry_lock:
-        coordinator = _coordinators.get(module)
-        if coordinator is None:
+        try:
+            coordinator = _coordinators.get(module)
+            if coordinator is None:
+                coordinator = MT5SessionCoordinator()
+                _coordinators[module] = coordinator
+            return coordinator
+        except TypeError:
+            # Some test doubles/proxy objects are not weak-referenceable.
+            key = id(module)
+            entry = _fallback_coordinators.get(key)
+            if entry is not None and entry[0] is module:
+                return entry[1]
             coordinator = MT5SessionCoordinator()
-            _coordinators[module] = coordinator
-        return coordinator
+            _fallback_coordinators[key] = (module, coordinator)
+            return coordinator
