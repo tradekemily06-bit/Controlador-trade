@@ -224,6 +224,24 @@ def application(environ, start_response):
                     "external_id": result.execution.external_id,
                 },
             }, request_id, environ)
+        if path == "/api/orders" and method == "GET":
+            lifecycle = OPERATIONAL_RUNTIME.execution_lifecycle.records()
+            ledger = OPERATIONAL_RUNTIME.execution_ledger
+            items = []
+            for record in lifecycle:
+                items.append({
+                    "request_id": record.request_id,
+                    "state": record.state.value,
+                    "updated_at": record.updated_at.isoformat(),
+                    "message": record.message,
+                    "ledger_state": None if ledger.status(record.request_id) is None else ledger.status(record.request_id).value,
+                })
+            known = {item["request_id"] for item in items}
+            for request_id in ledger.records():
+                if request_id not in known:
+                    state = ledger.status(request_id)
+                    items.append({"request_id": request_id, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value})
+            return _json_response(start_response, HTTPStatus.OK, {"orders": items[-50:]}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, MARKET_DATA_RUNTIME.status(), request_id, environ)
         if path == "/api/real/status" and method == "GET":
