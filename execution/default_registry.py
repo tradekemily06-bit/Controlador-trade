@@ -48,10 +48,6 @@ def build_ic_markets_mt5_demo_gateway(
     runtime = build_operational_runtime(
         runtime_root,
         executor=adapter,
+        kill_switch=kill_switch,
     )
-    # The runtime owns the durable ledger/lifecycle, kill switch and risk gate.
-    # Keep the explicitly supplied kill switch authoritative when callers need
-    # to pre-arm an emergency block.
-    if kill_switch is not None:
-        runtime.kill_switch._state = kill_switch.state
     return runtime.gateway
