@@ -71,14 +71,26 @@ class TradingRuntime:
             raise ValueError("checkpoint_store inválido.")
         if checkpoint_store is not None and (not isinstance(session_id, str) or not session_id.strip()):
             raise ValueError("session_id é obrigatório quando checkpoint_store é usado.")
+
+        start_cycle = 1
+        if checkpoint_store is not None:
+            checkpoint = checkpoint_store.load()
+            if checkpoint is not None:
+                if checkpoint.session_id != session_id:
+                    raise ValueError("checkpoint pertence a outra sessão.")
+                start_cycle = checkpoint.last_cycle + 1
+
         if request_id_factory is None:
-            request_id_factory = lambda index: f"runtime-{index:06d}"
+            if checkpoint_store is not None:
+                request_id_factory = lambda index: f"{session_id}:{index:06d}"
+            else:
+                request_id_factory = lambda index: f"runtime-{index:06d}"
 
         cycles: list[RuntimeCycle] = []
         stopped = False
         stop_reason = None
 
-        for index in range(1, max_cycles + 1):
+        for index in range(start_cycle, start_cycle + max_cycles):
             orchestration = self.orchestrator.evaluate(
                 request,
                 operational_state=operational_state,
