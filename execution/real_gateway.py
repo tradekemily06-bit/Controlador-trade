@@ -138,6 +138,16 @@ class RealExecutionGateway:
                 message += " lifecycle também não pôde ser persistido."
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, message)
 
+        if result.uncertain:
+            message = result.message
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError) as exc:
+                message += f" ledger também não pôde ser persistido: {exc}"
+            if not self._lifecycle_put(request_id, ExecutionLifecycleState.UNKNOWN, message, request=request, external_id=result.execution.external_id if result.execution else None):
+                message += " lifecycle também não pôde ser persistido."
+            return RealGatewayResult(RealGatewayStatus.UNKNOWN, message, result.execution)
+
         if result.execution is None:
             try:
                 self._ledger.mark_unknown(request_id)
