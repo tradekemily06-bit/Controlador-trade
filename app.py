@@ -23,7 +23,7 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, preferences_path=RUNTIME_DIR / "ecosystem-preferences.json")
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, preferences_path=RUNTIME_DIR / "ecosystem-preferences.json", image_directory=RUNTIME_DIR / "ecosystem-images")
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -119,6 +119,21 @@ def application(environ, start_response):
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
+        if path == "/api/ecosystem-image" and method == "GET":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", ["profile"])[-1]
+            image = SERVICE.read_ecosystem_image(kind)
+            if image is None:
+                return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "imagem não configurada", "request_id": request_id}, request_id, environ)
+            body, content_type = image
+            headers = [("Content-Type", content_type), ("Content-Length", str(len(body))), ("Cache-Control", "no-store")]
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        if path == "/api/ecosystem-image" and method == "POST":
+            data = _read_json(environ)
+            mime = SERVICE.save_ecosystem_image(str(data.get("kind", "")), str(data.get("data_url", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"saved": True, "content_type": mime, "request_id": request_id}, request_id, environ)
         if path == "/api/preferences" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
         if path == "/api/preferences" and method == "POST":
