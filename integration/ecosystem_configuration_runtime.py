@@ -4,7 +4,7 @@ from dataclasses import asdict
 from typing import Any
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
-from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
+from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore, EcosystemUseMode
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from integration.ecosystem_service import EcosystemService
@@ -73,6 +73,8 @@ class ConfiguredEcosystemService(EcosystemService):
         changes = dict(payload)
         if "chart_theme" in changes and isinstance(changes["chart_theme"], str):
             changes["chart_theme"] = ChartTheme(changes["chart_theme"].upper())
+        if "use_mode" in changes and isinstance(changes["use_mode"], str):
+            changes["use_mode"] = EcosystemUseMode(changes["use_mode"].upper())
         self.preferences.update(**changes)
         return self.get_preferences()
 
