@@ -254,6 +254,7 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(
                     False,
                     "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                    uncertain=True,
                 )
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
