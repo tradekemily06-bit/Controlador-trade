@@ -82,9 +82,22 @@ class MT5RealAdapter:
                 return True
             try:
                 self._connected = self._session.acquire(mt5, mode="REAL", owner=self._owner)
+                if not self._connected:
+                    return False
+                with self._session.operation(mt5, mode="REAL", owner=self._owner):
+                    account = mt5.account_info()
+                    if account is None or not self._is_real_account(account, mt5) or not self._server_matches(account):
+                        self._session.release(mt5, owner=self._owner)
+                        self._connected = False
+                        return False
+                return True
             except MT5SessionConflict:
                 self._connected = False
-            return self._connected
+                return False
+            except Exception:
+                self._session.release(mt5, owner=self._owner)
+                self._connected = False
+                return False
 
     def disconnect(self) -> None:
         with self._lock:
