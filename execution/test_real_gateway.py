@@ -71,18 +71,21 @@ def _safety():
     )
 
 
-def test_real_gateway_requires_external_registry(tmp_path):
+def test_real_gateway_derives_external_registry_from_ledger(tmp_path):
     registry = BrokerRegistry()
     registry.register("fake", FakeRealAdapter())
-    try:
-        RealExecutionGateway(
-            BrokerAdapterGateway(registry),
-            ExecutionLedger(tmp_path / "ledger.json"),
-        )
-    except ValueError as exc:
-        assert "external_registry" in str(exc)
-    else:
-        raise AssertionError("REAL gateway must require durable external identity evidence")
+    ledger_path = tmp_path / "ledger.json"
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(ledger_path))
+    result = gateway.execute(
+        broker="fake",
+        request_id="req-auto-registry",
+        request=_request(),
+        authorization=_authorization(),
+        admission=_admission(),
+        safety=_safety(),
+    )
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert (tmp_path / "ledger.external.json").exists()
 
 
 def test_real_gateway_binds_external_id_before_reporting_admitted(tmp_path):
