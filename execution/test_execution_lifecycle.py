@@ -83,3 +83,11 @@ def test_lifecycle_nonfinite_amount_fails_closed(tmp_path):
         ExecutionLifecycleStore(path).put(
             ExecutionLifecycleRecord("req-nan", ExecutionLifecycleState.PENDING, now, amount=float("nan"))
         )
+
+
+
+def test_lifecycle_rejects_naive_timestamp(tmp_path):
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ExecutionLifecycleStore(tmp_path / "lifecycle.json").put(
+            ExecutionLifecycleRecord("req-naive", ExecutionLifecycleState.PENDING, datetime.now())
+        )
