@@ -64,10 +64,6 @@ class PersistentBrokerConnectionRuntime:
             self._available = False
         disconnect = getattr(self._adapter, "disconnect", None)
         if callable(disconnect):
-            try: disconnect()
-            except Exception: pass
-        disconnect = getattr(self._adapter, "disconnect", None)
-        if callable(disconnect):
             try:
                 disconnect()
             except Exception:
