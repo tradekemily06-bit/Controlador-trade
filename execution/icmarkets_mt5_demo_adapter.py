@@ -33,6 +33,7 @@ class ICMarketsMT5DemoAdapter:
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
         self._mt5 = mt5_module
+        self._connected = False
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -45,22 +46,33 @@ class ICMarketsMT5DemoAdapter:
             self._mt5 = mt5
         return self._mt5
 
+    def connect(self) -> bool:
+        mt5 = self._module()
+        if self._connected:
+            return True
+        self._connected = bool(mt5.initialize())
+        return self._connected
+
+    def disconnect(self) -> None:
+        if self._connected:
+            try:
+                self._module().shutdown()
+            finally:
+                self._connected = False
+
     def is_available(self) -> bool:
         mt5 = None
         try:
-            mt5 = self._module()
-            if not mt5.initialize():
+            if not self.connect():
                 return False
+            mt5 = self._module()
             account = mt5.account_info()
             return account is not None and self._is_demo_account(account, mt5)
         except Exception:
             return False
-        finally:
-            if mt5 is not None:
-                try:
-                    mt5.shutdown()
-                except Exception:
-                    pass
+        except Exception:
+            self.disconnect()
+            return False
 
     @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
@@ -97,8 +109,11 @@ class ICMarketsMT5DemoAdapter:
         if not math.isfinite(request.amount) or request.amount <= 0:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
+        if not self.connect():
+            mt5 = self._module()
+            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
         mt5 = self._module()
-        if not mt5.initialize():
+        if False:
             return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
@@ -162,7 +177,8 @@ class ICMarketsMT5DemoAdapter:
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))
         finally:
-            mt5.shutdown()
+            # A conexão permanece aberta; o runtime de conexão decide quando desconectar.
+            pass
 
     @staticmethod
     def _last_error(mt5: Any) -> str:
