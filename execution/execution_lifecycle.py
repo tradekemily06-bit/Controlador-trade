@@ -20,6 +20,12 @@ class ExecutionLifecycleRecord:
     state: ExecutionLifecycleState
     updated_at: datetime
     message: str = ""
+    decision_id: str | None = None
+    symbol: str | None = None
+    signal: str | None = None
+    amount: float | None = None
+    mode: str | None = None
+    external_id: str | None = None
 
 
 class ExecutionLifecycleStore:
