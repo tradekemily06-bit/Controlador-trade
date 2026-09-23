@@ -61,18 +61,12 @@ class PersistentBrokerConnectionRuntime:
                 except Exception:
                     connected = False
 
+        stale_disconnect = False
         with self._lock:
             stale_start = generation != self._generation or self._user_disconnected
             disconnect_already_handled = self._disconnect_generation == self._generation
+            stale_disconnect = connected and stale_start and not disconnect_already_handled
             if stale_start:
-                if connected and not disconnect_already_handled:
-                    disconnect = getattr(self._adapter, "disconnect", None)
-                    if callable(disconnect):
-                        with self._adapter_lifecycle_lock:
-                            try:
-                                disconnect()
-                            except Exception:
-                                pass
                 return
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -84,13 +78,22 @@ class PersistentBrokerConnectionRuntime:
             )
             self._thread.start()
 
+        if stale_disconnect:
+            disconnect = getattr(self._adapter, "disconnect", None)
+            if callable(disconnect):
+                with self._adapter_lifecycle_lock:
+                    try:
+                        disconnect()
+                    except Exception:
+                        pass
+
     def user_disconnect(self) -> None:
         """Stop automatic reconnect until the user explicitly starts again."""
         with self._lock:
             self._user_disconnected = True
             self._available = False
             self._generation += 1
-            generation = self._generation
+            self._disconnect_generation = self._generation
         disconnect = getattr(self._adapter, "disconnect", None)
         if callable(disconnect):
             with self._adapter_lifecycle_lock:
@@ -98,8 +101,6 @@ class PersistentBrokerConnectionRuntime:
                     disconnect()
                 except Exception:
                     pass
-                with self._lock:
-                    self._disconnect_generation = generation
 
     def status(self) -> BrokerConnectionStatus:
         with self._lock:
