@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
+from core.ecosystem_image_store import EcosystemImageStore
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore, EcosystemUseMode
 from core.models import AnalysisResult, Signal
@@ -18,9 +19,10 @@ from integration.p137_operational_risk_bridge import OperationalRiskBridge
 class ConfiguredEcosystemService(EcosystemService):
     """Ecosystem service with preferences, notifications and senior analysis wired in."""
 
-    def __init__(self, *args: Any, notification_database_path: str | None = None, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, notification_database_path: str | None = None, preferences_path: str | None = None, image_directory: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.preferences = EcosystemPreferencesStore()
+        self.preferences = EcosystemPreferencesStore(path=preferences_path)
+        self.images = EcosystemImageStore(image_directory) if image_directory is not None else None
         self.notifications = EcosystemNotificationCenter(database_path=notification_database_path)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
@@ -94,6 +96,16 @@ class ConfiguredEcosystemService(EcosystemService):
     def update_notification_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
+
+    def save_ecosystem_image(self, kind: str, payload: bytes, mime: str) -> str:
+        if self.images is None:
+            raise RuntimeError("armazenamento de imagens não configurado")
+        return self.images.save(kind, payload, mime)
+
+    def read_ecosystem_image(self, kind: str):
+        if self.images is None:
+            return None
+        return self.images.read(kind)
 
     def _notification_visible(self, item: EcosystemNotification) -> bool:
         prefs = self.preferences.preferences.notifications
