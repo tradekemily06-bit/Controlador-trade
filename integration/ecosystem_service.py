@@ -140,6 +140,34 @@ class EcosystemService:
             mode=ExecutionMode.DEMO,
             request_id=rid,
         )
+        risk_decision = self.risk.evaluate()
+        if not risk_decision.allowed:
+            try:
+                self.operational_runtime.daily_journal.append(
+                    request_id=rid,
+                    mode=request.mode.value,
+                    action=request.action.value,
+                    symbol=request.symbol,
+                    signal=request.signal.value,
+                    amount=request.amount,
+                    duration_seconds=request.duration_seconds,
+                    status="RISK_BLOCKED",
+                    accepted=False,
+                    external_id=None,
+                    message=risk_decision.reason,
+                )
+            except (OSError, ValueError, TypeError):
+                pass
+            return {
+                "request_id": rid,
+                "status": "RISK_BLOCKED",
+                "accepted": False,
+                "message": risk_decision.reason,
+                "external_id": None,
+                "mode": "DEMO",
+                "real": False,
+                "journal_recorded": True,
+            }
         result = self.operational_runtime.gateway.execute(rid, request)
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
