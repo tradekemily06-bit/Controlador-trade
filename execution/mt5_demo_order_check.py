@@ -6,14 +6,19 @@ It is for the first live-terminal validation of the IC Markets DEMO boundary.
 from __future__ import annotations
 
 from typing import Any
+from execution.mt5_session import coordinator_for
 
 
 def run_order_check(mt5: Any, symbol: str = "EURUSD", volume: float = 0.01) -> Any:
     """Validate a minimum-volume market BUY without submitting it."""
-    if not mt5.initialize():
-        raise RuntimeError(f"MT5 indisponível: {mt5.last_error()}")
+    owner=f"order-check:{id(mt5)}"
+    coordinator=coordinator_for(mt5)
+    acquired=coordinator.acquire(mt5, mode="DEMO", owner=owner)
+    if not acquired:
+        raise RuntimeError("MT5 DEMO ocupado por outra sessão; order_check bloqueado")
 
     try:
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
         account = mt5.account_info()
         if account is None:
             raise RuntimeError("conta MT5 indisponível")
@@ -55,7 +60,7 @@ def run_order_check(mt5: Any, symbol: str = "EURUSD", volume: float = 0.01) -> A
 
         return mt5.order_check(payload)
     finally:
-        mt5.shutdown()
+        coordinator.release(mt5, owner=owner)
 
 
 if __name__ == "__main__":
