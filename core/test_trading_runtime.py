@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -107,6 +107,7 @@ def test_runtime_persists_last_safe_cycle(tmp_path) -> None:
     assert checkpoint.last_cycle == 3
     assert checkpoint.last_request_id is None
     assert isinstance(checkpoint.updated_at, datetime)
+    assert checkpoint.updated_at.tzinfo is not None
 
 
 def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
@@ -120,7 +121,7 @@ def test_runtime_checkpoint_records_execution_request_id(tmp_path) -> None:
 
 def test_runtime_rejects_checkpoint_from_another_session(tmp_path) -> None:
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    store.save(RuntimeCheckpoint("session-a", 7, "session-a:000007", datetime.now()))
+    store.save(RuntimeCheckpoint("session-a", 7, "session-a:000007", datetime.now(timezone.utc)))
     with pytest.raises(ValueError, match="outra sessão"):
         TradingRuntime(orchestrator=FakeOrchestrator(), coordinator=FakeCoordinator()).run(
             request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
@@ -130,7 +131,7 @@ def test_runtime_rejects_checkpoint_from_another_session(tmp_path) -> None:
 
 def test_runtime_resumes_cycle_and_request_sequence_from_checkpoint(tmp_path) -> None:
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
-    store.save(RuntimeCheckpoint("session-r", 7, "session-r:000007", datetime.now()))
+    store.save(RuntimeCheckpoint("session-r", 7, "session-r:000007", datetime.now(timezone.utc)))
     coordinator = FakeCoordinator(accepted=True)
     result = TradingRuntime(orchestrator=FakeOrchestrator(executable=True), coordinator=coordinator).run(
         request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
