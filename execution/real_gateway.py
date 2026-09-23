@@ -216,7 +216,19 @@ class RealExecutionGateway:
         try:
             self._external_registry.bind(request_id, broker, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
-            if self._lifecycle is not None:
+        except (OSError, ValueError) as exc:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                f"ordem REAL aceita, mas persistência primária falhou: {exc}",
+                result.execution,
+            )
+
+        if self._lifecycle is not None:
+            try:
                 from datetime import datetime, timezone
                 self._lifecycle.put(
                     ExecutionLifecycleRecord(
@@ -226,16 +238,15 @@ class RealExecutionGateway:
                         result.execution.message,
                     )
                 )
-        except (OSError, ValueError) as exc:
-            try:
-                self._ledger.mark_unknown(request_id)
-            except (OSError, ValueError):
-                pass
-            return RealGatewayResult(
-                RealGatewayStatus.UNKNOWN,
-                f"ordem REAL aceita, mas persistência falhou: {exc}",
-                result.execution,
-            )
+            except (OSError, ValueError) as exc:
+                # Ledger + external binding are already durable. Do not downgrade
+                # the authoritative execution state to UNKNOWN merely because the
+                # projection store failed. Recovery must repair the projection.
+                return RealGatewayResult(
+                    RealGatewayStatus.ADMITTED,
+                    f"ordem REAL aceita; projeção Lifecycle requer reparo: {exc}",
+                    result.execution,
+                )
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
     def reconcile_unknown(
