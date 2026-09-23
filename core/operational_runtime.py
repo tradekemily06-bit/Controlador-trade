@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -29,6 +30,7 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    daily_journal: DailyOperationJournal
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
@@ -58,6 +60,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         lifecycle=lifecycle,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -67,4 +70,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        daily_journal=daily_journal,
     )
