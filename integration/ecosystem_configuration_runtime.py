@@ -91,10 +91,10 @@ class ConfiguredEcosystemService(EcosystemService):
         self.preferences.update_notifications(**dict(payload))
         return self.get_preferences()
 
-    def save_ecosystem_image(self, kind: str, data_url: str) -> str:
+    def save_ecosystem_image(self, kind: str, payload: bytes, mime: str) -> str:
         if self.images is None:
             raise RuntimeError("armazenamento de imagens não configurado")
-        return self.images.save_data_url(kind, data_url)
+        return self.images.save(kind, payload, mime)
 
     def read_ecosystem_image(self, kind: str):
         if self.images is None:
