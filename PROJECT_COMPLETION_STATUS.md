@@ -32,7 +32,7 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 - Persistência opcional da memória de decisões em SQLite, com restauração na inicialização e atualização persistente de outcomes.
 - Risk Gate e proteções visíveis.
 - Notícias & Contexto com boundary seguro e sem dados inventados.
-- Configurações locais de preferência.
+- Configurações persistentes do ecossistema, independentes do dispositivo.
 - Conexões, auditoria e segurança.
 - Navegação mobile-first.
 - APIs de status, análise, replay, memória, estatísticas, risco, notícias/contexto e conexões.
@@ -52,7 +52,7 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 
 ## Validação de segurança SaaS
 
-A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suíte completa, `pip-audit` e compilação concluíram com sucesso.
+A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suíte completa, `pip-audit` e compilação concluíram com sucesso. A fronteira de identidade SaaS continua separada e ainda exige provedor de identidade/autorização de produção antes de exposição multiusuário protegida.
 
 A trilha de auditoria registra metadados mínimos e não armazena IP bruto, credenciais, tokens ou corpos de requisição. SQLite é uma opção de persistência para uma instância; armazenamento centralizado e durável para múltiplas instâncias continua pertencendo à infraestrutura de produção.
 
@@ -64,7 +64,7 @@ A memória continua funcionando sem configuração externa. Quando `CONTROLADOR_
 
 ## Validação de dispositivo
 
-A interface de software está implementada e coberta por testes de contrato. A abertura no navegador de um dispositivo real continua sendo validação de uso visual; ela não é uma pendência de arquitetura, lógica de decisão ou execução DEMO.
+A interface de software é uma única aplicação adaptável para celular, tablet, notebook e desktop. O dispositivo só altera apresentação e geometria; não altera núcleo, regras, decisão, risco, memória, execução ou estado. Preferências operacionais de uso são persistidas no runtime, não no armazenamento local do navegador. A abertura em dispositivos reais continua sendo validação visual complementar.
 
 ## REAL
 
