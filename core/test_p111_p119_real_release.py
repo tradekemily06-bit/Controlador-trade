@@ -16,6 +16,7 @@ from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.external_execution_registry import ExternalExecutionRegistry
+from execution.execution_lifecycle import ExecutionLifecycleStore
 
 
 class FakeAdapter:
