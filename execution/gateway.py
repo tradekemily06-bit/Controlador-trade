@@ -95,11 +95,11 @@ class ExecutionGateway:
         try:
             result = self._executor.execute(request)
         except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}", request=request)
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
-            self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            self._mark_unknown(request_id, event_time, "executor retornou resultado inválido", request=request)
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
@@ -111,13 +111,13 @@ class ExecutionGateway:
             try:
                 self._ledger.record(request_id)
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}", request=request)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message, decision_id=request.decision_id, symbol=request.symbol, signal=request.signal.value, amount=request.amount, mode=request.mode.value, external_id=result.external_id))
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}")
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas ciclo não foi persistido: {exc}", request=request)
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
         self._processed_request_ids.add(request_id)
 
@@ -127,13 +127,13 @@ class ExecutionGateway:
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
-    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
+    def _mark_unknown(self, request_id: str, timestamp: datetime, message: str, *, request: ExecutionRequest | None = None) -> None:
         if self._lifecycle is None:
             return
         try:
             current = self._lifecycle.get(request_id)
             if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message, decision_id=None if request is None else request.decision_id, symbol=None if request is None else request.symbol, signal=None if request is None else request.signal.value, amount=None if request is None else request.amount, mode=None if request is None else request.mode.value))
             elif current.state is not ExecutionLifecycleState.UNKNOWN:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
         except (OSError, ValueError):
