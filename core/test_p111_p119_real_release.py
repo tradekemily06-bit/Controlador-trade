@@ -281,3 +281,46 @@ def test_real_gateway_marks_explicitly_uncertain_adapter_result_as_unknown(tmp_p
     )
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("uncertain-result") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_reconcile_accepts_ledger_accepted_with_pending_lifecycle(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("accepted-pending")
+    ledger.mark_accepted("accepted-pending")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "accepted-pending",
+        ExecutionLifecycleState.PENDING,
+        datetime.now(timezone.utc),
+        external_id="external-1",
+    ))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
+
+    gateway.reconcile_unknown("accepted-pending", executed=True)
+
+    assert ledger.status("accepted-pending") is ExecutionLedgerStatus.ACCEPTED
+    assert lifecycle.get("accepted-pending").state is ExecutionLifecycleState.ACCEPTED
+
+
+def test_reconcile_accepts_ledger_rejected_with_pending_lifecycle(tmp_path):
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("rejected-pending")
+    ledger.mark_rejected("rejected-pending")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "rejected-pending",
+        ExecutionLifecycleState.PENDING,
+        datetime.now(timezone.utc),
+    ))
+    gateway = RealExecutionGateway(BrokerAdapterGateway(BrokerRegistry()), ledger, lifecycle)
+
+    gateway.reconcile_unknown("rejected-pending", executed=False)
+
+    assert ledger.status("rejected-pending") is ExecutionLedgerStatus.REJECTED
+    assert lifecycle.get("rejected-pending").state is ExecutionLifecycleState.REJECTED
