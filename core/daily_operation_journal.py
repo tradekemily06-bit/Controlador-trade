@@ -40,6 +40,7 @@ class DailyOperationJournal:
         self.path = Path(path)
         self._lock = RLock()
         self._entries: list[DailyOperationJournalEntry] = []
+        self._load_error: str | None = None
         self._load()
 
     def _load(self) -> None:
@@ -54,9 +55,10 @@ class DailyOperationJournal:
                 if isinstance(item, dict):
                     entries.append(DailyOperationJournalEntry(**item))
             self._entries = entries
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
-            # A corrupted journal must not become an execution authority.
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            # Never overwrite potentially recoverable history automatically.
             self._entries = []
+            self._load_error = f"{type(exc).__name__}: {exc}"
 
     def append(
         self,
@@ -97,6 +99,8 @@ class DailyOperationJournal:
             reason=None if reason is None else str(reason),
         )
         with self._lock:
+            if self._load_error is not None:
+                raise OSError("diário automático indisponível; histórico existente requer inspeção manual")
             self._entries.append(entry)
             self._persist()
         return entry
@@ -139,5 +143,6 @@ class DailyOperationJournal:
             "rejected": sum(not item.accepted for item in entries),
             "wins": 0,
             "losses": 0,
+            "storage_health": "CORRUPTED" if self._load_error else "OK",
             "note": "resultados WIN/LOSS são liquidados em memória de operação; este diário registra o ciclo operacional",
         }
