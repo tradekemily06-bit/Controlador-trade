@@ -16,6 +16,7 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
+from integration.market_data_execution_guard import MarketDataExecutionGuard
 from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
 from typing import Callable
@@ -33,6 +34,7 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    market_data_execution_guard: MarketDataExecutionGuard
     daily_journal: DailyOperationJournal
     risk_state_provider: Callable[[], OperationalState] | None
     risk_manager: RiskManager
@@ -70,6 +72,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         lifecycle=lifecycle,
         risk_check=lambda: risk_manager.evaluate(state=provider() if callable(provider) else None),
     )
+    market_data_execution_guard = MarketDataExecutionGuard(market_data=market_data, gateway=gateway)
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -79,6 +82,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        market_data_execution_guard=market_data_execution_guard,
         daily_journal=daily_journal,
         risk_state_provider=provider if callable(provider) else None,
         risk_manager=risk_manager,
