@@ -8,7 +8,7 @@ def test_learning_memory_persists_across_service_restart(tmp_path, monkeypatch):
     database = tmp_path / "learning.sqlite3"
     monkeypatch.setenv("CONTROLADOR_LEARNING_DB", str(database))
 
-    first = EcosystemService(decision_store=DecisionStore(str(tmp_path / "decisions.sqlite3")))
+    first = EcosystemService()
     first.add_learning_resource(
         {
             "resource_id": "video-1",
@@ -43,13 +43,14 @@ def test_learning_memory_persists_across_service_restart(tmp_path, monkeypatch):
         }
     )
 
-    second = EcosystemService(decision_store=DecisionStore(str(tmp_path / "decisions.sqlite3")))
+    second = EcosystemService()
 
     assert "video-1" in second.learning_resources
     assert len(second.learning_observations) == 1
     assert "activity-1" in second.learning_activities
     assert len(second.learning_attempts) == 1
     assert second.learning_sources["video-1"].operation_eligible is False
+    assert second.learning_store.health == "HEALTHY"
 
 
 def test_learning_persistence_is_never_reported_as_trading_authority(tmp_path, monkeypatch):
