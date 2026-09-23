@@ -81,15 +81,6 @@ class RiskManager:
                 and consecutive_losses is not _UNSET
             )
             if not legacy_supplied:
-                # With no risk limits configured, there is no missing policy
-                # input to evaluate. As soon as a limit is configured, the
-                # corresponding operational state becomes mandatory.
-                if (
-                    self.daily_loss_limit == 0
-                    and self.max_operations == 0
-                    and self.max_consecutive_losses == 0
-                ):
-                    return RiskDecision(True, "Nenhum limite de risco configurado.")
                 return RiskDecision(False, "Estado operacional indisponível.")
             try:
                 state = OperationalState(
@@ -103,12 +94,14 @@ class RiskManager:
         if not isinstance(state, OperationalState):
             return RiskDecision(False, "Estado operacional inválido.")
 
+        if not state.risk_fields_available():
+            return RiskDecision(
+                False,
+                "Informações obrigatórias de risco indisponíveis.",
+            )
+
         if self.daily_loss_limit != 0 and state.realized_pnl is None:
             return RiskDecision(False, "Resultado diário indisponível.")
-        if self.max_operations != 0 and state.trades_today is None:
-            return RiskDecision(False, "Contagem diária de operações indisponível.")
-        if self.max_consecutive_losses != 0 and state.consecutive_losses is None:
-            return RiskDecision(False, "Perdas consecutivas indisponíveis.")
 
         if self.max_operations != 0 and state.trades_today >= self.max_operations:
             return RiskDecision(False, "Limite de operações atingido.")
