@@ -176,3 +176,46 @@ def test_gateway_persisted_reservation_blocks_replay_after_restart(tmp_path):
 
     assert replay.status is GatewayStatus.DUPLICATE
     assert second_ledger.status("req-crash") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_gateway_treats_uncertain_executor_result_as_unknown(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    class UncertainExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=False,
+                message="broker aceitou, mas identidade não foi confirmada",
+                uncertain=True,
+            )
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(UncertainExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-uncertain", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert result.execution is not None
+    assert result.execution.uncertain is True
+    assert ledger.status("req-uncertain") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_gateway_rejects_inconsistent_accepted_uncertain_result(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    class InconsistentExecutor:
+        def execute(self, _request):
+            return ExecutionResult(
+                accepted=True,
+                message="accepted sem certeza",
+                external_id="EXT-AMBIGUOUS",
+                uncertain=True,
+            )
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = ExecutionGateway(InconsistentExecutor(), KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-inconsistent", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-inconsistent") is ExecutionLedgerStatus.UNKNOWN
