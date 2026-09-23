@@ -50,6 +50,10 @@ class PersistentMarketDataRuntime:
         self._last_success: datetime | None = None
 
     def start(self) -> None:
+        connect = getattr(self._boundary, "connect", None)
+        if callable(connect):
+            try: connect()
+            except Exception: pass
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -63,6 +67,10 @@ class PersistentMarketDataRuntime:
 
     def stop(self) -> None:
         self._stop.set()
+        disconnect = getattr(self._boundary, "disconnect", None)
+        if callable(disconnect):
+            try: disconnect()
+            except Exception: pass
 
     def status(self) -> dict[str, object]:
         report = self._state.status()
@@ -77,6 +85,12 @@ class PersistentMarketDataRuntime:
             }
 
     def _run(self) -> None:
+        provider = getattr(self._boundary, "_provider", None)
+        if provider is not None:
+            connect = getattr(provider, "connect", None)
+            if callable(connect):
+                try: connect()
+                except Exception: pass
         request = BrokerMarketDataRequest(
             symbol=self._config.symbol,
             timeframe=self._config.timeframe,
