@@ -62,21 +62,19 @@ class PersistentBrokerConnectionRuntime:
                     connected = False
 
         stale_disconnect = False
+        should_start_thread = False
         with self._lock:
             stale_start = generation != self._generation or self._user_disconnected
             disconnect_already_handled = self._disconnect_generation == self._generation
             stale_disconnect = connected and stale_start and not disconnect_already_handled
-            if stale_start:
-                return
-            if self._thread is not None and self._thread.is_alive():
-                return
-            self._stop.clear()
-            self._thread = threading.Thread(
-                target=self._run,
-                name="controlador-broker-connection",
-                daemon=True,
-            )
-            self._thread.start()
+            if not stale_start and not (self._thread is not None and self._thread.is_alive()):
+                self._stop.clear()
+                self._thread = threading.Thread(
+                    target=self._run,
+                    name="controlador-broker-connection",
+                    daemon=True,
+                )
+                should_start_thread = True
 
         if stale_disconnect:
             disconnect = getattr(self._adapter, "disconnect", None)
@@ -86,6 +84,9 @@ class PersistentBrokerConnectionRuntime:
                         disconnect()
                     except Exception:
                         pass
+
+        if should_start_thread:
+            self._thread.start()
 
     def user_disconnect(self) -> None:
         """Stop automatic reconnect until the user explicitly starts again."""
