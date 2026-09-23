@@ -19,7 +19,7 @@ from execution.broker_registry import BrokerRegistry
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.real_gateway import RealExecutionGateway
 from core.models import Signal
-from execution.ports import ExecutionMode
+from execution.ports import ExecutionMode, ExecutionRequest
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -194,7 +194,7 @@ def application(environ, start_response):
         if path == "/api/demo/execute" and method == "POST":
             data = _read_json(environ)
             signal = Signal(str(data.get("signal", "")).upper())
-            request = __import__("execution.ports", fromlist=["ExecutionRequest"]).ExecutionRequest(
+            request = ExecutionRequest(
                 symbol=str(data.get("symbol", "")), signal=signal, amount=float(data.get("amount", 0)),
                 duration_seconds=int(data.get("duration_seconds", 0)), mode=ExecutionMode.DEMO,
                 request_id=str(data.get("request_id", "")).strip() or request_id,
