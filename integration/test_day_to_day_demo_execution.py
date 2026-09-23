@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.operational_state import OperationalState
 from core.operational_runtime import build_operational_runtime
 from core.risk_manager import RiskManager
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -19,6 +20,13 @@ class FakeDemoExecutor:
     def execute(self, request):
         self.requests.append(request)
         return ExecutionResult(True, "DEMO accepted", "ext-demo-1")
+
+    def read_operational_state(self):
+        return OperationalState(
+            realized_pnl=0.0,
+            trades_today=len(self.requests),
+            consecutive_losses=0,
+        )
 
 
 def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Path):
