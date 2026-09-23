@@ -111,3 +111,14 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_missing_order_send_response_is_uncertain():
+    mt5 = FakeMT5(send_result=False)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    result = adapter.execute(request())
+
+    assert result.accepted is False
+    assert result.uncertain is True
+    assert "incerto" in result.message

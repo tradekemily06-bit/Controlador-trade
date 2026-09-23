@@ -4,17 +4,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.kill_switch import KillSwitch
+from core.operational_state import OperationalState
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
+from core.risk_manager import RiskManager
 from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
 from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -29,12 +33,15 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    daily_journal: DailyOperationJournal
+    risk_state_provider: Callable[[], OperationalState] | None
+    risk_manager: RiskManager
 
 
-def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
+def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None, kill_switch: KillSwitch | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
-    kill_switch = KillSwitch()
+    kill_switch = kill_switch or KillSwitch()
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
@@ -51,13 +58,18 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         checkpoint_store=checkpoint,
         recovery=recovery,
     )
+    selected_executor = executor or PaperExecutor()
+    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
+    provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
+    risk_manager = RiskManager()
     gateway = ExecutionGateway(
-        executor or PaperExecutor(),
+        selected_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        risk_check=lambda: risk_manager.evaluate(state=provider() if callable(provider) else None),
     )
-    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -67,4 +79,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        daily_journal=daily_journal,
+        risk_state_provider=provider if callable(provider) else None,
+        risk_manager=risk_manager,
     )

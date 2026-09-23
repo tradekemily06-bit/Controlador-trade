@@ -47,7 +47,7 @@ def test_interface_contains_ecosystem_concepts_and_safety():
 def test_interface_wires_existing_safe_apis():
     for marker in (
         "/api/status",
-        "/api/analyze",
+        "/api/market/analyze",
         "/api/replay",
         "/api/memory?limit=8",
         "/api/statistics",

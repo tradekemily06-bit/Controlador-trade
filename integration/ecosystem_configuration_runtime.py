@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
+import os
+from pathlib import Path
+from uuid import uuid4
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
-from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
+from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore, EcosystemUseMode
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from integration.ecosystem_service import EcosystemService
@@ -15,10 +18,10 @@ from integration.p137_operational_risk_bridge import OperationalRiskBridge
 class ConfiguredEcosystemService(EcosystemService):
     """Ecosystem service with preferences, notifications and senior analysis wired in."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, notification_database_path: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
-        self.notifications = EcosystemNotificationCenter()
+        self.notifications = EcosystemNotificationCenter(database_path=notification_database_path)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
@@ -64,6 +67,7 @@ class ConfiguredEcosystemService(EcosystemService):
         value = self.preferences.preferences
         result = asdict(value)
         result["chart_theme"] = value.chart_theme.value
+        result["use_mode"] = value.use_mode.value
         result["candle"]["style"] = value.candle.style.value
         result["candle"]["color_mode"] = value.candle.color_mode.value
         return result
@@ -72,6 +76,8 @@ class ConfiguredEcosystemService(EcosystemService):
         changes = dict(payload)
         if "chart_theme" in changes and isinstance(changes["chart_theme"], str):
             changes["chart_theme"] = ChartTheme(changes["chart_theme"].upper())
+        if "use_mode" in changes and isinstance(changes["use_mode"], str):
+            changes["use_mode"] = EcosystemUseMode(changes["use_mode"].upper())
         self.preferences.update(**changes)
         return self.get_preferences()
 
@@ -125,7 +131,7 @@ class ConfiguredEcosystemService(EcosystemService):
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
+        notification_id = f"update-{uuid4().hex}"
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
@@ -133,6 +139,6 @@ class ConfiguredEcosystemService(EcosystemService):
         """Route a material runtime event into the notification center."""
         notification_kind = NotificationKind(str(kind).upper())
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-        notification_id = f"event-{len(self.notifications.all()) + 1}"
+        notification_id = f"event-{uuid4().hex}"
         item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}

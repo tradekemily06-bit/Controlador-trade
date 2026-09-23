@@ -10,6 +10,11 @@ try:
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
 
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX path
+    msvcrt = None
+
 
 class ExecutionLedgerStatus(str, Enum):
     RESERVED = "RESERVED"
@@ -65,6 +70,8 @@ class ExecutionLedger:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        with temporary.open("rb") as file_handle:
+            os.fsync(file_handle.fileno())
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
@@ -74,6 +81,12 @@ class ExecutionLedger:
         with lock_path.open("a+", encoding="utf-8") as lock_file:
             if fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            elif msvcrt is not None:
+                lock_file.seek(0)
+                lock_file.write("0")
+                lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
             try:
                 self._load()
                 mutation()
@@ -81,6 +94,12 @@ class ExecutionLedger:
             finally:
                 if fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                elif msvcrt is not None:
+                    lock_file.seek(0)
+                    try:
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
@@ -111,13 +130,13 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def mark_rejected(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.REJECTED)
+        self._transition(request_id, ExecutionLedgerStatus.REJECTED, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def mark_unknown(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def reconcile(self, request_id: str, *, executed: bool) -> None:
         self._validate_id(request_id)
@@ -145,14 +164,20 @@ class ExecutionLedger:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
 
-    def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
+    def _transition(
+        self,
+        request_id: str,
+        status: ExecutionLedgerStatus,
+        *,
+        allowed: tuple[ExecutionLedgerStatus, ...],
+    ) -> None:
         self._validate_id(request_id)
 
         def mutation() -> None:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            if current not in allowed:
                 raise ValueError(f"transição inválida de {current.value} para {status.value}.")
             self._states[request_id] = status
 

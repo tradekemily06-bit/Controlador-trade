@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta, timezone
 import math
 from typing import Any
 
 from core.models import Signal
-from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from execution.ports import ExecutionAction, ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 class MT5AdapterError(RuntimeError):
@@ -89,6 +90,86 @@ class ICMarketsMT5DemoAdapter:
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
+    def read_operational_state(self):
+        """Read broker state without placing or modifying an order."""
+        from core.operational_state import OperationalState
+
+        mt5 = self._module()
+        if not mt5.initialize():
+            return OperationalState()
+
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                return OperationalState()
+
+            now = datetime.now(timezone.utc)
+            start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+            deals = mt5.history_deals_get(start, now) or ()
+            exit_codes = {
+                getattr(mt5, "DEAL_ENTRY_OUT", object()),
+                getattr(mt5, "DEAL_ENTRY_OUT_BY", object()),
+            }
+            grouped: dict[int, float] = {}
+            trade_ids: set[int] = set()
+            realized = 0.0
+            for deal in deals:
+                if getattr(deal, "magic", None) != self.config.magic:
+                    continue
+                position_id = int(getattr(deal, "position_id", 0) or 0)
+                entry = getattr(deal, "entry", None)
+                profit = float(getattr(deal, "profit", 0.0) or 0.0)
+                commission = float(getattr(deal, "commission", 0.0) or 0.0)
+                swap = float(getattr(deal, "swap", 0.0) or 0.0)
+                fee = float(getattr(deal, "fee", 0.0) or 0.0)
+                total = profit + commission + swap + fee
+                if entry in exit_codes and position_id:
+                    trade_ids.add(position_id)
+                    grouped[position_id] = grouped.get(position_id, 0.0) + total
+                    realized += total
+
+            consecutive_losses = 0
+            if grouped:
+                for pnl in reversed(list(grouped.values())):
+                    if pnl < 0:
+                        consecutive_losses += 1
+                    else:
+                        break
+
+            positions = mt5.positions_get() or ()
+            controlador_positions = [
+                position for position in positions
+                if getattr(position, "magic", None) == self.config.magic
+            ]
+            net_position = 0.0
+            exposure = 0.0
+            unrealized = 0.0
+            for position in controlador_positions:
+                volume = float(getattr(position, "volume", 0.0) or 0.0)
+                is_buy = int(getattr(position, "type", -1)) == int(getattr(mt5, "POSITION_TYPE_BUY", 0))
+                net_position += volume if is_buy else -volume
+                exposure += abs(volume)
+                unrealized += float(getattr(position, "profit", 0.0) or 0.0)
+
+            return OperationalState(
+                balance=float(getattr(account, "balance", 0.0)),
+                equity=float(getattr(account, "equity", 0.0)),
+                realized_pnl=realized,
+                unrealized_pnl=unrealized,
+                trades_today=len(trade_ids),
+                consecutive_losses=consecutive_losses,
+                open_positions=len(controlador_positions),
+                net_position=net_position,
+                exposure=exposure,
+            )
+        except (TypeError, ValueError, OverflowError):
+            return OperationalState()
+        finally:
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
             return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
@@ -122,8 +203,22 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(False, f"cotação indisponível para {symbol}.")
 
             is_buy = request.signal is Signal.COMPRA
-            order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
-            price = tick.ask if is_buy else tick.bid
+            if request.action is ExecutionAction.CLOSE:
+                positions = mt5.positions_get(symbol=symbol) or ()
+                candidates = [p for p in positions if getattr(p, "magic", None) == self.config.magic]
+                if request.position_id is not None:
+                    candidates = [p for p in candidates if int(getattr(p, "ticket", -1)) == int(request.position_id)]
+                if len(candidates) != 1:
+                    return ExecutionResult(False, f"fechamento bloqueado: esperado 1 posição do Controlador, encontrado={len(candidates)}")
+                position = candidates[0]
+                closing_buy = int(getattr(position, "type", -1)) == int(mt5.POSITION_TYPE_BUY)
+                order_type = mt5.ORDER_TYPE_SELL if closing_buy else mt5.ORDER_TYPE_BUY
+                price = tick.bid if closing_buy else tick.ask
+                close_position = int(getattr(position, "ticket", 0))
+            else:
+                order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
+                price = tick.ask if is_buy else tick.bid
+                close_position = None
             if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
                 return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
 
@@ -135,7 +230,8 @@ class ICMarketsMT5DemoAdapter:
                 "price": price,
                 "deviation": self.config.deviation,
                 "magic": self.config.magic,
-                "comment": "ControladorTrading-DEMO",
+                "position": close_position,
+                "comment": "ControladorTrading-DEMO-CLOSE" if request.action is ExecutionAction.CLOSE else "ControladorTrading-DEMO",
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
@@ -146,7 +242,11 @@ class ICMarketsMT5DemoAdapter:
 
             result = mt5.order_send(payload)
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(
+                    False,
+                    f"order_send sem confirmação; resultado externo é incerto: {self._last_error(mt5)}",
+                    uncertain=True,
+                )
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
@@ -158,6 +258,7 @@ class ICMarketsMT5DemoAdapter:
                 return ExecutionResult(
                     False,
                     "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                    uncertain=True,
                 )
 
             return ExecutionResult(True, "ordem DEMO enviada e confirmada pelo MT5.", str(external_id))

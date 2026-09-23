@@ -1,22 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable
+from uuid import uuid4
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
+from core.learning_store import LearningStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
-from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot, BrokerMarketDataPort
+from analysis.pipeline import StrategyPipeline
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
+from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
+from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from integration.news_provider import UnconfiguredNewsProvider
@@ -29,11 +35,11 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured") -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
-        self.risk = RiskManager()
+        self.risk = operational_runtime.risk_manager if operational_runtime is not None else RiskManager()
         self.news = UnconfiguredNewsProvider()
         self.identity = IdentityPolicy()
         self.production_storage = production_storage or ProductionStoragePolicy()
@@ -41,12 +47,27 @@ class EcosystemService:
         self.operational_runtime = operational_runtime
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
-        self.learning_sources: dict[str, LearningSource] = {}
-        self.learning_resources: dict[str, LearningResource] = {}
-        self.learning_observations: list[LearningObservation] = []
-        self.learning_activities: dict[str, LearningActivity] = {}
-        self.learning_attempts: list[LearningAttempt] = []
+        self.learning_store = LearningStore()
+        (
+            self.learning_sources,
+            self.learning_resources,
+            self.learning_observations,
+            self.learning_activities,
+            self.learning_attempts,
+        ) = self.learning_store.load()
         self.senior_context = SeniorContextOrchestrator()
+        self.senior_analysis_gate = SeniorAnalysisGate()
+        self.strategy_pipeline = StrategyPipeline()
+        self.market_data_boundary = BrokerMarketDataBoundary(market_data_provider, market_data_source) if market_data_provider is not None else None
+
+    def _persist_learning(self) -> None:
+        self.learning_store.save(
+            learning_sources=self.learning_sources,
+            learning_resources=self.learning_resources,
+            learning_observations=self.learning_observations,
+            learning_activities=self.learning_activities,
+            learning_attempts=self.learning_attempts,
+        )
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
@@ -54,10 +75,94 @@ class EcosystemService:
     def authorize_production_operation(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return self.production_gate.authorize(subject_id=subject_id, tenant_id=tenant_id)
 
+    def analyze_market(self, *, symbol: str, timeframe: str, limit: int = 120) -> DecisionRecord:
+        """Fetch broker candles, run the technical pipeline, then pass the result through the normal analysis boundary."""
+        if self.market_data_boundary is None:
+            raise RuntimeError("market data provider não configurado")
+        request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        intervals = {"1m": timedelta(minutes=1), "5m": timedelta(minutes=5), "15m": timedelta(minutes=15), "30m": timedelta(minutes=30), "1h": timedelta(hours=1), "4h": timedelta(hours=4), "1d": timedelta(days=1)}
+        expected_interval = intervals.get(timeframe.strip().lower())
+        if expected_interval is None:
+            raise ValueError("timeframe não suportado para análise de mercado")
+        snapshot = self.market_data_boundary.fetch(request, expected_interval=expected_interval)
+        minimum_candles = 20
+        if len(snapshot.candles) < minimum_candles:
+            raise ValueError(f"candles insuficientes para análise: {len(snapshot.candles)} < {minimum_candles}")
+        candles = list(snapshot.candles)
+        result = self.strategy_pipeline.evaluate(
+            candles,
+            confirmed=True,
+            filters_ok=True,
+            symbol=snapshot.symbol,
+            timeframe=snapshot.timeframe,
+        )
+
+        # Build senior context only from facts actually available at this boundary.
+        # Missing domains are not invented merely to make a candidate pass.
+        operational_risk = self._current_risk_decision()
+        risk_observations = (
+            RiskObservation(
+                RiskDomain.DATA_QUALITY,
+                "Market candles passed provider boundary validation, timeframe validation and minimum-history checks.",
+                True,
+                ("market_data_boundary",),
+            ),
+            RiskObservation(
+                RiskDomain.OPERATIONAL,
+                operational_risk.reason,
+                bool(operational_risk.allowed),
+                ("operational_risk_manager",),
+            ),
+        )
+        available_risk_domains = tuple(item.domain for item in risk_observations)
+        context = self.senior_context.assess(
+            SeniorContextInput(
+                context_id=f"market:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}",
+                candles=tuple(candles),
+                available_nodes=("market_data", "price_history", "risk"),
+                observed_nodes=("market_data", "price_history", "risk"),
+                gaps={},
+                relationships_reviewed=(
+                    "price-structure",
+                    "structure-volatility",
+                    "price-liquidity",
+                    "post_breakout-behavior",
+                ),
+                risk_observations=risk_observations,
+                available_risk_domains=available_risk_domains,
+            )
+        )
+        gated = self.senior_analysis_gate.evaluate(
+            analysis=result,
+            senior_context=context,
+            operational_risk=operational_risk,
+        )
+
+        record = DecisionRecord.from_analysis(gated)
+        self.memory.append(record)
+        self.store.save(record)
+        return record
+
+    def market_data_status(self) -> dict[str, object]:
+        if self.operational_runtime is None:
+            return {"health": "NOT_CONNECTED", "safe_for_analysis": False, "message": "runtime operacional não conectado"}
+        return self.operational_runtime.market_data.status()
+
     def update_market_data_snapshot(self, snapshot: BrokerMarketDataSnapshot, *, now: datetime, expected_interval_seconds: int | None = None) -> MarketDataRuntimeReport:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
+
+    def _current_risk_decision(self):
+        runtime = self.operational_runtime
+        if runtime is not None and runtime.risk_state_provider is not None:
+            try:
+                state = runtime.risk_state_provider()
+            except Exception as exc:
+                from core.risk_manager import RiskDecision
+                return RiskDecision(False, f"Estado operacional de risco indisponível: {type(exc).__name__}")
+            return self.risk.evaluate(state=state)
+        return self.risk.evaluate()
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
@@ -108,6 +213,127 @@ class EcosystemService:
             results.append({"step": index, **record.to_dict()})
         return results
 
+    def execute_demo(self, *, symbol: str, signal: str, amount: float, duration_seconds: int, request_id: str | None = None, decision_id: str | None = None) -> dict[str, Any]:
+        """Execute one explicit user-confirmed DEMO operation through the shared gateway.
+
+        REAL is structurally impossible here: the request is constructed as DEMO and
+        the configured executor must itself enforce the DEMO boundary.
+        """
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol é obrigatório")
+        try:
+            selected_signal = Signal(str(signal).upper())
+        except ValueError as exc:
+            raise ValueError("signal deve ser COMPRA ou VENDA") from exc
+        if selected_signal is Signal.AGUARDAR:
+            raise ValueError("AGUARDAR não pode ser executado")
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
+            raise ValueError("amount deve ser positivo")
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
+            raise ValueError("duration_seconds deve ser inteiro positivo")
+        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
+        decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
+        if decision is None:
+            raise ValueError("decision_id é obrigatório: a execução deve estar vinculada a uma decisão registrada")
+        if not decision.is_actionable:
+            raise ValueError("a decisão vinculada não está confirmada como COMPRA/VENDA")
+        if decision.signal != selected_signal.value:
+            raise ValueError("decision_id não corresponde ao sinal selecionado")
+        if decision is not None and decision.symbol and decision.symbol != symbol.strip():
+            raise ValueError("decision_id não corresponde ao símbolo selecionado")
+        request = ExecutionRequest(
+            symbol=symbol.strip(),
+            signal=selected_signal,
+            amount=float(amount),
+            duration_seconds=duration_seconds,
+            mode=ExecutionMode.DEMO,
+            request_id=rid,
+        )
+        risk_decision = self._current_risk_decision()
+        if not risk_decision.allowed:
+            journal_recorded = True
+            try:
+                self.operational_runtime.daily_journal.append(
+                    request_id=rid,
+                    mode=request.mode.value,
+                    action=request.action.value,
+                    symbol=request.symbol,
+                    signal=request.signal.value,
+                    amount=request.amount,
+                    duration_seconds=request.duration_seconds,
+                    status="RISK_BLOCKED",
+                    accepted=False,
+                    external_id=None,
+                    message=risk_decision.reason,
+                    decision_id=decision.decision_id if decision is not None else None,
+                    timeframe=decision.timeframe if decision is not None else None,
+                    score=decision.score if decision is not None else None,
+                    reason=decision.reason if decision is not None else None,
+                )
+            except (OSError, ValueError, TypeError):
+                journal_recorded = False
+            return {
+                "request_id": rid,
+                "status": "RISK_BLOCKED",
+                "accepted": False,
+                "message": risk_decision.reason,
+                "external_id": None,
+                "mode": "DEMO",
+                "real": False,
+                "journal_recorded": journal_recorded,
+                "maintenance_required": not journal_recorded,
+            }
+        result = self.operational_runtime.gateway.execute(rid, request)
+        execution = result.execution
+        external_id = execution.external_id if execution is not None else None
+        journal_recorded = True
+        try:
+            self.operational_runtime.daily_journal.append(
+                request_id=rid,
+                mode=request.mode.value,
+                action=request.action.value,
+                symbol=request.symbol,
+                signal=request.signal.value,
+                amount=request.amount,
+                duration_seconds=request.duration_seconds,
+                status=result.status.value,
+                accepted=result.accepted,
+                external_id=external_id,
+                message=result.message,
+                decision_id=decision.decision_id if decision is not None else None,
+                timeframe=decision.timeframe if decision is not None else None,
+                score=decision.score if decision is not None else None,
+                reason=decision.reason if decision is not None else None,
+            )
+        except (OSError, ValueError, TypeError):
+            # Bookkeeping is deliberately fail-soft: it can never turn an
+            # already-completed execution into an operational retry/error.
+            journal_recorded = False
+        return {
+            "request_id": rid,
+            "status": result.status.value,
+            "accepted": result.accepted,
+            "message": result.message,
+            "external_id": external_id,
+            "mode": "DEMO",
+            "real": False,
+            "journal_recorded": journal_recorded,
+            "maintenance_required": not journal_recorded,
+        }
+
+    def daily_journal(self, limit: int = 100) -> dict[str, Any]:
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        entries = self.operational_runtime.daily_journal.entries(limit)
+        return {
+            "entries": [asdict(item) for item in entries],
+            "today_summary": self.operational_runtime.daily_journal.summary(),
+            "automatic": True,
+            "execution_authority": False,
+        }
+
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
@@ -132,11 +358,13 @@ class EcosystemService:
         if source.source_id in self.learning_sources:
             raise ValueError("source_id já cadastrado")
         self.learning_sources[source.source_id] = source
+        self._persist_learning()
         return source
 
     def validate_learning_source(self, source: LearningSource, *, content_verified: bool, security_checked: bool) -> LearningSource:
         updated = self.learning_source_gate.validate_content(source, content_verified=content_verified, security_checked=security_checked)
         self.learning_sources[updated.source_id] = updated
+        self._persist_learning()
         return updated
 
     def admit_learning_knowledge(self, source: LearningSource, *, knowledge_validated: bool) -> LearningSource:
@@ -155,6 +383,7 @@ class EcosystemService:
             source_type = {ContentType.VIDEO: LearningSourceType.VIDEO, ContentType.DOCUMENT: LearningSourceType.DOCUMENT}.get(resource.content_type, LearningSourceType.LINK)
             self.screen_learning_source({"source_id": resource.resource_id, "source_type": source_type.value, "uri": resource.source_url})
         self.learning_resources[resource.resource_id] = resource
+        self._persist_learning()
         return resource
 
     def learning_resources_view(self) -> list[dict[str, Any]]:
@@ -170,6 +399,7 @@ class EcosystemService:
             raise ValueError("external learning knowledge must pass source and knowledge validation first")
         observation = LearningObservation(resource_id=resource_id, statement=str(payload.get("statement", "")), concepts=normalize_tags(tuple(payload.get("concepts", ()) or ())), evidence=payload.get("evidence"), confidence=payload.get("confidence"), validated=validated)
         self.learning_observations.append(observation)
+        self._persist_learning()
         return observation
 
     def learning_observations_view(self) -> list[dict[str, Any]]:
@@ -180,6 +410,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning()
         return activity
 
     def generate_professor_activity(self, payload: dict[str, Any]) -> LearningActivity:
@@ -187,6 +418,7 @@ class EcosystemService:
         if activity.activity_id in self.learning_activities:
             raise ValueError("activity_id já cadastrado")
         self.learning_activities[activity.activity_id] = activity
+        self._persist_learning()
         return activity
 
     def learning_activities_view(self) -> list[dict[str, Any]]:
@@ -198,13 +430,14 @@ class EcosystemService:
             raise ValueError("activity_id não encontrado")
         attempt = LearningAttempt(activity_id=activity_id, answer=str(payload.get("answer", "")), correct=payload.get("correct"), feedback=str(payload.get("feedback", "")))
         self.learning_attempts.append(attempt)
+        self._persist_learning()
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
-        return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": [asdict(item) for item in self.learning_attempts], "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True}
+        return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": [asdict(item) for item in self.learning_attempts], "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True, "learning_persistence": "SQLITE" if self.learning_store.database_path else "IN_MEMORY", "learning_storage_health": self.learning_store.health}
 
     def risk_status(self) -> dict[str, Any]:
-        decision = self.risk.evaluate()
+        decision = self._current_risk_decision()
         return {"allowed": decision.allowed, "reason": decision.reason, "configured_limits": {"daily_loss_limit": self.risk.daily_loss_limit, "max_operations": self.risk.max_operations, "max_consecutive_losses": self.risk.max_consecutive_losses}, "news_provider": "UNCONFIGURED"}
 
     def news_status(self, limit: int = 10) -> dict[str, Any]:

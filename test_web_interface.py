@@ -40,7 +40,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
             'id="memoria"',
             'id="risco"',
             'id="conexoes"',
-            "/api/analyze",
+            "/api/market/analyze",
             "/api/replay",
         ):
             self.assertIn(marker, html)

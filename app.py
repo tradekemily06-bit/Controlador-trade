@@ -6,13 +6,15 @@ import os
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
-from wsgiref.simple_server import make_server
+from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -22,8 +24,11 @@ RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtim
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
+MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "none").strip().lower()
+MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB)
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -116,6 +121,12 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/market/status" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
+        if path == "/api/market/analyze" and method == "POST":
+            data = _read_json(environ)
+            record = SERVICE.analyze_market(symbol=str(data.get("symbol", "")), timeframe=str(data.get("timeframe", "")), limit=int(data.get("limit", 120)))
+            return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
@@ -131,6 +142,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.notification_summary(), request_id, environ)
         if path == "/api/notifications/all" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"items": SERVICE.all_notifications()}, request_id, environ)
+        if path == "/api/journal" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.daily_journal(_query_limit(environ, 100)), request_id, environ)
         if path == "/api/updates" and method == "POST":
             authorized, reason = _authorize_internal_update(environ)
             if not authorized:
@@ -144,6 +157,17 @@ def application(environ, start_response):
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
+        if path == "/api/demo/execute" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.execute_demo(
+                symbol=str(data.get("symbol", "")),
+                signal=str(data.get("signal", "")),
+                amount=data.get("amount", 0),
+                duration_seconds=data.get("duration_seconds", 60),
+                request_id=data.get("request_id"),
+                decision_id=data.get("decision_id"),
+            )
+            return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
@@ -219,9 +243,16 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
+class ThreadedWSGIServer(ThreadingMixIn, WSGIServer):
+    """Allow independent mobile polling/health requests without blocking execution."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
+    with make_server(host, selected_port, application, server_class=ThreadedWSGIServer) as server:
         print(f"Controlador Trading em http://{host}:{selected_port}")
         server.serve_forever()
 

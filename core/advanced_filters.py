@@ -24,7 +24,9 @@ class AdvancedFilters:
         rejection: float,
         volume: float,
         confirmation: float,
+        direction: str | None = None,
     ) -> FilterResult:
+        """Avalia alinhamento na direção candidata, sem confundir BUY com SELL."""
         values = {
             "trend": trend,
             "pressure": pressure,
@@ -42,34 +44,37 @@ class AdvancedFilters:
                 or not isfinite(value)
                 or not 0 <= value <= 100
             ):
-                return FilterResult(
-                    allowed=False,
-                    reasons=(f"{name} inválido.",),
-                )
+                return FilterResult(False, (f"{name} inválido.",))
 
-        # Sem confirmação, não há entrada válida.
         if confirmation < 100:
             reasons.append("Confirmação insuficiente.")
 
-        # Exige alinhamento mínimo dos componentes principais.
-        if trend < 50:
-            reasons.append("Tendência insuficiente.")
-        if structure < 50:
-            reasons.append("Estrutura insuficiente.")
-        if pressure < 50:
-            reasons.append("Pressão insuficiente.")
-        if volume < 40:
-            reasons.append("Volume insuficiente.")
+        if direction not in {"BUY", "SELL"}:
+            # Um filtro não pode transformar alinhamento em direção por conta própria.
+            # Sem direção candidata explícita, o resultado nunca é acionável.
+            reasons.append("Sem direção candidata suficientemente definida.")
+        else:
+            oriented = {
+                "BUY": {
+                    "trend": trend,
+                    "pressure": pressure,
+                    "structure": structure,
+                    "rejection": rejection,
+                    "volume": volume,
+                },
+                "SELL": {
+                    "trend": 100 - trend,
+                    "pressure": 100 - pressure,
+                    "structure": 100 - structure,
+                    "rejection": 100 - rejection,
+                    "volume": 100 - volume,
+                },
+            }[direction]
+            for name, value in oriented.items():
+                if value < 50:
+                    reasons.append(f"{name.capitalize()} não está alinhado com {direction}.")
 
-        # Rejeição muito baixa não bloqueia sozinha, pois pode haver
-        # oportunidades válidas sem rejeição forte.
-        if rejection < 20:
-            reasons.append("Rejeição fraca.")
-
-        return FilterResult(
-            allowed=not reasons,
-            reasons=tuple(reasons),
-        )
+        return FilterResult(allowed=not reasons, reasons=tuple(reasons))
 
 
 def evaluate_advanced_filters(**kwargs: float) -> FilterResult:

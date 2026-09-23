@@ -1,7 +1,17 @@
+import pytest
+
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
 
-def test_notification_preferences_filter_important_events_but_not_critical():
+@pytest.fixture
+def isolated_preferences(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_PREFERENCES_DB", str(tmp_path / "preferences.sqlite3"))
+
+
+from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+
+def test_notification_preferences_filter_important_events_but_not_critical(isolated_preferences):
     service = ConfiguredEcosystemService()
     service.publish_material_event("RISK", "Risco", "Limite preventivo atingido.")
     service.publish_material_event("SECURITY", "Segurança", "Bloqueio crítico.", critical=True, blocking=True)
@@ -15,7 +25,7 @@ def test_notification_preferences_filter_important_events_but_not_critical():
     assert summary["items"][0]["kind"] == "SECURITY"
 
 
-def test_system_updates_follow_their_preference():
+def test_system_updates_follow_their_preference(isolated_preferences):
     service = ConfiguredEcosystemService()
     service.publish_ecosystem_update("Atualização", "Atualização importante.")
 

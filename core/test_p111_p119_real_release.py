@@ -14,6 +14,9 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from execution.external_execution_registry import ExternalExecutionRegistry
+from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
 class FakeAdapter:
@@ -36,6 +39,15 @@ class NoExternalIdAdapter:
     def execute(self, request):
         return ExecutionResult(True, "accepted but reference missing", None)
 
+
+
+
+class _FailingLifecycle:
+    def get(self, request_id):
+        return None
+
+    def put(self, record):
+        raise OSError("lifecycle write failed")
 
 class UnknownAdapter:
     def is_available(self):
@@ -173,8 +185,15 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown(
+            "unknown-2",
+            observation=ExternalOrderObservation("external-1", ExternalOrderStatus.EXECUTED, "broker confirmou"),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("UNKNOWN sem external_id durável não pode ser resolvido por evidência inexistente")
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -190,8 +209,15 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    try:
+        gateway.reconcile_unknown(
+            "crashed",
+            observation=ExternalOrderObservation("missing", ExternalOrderStatus.NOT_EXECUTED, "broker consultado"),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("RESERVED sem binding externo não pode ser marcado como não executado")
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
@@ -232,3 +258,96 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+
+
+def test_real_accepted_lifecycle_projection_failure_does_not_downgrade_ledger(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    original_put = lifecycle.put
+    def fail_only_on_accept(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("lifecycle write failed")
+        return original_put(record)
+    lifecycle.put = fail_only_on_accept
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, external)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="projection-failure", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert ledger.status("projection-failure") is ExecutionLedgerStatus.ACCEPTED
+    assert external.get("projection-failure") == ("fake", "external-1")
+
+def test_real_uncertain_execution_result_is_not_treated_as_rejection(tmp_path: Path):
+    class UncertainAdapter(FakeAdapter):
+        def execute(self, request):
+            return ExecutionResult(False, "accepted but identity unavailable", None, True)
+
+    registry = BrokerRegistry()
+    registry.register("fake", UncertainAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="uncertain-result", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("uncertain-result") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_unknown_can_be_resolved_by_matching_external_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("evidence")
+    ledger.mark_unknown("evidence")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    external.bind("evidence", "fake", "external-evidence")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        external_registry=external,
+    )
+    gateway.reconcile_unknown(
+        "evidence",
+        observation=ExternalOrderObservation(
+            "external-evidence",
+            ExternalOrderStatus.EXECUTED,
+            "broker confirmou execução",
+        ),
+    )
+    assert ledger.status("evidence") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_real_unknown_stays_unknown_for_pending_external_evidence(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("pending-evidence")
+    ledger.mark_unknown("pending-evidence")
+    external = ExternalExecutionRegistry(tmp_path / "external.json")
+    external.bind("pending-evidence", "fake", "external-pending")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(BrokerRegistry()),
+        ledger,
+        external_registry=external,
+    )
+    try:
+        gateway.reconcile_unknown(
+            "pending-evidence",
+            observation=ExternalOrderObservation(
+                "external-pending", ExternalOrderStatus.PENDING, "ainda pendente"
+            ),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("PENDING externo não pode resolver UNKNOWN")
+    assert ledger.status("pending-evidence") is ExecutionLedgerStatus.UNKNOWN

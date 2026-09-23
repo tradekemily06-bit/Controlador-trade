@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from core.models import Signal
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
-from execution.ports import ExecutionMode, ExecutionRequest
+from execution.ports import ExecutionAction, ExecutionMode, ExecutionRequest
 
 
 class FakeMT5:
@@ -13,6 +13,8 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    POSITION_TYPE_BUY = 0
+    POSITION_TYPE_SELL = 1
 
     def __init__(self, *, demo=True, order_ok=True, send_ok=True, external_id=True):
         self.demo = demo
@@ -21,6 +23,7 @@ class FakeMT5:
         self.external_id = external_id
         self.shutdown_calls = 0
         self.sent = []
+        self.positions = [SimpleNamespace(ticket=777, symbol="EURUSD", volume=0.01, type=self.POSITION_TYPE_BUY, magic=2609001)]
 
     def initialize(self):
         return True
@@ -39,6 +42,9 @@ class FakeMT5:
 
     def symbol_info_tick(self, symbol):
         return SimpleNamespace(ask=1.1002, bid=1.1000)
+
+    def positions_get(self, symbol=None):
+        return tuple(p for p in self.positions if symbol is None or p.symbol == symbol)
 
     def order_check(self, payload):
         return SimpleNamespace(retcode=0 if self.order_ok else 10030)
@@ -143,3 +149,38 @@ def test_missing_external_id_is_not_confirmed():
     assert result.accepted is False
     assert result.external_id is None
     assert len(fake.sent) == 1
+
+def test_demo_close_uses_shared_adapter_boundary():
+    fake = FakeMT5()
+    close_request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.VENDA,
+        amount=0.01,
+        duration_seconds=1,
+        mode=ExecutionMode.DEMO,
+        request_id="close-1",
+        action=ExecutionAction.CLOSE,
+        position_id=777,
+    )
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(close_request)
+    assert result.accepted is True
+    assert fake.sent[0]["position"] == 777
+    assert fake.sent[0]["type"] == fake.ORDER_TYPE_SELL
+
+
+def test_demo_close_requires_exactly_one_controlador_position():
+    fake = FakeMT5()
+    fake.positions = []
+    close_request = ExecutionRequest(
+        symbol="EURUSD",
+        signal=Signal.VENDA,
+        amount=0.01,
+        duration_seconds=1,
+        mode=ExecutionMode.DEMO,
+        request_id="close-2",
+        action=ExecutionAction.CLOSE,
+        position_id=777,
+    )
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(close_request)
+    assert result.accepted is False
+    assert fake.sent == []
