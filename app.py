@@ -213,12 +213,14 @@ def application(environ, start_response):
                 symbol=str(data.get("symbol", "")), signal=signal, amount=float(data.get("amount", 0)),
                 duration_seconds=int(data.get("duration_seconds", 0)), mode=ExecutionMode.DEMO,
                 request_id=str(data.get("request_id", "")).strip() or request_id,
+                decision_id=str(data.get("decision_id", "")).strip() or None,
             )
             result = OPERATIONAL_RUNTIME.gateway.execute(request.request_id, request)
             status_code = HTTPStatus.OK if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"} else HTTPStatus.CONFLICT
             return _json_response(start_response, status_code, {
                 "status": result.status.value, "accepted": result.accepted, "message": result.message,
                 "request_id": request.request_id,
+                "decision_id": request.decision_id,
                 "execution": None if result.execution is None else {
                     "accepted": result.execution.accepted, "message": result.execution.message,
                     "external_id": result.execution.external_id,
@@ -231,6 +233,12 @@ def application(environ, start_response):
             for record in lifecycle:
                 items.append({
                     "request_id": record.request_id,
+                    "decision_id": record.decision_id,
+                    "symbol": record.symbol,
+                    "signal": record.signal,
+                    "amount": record.amount,
+                    "mode": record.mode,
+                    "external_id": record.external_id,
                     "state": record.state.value,
                     "updated_at": record.updated_at.isoformat(),
                     "message": record.message,
@@ -240,7 +248,7 @@ def application(environ, start_response):
             for request_id in ledger.records():
                 if request_id not in known:
                     state = ledger.status(request_id)
-                    items.append({"request_id": request_id, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value})
+                    items.append({"request_id": request_id, "decision_id": None, "symbol": None, "signal": None, "amount": None, "mode": None, "external_id": None, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value})
             return _json_response(start_response, HTTPStatus.OK, {"orders": items[-50:]}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, MARKET_DATA_RUNTIME.status(), request_id, environ)
@@ -275,6 +283,7 @@ def application(environ, start_response):
                 request_id=str(data.get("request_id", "")), symbol=str(data.get("symbol", "")),
                 signal=Signal(str(data.get("signal", "")).upper()), amount=float(data.get("amount", 0)),
                 duration_seconds=int(data.get("duration_seconds", 0)), confirmation_id=str(data.get("confirmation_id", "")),
+                decision_id=str(data.get("decision_id", "")).strip() or None,
             )
             status_code = HTTPStatus.OK if result.status in {"ADMITTED", "REJECTED"} else HTTPStatus.CONFLICT
             return _json_response(start_response, status_code, {
