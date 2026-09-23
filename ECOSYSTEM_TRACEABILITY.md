@@ -274,3 +274,23 @@ For now, preserve both lines. The DEMO operational runtime remains its own prese
 These are preserved as separate candidates until ancestry/content overlap is reconciled.
 
 This checkpoint intentionally does not merge, close, delete, or declare any candidate complete.
+
+
+## 11. Second-pass findings — documentation and orphan markers
+
+### 11.1 Completion-status contradiction
+`PROJECT_COMPLETION_STATUS.md` describes the core, DEMO boundary, IC Markets MT5 DEMO and interface as implemented/covered, but this branch is still an unmerged mobile branch and the day-to-day DEMO branch is a separate divergent line. Therefore the document cannot be used as proof that the repository-wide project is fully consolidated. Its statements are treated as status of an implemented surface, not as a global integration certificate.
+
+### 11.2 Master-spec contradiction
+`PROJECT_MASTER_SPEC.md` still says P53 is the last confirmed roadmap milestone and instructs that P54+ must not be filled by inference. The repository inventory already contains concrete P54+ artifacts and later merged P129–P149 work. This is documentation drift. It must be reconciled from versioned artifacts/history rather than silently rewriting the master spec from memory.
+
+### 11.3 Orphan-marker scan
+A repository-wide textual scan for common unfinished markers found no `FIXME` and no `TBD` matches. `TODO` and `FUTURE` searches produce many false positives because they match ordinary Portuguese words such as `todo/todos` and Python's `from __future__ import annotations`. Therefore those searches are not evidence of unfinished work and must not be counted as unresolved TODOs.
+
+### 11.4 P54+ artifact search limitation
+Direct filename search from the indexed repository returned no P54_PLAN.md, P60_PLAN.md, P70_PLAN.md, P80_PLAN.md, P90_PLAN.md, P100_PLAN.md, P110_PLAN.md or P120_PLAN.md in the current indexed result set, while P127_PLAN.md and P128 artifacts are directly discoverable. This does NOT prove the earlier P54–P126 definitions are absent: branch/history evidence already confirms those milestones. The correct next step is ancestry/history retrieval of the specific plan/addendum artifacts, not inventing replacements.
+
+### 11.5 Major reconciliation risk confirmed
+The direct file comparison shows the DEMO runtime branch changes 47 files, including execution ledger, execution lifecycle, external execution registry, gateway, recovery coordinator, safe automation, daily operation journal, learning persistence, MT5 DEMO adapter and associated tests. The mobile branch changes 19 files and does not carry those 47-file runtime changes as a simple ancestor. This is the most important current preservation point: the mobile work cannot be treated as the complete project tree until those runtime changes are explicitly reconciled.
+
+This is an inventory finding only. No merge/cherry-pick/delete was performed.
