@@ -37,5 +37,5 @@ def test_ecosystem_service_uses_runtime_directory_for_default_decision_persisten
 
     second = EcosystemService(operational_runtime=__import__("core.operational_runtime", fromlist=["build_operational_runtime"]).build_operational_runtime(tmp_path))
 
-    assert first.store.database_path == str(tmp_path / "decisions.sqlite")
+    assert first.store.database_path == tmp_path / "decisions.sqlite"
     assert second.memory_view()[0]["decision_id"] == record.decision_id
