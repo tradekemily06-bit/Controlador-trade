@@ -253,6 +253,7 @@ class EcosystemService:
         )
         risk_decision = self._current_risk_decision()
         if not risk_decision.allowed:
+            journal_recorded = True
             try:
                 self.operational_runtime.daily_journal.append(
                     request_id=rid,
@@ -272,7 +273,7 @@ class EcosystemService:
                     reason=decision.reason if decision is not None else None,
                 )
             except (OSError, ValueError, TypeError):
-                pass
+                journal_recorded = False
             return {
                 "request_id": rid,
                 "status": "RISK_BLOCKED",
@@ -281,7 +282,8 @@ class EcosystemService:
                 "external_id": None,
                 "mode": "DEMO",
                 "real": False,
-                "journal_recorded": True,
+                "journal_recorded": journal_recorded,
+                "maintenance_required": not journal_recorded,
             }
         result = self.operational_runtime.gateway.execute(rid, request)
         execution = result.execution
