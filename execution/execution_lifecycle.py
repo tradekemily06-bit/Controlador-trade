@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from contextlib import contextmanager
 import os
 import threading
@@ -60,6 +61,7 @@ class ExecutionLifecycleStore:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(payload, list):
                 raise ValueError
+            seen_ids: set[str] = set()
             for item in payload:
                 if not isinstance(item, dict):
                     raise ValueError
@@ -73,6 +75,9 @@ class ExecutionLifecycleStore:
                     external_id=item.get("external_id"),
                 )
                 self._validate(record)
+                if record.request_id in seen_ids:
+                    raise ValueError
+                seen_ids.add(record.request_id)
                 self._records[record.request_id] = record
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("ciclo de execução persistido inválido.") from exc
@@ -90,7 +95,7 @@ class ExecutionLifecycleStore:
         for value, name in ((record.decision_id, "decision_id"), (record.symbol, "symbol"), (record.signal, "signal"), (record.mode, "mode"), (record.external_id, "external_id")):
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} inválido.")
-        if record.amount is not None and (isinstance(record.amount, bool) or not isinstance(record.amount, (int, float))):
+        if record.amount is not None and (isinstance(record.amount, bool) or not isinstance(record.amount, (int, float)) or not math.isfinite(float(record.amount))):
             raise ValueError("amount inválido.")
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
