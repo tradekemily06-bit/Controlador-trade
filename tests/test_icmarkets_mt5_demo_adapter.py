@@ -75,9 +75,10 @@ def test_demo_buy_is_sent_after_order_check():
     assert fake.sent[0]["type"] == fake.ORDER_TYPE_BUY
     assert fake.sent[0]["volume"] == 0.01
     assert fake.shutdown_calls == 0
-    adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
-    adapter.connect()
+    first_adapter = ICMarketsMT5DemoAdapter(mt5_module=fake)
+    first_adapter.connect()
     adapter.disconnect()
+    first_adapter.disconnect()
     assert fake.shutdown_calls == 1
 
 
