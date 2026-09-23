@@ -32,6 +32,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
     def __init__(self, mt5_module: Any = None) -> None:
         self._mt5 = mt5_module
+        self._connected = False
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -60,13 +61,37 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
+    def connect(self) -> bool:
+        mt5 = self._module()
+        if self._connected:
+            return True
+        self._connected = bool(mt5.initialize())
+        return self._connected
+
+    def disconnect(self) -> None:
+        if self._connected:
+            try:
+                self._module().shutdown()
+            finally:
+                self._connected = False
+
+    def is_available(self) -> bool:
+        try:
+            if not self.connect():
+                return False
+            account = self._module().account_info()
+            return account is not None and self._is_demo_account(account, self._module())
+        except Exception:
+            self.disconnect()
+            return False
+
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
 
         mt5 = self._module()
         timeframe = self._timeframe(request.timeframe)
-        if not mt5.initialize():
+        if not self.connect():
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
@@ -104,7 +129,8 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
             return tuple(candles)
         finally:
-            mt5.shutdown()
+            # Persistent runtime owns the MT5 session lifecycle.
+            pass
 
     @staticmethod
     def _last_error(mt5: Any) -> str:
