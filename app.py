@@ -144,6 +144,16 @@ def application(environ, start_response):
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
+        if path == "/api/demo/execute" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.execute_demo(
+                symbol=str(data.get("symbol", "")),
+                signal=str(data.get("signal", "")),
+                amount=data.get("amount", 0),
+                duration_seconds=data.get("duration_seconds", 60),
+                request_id=data.get("request_id"),
+            )
+            return _json_response(start_response, HTTPStatus.OK, result, request_id, environ)
         if path == "/api/replay" and method == "POST":
             cases = _read_json(environ).get("cases")
             if not isinstance(cases, list):
