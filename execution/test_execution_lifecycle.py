@@ -48,3 +48,17 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_lifecycle_second_process_view_refreshes_from_disk(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+    now = datetime.now(timezone.utc)
+
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now, "started"))
+    assert second.get("req-1").state is ExecutionLifecycleState.PENDING
+
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.UNKNOWN, now, "uncertain"))
+    assert second.get("req-1").state is ExecutionLifecycleState.UNKNOWN
+    assert second.records()[0].state is ExecutionLifecycleState.UNKNOWN
