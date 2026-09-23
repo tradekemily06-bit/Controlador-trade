@@ -132,69 +132,73 @@ class MT5RealAdapter:
 
         try:
             with self._session.operation(mt5, mode="REAL", owner=self._owner):
-                    account = mt5.account_info()
-                    if account is None or not self._is_real_account(account, mt5):
-                        return ExecutionResult(False, "conta MT5 não confirmada como REAL; ordem bloqueada.")
-                    if not self._server_matches(account):
-                        return ExecutionResult(False, "servidor MT5 não corresponde ao servidor REAL configurado.")
-    
-            symbol = self.config.symbol or request.symbol
-            if not isinstance(symbol, str) or not symbol.strip():
-                return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
-            symbol = symbol.strip()
+                account = mt5.account_info()
+                if account is None or not self._is_real_account(account, mt5):
+                    return ExecutionResult(False, "conta MT5 não confirmada como REAL; ordem bloqueada.")
+                if not self._server_matches(account):
+                    return ExecutionResult(False, "servidor MT5 não corresponde ao servidor REAL configurado.")
 
-            if not mt5.symbol_select(symbol, True):
-                return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
+                symbol = self.config.symbol or request.symbol
+                if not isinstance(symbol, str) or not symbol.strip():
+                    return ExecutionResult(False, "símbolo inválido; ordem bloqueada.")
+                symbol = symbol.strip()
 
-            symbol_info = mt5.symbol_info(symbol)
-            if symbol_info is None or not self._valid_volume(request.amount, symbol_info):
-                return ExecutionResult(False, f"volume inválido para o símbolo {symbol}; ordem bloqueada.")
+                if not mt5.symbol_select(symbol, True):
+                    return ExecutionResult(False, f"símbolo não disponível no MT5: {symbol}")
 
-            tick = mt5.symbol_info_tick(symbol)
-            if tick is None:
-                return ExecutionResult(False, f"cotação indisponível para {symbol}.")
+                symbol_info = mt5.symbol_info(symbol)
+                if symbol_info is None or not self._valid_volume(request.amount, symbol_info):
+                    return ExecutionResult(False, f"volume inválido para o símbolo {symbol}; ordem bloqueada.")
 
-            is_buy = request.signal is Signal.COMPRA
-            order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
-            price = tick.ask if is_buy else tick.bid
-            if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
-                return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
+                tick = mt5.symbol_info_tick(symbol)
+                if tick is None:
+                    return ExecutionResult(False, f"cotação indisponível para {symbol}.")
 
-            payload = {
-                "action": mt5.TRADE_ACTION_DEAL,
-                "symbol": symbol,
-                "volume": float(request.amount),
-                "type": order_type,
-                "price": price,
-                "deviation": self.config.deviation,
-                "magic": self.config.magic,
-                "comment": self.config.comment,
-                "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
-            }
+                is_buy = request.signal is Signal.COMPRA
+                order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
+                price = tick.ask if is_buy else tick.bid
+                if not isinstance(price, (int, float)) or not math.isfinite(float(price)) or price <= 0:
+                    return ExecutionResult(False, f"cotação inválida para {symbol}; ordem bloqueada.")
 
-            check = mt5.order_check(payload)
-            if check is None or getattr(check, "retcode", 0) != 0:
-                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
+                payload = {
+                    "action": mt5.TRADE_ACTION_DEAL,
+                    "symbol": symbol,
+                    "volume": float(request.amount),
+                    "type": order_type,
+                    "price": price,
+                    "deviation": self.config.deviation,
+                    "magic": self.config.magic,
+                    "comment": self.config.comment,
+                    "type_time": mt5.ORDER_TIME_GTC,
+                    "type_filling": mt5.ORDER_FILLING_IOC,
+                }
 
-            result = mt5.order_send(payload)
-            if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação; resultado externo é incerto: {self._last_error(mt5)}", uncertain=True)
+                check = mt5.order_check(payload)
+                if check is None or getattr(check, "retcode", 0) != 0:
+                    return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
 
-            retcode = getattr(result, "retcode", None)
-            success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
-            if success_code is None or retcode != success_code:
-                return ExecutionResult(False, f"ordem REAL rejeitada pelo MT5: retcode={retcode}")
+                result = mt5.order_send(payload)
+                if result is None:
+                    return ExecutionResult(
+                        False,
+                        f"order_send sem confirmação; resultado externo é incerto: {self._last_error(mt5)}",
+                        uncertain=True,
+                    )
 
-            external_id = getattr(result, "order", None) or getattr(result, "deal", None)
-            if external_id is None:
-                return ExecutionResult(
-                    False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado externo é incerto.",
-                    uncertain=True,
-                )
+                retcode = getattr(result, "retcode", None)
+                success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
+                if success_code is None or retcode != success_code:
+                    return ExecutionResult(False, f"ordem REAL rejeitada pelo MT5: retcode={retcode}")
 
-            return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", str(external_id))
+                external_id = getattr(result, "order", None) or getattr(result, "deal", None)
+                if external_id is None:
+                    return ExecutionResult(
+                        False,
+                        "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado externo é incerto.",
+                        uncertain=True,
+                    )
+
+                return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", str(external_id))
         finally:
             # PersistentBrokerConnectionRuntime owns disconnect/reconnect.
             pass
