@@ -143,19 +143,25 @@ class EcosystemService:
         result = self.operational_runtime.gateway.execute(rid, request)
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
-        self.operational_runtime.daily_journal.append(
-            request_id=rid,
-            mode=request.mode.value,
-            action=request.action.value,
-            symbol=request.symbol,
-            signal=request.signal.value,
-            amount=request.amount,
-            duration_seconds=request.duration_seconds,
-            status=result.status.value,
-            accepted=result.accepted,
-            external_id=external_id,
-            message=result.message,
-        )
+        journal_recorded = True
+        try:
+            self.operational_runtime.daily_journal.append(
+                request_id=rid,
+                mode=request.mode.value,
+                action=request.action.value,
+                symbol=request.symbol,
+                signal=request.signal.value,
+                amount=request.amount,
+                duration_seconds=request.duration_seconds,
+                status=result.status.value,
+                accepted=result.accepted,
+                external_id=external_id,
+                message=result.message,
+            )
+        except (OSError, ValueError, TypeError):
+            # Bookkeeping is deliberately fail-soft: it can never turn an
+            # already-completed execution into an operational retry/error.
+            journal_recorded = False
         return {
             "request_id": rid,
             "status": result.status.value,
@@ -164,7 +170,7 @@ class EcosystemService:
             "external_id": external_id,
             "mode": "DEMO",
             "real": False,
-            "journal_recorded": True,
+            "journal_recorded": journal_recorded,
         }
 
     def daily_journal(self, limit: int = 100) -> dict[str, Any]:
