@@ -130,13 +130,13 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def mark_accepted(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED)
+        self._transition(request_id, ExecutionLedgerStatus.ACCEPTED, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def mark_rejected(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.REJECTED)
+        self._transition(request_id, ExecutionLedgerStatus.REJECTED, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def mark_unknown(self, request_id: str) -> None:
-        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN)
+        self._transition(request_id, ExecutionLedgerStatus.UNKNOWN, allowed=(ExecutionLedgerStatus.RESERVED,))
 
     def reconcile(self, request_id: str, *, executed: bool) -> None:
         self._validate_id(request_id)
@@ -164,14 +164,20 @@ class ExecutionLedger:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
 
-    def _transition(self, request_id: str, status: ExecutionLedgerStatus) -> None:
+    def _transition(
+        self,
+        request_id: str,
+        status: ExecutionLedgerStatus,
+        *,
+        allowed: tuple[ExecutionLedgerStatus, ...],
+    ) -> None:
         self._validate_id(request_id)
 
         def mutation() -> None:
             current = self._states.get(request_id)
             if current is None:
                 raise ValueError("request_id não foi reservado.")
-            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+            if current not in allowed:
                 raise ValueError(f"transição inválida de {current.value} para {status.value}.")
             self._states[request_id] = status
 
