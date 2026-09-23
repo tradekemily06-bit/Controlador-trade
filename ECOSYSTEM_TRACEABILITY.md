@@ -245,3 +245,32 @@ This branch is being used as the organized workbench for the current inventory. 
 6. Only then begin implementation/validation work.
 
 This section is an organizational checkpoint, not a completion claim.
+
+
+## 10. Deep ancestry/reconciliation checkpoint — 2026-09-23
+
+### Branch universe
+The repository currently exposes **393 branch refs** across the four branch-search pages. The census spans P2–P26 foundation/recovery; P36–P53 market context, automation and learning; P54–P126 controlled learning/REAL/reconciliation; P127/P128 broker, market-learning and senior-context variants; P129–P150 asset suitability, senior analysis, risk, learning handoff and onboarding; Stage 2–7 consolidation/release; security/tenant/transport/audit lines; and current DEMO/mobile/deployment lines.
+
+The large number of variants is itself a reconciliation requirement. Names such as final, ready, current, v2, v3, x, and stop are not evidence that a branch is authoritative.
+
+### P150 finding
+p150/saas-onboarding-status was compared directly with main and is identical: ahead 0, behind 0, total commits 0. Therefore P150 currently has no unique delta relative to main. Classification: HISTORICAL-VALIDATED / NO-DELTA.
+
+### Current day-to-day/mobile ancestry finding
+day-to-day-demo-runtime is 140 commits ahead of main. feat/universal-mobile-web is 46 commits ahead of main. However, PR #277 explicitly targets day-to-day-demo-runtime, and its current HEAD is fa85db23ebc5c638ca24757348ba42eae3d6a38e, while its base is 24e171c07d29c0aea10e07cdd72bfda13e201b92.
+
+The direct comparison day-to-day-demo-runtime -> feat/universal-mobile-web reports status DIVERGED, mobile ahead 46, mobile behind 140. This explains the current non-mergeable state of #277. It must be treated as an ancestry/reconciliation issue, not as evidence that either side's functionality should simply be discarded.
+
+### Current implication
+For now, preserve both lines. The DEMO operational runtime remains its own preserved candidate; universal mobile/web remains its own preserved candidate. No automatic cherry-pick or merge is authorized by this inventory. Before implementation continues, the two lines must be reconciled deliberately so the final chain does not lose DEMO execution, journal, lifecycle, ledger, recovery, risk, or safety work.
+
+### Other direct comparisons already checked
+- fix/windows-autostart-hardening: 5 commits ahead of main.
+- feat/persistent-mt5-runtime: 3 commits ahead of main.
+- feat/mt5-real-execution-bridge: 170 commits ahead of main.
+- fix/windows-file-locking: 832 commits ahead of main and therefore represents a much broader historical/security line, not merely a one-file locking patch.
+
+These are preserved as separate candidates until ancestry/content overlap is reconciled.
+
+This checkpoint intentionally does not merge, close, delete, or declare any candidate complete.
