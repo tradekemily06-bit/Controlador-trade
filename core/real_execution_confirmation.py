@@ -41,6 +41,7 @@ class RealExecutionRequest:
     amount: float
     duration_seconds: int
     confirmation: ExecutionConfirmation
+    decision_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
