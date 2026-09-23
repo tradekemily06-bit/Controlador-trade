@@ -167,6 +167,31 @@ class RealExecutionGateway:
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
 
+        if result.execution.uncertain:
+            try:
+                self._ledger.mark_unknown(request_id)
+                if self._lifecycle is not None:
+                    from datetime import datetime, timezone
+                    self._lifecycle.put(
+                        ExecutionLifecycleRecord(
+                            request_id,
+                            ExecutionLifecycleState.UNKNOWN,
+                            datetime.now(timezone.utc),
+                            result.execution.message,
+                        )
+                    )
+            except (OSError, ValueError) as exc:
+                return RealGatewayResult(
+                    RealGatewayStatus.UNKNOWN,
+                    f"resultado REAL incerto e persistência falhou: {exc}",
+                    result.execution,
+                )
+            return RealGatewayResult(
+                RealGatewayStatus.UNKNOWN,
+                result.execution.message,
+                result.execution,
+            )
+
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
