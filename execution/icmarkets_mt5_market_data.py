@@ -118,6 +118,14 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             mt5 = self._module()
             timeframe = self._timeframe(request.timeframe)
             if not self.connect():
+                try:
+                    account = mt5.account_info()
+                except Exception:
+                    account = None
+                if account is not None and not self._is_demo_account(account, mt5):
+                    raise MT5MarketDataError(
+                        "conta MT5 não é DEMO; leitura de market-data DEMO bloqueada."
+                    )
                 raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
             try:
