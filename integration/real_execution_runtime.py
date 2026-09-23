@@ -94,6 +94,8 @@ class RealExecutionRuntime:
     def request_confirmation(self, *, request_id: str, phrase: str) -> ExecutionConfirmation:
         if self._mode is not ExecutionMode.REAL:
             raise ValueError("confirmação REAL só pode ser solicitada no modo REAL.")
+        if not self._real_enabled:
+            raise ValueError("execução REAL está desabilitada no runtime.")
         if self._ledger.status(request_id) is not None:
             raise ValueError("request_id já possui estado; nova confirmação não é permitida.")
         confirmation = new_real_confirmation(
