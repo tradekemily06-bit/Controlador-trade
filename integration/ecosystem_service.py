@@ -142,14 +142,40 @@ class EcosystemService:
         )
         result = self.operational_runtime.gateway.execute(rid, request)
         execution = result.execution
+        external_id = execution.external_id if execution is not None else None
+        self.operational_runtime.daily_journal.append(
+            request_id=rid,
+            mode=request.mode.value,
+            action=request.action.value,
+            symbol=request.symbol,
+            signal=request.signal.value,
+            amount=request.amount,
+            duration_seconds=request.duration_seconds,
+            status=result.status.value,
+            accepted=result.accepted,
+            external_id=external_id,
+            message=result.message,
+        )
         return {
             "request_id": rid,
             "status": result.status.value,
             "accepted": result.accepted,
             "message": result.message,
-            "external_id": execution.external_id if execution is not None else None,
+            "external_id": external_id,
             "mode": "DEMO",
             "real": False,
+            "journal_recorded": True,
+        }
+
+    def daily_journal(self, limit: int = 100) -> dict[str, Any]:
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        entries = self.operational_runtime.daily_journal.entries(limit)
+        return {
+            "entries": [asdict(item) for item in entries],
+            "today_summary": self.operational_runtime.daily_journal.summary(),
+            "automatic": True,
+            "execution_authority": False,
         }
 
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
