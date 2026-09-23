@@ -192,3 +192,56 @@ No branch/PR/plan is considered “lost” merely because it is not in the curre
 **INTEGRATED / SUPERSEDED / PARKED-FOR-LATER / HISTORICAL-VALIDATED / INTENTIONALLY-SEPARATE / NEEDS-RECONCILIATION**.
 
 Only after this classification is complete will the inventory be considered closed.
+
+
+## 9. Workbench organization — 2026-09-23
+
+### Current rule
+This branch is being used as the organized workbench for the current inventory. No new product feature is being declared complete from this document.
+
+### Work buckets
+**A — CURRENT CHAIN / VALIDATE BEFORE ADVANCE**
+- #275 DEMO daily runtime
+- #277 universal mobile/web
+- current mounted cockpit components
+- current backend API surface
+- current device-invariant persistence changes
+- current kill-switch implementation
+
+**B — PARKED FOR RECONCILIATION**
+- #272/#276 Windows launcher/autostart
+- #273 MT5 read-only market-data runtime
+- #271 Windows cross-process locking
+- #241 multi-device session registry
+- #238/#239 HTTP/data-integrity and tenant/state isolation
+- #240 durable technical-incident barrier
+- #252 Stage 7 governance
+- #254/#255/#260/#261/#262/#263/#264/#265/#266/#267/#268/#269 security/audit lineage
+- #274 guarded MT5 REAL bridge
+
+**C — HISTORICAL / TRACEABILITY**
+- P54–P128 roadmap artifacts
+- P129–P149 merged product chain
+- older Stage/audit branches and their superseded variants
+- P150 branch remains unclassified until its exact intent is established
+
+### Do-not-lose rules
+1. Do not delete or merge a parked branch merely because a newer branch exists.
+2. Do not cherry-pick a parked PR until ancestry, duplicate changes, tests, and security implications are checked.
+3. Do not treat branch existence as proof of missing functionality.
+4. Do not treat README/master-spec wording as proof of implementation status when Git history disagrees.
+5. Do not call #277 validated until its current HEAD receives fresh CI.
+6. Do not bring REAL execution work into the DEMO day-to-day chain without the existing REAL security/reconciliation gates.
+7. Keep DEMO/REAL authority, kill switch, ledger/lifecycle, reconciliation, and recovery boundaries explicit.
+8. Keep learning/context/news/media informational unless a separately validated rule explicitly admits them.
+9. Any newly discovered item must be assigned a bucket before implementation continues.
+
+### Next work order — inventory only
+1. Complete PR/branch-to-current-tree reconciliation.
+2. Resolve P150.
+3. Reconcile stale roadmap/master documentation.
+4. Run the independent second orphan/feature scan.
+5. Produce the final “nothing relevant left unclassified” inventory.
+6. Only then begin implementation/validation work.
+
+This section is an organizational checkpoint, not a completion claim.
