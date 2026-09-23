@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Callable
 
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
@@ -11,6 +12,7 @@ from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperatio
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionPort, ExecutionRequest, ExecutionResult
+from core.risk_manager import RiskDecision
 
 
 class GatewayStatus(str, Enum):
@@ -19,6 +21,7 @@ class GatewayStatus(str, Enum):
     BLOCKED = "BLOCKED"
     DUPLICATE = "DUPLICATE"
     EXECUTION_REJECTED = "EXECUTION_REJECTED"
+    RISK_BLOCKED = "RISK_BLOCKED"
     EXECUTOR_ERROR = "EXECUTOR_ERROR"
 
 
@@ -44,6 +47,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        risk_check: Callable[[], RiskDecision] | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +58,7 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._risk_check = risk_check
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -76,6 +81,15 @@ class ExecutionGateway:
 
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
+
+        if self._risk_check is not None:
+            try:
+                risk = self._risk_check()
+            except Exception as exc:
+                return GatewayResult(GatewayStatus.RISK_BLOCKED, f"risco indisponível; execução bloqueada: {type(exc).__name__}: {exc}")
+            if not isinstance(risk, RiskDecision) or not risk.allowed:
+                reason = risk.reason if isinstance(risk, RiskDecision) else "decisão de risco inválida"
+                return GatewayResult(GatewayStatus.RISK_BLOCKED, reason)
 
         if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
             return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
