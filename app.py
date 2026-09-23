@@ -23,7 +23,7 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, preferences_path=RUNTIME_DIR / "ecosystem-preferences.json")
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -209,6 +209,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+        if path in {"/icons/icon.svg", "/apple-touch-icon.svg"} and method == "GET":
+            return _file_response(start_response, WEB_DIR / "icons" / "icon.svg", "image/svg+xml", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 
