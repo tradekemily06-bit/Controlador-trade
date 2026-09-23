@@ -353,7 +353,7 @@ class EcosystemService:
         return attempt
 
     def learning_summary(self) -> dict[str, Any]:
-        return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": [asdict(item) for item in self.learning_attempts], "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True, "learning_persistence": "SQLITE" if self.learning_store.database_path else "IN_MEMORY"}
+        return {"resources": self.learning_resources_view(), "observations": self.learning_observations_view(), "activities": self.learning_activities_view(), "attempts": [asdict(item) for item in self.learning_attempts], "learning_sources": self.learning_sources_view(), "execution_allowed": False, "learning_authorizes_trading": False, "external_learning_sources_require_validation": True, "professor_uses_validated_knowledge_only": True, "learning_persistence": "SQLITE" if self.learning_store.database_path else "IN_MEMORY", "learning_storage_health": self.learning_store.health}
 
     def risk_status(self) -> dict[str, Any]:
         decision = self._current_risk_decision()
