@@ -5,6 +5,7 @@ import math
 from typing import Any
 import threading
 
+from execution.mt5_session import MT5SessionConflict, coordinator_for
 from core.models import Signal
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
@@ -56,6 +57,12 @@ class MT5RealAdapter:
         self._mt5 = mt5_module
         self._connected = False
         self._lock = threading.RLock()
+        self._session = coordinator_for(self._module_placeholder())
+        self._session_module = None
+        self._owner = f"real:{id(self)}"
+
+    def _module_placeholder(self) -> Any:
+        return self._mt5 if self._mt5 is not None else object()
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -66,6 +73,9 @@ class MT5RealAdapter:
                     "MetaTrader5 não instalado; o terminal MT5 é necessário para execução REAL."
                 ) from exc
             self._mt5 = mt5
+        if self._session_module is None:
+            self._session_module = self._mt5
+            self._session = coordinator_for(self._session_module)
         return self._mt5
 
     def connect(self) -> bool:
@@ -73,14 +83,17 @@ class MT5RealAdapter:
             mt5 = self._module()
             if self._connected:
                 return True
-            self._connected = bool(mt5.initialize())
+            try:
+                self._connected = self._session.acquire(mt5, mode="REAL", owner=self._owner)
+            except MT5SessionConflict:
+                self._connected = False
             return self._connected
 
     def disconnect(self) -> None:
         with self._lock:
             if self._connected:
                 try:
-                    self._module().shutdown()
+                    self._session.release(self._module(), owner=self._owner)
                 finally:
                     self._connected = False
 
@@ -90,7 +103,8 @@ class MT5RealAdapter:
                 if not self.connect():
                     return False
                 mt5 = self._module()
-                account = mt5.account_info()
+                with self._session.operation(mt5, mode="REAL", owner=self._owner):
+                    account = mt5.account_info()
                 if account is None or not self._is_real_account(account, mt5):
                     return False
                 return self._server_matches(account)
@@ -116,7 +130,8 @@ class MT5RealAdapter:
         mt5 = self._module()
 
         try:
-            account = mt5.account_info()
+            with self._session.operation(mt5, mode="REAL", owner=self._owner):
+                account = mt5.account_info()
             if account is None or not self._is_real_account(account, mt5):
                 return ExecutionResult(False, "conta MT5 não confirmada como REAL; ordem bloqueada.")
             if not self._server_matches(account):
