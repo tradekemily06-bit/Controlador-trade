@@ -65,6 +65,10 @@ class RecoveryCoordinator:
         lifecycle_pending = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING}
         lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
         ledger_state = {request_id: self.execution_ledger.status(request_id) for request_id in ledger_ids}
+        checkpoint_orphan: set[str] = set()
+        if checkpoint is not None and checkpoint.last_request_id is not None:
+            if checkpoint.last_request_id not in lifecycle_by_id and checkpoint.last_request_id not in ledger_ids:
+                checkpoint_orphan.add(checkpoint.last_request_id)
         ledger_reserved = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.RESERVED}
         ledger_unknown = {request_id for request_id, state in ledger_state.items() if state is ExecutionLedgerStatus.UNKNOWN}
         pending = tuple(sorted(lifecycle_pending | ledger_reserved))
@@ -96,7 +100,7 @@ class RecoveryCoordinator:
             ):
                 ledger_without_lifecycle.add(request_id)
 
-        if unknown or pending or inconsistent or lifecycle_without_ledger or ledger_without_lifecycle:
+        if unknown or pending or inconsistent or lifecycle_without_ledger or ledger_without_lifecycle or checkpoint_orphan:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -108,6 +112,8 @@ class RecoveryCoordinator:
                 details.append("lifecycle sem estado correspondente no ledger")
             if ledger_without_lifecycle:
                 details.append("ledger sem lifecycle correspondente")
+            if checkpoint_orphan:
+                details.append("checkpoint aponta para request_id sem estado persistido")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
