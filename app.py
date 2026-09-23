@@ -229,6 +229,7 @@ def application(environ, start_response):
         if path == "/api/orders" and method == "GET":
             lifecycle = OPERATIONAL_RUNTIME.execution_lifecycle.records()
             ledger = OPERATIONAL_RUNTIME.execution_ledger
+            decisions = {item.get("decision_id"): item for item in SERVICE.memory_view(200) if item.get("decision_id")}
             items = []
             for record in lifecycle:
                 items.append({
@@ -243,15 +244,20 @@ def application(environ, start_response):
                     "updated_at": record.updated_at.isoformat(),
                     "message": record.message,
                     "ledger_state": None if ledger.status(record.request_id) is None else ledger.status(record.request_id).value,
+                    "decision": decisions.get(record.decision_id),
                 })
             known = {item["request_id"] for item in items}
             for request_id in ledger.records():
                 if request_id not in known:
                     state = ledger.status(request_id)
-                    items.append({"request_id": request_id, "decision_id": None, "symbol": None, "signal": None, "amount": None, "mode": None, "external_id": None, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value})
+                    items.append({"request_id": request_id, "decision_id": None, "symbol": None, "signal": None, "amount": None, "mode": None, "external_id": None, "state": None, "updated_at": None, "message": "Estado presente no ledger.", "ledger_state": None if state is None else state.value, "decision": None})
             return _json_response(start_response, HTTPStatus.OK, {"orders": items[-50:]}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, MARKET_DATA_RUNTIME.status(), request_id, environ)
+        if path == "/api/runtime/status" and method == "GET":
+            real = REAL_RUNTIME.status()
+            market = MARKET_DATA_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, {"real": {"mode": real.mode.value, "enabled": real.real_enabled, "broker_state": real.broker_state, "available": real.broker_available, "unknown": list(real.ledger_unknown_request_ids)}, "market": market, "orders": len(OPERATIONAL_RUNTIME.execution_lifecycle.records()), "runtime_dir": str(OPERATIONAL_RUNTIME.runtime_dir)}, request_id, environ)
         if path == "/api/real/status" and method == "GET":
             status = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, {
