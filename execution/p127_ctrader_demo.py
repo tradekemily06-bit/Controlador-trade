@@ -66,4 +66,5 @@ class CTraderDemoAdapter:
             accepted=validated.accepted,
             message=validated.message,
             external_id=validated.external_id,
+            uncertain=validated.uncertain,
         )
