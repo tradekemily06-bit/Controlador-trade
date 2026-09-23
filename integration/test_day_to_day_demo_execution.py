@@ -36,12 +36,14 @@ def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Pa
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
 
+    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     result = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
         request_id="ui-demo-1",
+        decision_id=decision.decision_id,
     )
 
     assert result["accepted"] is True
@@ -83,12 +85,14 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
 
+    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
         request_id="duplicate-demo",
+        decision_id=decision.decision_id,
     )
     second = service.execute_demo(
         symbol="EURUSD",
@@ -96,6 +100,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
         amount=0.01,
         duration_seconds=60,
         request_id="duplicate-demo",
+        decision_id=decision.decision_id,
     )
 
     assert first["accepted"] is True
@@ -112,12 +117,14 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     executor = FakeDemoExecutor()
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
+    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
     first = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
         request_id="risk-seed",
+        decision_id=decision.decision_id,
     )
     assert first["accepted"] is True
     service.risk = RiskManager(max_operations=1)
