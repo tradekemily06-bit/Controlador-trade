@@ -29,29 +29,29 @@ def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
 
         with coordinator.operation(mt5, mode="DEMO", owner=owner):
             account = mt5.account_info()
-        demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
-        demo = account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
-        if not demo:
-            return MT5RuntimePreflight(False, False, symbol, None, None, None, None, "conta MT5 não confirmada como DEMO")
+            demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+            demo = account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
+            if not demo:
+                return MT5RuntimePreflight(False, False, symbol, None, None, None, None, "conta MT5 não confirmada como DEMO")
 
-        if not mt5.symbol_select(symbol, True):
-            return MT5RuntimePreflight(False, True, symbol, None, None, None, None, f"símbolo não disponível: {symbol}")
+            if not mt5.symbol_select(symbol, True):
+                return MT5RuntimePreflight(False, True, symbol, None, None, None, None, f"símbolo não disponível: {symbol}")
 
-        info = mt5.symbol_info(symbol)
-        tick = mt5.symbol_info_tick(symbol)
-        if info is None or tick is None:
-            return MT5RuntimePreflight(False, True, symbol, None, None, None, None, f"cotação/metadados indisponíveis: {symbol}")
+            info = mt5.symbol_info(symbol)
+            tick = mt5.symbol_info_tick(symbol)
+            if info is None or tick is None:
+                return MT5RuntimePreflight(False, True, symbol, None, None, None, None, f"cotação/metadados indisponíveis: {symbol}")
 
-        return MT5RuntimePreflight(
-            True,
-            True,
-            symbol,
-            float(tick.bid),
-            float(tick.ask),
-            float(info.volume_min),
-            float(info.volume_step),
-            "MT5 DEMO + símbolo + cotação + limites de volume validados",
-        )
+            return MT5RuntimePreflight(
+                True,
+                True,
+                symbol,
+                float(tick.bid),
+                float(tick.ask),
+                float(info.volume_min),
+                float(info.volume_step),
+                "MT5 DEMO + símbolo + cotação + limites de volume validados",
+            )
     except Exception as exc:
         return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight: {exc}")
     finally:
