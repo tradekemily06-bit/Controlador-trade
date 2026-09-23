@@ -191,6 +191,24 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
+        if path == "/api/demo/execute" and method == "POST":
+            data = _read_json(environ)
+            signal = Signal(str(data.get("signal", "")).upper())
+            request = __import__("execution.ports", fromlist=["ExecutionRequest"]).ExecutionRequest(
+                symbol=str(data.get("symbol", "")), signal=signal, amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)), mode=ExecutionMode.DEMO,
+                request_id=str(data.get("request_id", "")).strip() or request_id,
+            )
+            result = OPERATIONAL_RUNTIME.gateway.execute(request.request_id, request)
+            status_code = HTTPStatus.OK if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"} else HTTPStatus.CONFLICT
+            return _json_response(start_response, status_code, {
+                "status": result.status.value, "accepted": result.accepted, "message": result.message,
+                "request_id": request.request_id,
+                "execution": None if result.execution is None else {
+                    "accepted": result.execution.accepted, "message": result.execution.message,
+                    "external_id": result.execution.external_id,
+                },
+            }, request_id, environ)
         if path == "/api/real/status" and method == "GET":
             status = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, {
