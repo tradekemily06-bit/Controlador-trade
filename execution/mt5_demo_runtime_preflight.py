@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from execution.mt5_session import coordinator_for
 
 
 @dataclass(frozen=True)
@@ -18,11 +19,16 @@ class MT5RuntimePreflight:
 
 def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
     """Read-only MT5 runtime validation; never calls order_check/order_send."""
+    owner=f"preflight:{id(mt5)}"
+    coordinator=coordinator_for(mt5)
+    acquired=False
     try:
-        if not mt5.initialize():
+        acquired=coordinator.acquire(mt5, mode="DEMO", owner=owner)
+        if not acquired:
             return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"MT5 indisponível: {mt5.last_error()}")
 
-        account = mt5.account_info()
+        with coordinator.operation(mt5, mode="DEMO", owner=owner):
+            account = mt5.account_info()
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         demo = account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
         if not demo:
@@ -49,10 +55,8 @@ def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
     except Exception as exc:
         return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"falha no preflight: {exc}")
     finally:
-        try:
-            mt5.shutdown()
-        except Exception:
-            pass
+        if acquired:
+            coordinator.release(mt5, owner=owner)
 
 
 if __name__ == "__main__":
