@@ -86,14 +86,13 @@ class MT5RealAdapter:
 
     def is_available(self) -> bool:
         with self._lock:
-            mt5 = None
             try:
-            if not self.connect():
-                return False
-            mt5 = self._module()
-            account = mt5.account_info()
-            if account is None or not self._is_real_account(account, mt5):
-                return False
+                if not self.connect():
+                    return False
+                mt5 = self._module()
+                account = mt5.account_info()
+                if account is None or not self._is_real_account(account, mt5):
+                    return False
                 return self._server_matches(account)
             except Exception:
                 self.disconnect()
