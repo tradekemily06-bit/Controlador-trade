@@ -61,6 +61,16 @@ class MarketDataRuntimeState:
                 return None
             return snapshot
 
+    def validated_snapshot_for_symbol(self, *, symbol: str) -> BrokerMarketDataSnapshot | None:
+        """Return the current healthy snapshot when it matches the execution symbol."""
+        with self._lock:
+            report = self.report
+            snapshot = self.snapshot
+            if report is None or snapshot is None or not report.safe_for_analysis:
+                return None
+            if report.symbol != symbol or snapshot.symbol != symbol:
+                return None
+            return snapshot
     def status(self) -> dict[str, object]:
         with self._lock:
             report = self.report
