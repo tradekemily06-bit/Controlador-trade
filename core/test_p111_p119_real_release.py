@@ -14,6 +14,8 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from execution.external_execution_registry import ExternalExecutionRegistry
 
 
 class FakeAdapter:
@@ -173,8 +175,15 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True)
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown(
+            "unknown-2",
+            observation=ExternalOrderObservation("external-1", ExternalOrderStatus.EXECUTED, "broker confirmou"),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("UNKNOWN sem external_id durável não pode ser resolvido por evidência inexistente")
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -190,8 +199,15 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False)
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    try:
+        gateway.reconcile_unknown(
+            "crashed",
+            observation=ExternalOrderObservation("missing", ExternalOrderStatus.NOT_EXECUTED, "broker consultado"),
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("RESERVED sem binding externo não pode ser marcado como não executado")
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
