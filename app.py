@@ -310,7 +310,11 @@ def application(environ, start_response):
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
-            return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+            return _file_response(start_response, ROOT / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+        if path == "/sw.js" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "sw.js", "application/javascript; charset=utf-8", request_id, environ)
+        if path == "/icons/icon.svg" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "icons" / "icon.svg", "image/svg+xml", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 
