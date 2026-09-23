@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable
 from uuid import uuid4
 
@@ -78,7 +78,14 @@ class EcosystemService:
         if self.market_data_boundary is None:
             raise RuntimeError("market data provider não configurado")
         request = BrokerMarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
-        snapshot = self.market_data_boundary.fetch(request)
+        intervals = {"1m": timedelta(minutes=1), "5m": timedelta(minutes=5), "15m": timedelta(minutes=15), "30m": timedelta(minutes=30), "1h": timedelta(hours=1), "4h": timedelta(hours=4), "1d": timedelta(days=1)}
+        expected_interval = intervals.get(timeframe.strip().lower())
+        if expected_interval is None:
+            raise ValueError("timeframe não suportado para análise de mercado")
+        snapshot = self.market_data_boundary.fetch(request, expected_interval=expected_interval)
+        minimum_candles = 20
+        if len(snapshot.candles) < minimum_candles:
+            raise ValueError(f"candles insuficientes para análise: {len(snapshot.candles)} < {minimum_candles}")
         result = self.strategy_pipeline.evaluate(
             list(snapshot.candles),
             confirmed=True,
