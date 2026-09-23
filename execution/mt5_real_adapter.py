@@ -163,7 +163,7 @@ class MT5RealAdapter:
 
             result = mt5.order_send(payload)
             if result is None:
-                return ExecutionResult(False, f"order_send sem confirmação: {self._last_error(mt5)}")
+                return ExecutionResult(False, f"order_send sem confirmação; resultado externo é incerto: {self._last_error(mt5)}", uncertain=True)
 
             retcode = getattr(result, "retcode", None)
             success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
@@ -174,7 +174,8 @@ class MT5RealAdapter:
             if external_id is None:
                 return ExecutionResult(
                     False,
-                    "MT5 aceitou a ordem, mas não forneceu identificador externo; confirmação bloqueada.",
+                    "MT5 aceitou a ordem, mas não forneceu identificador externo; resultado externo é incerto.",
+                    uncertain=True,
                 )
 
             return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", str(external_id))
