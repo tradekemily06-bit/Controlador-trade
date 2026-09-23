@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Iterable
+from uuid import uuid4
 
 from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
@@ -15,6 +16,8 @@ from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
+from core.models import Signal
+from execution.ports import ExecutionMode, ExecutionRequest
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
@@ -107,6 +110,47 @@ class EcosystemService:
             record = self.analyze(payload)
             results.append({"step": index, **record.to_dict()})
         return results
+
+    def execute_demo(self, *, symbol: str, signal: str, amount: float, duration_seconds: int, request_id: str | None = None) -> dict[str, Any]:
+        """Execute one explicit user-confirmed DEMO operation through the shared gateway.
+
+        REAL is structurally impossible here: the request is constructed as DEMO and
+        the configured executor must itself enforce the DEMO boundary.
+        """
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("symbol é obrigatório")
+        try:
+            selected_signal = Signal(str(signal).upper())
+        except ValueError as exc:
+            raise ValueError("signal deve ser COMPRA ou VENDA") from exc
+        if selected_signal is Signal.AGUARDAR:
+            raise ValueError("AGUARDAR não pode ser executado")
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
+            raise ValueError("amount deve ser positivo")
+        if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
+            raise ValueError("duration_seconds deve ser inteiro positivo")
+        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
+        request = ExecutionRequest(
+            symbol=symbol.strip(),
+            signal=selected_signal,
+            amount=float(amount),
+            duration_seconds=duration_seconds,
+            mode=ExecutionMode.DEMO,
+            request_id=rid,
+        )
+        result = self.operational_runtime.gateway.execute(rid, request)
+        execution = result.execution
+        return {
+            "request_id": rid,
+            "status": result.status.value,
+            "accepted": result.accepted,
+            "message": result.message,
+            "external_id": execution.external_id if execution is not None else None,
+            "mode": "DEMO",
+            "real": False,
+        }
 
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
         for index, record in enumerate(self.memory):
