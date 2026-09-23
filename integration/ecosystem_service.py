@@ -119,7 +119,7 @@ class EcosystemService:
             SeniorContextInput(
                 context_id=f"market:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}",
                 candles=tuple(candles),
-                available_nodes=("market_data", "price_history", "risk", "execution", "security"),
+                available_nodes=("market_data", "price_history", "risk"),
                 observed_nodes=("market_data", "price_history", "risk"),
                 gaps={},
                 relationships_reviewed=(
