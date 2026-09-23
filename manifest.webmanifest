@@ -1,0 +1,15 @@
+{
+  "name": "Controlador Trading",
+  "short_name": "Controlador",
+  "description": "Ecossistema de análise, decisão, risco, memória e execução.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": [
+    {"src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
