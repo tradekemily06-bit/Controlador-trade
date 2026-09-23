@@ -81,3 +81,11 @@ def test_onboarding_is_not_device_local_state():
     onboarding = (Path(__file__).parent / "components" / "onboarding.js").read_text(encoding="utf-8")
     assert "localStorage" not in onboarding
     assert "/api/onboarding" in onboarding
+
+def test_ecosystem_image_persistence_uses_server_api_not_browser_storage():
+    component = (Path(__file__).parent / "components" / "leverage-and-media.js").read_text(encoding="utf-8")
+    assert "localStorage" not in component
+    assert "sessionStorage" not in component
+    assert "/api/ecosystem-image" in component
+    assert "method:'POST'" in component
+    assert "body:f" in component
