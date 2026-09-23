@@ -14,6 +14,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -23,9 +24,11 @@ RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtim
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
+MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "none").strip().lower()
+MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, notification_database_path=NOTIFICATION_DB)
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB)
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -120,6 +123,10 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
+        if path == "/api/market/analyze" and method == "POST":
+            data = _read_json(environ)
+            record = SERVICE.analyze_market(symbol=str(data.get("symbol", "")), timeframe=str(data.get("timeframe", "")), limit=int(data.get("limit", 120)))
+            return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
