@@ -129,3 +129,50 @@ def test_executor_rejection_is_not_reported_as_accepted():
 
     assert result.status is GatewayStatus.EXECUTION_REJECTED
     assert not result.accepted
+
+
+def test_gateway_persists_reservation_before_dispatch(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    class InspectingExecutor:
+        def __init__(self, ledger):
+            self.ledger = ledger
+            self.observed = None
+
+        def execute(self, _request):
+            self.observed = self.ledger.status("req-reserved")
+            return ExecutionResult(True, "accepted", "EXT-RESERVED")
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    executor = InspectingExecutor(ledger)
+    gateway = ExecutionGateway(executor, KillSwitch(), ledger=ledger)
+
+    result = gateway.execute("req-reserved", request())
+
+    assert result.status is GatewayStatus.ACCEPTED
+    assert executor.observed is ExecutionLedgerStatus.RESERVED
+    assert ledger.status("req-reserved") is ExecutionLedgerStatus.ACCEPTED
+
+
+def test_gateway_persisted_reservation_blocks_replay_after_restart(tmp_path):
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+
+    ledger_path = tmp_path / "ledger.json"
+    first_ledger = ExecutionLedger(ledger_path)
+
+    class CrashingExecutor:
+        def execute(self, _request):
+            raise RuntimeError("broker call became uncertain")
+
+    first = ExecutionGateway(CrashingExecutor(), KillSwitch(), ledger=first_ledger)
+    result = first.execute("req-crash", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert first_ledger.status("req-crash") is ExecutionLedgerStatus.UNKNOWN
+
+    second_ledger = ExecutionLedger(ledger_path)
+    second = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=second_ledger)
+    replay = second.execute("req-crash", request())
+
+    assert replay.status is GatewayStatus.DUPLICATE
+    assert second_ledger.status("req-crash") is ExecutionLedgerStatus.UNKNOWN
