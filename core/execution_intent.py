@@ -13,6 +13,7 @@ class ExecutionIntent:
     """Validated, immutable request boundary; creating it never executes anything."""
 
     request_id: str
+    decision_id: str | None
     symbol: str
     signal: Signal
     amount: float
@@ -23,6 +24,8 @@ class ExecutionIntent:
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
             raise ValueError("request_id é obrigatório.")
+        if self.decision_id is not None and (not isinstance(self.decision_id, str) or not self.decision_id.strip()):
+            raise ValueError("decision_id inválido.")
         if not isinstance(self.symbol, str) or not self.symbol.strip():
             raise ValueError("symbol é obrigatório.")
         if not isinstance(self.signal, Signal):
@@ -49,4 +52,5 @@ class ExecutionIntent:
             duration_seconds=self.duration_seconds,
             mode=self.mode,
             request_id=self.request_id,
+            decision_id=self.decision_id,
         )
