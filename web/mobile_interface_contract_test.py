@@ -46,3 +46,22 @@ def test_pwa_manifest_is_device_neutral():
     assert '"orientation": "any"' in MANIFEST
     assert '"scope": "/"' in MANIFEST
     assert '"/icons/icon.svg"' in MANIFEST
+
+
+def test_device_adaptation_does_not_make_browser_storage_the_source_of_truth():
+    assert "localStorage.setItem('ct_prefs'" not in HTML
+    assert "getJson('/api/preferences')" in HTML
+    assert "Preferências salvas no ecossistema" in HTML
+
+
+def test_app_serves_the_pwa_icon_routes():
+    app = Path(__file__).parents[1] / "app.py"
+    source = app.read_text(encoding="utf-8")
+    assert '"/icons/icon.svg"' in source
+    assert '"/apple-touch-icon.svg"' in source
+
+
+def test_mobile_inputs_avoid_small_text_zoom_and_support_accessibility():
+    assert "font-size:16px" in HTML
+    assert ".btn:focus-visible,.nav a:focus-visible" in HTML
+    assert "prefers-reduced-motion:reduce" in HTML
