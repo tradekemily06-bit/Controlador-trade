@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from data.models import Candle
+
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.p23_market_data_integrity import MarketDataHealth
 from execution.gateway import ExecutionGateway, GatewayStatus
@@ -32,6 +35,13 @@ def _state(*, health: MarketDataHealth, symbol: str = "EURUSD") -> MarketDataRun
         gap_count=0,
         stale=False,
         message="teste",
+    )
+    state.snapshot = BrokerMarketDataSnapshot(
+        symbol=symbol,
+        timeframe="5m",
+        candles=(Candle(__import__("datetime").datetime.now(__import__("datetime").timezone.utc), 1, 1, 1, 1, 1),),
+        source="TEST",
+        received_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
     )
     return state
 
