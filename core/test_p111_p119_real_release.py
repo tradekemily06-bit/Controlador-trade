@@ -268,7 +268,12 @@ def test_real_accepted_lifecycle_projection_failure_does_not_downgrade_ledger(tm
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     external = ExternalExecutionRegistry(tmp_path / "external.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    lifecycle.put = lambda record: (_ for _ in ()).throw(OSError("lifecycle write failed"))
+    original_put = lifecycle.put
+    def fail_only_on_accept(record):
+        if record.state is ExecutionLifecycleState.ACCEPTED:
+            raise OSError("lifecycle write failed")
+        return original_put(record)
+    lifecycle.put = fail_only_on_accept
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle, external)
     auth = _authorization()
     admission = _admission(auth)
