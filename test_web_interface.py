@@ -2,7 +2,7 @@ import io
 import json
 import unittest
 
-from app import application
+from app import SERVICE, application
 
 
 class WebInterfaceSmokeTests(unittest.TestCase):
@@ -75,6 +75,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         status, _, body = self.request("/api/kill-switch")
         self.assertEqual(status, "200 OK")
         self.assertTrue(json.loads(body)["enabled"])
+        SERVICE.operational_runtime.kill_switch.deactivate()
 
     def test_analyze_endpoint_returns_decision(self):
         status, _, body = self.request(
