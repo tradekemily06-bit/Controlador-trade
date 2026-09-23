@@ -5,7 +5,9 @@ convenience. They never grant execution, risk override, autonomy or security
 permission.
 """
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
+import json
+from pathlib import Path
 from enum import Enum
 
 
@@ -72,8 +74,10 @@ class EcosystemPreferences:
 class EcosystemPreferencesStore:
     """Validated preferences; security-critical permissions are immutable here."""
 
-    def __init__(self, preferences: EcosystemPreferences | None = None) -> None:
-        self._preferences = preferences or EcosystemPreferences()
+    def __init__(self, preferences: EcosystemPreferences | None = None, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path is not None else None
+        loaded = self._load() if preferences is None else None
+        self._preferences = preferences or loaded or EcosystemPreferences()
         self._validate(self._preferences)
 
     @property
@@ -84,6 +88,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, **changes)
         self._validate(candidate)
         self._preferences = candidate
+        self._save()
         return candidate
 
     def update_candle(self, **changes) -> EcosystemPreferences:
@@ -91,6 +96,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, candle=candle)
         self._validate(candidate)
         self._preferences = candidate
+        self._save()
         return candidate
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
@@ -98,7 +104,36 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, notifications=notifications)
         self._validate(candidate)
         self._preferences = candidate
+        self._save()
         return candidate
+
+    def _load(self) -> EcosystemPreferences | None:
+        if self.path is None or not self.path.exists():
+            return None
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            candle = CandleAppearance(**raw.get("candle", {}))
+            notifications = NotificationPreferences(**raw.get("notifications", {}))
+            return EcosystemPreferences(
+                default_symbol=raw.get("default_symbol", "EURUSD"),
+                default_timeframe=raw.get("default_timeframe", "5m"),
+                require_closed_candle=bool(raw.get("require_closed_candle", True)),
+                require_filters=bool(raw.get("require_filters", True)),
+                chart_theme=ChartTheme(raw.get("chart_theme", ChartTheme.DARK.value)),
+                candle=candle,
+                notifications=notifications,
+                show_technical_details_by_default=bool(raw.get("show_technical_details_by_default", False)),
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise ValueError("preferências persistidas inválidas.") from exc
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(json.dumps(asdict(self._preferences), ensure_ascii=False, indent=2, default=lambda value: value.value), encoding="utf-8")
+        temporary.replace(self.path)
 
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
