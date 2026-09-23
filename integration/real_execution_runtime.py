@@ -145,6 +145,7 @@ class RealExecutionRuntime:
         amount: float,
         duration_seconds: int,
         confirmation_id: str,
+        decision_id: str | None = None,
     ) -> RealGatewayResult:
         with self._lock:
             if self._mode is not ExecutionMode.REAL:
@@ -164,6 +165,7 @@ class RealExecutionRuntime:
                 amount=amount,
                 duration_seconds=duration_seconds,
                 confirmation=confirmation,
+                decision_id=decision_id,
             )
             authorization, admission, safety = self._build_guards()
             if self._ledger.status(request_id) in (
