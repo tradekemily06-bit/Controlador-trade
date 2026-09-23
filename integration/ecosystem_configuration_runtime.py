@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
+import os
+from pathlib import Path
+from uuid import uuid4
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore, EcosystemUseMode
@@ -18,7 +21,8 @@ class ConfiguredEcosystemService(EcosystemService):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.preferences = EcosystemPreferencesStore()
-        self.notifications = EcosystemNotificationCenter()
+        notification_db = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(Path(".runtime") / "notifications.sqlite3")
+        self.notifications = EcosystemNotificationCenter(database_path=notification_db)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
 
@@ -128,7 +132,7 @@ class ConfiguredEcosystemService(EcosystemService):
         return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
-        notification_id = f"update-{len(self.notifications.all()) + 1}"
+        notification_id = f"update-{uuid4().hex}"
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
@@ -136,6 +140,6 @@ class ConfiguredEcosystemService(EcosystemService):
         """Route a material runtime event into the notification center."""
         notification_kind = NotificationKind(str(kind).upper())
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
-        notification_id = f"event-{len(self.notifications.all()) + 1}"
+        notification_id = f"event-{uuid4().hex}"
         item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
