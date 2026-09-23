@@ -39,6 +39,12 @@ class PersistentBrokerConnectionRuntime:
         self._last_error: str | None = None
 
     def start(self) -> None:
+        connect = getattr(self._adapter, "connect", None)
+        if callable(connect):
+            try:
+                connect()
+            except Exception:
+                pass
         with self._lock:
             self._user_disconnected = False
             if self._thread is not None and self._thread.is_alive():
@@ -56,6 +62,12 @@ class PersistentBrokerConnectionRuntime:
         with self._lock:
             self._user_disconnected = True
             self._available = False
+        disconnect = getattr(self._adapter, "disconnect", None)
+        if callable(disconnect):
+            try:
+                disconnect()
+            except Exception:
+                pass
 
     def status(self) -> BrokerConnectionStatus:
         with self._lock:
