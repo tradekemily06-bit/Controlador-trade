@@ -135,6 +135,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
         amount=0.01,
         duration_seconds=60,
         request_id="risk-blocked",
+        decision_id=decision.decision_id,
     )
 
     assert result["accepted"] is False
@@ -158,7 +159,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
 
     result = service.execute_demo(
         symbol="EURUSD",
-        signal=decision.signal.value,
+        signal=decision.signal,
         amount=0.01,
         duration_seconds=60,
         decision_id=decision.decision_id,
