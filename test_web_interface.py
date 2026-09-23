@@ -2,7 +2,7 @@ import io
 import json
 import unittest
 
-from app import application
+from app import SERVICE, application
 
 
 class WebInterfaceSmokeTests(unittest.TestCase):
@@ -72,6 +72,30 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertEqual(data["symbol"], "EURUSD")
         self.assertEqual(data["timeframe"], "5m")
 
+
+    def test_kill_switch_endpoint_is_fail_closed(self):
+        status, _, body = self.request("/api/kill-switch")
+        self.assertEqual(status, "200 OK")
+        data = json.loads(body)
+        self.assertFalse(data["execution_allowed"])
+        status, _, body = self.request(
+            "/api/kill-switch",
+            method="POST",
+            payload={"action": "activate", "reason": "teste de interface"},
+        )
+        self.assertEqual(status, "200 OK")
+        data = json.loads(body)
+        self.assertTrue(data["enabled"])
+        self.assertFalse(data["execution_allowed"])
+        self.assertTrue(SERVICE.operational_runtime.kill_switch.state.enabled)
+        SERVICE.operational_runtime.kill_switch.deactivate()
+
+    def test_dashboard_mounts_shared_runtime_controls(self):
+        status, _, body = self.request("/")
+        self.assertEqual(status, "200 OK")
+        html = body.decode("utf-8")
+        self.assertIn("kill-switch-control", html)
+        self.assertIn("personalizacao-imagem", html)
 
 if __name__ == "__main__":
     unittest.main()
