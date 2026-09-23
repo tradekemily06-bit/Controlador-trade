@@ -91,4 +91,9 @@ def test_windows_lock_fallback_serializes_mutation(monkeypatch, tmp_path: Path):
     ledger.reserve("req-windows")
 
     assert ledger.status("req-windows") is ledger_module.ExecutionLedgerStatus.RESERVED
-    assert [(mode, size) for _, mode, size in fake.calls] == [(fake.LK_LOCK, 1), (fake.LK_UNLCK, 1)]
+    assert [(mode, size) for _, mode, size in fake.calls] == [
+        (fake.LK_LOCK, 1),
+        (fake.LK_UNLCK, 1),
+        (fake.LK_LOCK, 1),
+        (fake.LK_UNLCK, 1),
+    ]
