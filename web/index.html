@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
+<head><link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#090b10"><meta name="mobile-web-app-capable" content="yes">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#090b10">
@@ -50,4 +50,4 @@ $('replayBtn').onclick=async()=>{try{const d=await getJson('/api/replay',{method
 $('savePrefs').onclick=()=>{localStorage.setItem('ct_prefs',JSON.stringify({symbol:$('defaultSymbol').value,timeframe:$('defaultTf').value,confirmed:$('confirmDefault').checked,filters_ok:$('filtersDefault').checked}));$('prefsStatus').textContent='Preferências salvas neste navegador. Elas não habilitam execução REAL.';$('prefsStatus').className='muted ok';};
 try{const p=JSON.parse(localStorage.getItem('ct_prefs')||'null');if(p){$('defaultSymbol').value=p.symbol||'EURUSD';$('defaultTf').value=p.timeframe||'5m';$('confirmDefault').checked=p.confirmed!==false;$('filtersDefault').checked=p.filters_ok!==false}}catch(_){ }
 refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('executionState').textContent='BLOQUEADA';});
-</script></body></html>
+</script><script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(()=>{})}</script></body></html>
