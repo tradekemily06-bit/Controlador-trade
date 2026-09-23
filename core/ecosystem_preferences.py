@@ -32,6 +32,12 @@ class EcosystemUseMode(str, Enum):
     STUDY = "STUDY"
 
 
+class EcosystemUseMode(str, Enum):
+    COCKPIT = "COCKPIT"
+    ANALYSIS = "ANALYSIS"
+    STUDY = "STUDY"
+
+
 class ChartTheme(str, Enum):
     DARK = "DARK"
     LIGHT = "LIGHT"
@@ -73,6 +79,7 @@ class EcosystemPreferences:
     require_filters: bool = True
     chart_theme: ChartTheme = ChartTheme.DARK
     use_mode: EcosystemUseMode = EcosystemUseMode.COCKPIT
+    use_mode: EcosystemUseMode = EcosystemUseMode.COCKPIT
     candle: CandleAppearance = CandleAppearance()
     notifications: NotificationPreferences = NotificationPreferences()
     show_technical_details_by_default: bool = False
@@ -106,6 +113,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, candle=candle)
         self._validate(candidate)
         self._preferences = candidate
+        self._save()
         return candidate
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
@@ -147,6 +155,56 @@ class EcosystemPreferencesStore:
                 chart_theme=ChartTheme(str(data.get("chart_theme", "DARK"))),
                 use_mode=EcosystemUseMode(str(data.get("use_mode", "COCKPIT"))),
                 candle=CandleAppearance(style=CandleStyle(str(candle.get("style", "CANDLESTICK"))), color_mode=CandleColorMode(str(candle.get("color_mode", "DEFAULT"))), bullish_color=str(candle.get("bullish_color", "#58d68d")), bearish_color=str(candle.get("bearish_color", "#ff7676")), wick_color=str(candle.get("wick_color", "#aab5c8")), border_enabled=bool(candle.get("border_enabled", True)), show_wicks=bool(candle.get("show_wicks", True)), show_bodies=bool(candle.get("show_bodies", True))),
+                notifications=NotificationPreferences(**{k: bool(v) for k,v in notifications.items() if k in NotificationPreferences.__dataclass_fields__}),
+                show_technical_details_by_default=bool(data.get("show_technical_details_by_default", False)),
+                trader_psychology_enabled=bool(data.get("trader_psychology_enabled", True)),
+                autonomous_operation_enabled=False,
+                real_execution_enabled=False,
+            )
+        except (OSError, sqlite3.Error, TypeError, ValueError, KeyError, json.JSONDecodeError):
+            return None
+
+    def _save(self) -> None:
+        try:
+            path = Path(self.database_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload = asdict(self._preferences)
+            payload["chart_theme"] = self._preferences.chart_theme.value
+            payload["use_mode"] = self._preferences.use_mode.value
+            payload["candle"]["style"] = self._preferences.candle.style.value
+            payload["candle"]["color_mode"] = self._preferences.candle.color_mode.value
+            with sqlite3.connect(self.database_path, timeout=5) as db:
+                db.execute("CREATE TABLE IF NOT EXISTS preferences (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)")
+                db.execute("INSERT OR REPLACE INTO preferences(id,payload) VALUES(1,?)", (json.dumps(payload, ensure_ascii=False),))
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            pass
+
+    def _load(self) -> EcosystemPreferences | None:
+        try:
+            with sqlite3.connect(self.database_path, timeout=5) as db:
+                row = db.execute("SELECT payload FROM preferences WHERE id=1").fetchone()
+            if not row:
+                return None
+            data = json.loads(row[0])
+            candle = data.get("candle", {})
+            notifications = data.get("notifications", {})
+            return EcosystemPreferences(
+                default_symbol=str(data.get("default_symbol", "EURUSD")),
+                default_timeframe=str(data.get("default_timeframe", "5m")),
+                require_closed_candle=bool(data.get("require_closed_candle", True)),
+                require_filters=bool(data.get("require_filters", True)),
+                chart_theme=ChartTheme(str(data.get("chart_theme", "DARK"))),
+                use_mode=EcosystemUseMode(str(data.get("use_mode", "COCKPIT"))),
+                candle=CandleAppearance(
+                    style=CandleStyle(str(candle.get("style", "CANDLESTICK"))),
+                    color_mode=CandleColorMode(str(candle.get("color_mode", "DEFAULT"))),
+                    bullish_color=str(candle.get("bullish_color", "#58d68d")),
+                    bearish_color=str(candle.get("bearish_color", "#ff7676")),
+                    wick_color=str(candle.get("wick_color", "#aab5c8")),
+                    border_enabled=bool(candle.get("border_enabled", True)),
+                    show_wicks=bool(candle.get("show_wicks", True)),
+                    show_bodies=bool(candle.get("show_bodies", True)),
+                ),
                 notifications=NotificationPreferences(**{k: bool(v) for k,v in notifications.items() if k in NotificationPreferences.__dataclass_fields__}),
                 show_technical_details_by_default=bool(data.get("show_technical_details_by_default", False)),
                 trader_psychology_enabled=bool(data.get("trader_psychology_enabled", True)),
