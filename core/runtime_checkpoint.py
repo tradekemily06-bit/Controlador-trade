@@ -61,16 +61,16 @@ class RuntimeCheckpointStore:
                 return None
             try:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                raise ValueError
-            checkpoint = RuntimeCheckpoint(
+                if not isinstance(data, dict):
+                    raise ValueError
+                checkpoint = RuntimeCheckpoint(
                 session_id=data["session_id"],
                 last_cycle=data["last_cycle"],
                 last_request_id=data.get("last_request_id"),
-                updated_at=datetime.fromisoformat(data["updated_at"]),
-            )
-            self._validate(checkpoint)
-            return checkpoint
+                    updated_at=datetime.fromisoformat(data["updated_at"]),
+                )
+                self._validate(checkpoint)
+                return checkpoint
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("checkpoint de runtime inválido.") from exc
 
