@@ -294,3 +294,48 @@ Direct filename search from the indexed repository returned no P54_PLAN.md, P60_
 The direct file comparison shows the DEMO runtime branch changes 47 files, including execution ledger, execution lifecycle, external execution registry, gateway, recovery coordinator, safe automation, daily operation journal, learning persistence, MT5 DEMO adapter and associated tests. The mobile branch changes 19 files and does not carry those 47-file runtime changes as a simple ancestor. This is the most important current preservation point: the mobile work cannot be treated as the complete project tree until those runtime changes are explicitly reconciled.
 
 This is an inventory finding only. No merge/cherry-pick/delete was performed.
+
+
+## 12. Deep reconciliation pass — 2026-09-23 (tool-assisted)
+
+### 12.1 Tool assessment
+For this inventory, the connected GitHub tooling is the highest-value accelerator because it can inspect PR state, branch ancestry, exact file revisions, comparisons, and workflow status without changing repository history. The available browser/Vercel verification skill is useful later for a running web surface, but it is not a substitute for Git ancestry/CI reconciliation. Supabase tooling is not relevant to the current Python/local-runtime architecture unless the project explicitly adopts Supabase. Composio is useful for cross-service orchestration, but using it here would add an unnecessary abstraction while the authoritative evidence is already in GitHub. No merge, deploy, or external-service mutation was performed.
+
+### 12.2 Fresh CI status for current mobile head
+PR #277 current head is `d2deac39d2b7245b69b753dfbfc6e8db4174dc30`. A fresh workflow lookup for that exact commit returned zero workflow runs. Therefore #277 is **NOT CI-validated at its current HEAD**. Older passing CI must not be reused.
+
+### 12.3 Exact overlap check: critical execution files
+The following files differ between `day-to-day-demo-runtime` and `feat/universal-mobile-web` and therefore cannot be assumed safely reconciled:
+- `execution/execution_ledger.py`
+- `execution/execution_lifecycle.py`
+- `execution/gateway.py`
+- `execution/real_gateway.py`
+- `core/recovery_coordinator.py`
+- `integration/ecosystem_service.py`
+- `integration/ecosystem_configuration_runtime.py`
+- `app.py`
+- `core/ecosystem_preferences.py`
+
+The differences are not merely metadata: file sizes and SHAs differ materially. In particular, the DEMO branch contains substantially larger execution/recovery implementations in several of these files. This confirms a real content reconciliation requirement rather than a cosmetic branch conflict.
+
+### 12.4 PR classification snapshot
+Current open candidates were re-read directly from GitHub:
+- #275 DEMO daily runtime: OPEN/DRAFT, mergeable.
+- #277 universal mobile/web: OPEN/non-draft, NOT mergeable, current head has no workflow runs.
+- #273 persistent MT5 market-data runtime: OPEN, mergeable.
+- #272 Windows persistent startup: OPEN, mergeable.
+- #276 Windows autostart hardening: OPEN/DRAFT, mergeable.
+- #271 Windows cross-process locking: OPEN, mergeable, but its ancestry is a separate release line.
+- #274 guarded MT5 REAL execution bridge: OPEN, mergeable, intentionally outside the DEMO daily path until REAL reconciliation is complete.
+- #269/#268/#266/#263 security/recovery lines: OPEN and mergeable individually, but mergeability alone does not establish that they are still required or safe to layer on top of the current chain.
+- #240 durable technical-incident barrier: OPEN and currently NOT mergeable.
+- #237 documentation synchronization: OPEN/mergeable but remains documentation-only until status contradictions are reconciled from history.
+
+### 12.5 Important correction to earlier inventory numbers
+The current GitHub comparison now reports `day-to-day-demo-runtime` → `feat/universal-mobile-web` as **48 commits ahead and 140 behind** (not 46/140). The mobile branch is 48 commits ahead of main. The prior lower count was from an older mobile HEAD. The current exact head is the authoritative value for this pass.
+
+### 12.6 Runtime preservation finding
+The 140-commit DEMO line is not a small patch. Its main comparison includes execution ledger/lifecycle, external execution registry, gateway, REAL gateway hardening, recovery, safe automation, daily journal, learning persistence, MT5 DEMO adapter changes, and extensive tests. Therefore the mobile line must not replace it merely because it is newer in time or has the desired UI. The final ecosystem needs a deliberate composition/reconciliation of these lines.
+
+### 12.7 Current conclusion
+Inventory remains OPEN. No relevant functionality is being discarded. The next reconciliation unit is the shared-file set, starting with `execution_ledger.py`, `execution_lifecycle.py`, `gateway.py`, `recovery_coordinator.py`, and `integration/ecosystem_service.py`, followed by the complete test deltas. Only after that can we determine which changes are superseded, which must be preserved, and which can safely form one future branch.
