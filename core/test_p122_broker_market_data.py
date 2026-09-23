@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -30,7 +30,9 @@ def test_valid_market_data_is_normalized_and_limited():
 
     result = boundary.fetch(
         BrokerMarketDataRequest("EURUSD", "1m", 2),
-        received_at=BASE,
+        # The newest returned candle is minute 2; the receive clock must not
+        # precede it. Future-candle rejection is an intentional safety invariant.
+        received_at=BASE + timedelta(minutes=2),
     )
 
     assert result.symbol == "EURUSD"
@@ -38,7 +40,7 @@ def test_valid_market_data_is_normalized_and_limited():
     assert len(result.candles) == 2
     assert result.candles[-1].timestamp == candle_at(2).timestamp
     assert result.source == "demo-broker"
-    assert result.received_at == BASE
+    assert result.received_at == BASE + timedelta(minutes=2)
 
 
 def test_empty_provider_fails_closed():
