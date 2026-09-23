@@ -103,8 +103,12 @@ class MT5RealAdapter:
                 with self._session.operation(mt5, mode="REAL", owner=self._owner):
                     account = mt5.account_info()
                 if account is None or not self._is_real_account(account, mt5):
+                    self.disconnect()
                     return False
-                return self._server_matches(account)
+                if not self._server_matches(account):
+                    self.disconnect()
+                    return False
+                return True
             except Exception:
                 self.disconnect()
                 return False
