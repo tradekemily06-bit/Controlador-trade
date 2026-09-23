@@ -97,5 +97,11 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertIn("kill-switch-control", html)
         self.assertIn("personalizacao-imagem", html)
 
+    def test_pwa_icon_is_served_by_backend(self):
+        status, headers, body = self.request("/icons/icon.svg")
+        self.assertEqual(status, "200 OK")
+        self.assertIn("image/svg+xml", headers.get("Content-Type", ""))
+        self.assertIn(b"<svg", body)
+
 if __name__ == "__main__":
     unittest.main()
