@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from core.kill_switch import KillSwitch
+from core.operational_runtime import build_operational_runtime
 from execution.broker_registry import BrokerRegistry
 from execution.gateway import ExecutionGateway
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
@@ -33,6 +35,7 @@ def build_ic_markets_mt5_demo_gateway(
     mt5_module: Any = None,
     symbol: str | None = None,
     kill_switch: KillSwitch | None = None,
+    runtime_root: str | Path = ".runtime",
 ) -> ExecutionGateway:
     """Compose the IC Markets MT5 DEMO adapter behind the safety gateway.
 
@@ -42,4 +45,13 @@ def build_ic_markets_mt5_demo_gateway(
     """
     registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
     adapter = registry.get(IC_MARKETS_MT5_DEMO)
-    return ExecutionGateway(adapter, kill_switch or KillSwitch())
+    runtime = build_operational_runtime(
+        runtime_root,
+        executor=adapter,
+    )
+    # The runtime owns the durable ledger/lifecycle, kill switch and risk gate.
+    # Keep the explicitly supplied kill switch authoritative when callers need
+    # to pre-arm an emergency block.
+    if kill_switch is not None:
+        runtime.kill_switch._state = kill_switch.state
+    return runtime.gateway
