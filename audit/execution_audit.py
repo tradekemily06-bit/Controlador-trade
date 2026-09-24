@@ -58,9 +58,11 @@ class ExecutionAuditLog:
             raise ValueError("evento de auditoria inválido.")
         if self._events and event.timestamp < self._events[-1].timestamp:
             raise ValueError("eventos de auditoria devem ser cronológicos.")
-        self._events.append(event)
         if self.safety_store is not None:
-            self.safety_store.save_execution_audit(tuple(item.as_dict() for item in self._events))
+            persisted = self.safety_store.append_execution_audit(event.as_dict())
+            self._events = [ExecutionAuditEvent.from_dict(item) for item in persisted]
+            return
+        self._events.append(event)
 
     def events(self) -> tuple[ExecutionAuditEvent, ...]:
         return tuple(self._events)
