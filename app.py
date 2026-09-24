@@ -177,6 +177,22 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/demo-autonomy" and method == "GET":
+            state = OPERATIONAL_RUNTIME.demo_autonomy.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
+        if path == "/api/demo-autonomy" and method == "POST":
+            authorized, reason = _authorize_internal_update(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            action = str(data.get("action", "")).strip().lower()
+            if action == "disable":
+                state = OPERATIONAL_RUNTIME.demo_autonomy.disable()
+            elif action == "enable":
+                state = OPERATIONAL_RUNTIME.demo_autonomy.enable(amount=data.get("amount"), duration_seconds=data.get("duration_seconds"), authorized_at=str(data.get("authorized_at", "")), authorized_by=str(data.get("authorized_by", "")))
+            else:
+                raise ValueError("action deve ser enable ou disable")
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
         if path == "/api/market/analyze" and method == "POST":
