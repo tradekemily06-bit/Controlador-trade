@@ -196,6 +196,27 @@ class ExecutionLedger:
             self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
         self._mutate_locked(mutation)
 
+    def bind_external_id(self, request_id: str, *, external_id: str) -> None:
+        self._validate_id(request_id)
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id REAL é obrigatório.")
+        external_id = external_id.strip()
+        def mutation() -> None:
+            current = self._states.get(request_id)
+            if current not in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN):
+                raise ValueError("external_id só pode ser associado enquanto a operação estiver incerta.")
+            context = self._execution_context.get(request_id)
+            if context is None:
+                raise ValueError("contexto REAL ausente.")
+            for other_id, other_context in self._execution_context.items():
+                if other_id != request_id and other_context.get("external_id") == external_id:
+                    raise ValueError("external_id REAL já está vinculado a outra operação.")
+            existing = context.get("external_id")
+            if existing not in (None, external_id):
+                raise ValueError("external_id REAL não pode ser substituído.")
+            context["external_id"] = external_id
+        self._mutate_locked(mutation)
+
     def mark_rejected(self, request_id: str) -> None:
         self._transition(request_id, ExecutionLedgerStatus.REJECTED)
 
