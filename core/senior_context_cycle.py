@@ -117,6 +117,7 @@ class SeniorContextCycleBoundary:
             validated_knowledge_ids=knowledge,
             unresolved_questions=questions,
             quality=quality,
+            intelligence=intelligence,
             execution_authorized=False,
         )
 
