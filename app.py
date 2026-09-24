@@ -62,8 +62,7 @@ if MARKET_DATA is not None:
             limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_LIMIT", "120")),
             poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_DATA_POLL_SECONDS", "5")),
         ),
-        symbol_selector=None if EXECUTION_SYMBOL else None,
-        candidate_selector=None if EXECUTION_SYMBOL else _select_mt5_analysis_symbols,
+        symbol_selector=None,
     )
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
