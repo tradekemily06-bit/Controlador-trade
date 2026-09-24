@@ -56,6 +56,7 @@ class SeniorContextOrchestrator:
         self.reader = IntegratedMarketReader()
         self.reasoner = SeniorMarketReasoner()
         self.risk_reasoner = SeniorRiskReasoner()
+        self.intelligence = SeniorMarketIntelligenceBoundary()
         self.cycle_boundary = SeniorContextCycleBoundary()
 
     def assess(self, request: SeniorContextInput) -> SeniorContextCycle:
