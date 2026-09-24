@@ -10,6 +10,7 @@ from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
+from analysis.decision_store import DecisionStore
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
@@ -65,7 +66,8 @@ if MARKET_DATA is not None:
         symbol_selector=None,
     )
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
+DECISION_DB = os.environ.get("CONTROLADOR_DECISION_DB") or str(RUNTIME_DIR / "decisions.sqlite3")
+SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
 ONBOARDING = EcosystemOnboarding()
 
 if MARKET_DATA_RUNTIME is not None:
