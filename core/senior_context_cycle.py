@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Iterable
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
+from core.senior_market_intelligence import SeniorIntelligenceAssessment
 from core.senior_market_reasoning import SeniorMarketAssessment
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.temporal_market_context import TemporalMarketContext
