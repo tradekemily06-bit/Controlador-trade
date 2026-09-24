@@ -116,7 +116,7 @@ class SeniorMarketIntelligenceBoundary:
             strengths.append("todo o contexto materialmente disponibilizado foi contabilizado")
 
         strengths.append(
-            "o ciclo já dispõe do conhecimento profissional basal incorporado no padrão sênior; "
+            "o ciclo já dispõe do conhecimento profissional integrado de fábrica; "
             "ausência de conhecimento externo adicional não reduz essa capacidade"
         )
         if knowledge:
