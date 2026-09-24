@@ -27,6 +27,7 @@ class DailyOperationJournalEntry:
     timeframe: str | None = None
     score: float | None = None
     reason: str | None = None
+    outcome: str | None = None
 
 
 class DailyOperationJournal:
@@ -78,6 +79,7 @@ class DailyOperationJournal:
         timeframe: str | None = None,
         score: float | None = None,
         reason: str | None = None,
+        outcome: str | None = None,
         timestamp: datetime | None = None,
     ) -> DailyOperationJournalEntry:
         entry = DailyOperationJournalEntry(
@@ -97,6 +99,7 @@ class DailyOperationJournal:
             timeframe=None if timeframe is None else str(timeframe),
             score=None if score is None else float(score),
             reason=None if reason is None else str(reason),
+            outcome=None if outcome is None else str(outcome),
         )
         with self._lock:
             if self._load_error is not None:
@@ -133,6 +136,24 @@ class DailyOperationJournal:
                 entry for entry in reversed(self._entries)
                 if datetime.fromisoformat(entry.timestamp).date() == day
             )
+
+    def record_outcome(self, *, decision_id: str, outcome: str) -> int:
+        """Attach a terminal outcome to journal entries for the decision, without execution authority."""
+        if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
+            raise ValueError("outcome inválido")
+        changed = 0
+        with self._lock:
+            for index, entry in enumerate(self._entries):
+                if entry.decision_id == decision_id:
+                    self._entries[index] = DailyOperationJournalEntry(
+                        **{**asdict(entry), "outcome": outcome}
+                    )
+                    changed += 1
+            if changed:
+                if self._load_error is not None:
+                    raise OSError("diário automático indisponível; histórico existente requer inspeção manual")
+                self._persist()
+        return changed
 
     def summary(self) -> dict[str, Any]:
         entries = self.today()
