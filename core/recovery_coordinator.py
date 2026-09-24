@@ -71,7 +71,27 @@ class RecoveryCoordinator:
         }
         unknown = tuple(sorted(lifecycle_unknown | ledger_uncertain))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if (
+                r.state is ExecutionLifecycleState.ACCEPTED
+                and (
+                    r.request_id not in ledger_ids
+                    or ledger_snapshot.get(r.request_id) in (
+                        ExecutionLedgerStatus.REJECTED,
+                        ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                    )
+                )
+            )
+            or (
+                r.state is ExecutionLifecycleState.REJECTED
+                and ledger_snapshot.get(r.request_id) in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                )
+            )
+        ]
         if unknown or pending or inconsistent:
             details = []
             if unknown:
