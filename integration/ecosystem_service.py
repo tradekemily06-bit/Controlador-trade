@@ -163,6 +163,17 @@ class EcosystemService:
         timestamp = market_timestamp.isoformat()
         symbol = getattr(result, "symbol", None)
         timeframe = getattr(result, "timeframe", None)
+        if self.operational_runtime is not None and symbol and timeframe:
+            try:
+                if self.operational_runtime.daily_journal.has_market_decision(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    market_timestamp=timestamp,
+                ):
+                    return None
+            except (OSError, ValueError, TypeError):
+                # A broken journal must not authorize a duplicate; memory/store dedupe remains active.
+                pass
         if any(
             item.symbol == symbol
             and item.timeframe == timeframe
@@ -320,6 +331,7 @@ class EcosystemService:
                     timeframe=decision.timeframe if decision is not None else None,
                     score=decision.score if decision is not None else None,
                     reason=decision.reason if decision is not None else None,
+                    market_timestamp=decision.market_timestamp if decision is not None else None,
                 )
             except (OSError, ValueError, TypeError):
                 journal_recorded = False
@@ -360,6 +372,7 @@ class EcosystemService:
                 timeframe=decision.timeframe if decision is not None else None,
                 score=decision.score if decision is not None else None,
                 reason=decision.reason if decision is not None else None,
+                market_timestamp=decision.market_timestamp if decision is not None else None,
             )
         except (OSError, ValueError, TypeError):
             # Bookkeeping is deliberately fail-soft: it can never turn an
