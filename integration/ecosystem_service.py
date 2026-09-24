@@ -265,12 +265,19 @@ class EcosystemService:
             raise ValueError("amount deve ser positivo")
         if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
             raise ValueError("duration_seconds deve ser inteiro positivo")
-        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
         decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
         if decision is None:
             raise ValueError("decision_id é obrigatório: a execução deve estar vinculada a uma decisão registrada")
         if not decision.is_actionable:
             raise ValueError("a decisão vinculada não está confirmada como COMPRA/VENDA")
+        if decision.outcome is not None:
+            raise ValueError("a decisão já possui resultado; uma decisão liquidada/não nova não pode ser executada novamente")
+        if not decision.market_timestamp:
+            raise ValueError("a decisão não possui timestamp de candle fechado; execução bloqueada")
+        canonical_request_id = f"decision-{decision.decision_id}"
+        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else canonical_request_id
+        if rid != canonical_request_id:
+            raise ValueError("request_id não corresponde à identidade canônica da decisão")
         if decision.signal != selected_signal.value:
             raise ValueError("decision_id não corresponde ao sinal selecionado")
         if decision is not None and decision.symbol and decision.symbol != symbol.strip():
@@ -317,7 +324,12 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
-        result = self.operational_runtime.market_data_execution_guard.execute(rid, request, expected_timeframe=decision.timeframe)
+        result = self.operational_runtime.market_data_execution_guard.execute(
+            rid,
+            request,
+            expected_timeframe=decision.timeframe,
+            expected_market_timestamp=decision.market_timestamp,
+        )
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
         journal_recorded = True
