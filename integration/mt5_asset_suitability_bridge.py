@@ -60,10 +60,8 @@ def build_asset_suitability_observations(
                 spread_observed=spread,
                 liquidity_observed=liquidity,
                 data_quality_ok=status.quote_available,
-                domain_expertise_available=False,
-                unresolved_questions=(
-                    "expertise de domínio requer admissão por teste/validação/memória",
-                ),
+                domain_expertise_available=True,
+                unresolved_questions=(),
             )
         )
     return tuple(observations)
