@@ -103,10 +103,19 @@ class EcosystemService:
             raise ValueError(
                 "dados de mercado ainda não estão validados para o símbolo/timeframe solicitado"
             )
+        gated = self.evaluate_market_snapshot(snapshot)
+        record = DecisionRecord.from_analysis(gated)
+        self.memory.append(record)
+        self.store.save(record)
+        return record
+
+    def evaluate_market_snapshot(self, snapshot: BrokerMarketDataSnapshot):
+        """Evaluate one validated snapshot without persisting a decision."""
+        if not isinstance(snapshot, BrokerMarketDataSnapshot):
+            raise TypeError("snapshot deve ser BrokerMarketDataSnapshot")
         candles = list(snapshot.candles)
         if len(candles) < 20:
             raise ValueError(f"candles insuficientes para análise: {len(candles)} < 20")
-
         result = self.strategy_pipeline.evaluate(
             candles,
             confirmed=True,
@@ -114,7 +123,6 @@ class EcosystemService:
             symbol=snapshot.symbol,
             timeframe=snapshot.timeframe,
         )
-
         operational_risk = self._current_risk_decision()
         risk_observations = (
             RiskObservation(
@@ -130,7 +138,6 @@ class EcosystemService:
                 ("operational_risk_manager",),
             ),
         )
-        available_risk_domains = tuple(item.domain for item in risk_observations)
         context = self.senior_context.assess(
             SeniorContextInput(
                 context_id=f"market:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}",
@@ -138,26 +145,16 @@ class EcosystemService:
                 available_nodes=("market_data", "price_history", "risk"),
                 observed_nodes=("market_data", "price_history", "risk"),
                 gaps={},
-                relationships_reviewed=(
-                    "price-structure",
-                    "structure-volatility",
-                    "price-liquidity",
-                    "post_breakout-behavior",
-                ),
+                relationships_reviewed=("price-structure", "structure-volatility", "price-liquidity", "post_breakout-behavior"),
                 risk_observations=risk_observations,
-                available_risk_domains=available_risk_domains,
+                available_risk_domains=tuple(item.domain for item in risk_observations),
             )
         )
-        gated = self.senior_analysis_gate.evaluate(
+        return self.senior_analysis_gate.evaluate(
             analysis=result,
             senior_context=context,
             operational_risk=operational_risk,
         )
-
-        record = DecisionRecord.from_analysis(gated)
-        self.memory.append(record)
-        self.store.save(record)
-        return record
 
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
