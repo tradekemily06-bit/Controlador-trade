@@ -67,3 +67,44 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_real_ledger_persists_external_identity_and_reconciliation_evidence(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve_real("req-real", broker_id="fake", symbol="EURUSD")
+    assert ledger.execution_context("req-real") == {
+        "mode": "REAL",
+        "broker_id": "fake",
+        "symbol": "EURUSD",
+        "external_id": None,
+    }
+    ledger.mark_accepted_real("req-real", external_id="ext-1")
+    assert ledger.execution_context("req-real")["external_id"] == "ext-1"
+    ledger2 = ExecutionLedger(path)
+    assert ledger2.status("req-real") is ExecutionLedgerStatus.ACCEPTED
+    assert ledger2.execution_context("req-real")["external_id"] == "ext-1"
+
+
+def test_reconciliation_requires_unique_explicit_evidence(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve_real("req-real", broker_id="fake", symbol="EURUSD")
+    ledger.mark_unknown("req-real")
+    ledger.reconcile("req-real", executed=True, evidence_id="event-1", evidence_source="fake-broker")
+    assert ledger.reconciliation_evidence("req-real") == {
+        "evidence_id": "event-1",
+        "evidence_source": "fake-broker",
+    }
+
+
+def test_reconciliation_rejects_reused_evidence(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    ledger = ExecutionLedger(path)
+    ledger.reserve_real("req-1", broker_id="fake", symbol="EURUSD")
+    ledger.mark_unknown("req-1")
+    ledger.reconcile("req-1", executed=True, evidence_id="event-1", evidence_source="fake-broker")
+    ledger.reserve_real("req-2", broker_id="fake", symbol="EURUSD")
+    ledger.mark_unknown("req-2")
+    with pytest.raises(ValueError):
+        ledger.reconcile("req-2", executed=False, evidence_id="event-1", evidence_source="fake-broker")
