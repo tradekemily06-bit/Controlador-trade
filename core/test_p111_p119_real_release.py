@@ -238,13 +238,13 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
 def test_external_observation_resolves_unknown_by_persisted_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
-    ledger.mark_accepted_real("req-ext", external_id="ext-42")
     ledger.mark_unknown("req-ext")
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution")
     result = gateway.reconcile_external_observation(
+        "req-ext",
         observation,
         evidence_id="obs-ext-42",
         evidence_source="fake-broker-query",
@@ -260,7 +260,6 @@ def test_external_observation_resolves_unknown_by_persisted_external_identity(tm
 def test_external_observation_cannot_reconcile_unknown_without_matching_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
-    ledger.mark_accepted_real("req-ext", external_id="ext-42")
     ledger.mark_unknown("req-ext")
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
@@ -268,6 +267,7 @@ def test_external_observation_cannot_reconcile_unknown_without_matching_external
     observation = ExternalOrderObservation("ext-other", ExternalOrderStatus.EXECUTED, "different broker order")
     try:
         gateway.reconcile_external_observation(
+            "req-ext",
             observation,
             evidence_id="obs-other",
             evidence_source="fake-broker-query",
