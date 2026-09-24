@@ -75,6 +75,7 @@ class SeniorContextOrchestrator:
             request.risk_observations,
             available_domains=request.available_risk_domains,
         )
+        intelligence = self.intelligence.assess(graph=graph)
         return self.cycle_boundary.assemble(
             cycle_id=str(uuid4()),
             whole_graph=graph,
