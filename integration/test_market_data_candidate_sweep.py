@@ -18,9 +18,9 @@ class _Provider:
         self.requests.append(request.symbol)
         if request.symbol in self.failures:
             raise RuntimeError(f"provider failure for {request.symbol}")
-        start = datetime(2026, 9, 24, 12, 0, tzinfo=timezone.utc)
+            start = datetime.now(timezone.utc) - timedelta(minutes=150)
         offset = 100 if request.symbol == "WIN" else 0
-        return [Candle(start + timedelta(minutes=i), 100 + offset + i, 101 + offset + i, 99 + offset + i, 100.5 + offset + i) for i in range(30)]
+        return [Candle(start + timedelta(minutes=5 * i), 100 + offset + i, 101 + offset + i, 99 + offset + i, 100.5 + offset + i) for i in range(30)]
 
 
 def _sweep(provider: _Provider) -> MarketDataCandidateSweep:
@@ -43,7 +43,6 @@ def test_sweep_analyzes_candidates_and_leaves_winner_as_authoritative_snapshot()
         analyzer=lambda snapshot: 100 if snapshot.symbol == "WIN" else 10,
         is_actionable=lambda value: value > 0,
         rank_key=lambda value: -value,
-        now=datetime(2026, 9, 24, 12, 30, tzinfo=timezone.utc),
     )
 
     assert result.selected_symbol == "WIN"
