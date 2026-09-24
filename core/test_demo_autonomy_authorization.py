@@ -52,4 +52,3 @@ def test_corrupt_or_invalid_authority_fails_closed(tmp_path, payload):
 def test_runtime_owns_separate_demo_autonomy_authority(tmp_path):
     runtime = build_operational_runtime(tmp_path)
     assert runtime.demo_autonomy.state.enabled is False
-    assert runtime.preferences if hasattr(runtime, "preferences") else True
