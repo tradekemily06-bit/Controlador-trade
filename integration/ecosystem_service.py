@@ -298,7 +298,7 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
-        result = self.operational_runtime.market_data_execution_guard.execute(rid, request)
+        result = self.operational_runtime.market_data_execution_guard.execute(rid, request, expected_timeframe=decision.timeframe)
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
         journal_recorded = True
