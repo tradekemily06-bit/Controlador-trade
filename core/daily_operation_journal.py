@@ -172,7 +172,10 @@ class DailyOperationJournal:
         return changed
 
     def accepted_count_today(self, *, now: datetime | None = None) -> int:
-        """Count accepted executions from durable journal history for the current UTC day."""
+        """Count accepted executions, failing closed if durable history is unreadable."""
+        with self._lock:
+            if self._load_error is not None:
+                raise OSError("diário automático indisponível; limite diário não pode ser validado")
         return sum(item.accepted for item in self.today(now=now))
 
     def summary(self) -> dict[str, Any]:
