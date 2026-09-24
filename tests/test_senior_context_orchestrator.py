@@ -48,7 +48,7 @@ def test_orchestrator_composes_context_without_execution_authority():
     assert cycle.market_reading.observations
     assert cycle.senior_assessment.questions
     assert cycle.risk_assessment.questions
-    assert cycle.validated_knowledge_ids == ("knowledge-validated-1",)
+    assert cycle.validated_knowledge_ids == ("builtin:senior-professional-baseline", "knowledge-validated-1")
     assert cycle.execution_authorized is False
     assert cycle.senior_assessment.execution_authorized is False
     assert cycle.risk_assessment.execution_authorized is False
