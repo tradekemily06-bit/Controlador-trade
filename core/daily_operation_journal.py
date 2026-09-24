@@ -29,7 +29,6 @@ class DailyOperationJournalEntry:
     reason: str | None = None
     market_timestamp: str | None = None
     outcome: str | None = None
-    market_timestamp: str | None = None
 
 
 class DailyOperationJournal:
