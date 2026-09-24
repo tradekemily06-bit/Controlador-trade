@@ -17,7 +17,7 @@ from integration.execution_provider import build_demo_execution_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
-from execution.mt5_asset_selector import rank_mt5_assets
+from integration.mt5_asset_suitability_bridge import select_mt5_analysis_candidates
 from execution.mt5_instrument_universe import discover_mt5_instruments
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
@@ -43,7 +43,7 @@ def _select_mt5_analysis_symbol() -> str | None:
         return None
     try:
         statuses = discover_mt5_instruments(mt5)
-        candidates = rank_mt5_assets(statuses, limit=1)
+        candidates = select_mt5_analysis_candidates(mt5, statuses, limit=1)
         return candidates[0].symbol if candidates else None
     finally:
         mt5.shutdown()
