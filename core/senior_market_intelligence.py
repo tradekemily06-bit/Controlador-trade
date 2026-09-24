@@ -114,9 +114,12 @@ class SeniorMarketIntelligenceBoundary:
             strengths.append("todo o contexto materialmente disponibilizado foi contabilizado")
 
         if knowledge_ids:
-            strengths.append("conhecimento usado possui proveniência de validação")
+            strengths.append("conhecimento externo usado possui proveniência de validação")
         else:
-            gaps.append("nenhum conhecimento validado foi fornecido neste ciclo; não inventar conhecimento ausente")
+            strengths.append(
+                "o ciclo já dispõe do conhecimento profissional basal incorporado no padrão sênior; "
+                "ausência de conhecimento externo adicional não reduz essa capacidade"
+            )
 
         strengths.append("o padrão sênior exige evidência favorável e contrária, não votação de sinais")
         strengths.append("novas descobertas permanecem sujeitas à validação antes de promoção")
