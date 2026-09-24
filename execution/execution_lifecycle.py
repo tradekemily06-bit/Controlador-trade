@@ -7,7 +7,6 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from core.execution_lifecycle_guard import ExecutionLifecycleGuard
 from core.file_lock import locked_file
 
 
@@ -33,6 +32,8 @@ class ExecutionLifecycleStore:
         if path is None:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
+        from core.execution_lifecycle_guard import ExecutionLifecycleGuard
+
         self._records: dict[str, ExecutionLifecycleRecord] = {}
         self._guard = ExecutionLifecycleGuard()
         self._load()
