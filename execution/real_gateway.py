@@ -6,6 +6,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus, ReconciliationResult
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -122,6 +123,63 @@ class RealExecutionGateway:
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
+
+    def reconcile_external_observation(
+        self,
+        observation: ExternalOrderObservation,
+        *,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> ReconciliationResult:
+        """Apply a verified external observation to the authoritative REAL ledger; never resubmits."""
+        boundary = ExternalOrderReconciliationBoundary()
+        result = boundary.reconcile(observation.external_id, observation)
+        request_id = self._ledger.request_id_for_external_id(result.external_id)
+        if request_id is None:
+            raise ValueError("external_id observado não está vinculado ao ledger REAL.")
+
+        current = self._ledger.status(request_id)
+        if result.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=False,
+                message=f"operação {request_id} permanece sem estado terminal: {result.message}",
+            )
+
+        if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+            self._ledger.reconcile(
+                request_id,
+                executed=result.status is ExternalOrderStatus.EXECUTED,
+                evidence_id=evidence_id,
+                evidence_source=evidence_source,
+            )
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=True,
+                message=f"operação {request_id} reconciliada no ledger: {result.message}",
+            )
+
+        if current is ExecutionLedgerStatus.ACCEPTED:
+            if result.status is ExternalOrderStatus.NOT_EXECUTED:
+                raise ValueError("observação externa contradiz um aceite REAL já persistido.")
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=True,
+                message=f"operação {request_id} já está aceita no ledger; observação externa confirma o aceite.",
+            )
+
+        if current is ExecutionLedgerStatus.REJECTED and result.status is ExternalOrderStatus.EXECUTED:
+            raise ValueError("observação externa contradiz uma rejeição REAL já persistida.")
+
+        return ReconciliationResult(
+            external_id=result.external_id,
+            status=result.status,
+            reconciled=False,
+            message=f"operação {request_id} já possui estado terminal {current.value}; nenhuma mutação aplicada.",
+        )
 
     def reconcile_unknown(
         self,
