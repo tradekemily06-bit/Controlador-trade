@@ -43,6 +43,7 @@ class PersistentMarketDataRuntime:
         symbol_selector: Callable[[], str | None] | None = None,
         candidate_selector: Callable[[], Iterable[str]] | None = None,
         candidate_analyzer: Callable[[BrokerMarketDataSnapshot], object] | None = None,
+        selected_result_handler: Callable[[BrokerMarketDataSnapshot, object], object] | None = None,
     ) -> None:
         self._boundary = boundary
         self._state = state
@@ -50,6 +51,7 @@ class PersistentMarketDataRuntime:
         self._symbol_selector = symbol_selector
         self._candidate_selector = candidate_selector
         self._candidate_analyzer = candidate_analyzer
+        self._selected_result_handler = selected_result_handler
         self._selected_symbol: str | None = config.symbol
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -59,12 +61,14 @@ class PersistentMarketDataRuntime:
         self._last_sweep_selected: str | None = None
         self._last_sweep_candidate_count = 0
         self._last_sweep_errors: tuple[str, ...] = ()
+        self._last_processed_candle_key: tuple[str, str, str] | None = None
 
     def configure_candidate_analysis(
         self,
         *,
         candidate_selector: Callable[[], Iterable[str]],
         candidate_analyzer: Callable[[BrokerMarketDataSnapshot], object],
+        selected_result_handler: Callable[[BrokerMarketDataSnapshot, object], object] | None = None,
     ) -> None:
         if not callable(candidate_selector):
             raise TypeError("candidate_selector deve ser chamável")
@@ -75,6 +79,7 @@ class PersistentMarketDataRuntime:
                 raise RuntimeError("configure_candidate_analysis deve ocorrer antes de iniciar o runtime")
             self._candidate_selector = candidate_selector
             self._candidate_analyzer = candidate_analyzer
+            self._selected_result_handler = selected_result_handler
 
     def start(self) -> None:
         with self._lock:
@@ -170,7 +175,21 @@ class PersistentMarketDataRuntime:
                 if result.selected is not None and result.selected.snapshot is not None:
                     self._last_success = result.selected.snapshot.received_at
                     self._last_error = None
-                elif errors:
+                    snapshot = result.selected.snapshot
+                    candle_key = (snapshot.symbol, snapshot.timeframe, snapshot.candles[-1].timestamp.isoformat())
+                    should_process = candle_key != self._last_processed_candle_key
+                    self._last_processed_candle_key = candle_key
+                    handler = self._selected_result_handler
+                else:
+                    should_process = False
+                    handler = None
+                if should_process and handler is not None:
+                    try:
+                        handler(snapshot, result.selected.result)
+                    except Exception as exc:
+                        with self._lock:
+                            self._last_error = f"falha ao registrar análise selecionada: {type(exc).__name__}: {exc}"
+                if errors and result.selected is None:
                     self._last_error = errors[-1]
         except Exception as exc:
             self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message=f"falha no sweep de oportunidades: {type(exc).__name__}: {exc}")
