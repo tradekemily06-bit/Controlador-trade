@@ -194,7 +194,7 @@ def application(environ, start_response):
                 state = OPERATIONAL_RUNTIME.demo_autonomy.enable(amount=data.get("amount"), duration_seconds=data.get("duration_seconds"), max_operations_per_day=data.get("max_operations_per_day"), authorized_at=str(data.get("authorized_at", "")), authorized_by=str(data.get("authorized_by", "")))
             else:
                 raise ValueError("action deve ser enable ou disable")
-            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "max_operations_per_day": state.max_operations_per_day, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
         if path == "/api/market/analyze" and method == "POST":
