@@ -80,7 +80,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve_real(request_id, broker_id=broker, symbol=request.symbol)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
@@ -118,16 +118,28 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted_real(request_id, external_id=result.execution.external_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
+    def reconcile_unknown(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> None:
+        """Reconcile only with explicit evidence; never resubmits the order."""
         if self._ledger.status(request_id) not in (
             ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.RESERVED,
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+        self._ledger.reconcile(
+            request_id,
+            executed=executed,
+            evidence_id=evidence_id,
+            evidence_source=evidence_source,
+        )
