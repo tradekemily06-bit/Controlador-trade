@@ -69,18 +69,17 @@ SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, ma
 ONBOARDING = EcosystemOnboarding()
 
 if MARKET_DATA_RUNTIME is not None:
-    if EXECUTION_SYMBOL:
-        MARKET_DATA_RUNTIME.start()
-    else:
-        MARKET_DATA_RUNTIME.configure_candidate_analysis(
-            candidate_selector=_select_mt5_analysis_symbols,
-            candidate_analyzer=SERVICE.evaluate_market_snapshot,
-            selected_result_handler=lambda snapshot, result: SERVICE.record_market_analysis(
-                result,
-                market_timestamp=snapshot.candles[-1].timestamp,
-            ),
-        )
-        MARKET_DATA_RUNTIME.start()
+    candidate_selector = (
+        (lambda: (EXECUTION_SYMBOL,))
+        if EXECUTION_SYMBOL
+        else _select_mt5_analysis_symbols
+    )
+    MARKET_DATA_RUNTIME.configure_candidate_analysis(
+        candidate_selector=candidate_selector,
+        candidate_analyzer=SERVICE.evaluate_market_snapshot,
+        selected_result_handler=SERVICE.handle_selected_market_analysis,
+    )
+    MARKET_DATA_RUNTIME.start()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
