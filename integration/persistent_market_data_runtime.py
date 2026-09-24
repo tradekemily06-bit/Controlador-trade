@@ -60,6 +60,22 @@ class PersistentMarketDataRuntime:
         self._last_sweep_candidate_count = 0
         self._last_sweep_errors: tuple[str, ...] = ()
 
+    def configure_candidate_analysis(
+        self,
+        *,
+        candidate_selector: Callable[[], Iterable[str]],
+        candidate_analyzer: Callable[[BrokerMarketDataSnapshot], object],
+    ) -> None:
+        if not callable(candidate_selector):
+            raise TypeError("candidate_selector deve ser chamável")
+        if not callable(candidate_analyzer):
+            raise TypeError("candidate_analyzer deve ser chamável")
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                raise RuntimeError("configure_candidate_analysis deve ocorrer antes de iniciar o runtime")
+            self._candidate_selector = candidate_selector
+            self._candidate_analyzer = candidate_analyzer
+
     def start(self) -> None:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
