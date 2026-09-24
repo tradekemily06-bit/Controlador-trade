@@ -76,6 +76,7 @@ class SeniorContextOrchestrator:
             available_domains=request.available_risk_domains,
         )
         intelligence = self.intelligence.assess(graph=graph)
+        knowledge_ids = tuple(dict.fromkeys((*intelligence.knowledge_ids, *request.validated_knowledge_ids)))
         return self.cycle_boundary.assemble(
             cycle_id=str(uuid4()),
             whole_graph=graph,
@@ -84,7 +85,6 @@ class SeniorContextOrchestrator:
             senior_assessment=senior,
             risk_assessment=risk,
             validated_knowledge_ids=knowledge_ids,
-            intelligence=intelligence,
         )
 
     @staticmethod
