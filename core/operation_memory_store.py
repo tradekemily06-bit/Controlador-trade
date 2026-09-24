@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
 
+from core.file_lock import locked_file
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
 
@@ -60,22 +62,26 @@ class OperationMemoryStore:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
         payload = [self._serialize(record) for record in memory.records()]
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self.path)
 
     def load(self) -> OperationMemory:
         memory = OperationMemory()
-        if not self.path.exists():
-            return memory
-        try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("arquivo de memória inválido.") from exc
-        if not isinstance(payload, list):
-            raise ValueError("arquivo de memória deve conter uma lista.")
-        for item in payload:
-            memory.append(self._deserialize(item))
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            if not self.path.exists():
+                return memory
+            try:
+                payload = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError("arquivo de memória inválido.") from exc
+            if not isinstance(payload, list):
+                raise ValueError("arquivo de memória deve conter uma lista.")
+            for item in payload:
+                memory.append(self._deserialize(item))
         return memory
