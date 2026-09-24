@@ -185,6 +185,16 @@ class EcosystemService:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
+    def _current_operational_state(self):
+        runtime = self.operational_runtime
+        if runtime is None or runtime.risk_state_provider is None:
+            return None
+        try:
+            state = runtime.risk_state_provider()
+        except Exception:
+            return None
+        return state
+
     def _current_risk_decision(self):
         runtime = self.operational_runtime
         if runtime is not None and runtime.risk_state_provider is not None:
@@ -388,7 +398,12 @@ class EcosystemService:
             return record
         if not record.is_actionable:
             return record
-        if authority.state.amount is None or authority.state.duration_seconds is None:
+        if authority.state.amount is None or authority.state.duration_seconds is None or authority.state.max_operations_per_day is None:
+            return record
+        current_state = self._current_operational_state()
+        if current_state is None or current_state.trades_today is None:
+            return record
+        if current_state.trades_today >= authority.state.max_operations_per_day:
             return record
         self.execute_demo(
             symbol=record.symbol or snapshot.symbol,
