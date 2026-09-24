@@ -68,3 +68,13 @@ def test_outcome_is_persisted_against_decision_without_execution_authority(tmp_p
     assert journal.record_outcome(decision_id="decision-1", outcome="WIN") == 1
     reloaded = DailyOperationJournal(path)
     assert reloaded.entries()[0].outcome == "WIN"
+
+
+def test_market_candle_identity_is_persisted_for_restart_safe_dedupe(tmp_path):
+    from core.daily_operation_journal import DailyOperationJournal
+    path = tmp_path / "journal.json"
+    journal = DailyOperationJournal(path)
+    journal.append(request_id="r1", mode="DEMO", action="OPEN", symbol="EURUSD", signal="COMPRA", amount=0.01, duration_seconds=60, status="ACCEPTED", accepted=True, external_id="x1", message="ok", decision_id="d1", timeframe="5m", market_timestamp="2026-09-24T10:00:00+00:00")
+    restored = DailyOperationJournal(path)
+    assert restored.has_market_decision(symbol="EURUSD", timeframe="5m", market_timestamp="2026-09-24T10:00:00+00:00") is True
+    assert restored.has_market_decision(symbol="EURUSD", timeframe="5m", market_timestamp="2026-09-24T10:05:00+00:00") is False
