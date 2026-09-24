@@ -217,6 +217,21 @@ class ExecutionLedger:
             self._reconciliation_evidence[request_id] = {"evidence_id": evidence_id, "evidence_source": evidence_source}
         self._mutate_locked(mutation)
 
+    def request_id_for_external_id(self, external_id: str) -> str | None:
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id não pode ser vazio.")
+        external_id = external_id.strip()
+        def reader() -> str | None:
+            matches = [
+                request_id
+                for request_id, context in self._execution_context.items()
+                if context.get("external_id") == external_id
+            ]
+            if len(matches) > 1:
+                raise ValueError("external_id vinculado a múltiplas operações.")
+            return matches[0] if matches else None
+        return self._read_locked(reader)
+
     def records(self) -> tuple[str, ...]:
         return self._read_locked(lambda: tuple(sorted(self._states)))
 
