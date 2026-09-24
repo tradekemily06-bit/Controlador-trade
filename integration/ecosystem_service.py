@@ -374,6 +374,31 @@ class EcosystemService:
             "maintenance_required": not journal_recorded or not checkpoint_recorded,
         }
 
+    def handle_selected_market_analysis(self, snapshot: BrokerMarketDataSnapshot, result) -> DecisionRecord | None:
+        """Persist the selected closed-candle decision and optionally execute DEMO.
+
+        Automatic operation is opt-in through a dedicated durable authority, never
+        through presentation preferences. A duplicate candle is never executed.
+        """
+        record = self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+        if record is None:
+            return None
+        authority = self.operational_runtime.demo_autonomy if self.operational_runtime is not None else None
+        if authority is None or not authority.state.enabled:
+            return record
+        if not record.is_actionable:
+            return record
+        if authority.state.amount is None or authority.state.duration_seconds is None:
+            return record
+        self.execute_demo(
+            symbol=record.symbol or snapshot.symbol,
+            signal=record.signal,
+            amount=authority.state.amount,
+            duration_seconds=authority.state.duration_seconds,
+            decision_id=record.decision_id,
+        )
+        return record
+
     def daily_journal(self, limit: int = 100) -> dict[str, Any]:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
