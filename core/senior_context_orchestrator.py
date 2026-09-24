@@ -83,7 +83,7 @@ class SeniorContextOrchestrator:
             market_reading=reading,
             senior_assessment=senior,
             risk_assessment=risk,
-            validated_knowledge_ids=request.validated_knowledge_ids,
+            validated_knowledge_ids=knowledge_ids,
             intelligence=intelligence,
         )
 
