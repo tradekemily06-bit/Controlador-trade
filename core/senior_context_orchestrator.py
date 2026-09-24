@@ -84,6 +84,7 @@ class SeniorContextOrchestrator:
             senior_assessment=senior,
             risk_assessment=risk,
             validated_knowledge_ids=request.validated_knowledge_ids,
+            intelligence=intelligence,
         )
 
     @staticmethod
