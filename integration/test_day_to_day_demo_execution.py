@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from analysis.decision_record import DecisionRecord
+from core.models import AnalysisResult
 from data.models import Candle
 
 from core.kill_switch import KillSwitch
@@ -32,6 +34,24 @@ def seed_healthy_market_data(runtime):
         now=now,
     )
 
+def _registered_decision(service, runtime, *, signal: str) -> DecisionRecord:
+    market_timestamp = runtime.market_data.snapshot.candles[-1].timestamp.isoformat()
+    record = DecisionRecord.from_analysis(
+        AnalysisResult(
+            signal=Signal(signal),
+            score=88,
+            reason="test registered operational decision",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        market_timestamp=market_timestamp,
+    )
+    service.memory.append(record)
+    service.store.save(record)
+    return record
+
+
 class FakeDemoExecutor:
     def __init__(self):
         self.requests = []
@@ -59,13 +79,13 @@ def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Pa
     service = EcosystemService(operational_runtime=runtime)
     seed_healthy_market_data(runtime)
 
-    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    decision = _registered_decision(service, runtime, signal="COMPRA")
     result = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="ui-demo-1",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
 
@@ -115,7 +135,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="duplicate-demo",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
     second = service.execute_demo(
@@ -148,7 +168,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="risk-seed",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
     assert first["accepted"] is True
@@ -159,7 +179,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="risk-blocked",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
 
@@ -175,13 +195,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
     seed_healthy_market_data(runtime)
-    decision = service.analyze({
-        "score": 88,
-        "confirmed": True,
-        "filters_ok": True,
-        "symbol": "EURUSD",
-        "timeframe": "5m",
-    })
+    decision = _registered_decision(service, runtime, signal="COMPRA")
 
     result = service.execute_demo(
         symbol="EURUSD",
