@@ -85,7 +85,7 @@ class ExecutionGateway:
             if existing is not None:
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
+                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
