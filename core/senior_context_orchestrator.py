@@ -16,6 +16,7 @@ from data.models import Candle
 
 from .integrated_market_reading import IntegratedMarketReader
 from .senior_context_cycle import SeniorContextCycle, SeniorContextCycleBoundary
+from .senior_market_intelligence import SeniorMarketIntelligenceBoundary
 from .senior_market_reasoning import SeniorMarketReasoner
 from .senior_risk_reasoning import RiskDomain, RiskObservation, SeniorRiskReasoner
 from .temporal_market_context import TemporalMarketContextEngine
