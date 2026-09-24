@@ -104,7 +104,7 @@ class EcosystemService:
                 "dados de mercado ainda não estão validados para o símbolo/timeframe solicitado"
             )
         gated = self.evaluate_market_snapshot(snapshot)
-        record = DecisionRecord.from_analysis(gated)
+        record = DecisionRecord.from_analysis(gated, market_timestamp=snapshot.candles[-1].timestamp.isoformat())
         self.memory.append(record)
         self.store.save(record)
         return record
@@ -155,6 +155,25 @@ class EcosystemService:
             senior_context=context,
             operational_risk=operational_risk,
         )
+
+    def record_market_analysis(self, result, *, market_timestamp: datetime) -> DecisionRecord | None:
+        """Persist one completed-candle analysis once; return None for duplicates."""
+        if not isinstance(market_timestamp, datetime):
+            raise TypeError("market_timestamp deve ser datetime")
+        timestamp = market_timestamp.isoformat()
+        symbol = getattr(result, "symbol", None)
+        timeframe = getattr(result, "timeframe", None)
+        if any(
+            item.symbol == symbol
+            and item.timeframe == timeframe
+            and item.market_timestamp == timestamp
+            for item in self.memory
+        ):
+            return None
+        record = DecisionRecord.from_analysis(result, market_timestamp=timestamp)
+        self.memory.append(record)
+        self.store.save(record)
+        return record
 
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
