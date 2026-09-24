@@ -145,8 +145,7 @@ class RealExecutionGateway:
         if linked_external_id not in (None, result.external_id):
             raise ValueError("external_id observado difere da identidade REAL persistida.")
         if linked_external_id is None:
-            self._ledger.bind_external_id(request_id, external_id=result.external_id)
-            current = self._ledger.status(request_id)
+            raise ValueError("operação REAL sem external_id persistido não pode ser reconciliada por observação externa.")
 
         if result.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
             return ReconciliationResult(
