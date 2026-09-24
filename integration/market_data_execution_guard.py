@@ -19,7 +19,7 @@ class MarketDataExecutionGuard:
     market_data: MarketDataRuntimeState
     gateway: ExecutionGateway
 
-    def execute(self, request_id: str, request: ExecutionRequest, **kwargs) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, expected_timeframe: str | None = None, **kwargs) -> GatewayResult:
         report = self.market_data.report
         if report is None:
             return GatewayResult(
@@ -36,7 +36,12 @@ class MarketDataExecutionGuard:
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.",
             )
-        if self.market_data.validated_snapshot_for_symbol(symbol=request.symbol) is None:
+        if expected_timeframe is not None and report.timeframe != expected_timeframe.strip():
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "execução bloqueada: timeframe da decisão não corresponde ao snapshot validado.",
+            )
+        if self.market_data.validated_snapshot(symbol=request.symbol, timeframe=report.timeframe) is None:
             return GatewayResult(
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: o snapshot validado não está disponível no runtime.",
