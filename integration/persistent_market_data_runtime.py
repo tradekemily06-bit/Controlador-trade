@@ -85,11 +85,16 @@ class PersistentMarketDataRuntime:
                 "timeframe": self._config.timeframe,
                 "last_success": self._last_success.isoformat() if self._last_success else None,
                 "last_error": self._last_error,
+                "candidate_sweep": {"enabled": self._candidate_selector is not None and self._candidate_analyzer is not None, "candidate_count": self._last_sweep_candidate_count, "selected_symbol": self._last_sweep_selected, "errors": list(self._last_sweep_errors)},
             }
 
     def _run(self) -> None:
         expected_interval = self._timeframe_seconds(self._config.timeframe)
         while not self._stop.is_set():
+            if self._candidate_selector is not None and self._candidate_analyzer is not None:
+                self._run_candidate_sweep()
+                self._stop.wait(self._config.poll_seconds)
+                continue
             symbol = self._resolve_symbol()
             if symbol is None:
                 self._state.invalidate(
@@ -127,6 +132,42 @@ class PersistentMarketDataRuntime:
                 with self._lock:
                     self._last_error = str(exc)
             self._stop.wait(self._config.poll_seconds)
+
+    def _run_candidate_sweep(self) -> None:
+        candidates = tuple(dict.fromkeys(str(item).strip() for item in self._candidate_selector() if str(item).strip()))
+        if not candidates:
+            self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message="nenhum ativo candidato está disponível para análise")
+            with self._lock:
+                self._last_sweep_selected = None
+                self._last_sweep_candidate_count = 0
+                self._last_sweep_errors = ()
+            return
+        sweep = MarketDataCandidateSweep(boundary=self._boundary, state=self._state, timeframe=self._config.timeframe, limit=self._config.limit)
+        result = sweep.sweep(candidates, analyzer=self._candidate_analyzer, is_actionable=self._is_actionable_result, rank_key=self._rank_analysis_result)
+        errors = tuple(f"{item.symbol}: {item.error}" for item in result.candidates if item.error is not None)
+        with self._lock:
+            self._last_sweep_selected = result.selected_symbol
+            self._last_sweep_candidate_count = len(result.candidates)
+            self._last_sweep_errors = errors
+            self._selected_symbol = result.selected_symbol
+            if result.selected is not None and result.selected.snapshot is not None:
+                self._last_success = result.selected.snapshot.received_at
+                self._last_error = None
+            elif errors:
+                self._last_error = errors[-1]
+
+    @staticmethod
+    def _is_actionable_result(result: object) -> bool:
+        signal = getattr(result, "signal", None)
+        return getattr(signal, "value", signal) in {"COMPRA", "VENDA"} and bool(getattr(result, "confirmed", False))
+
+    @staticmethod
+    def _rank_analysis_result(result: object) -> tuple[int, float]:
+        signal = getattr(result, "signal", None)
+        value = getattr(signal, "value", signal)
+        score = float(getattr(result, "score", 0))
+        strength = score if value == "COMPRA" else 100.0 - score if value == "VENDA" else 0.0
+        return (0 if value in {"COMPRA", "VENDA"} else 1, -strength)
 
     def _resolve_symbol(self) -> str | None:
         if self._symbol_selector is None:
