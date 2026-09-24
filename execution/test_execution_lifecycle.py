@@ -48,3 +48,15 @@ def test_reconciliation_requires_existing_request(tmp_path):
         ExecutionLifecycleStore(tmp_path / "lifecycle.json").reconcile(
             "missing", ExecutionLifecycleState.REJECTED, updated_at=datetime.now(timezone.utc)
         )
+
+
+def test_stale_lifecycle_instances_preserve_each_other_updates(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+    first.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now, "first"))
+    second.put(ExecutionLifecycleRecord("req-2", ExecutionLifecycleState.PENDING, now, "second"))
+    restored = ExecutionLifecycleStore(path)
+    assert restored.get("req-1").state is ExecutionLifecycleState.PENDING
+    assert restored.get("req-2").state is ExecutionLifecycleState.PENDING
