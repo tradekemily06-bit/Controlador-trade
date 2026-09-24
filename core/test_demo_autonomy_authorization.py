@@ -13,6 +13,7 @@ def test_demo_autonomy_defaults_disabled(tmp_path):
     assert store.state.enabled is False
     assert store.state.amount is None
     assert store.state.duration_seconds is None
+    assert store.state.max_operations_per_day is None
 
 
 def test_demo_autonomy_enable_disable_is_durable(tmp_path):
@@ -21,6 +22,7 @@ def test_demo_autonomy_enable_disable_is_durable(tmp_path):
     enabled = store.enable(
         amount=0.01,
         duration_seconds=60,
+        max_operations_per_day=3,
         authorized_at="2026-09-24T00:00:00+00:00",
         authorized_by="user",
     )
@@ -29,6 +31,7 @@ def test_demo_autonomy_enable_disable_is_durable(tmp_path):
     assert restored.state.enabled is True
     assert restored.state.amount == 0.01
     assert restored.state.duration_seconds == 60
+    assert restored.state.max_operations_per_day == 3
     assert restored.state.authorized_by == "user"
     disabled = restored.disable()
     assert disabled.enabled is False
@@ -38,9 +41,9 @@ def test_demo_autonomy_enable_disable_is_durable(tmp_path):
 @pytest.mark.parametrize(
     "payload",
     [
-        {"enabled": True, "amount": -1, "duration_seconds": 60, "authorized_at": "x", "authorized_by": "user"},
-        {"enabled": True, "amount": 0.01, "duration_seconds": 0, "authorized_at": "x", "authorized_by": "user"},
-        {"enabled": True, "amount": 0.01, "duration_seconds": 60, "authorized_at": "", "authorized_by": "user"},
+        {"enabled": True, "amount": -1, "duration_seconds": 60, "max_operations_per_day": 3, "authorized_at": "x", "authorized_by": "user"},
+        {"enabled": True, "amount": 0.01, "duration_seconds": 0, "max_operations_per_day": 3, "authorized_at": "x", "authorized_by": "user"},
+        {"enabled": True, "amount": 0.01, "duration_seconds": 60, "max_operations_per_day": 3, "authorized_at": "", "authorized_by": "user"},
     ],
 )
 def test_corrupt_or_invalid_authority_fails_closed(tmp_path, payload):
