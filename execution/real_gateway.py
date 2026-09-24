@@ -126,19 +126,28 @@ class RealExecutionGateway:
 
     def reconcile_external_observation(
         self,
+        request_id: str,
         observation: ExternalOrderObservation,
         *,
         evidence_id: str,
         evidence_source: str,
     ) -> ReconciliationResult:
-        """Apply a verified external observation to the authoritative REAL ledger; never resubmits."""
+        """Apply a broker observation to the authoritative REAL ledger; never resubmits."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
         boundary = ExternalOrderReconciliationBoundary()
         result = boundary.reconcile(observation.external_id, observation)
-        request_id = self._ledger.request_id_for_external_id(result.external_id)
-        if request_id is None:
-            raise ValueError("external_id observado não está vinculado ao ledger REAL.")
-
         current = self._ledger.status(request_id)
+        context = self._ledger.execution_context(request_id)
+        if context is None:
+            raise ValueError("request_id não possui contexto REAL no ledger.")
+        linked_external_id = context.get("external_id")
+        if linked_external_id not in (None, result.external_id):
+            raise ValueError("external_id observado difere da identidade REAL persistida.")
+        if linked_external_id is None:
+            self._ledger.bind_external_id(request_id, external_id=result.external_id)
+            current = self._ledger.status(request_id)
+
         if result.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
             return ReconciliationResult(
                 external_id=result.external_id,
