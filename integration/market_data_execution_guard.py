@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.market_data_runtime_state import MarketDataRuntimeState
 from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
@@ -19,7 +20,7 @@ class MarketDataExecutionGuard:
     market_data: MarketDataRuntimeState
     gateway: ExecutionGateway
 
-    def execute(self, request_id: str, request: ExecutionRequest, **kwargs) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, expected_timeframe: str | None = None, expected_market_timestamp: datetime | str | None = None, **kwargs) -> GatewayResult:
         report = self.market_data.report
         if report is None:
             return GatewayResult(
@@ -36,9 +37,37 @@ class MarketDataExecutionGuard:
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.",
             )
-        if self.market_data.validated_snapshot_for_symbol(symbol=request.symbol) is None:
+        if expected_timeframe is not None and report.timeframe != expected_timeframe.strip():
+            return GatewayResult(
+                GatewayStatus.BLOCKED,
+                "execução bloqueada: timeframe da decisão não corresponde ao snapshot validado.",
+            )
+        if self.market_data.validated_snapshot(symbol=request.symbol, timeframe=report.timeframe) is None:
             return GatewayResult(
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: o snapshot validado não está disponível no runtime.",
             )
+        if expected_market_timestamp is not None:
+            snapshot = self.market_data.snapshot
+            if snapshot is None or not snapshot.candles:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    "execução bloqueada: timestamp do mercado não pode ser validado sem candles.",
+                )
+            expected = expected_market_timestamp
+            if isinstance(expected, datetime):
+                expected = expected.isoformat()
+            elif isinstance(expected, str):
+                expected = expected.strip()
+            else:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    "execução bloqueada: timestamp da decisão é inválido.",
+                )
+            current = snapshot.candles[-1].timestamp.isoformat()
+            if current != expected:
+                return GatewayResult(
+                    GatewayStatus.BLOCKED,
+                    "execução bloqueada: a decisão pertence a um candle fechado diferente do snapshot atualmente validado.",
+                )
         return self.gateway.execute(request_id, request, **kwargs)

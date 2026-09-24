@@ -47,6 +47,8 @@ class SeniorIntelligenceAssessment:
     execution_authorized: bool = False
 
 
+BUILT_IN_SENIOR_KNOWLEDGE_ID = "builtin:senior-professional-baseline"
+
 DEFAULT_SENIOR_KNOWLEDGE_STANDARD = SeniorKnowledgeStandard(
     principles=(
         "observar o mercado como um contexto e não como um sinal isolado",
@@ -97,7 +99,7 @@ class SeniorMarketIntelligenceBoundary:
         if any(not isinstance(item, TrustedKnowledge) for item in knowledge):
             raise ValueError("trusted_knowledge must contain validated knowledge only")
 
-        knowledge_ids = tuple(dict.fromkeys(item.knowledge_id for item in knowledge))
+        knowledge_ids = tuple(dict.fromkeys((BUILT_IN_SENIOR_KNOWLEDGE_ID, *(item.knowledge_id for item in knowledge))))
         gaps: list[str] = []
         strengths: list[str] = []
         reassessment: list[str] = []
@@ -113,10 +115,12 @@ class SeniorMarketIntelligenceBoundary:
             status = SeniorIntelligenceStatus.READY
             strengths.append("todo o contexto materialmente disponibilizado foi contabilizado")
 
-        if knowledge_ids:
-            strengths.append("conhecimento usado possui proveniência de validação")
-        else:
-            gaps.append("nenhum conhecimento validado foi fornecido neste ciclo; não inventar conhecimento ausente")
+        strengths.append(
+            "o ciclo já dispõe do conhecimento profissional integrado de fábrica; "
+            "ausência de conhecimento externo adicional não reduz essa capacidade"
+        )
+        if knowledge:
+            strengths.append("conhecimento externo usado possui proveniência de validação")
 
         strengths.append("o padrão sênior exige evidência favorável e contrária, não votação de sinais")
         strengths.append("novas descobertas permanecem sujeitas à validação antes de promoção")

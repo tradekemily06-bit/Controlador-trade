@@ -47,7 +47,7 @@ def test_complete_graph_with_validated_knowledge_reaches_senior_ready() -> None:
     )
 
     assert result.status is SeniorIntelligenceStatus.READY
-    assert result.knowledge_ids == ("k-1",)
+    assert result.knowledge_ids == ("builtin:senior-professional-baseline", "k-1")
     assert result.execution_authorized is False
     assert "todo o contexto materialmente disponibilizado foi contabilizado" in result.strengths
 
@@ -64,10 +64,11 @@ def test_partial_context_stays_partial_and_requires_reassessment() -> None:
     assert result.execution_authorized is False
 
 
-def test_empty_knowledge_never_invents_senior_knowledge() -> None:
+def test_empty_external_knowledge_keeps_builtin_senior_baseline() -> None:
     result = SeniorMarketIntelligenceBoundary().assess(graph=_graph())
 
     assert result.status is SeniorIntelligenceStatus.READY
-    assert result.knowledge_ids == ()
-    assert any("nenhum conhecimento validado" in gap for gap in result.gaps)
+    assert result.knowledge_ids == ("builtin:senior-professional-baseline",)
+    assert not any("nenhum conhecimento validado" in gap for gap in result.gaps)
+    assert any("conhecimento profissional integrado de fábrica" in strength for strength in result.strengths)
     assert result.execution_authorized is False

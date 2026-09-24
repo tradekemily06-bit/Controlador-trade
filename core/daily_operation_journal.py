@@ -27,6 +27,8 @@ class DailyOperationJournalEntry:
     timeframe: str | None = None
     score: float | None = None
     reason: str | None = None
+    market_timestamp: str | None = None
+    outcome: str | None = None
 
 
 class DailyOperationJournal:
@@ -78,6 +80,8 @@ class DailyOperationJournal:
         timeframe: str | None = None,
         score: float | None = None,
         reason: str | None = None,
+        market_timestamp: str | None = None,
+        outcome: str | None = None,
         timestamp: datetime | None = None,
     ) -> DailyOperationJournalEntry:
         entry = DailyOperationJournalEntry(
@@ -97,6 +101,8 @@ class DailyOperationJournal:
             timeframe=None if timeframe is None else str(timeframe),
             score=None if score is None else float(score),
             reason=None if reason is None else str(reason),
+            market_timestamp=None if market_timestamp is None else str(market_timestamp),
+            outcome=None if outcome is None else str(outcome),
         )
         with self._lock:
             if self._load_error is not None:
@@ -134,6 +140,44 @@ class DailyOperationJournal:
                 if datetime.fromisoformat(entry.timestamp).date() == day
             )
 
+    def has_market_decision(self, *, symbol: str, timeframe: str, market_timestamp: str) -> bool:
+        """Return whether this closed candle was already processed across restarts."""
+        if not isinstance(symbol, str) or not symbol.strip() or not isinstance(timeframe, str) or not timeframe.strip() or not isinstance(market_timestamp, str) or not market_timestamp.strip():
+            raise ValueError("identidade de candle inválida")
+        with self._lock:
+            return any(
+                entry.decision_id is not None
+                and entry.symbol == symbol.strip()
+                and entry.timeframe == timeframe.strip()
+                and entry.market_timestamp == market_timestamp.strip()
+                for entry in self._entries
+            )
+
+    def record_outcome(self, *, decision_id: str, outcome: str) -> int:
+        """Attach a terminal outcome to journal entries for the decision, without execution authority."""
+        if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
+            raise ValueError("outcome inválido")
+        changed = 0
+        with self._lock:
+            for index, entry in enumerate(self._entries):
+                if entry.decision_id == decision_id:
+                    self._entries[index] = DailyOperationJournalEntry(
+                        **{**asdict(entry), "outcome": outcome}
+                    )
+                    changed += 1
+            if changed:
+                if self._load_error is not None:
+                    raise OSError("diário automático indisponível; histórico existente requer inspeção manual")
+                self._persist()
+        return changed
+
+    def accepted_count_today(self, *, now: datetime | None = None) -> int:
+        """Count accepted executions, failing closed if durable history is unreadable."""
+        with self._lock:
+            if self._load_error is not None:
+                raise OSError("diário automático indisponível; limite diário não pode ser validado")
+        return sum(item.accepted for item in self.today(now=now))
+
     def summary(self) -> dict[str, Any]:
         entries = self.today()
         return {
@@ -141,8 +185,8 @@ class DailyOperationJournal:
             "total": len(entries),
             "accepted": sum(item.accepted for item in entries),
             "rejected": sum(not item.accepted for item in entries),
-            "wins": 0,
-            "losses": 0,
+            "wins": sum(item.outcome == "WIN" for item in entries),
+            "losses": sum(item.outcome == "LOSS" for item in entries),
             "storage_health": "CORRUPTED" if self._load_error else "OK",
             "note": "resultados WIN/LOSS são liquidados em memória de operação; este diário registra o ciclo operacional",
         }

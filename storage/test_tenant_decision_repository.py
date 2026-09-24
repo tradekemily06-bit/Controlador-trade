@@ -31,6 +31,7 @@ def sample_record(decision_id: str) -> DecisionRecord:
         score=90.0,
         confirmed=True,
         reason="confirmed",
+        market_timestamp="2026-09-12T00:05:00+00:00",
     )
 
 
@@ -43,7 +44,9 @@ class TenantDecisionRepositoryTests(unittest.TestCase):
         record = sample_record("decision-1")
         self.repository.save(record, tenant_id="tenant-a")
 
-        self.assertEqual(self.repository.load("decision-1", tenant_id="tenant-a"), record)
+        loaded = self.repository.load("decision-1", tenant_id="tenant-a")
+        self.assertEqual(loaded, record)
+        self.assertEqual(loaded.market_timestamp, record.market_timestamp)
         self.assertIsNone(self.repository.load("decision-1", tenant_id="tenant-b"))
 
     def test_list_never_returns_another_tenant(self) -> None:

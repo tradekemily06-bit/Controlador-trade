@@ -38,10 +38,13 @@ class DecisionStore:
                 "decision_id TEXT PRIMARY KEY", "created_at TEXT NOT NULL", "symbol TEXT",
                 "timeframe TEXT", "signal TEXT NOT NULL", "score REAL NOT NULL",
                 "confirmed INTEGER NOT NULL", "reason TEXT NOT NULL",
-                "execution_allowed INTEGER NOT NULL", "outcome TEXT",
+                "execution_allowed INTEGER NOT NULL", "outcome TEXT", "market_timestamp TEXT",
             ])
             with self._lock, self._connect() as connection:
                 connection.execute(f"CREATE TABLE IF NOT EXISTS decisions ({columns})")
+                existing = {row[1] for row in connection.execute("PRAGMA table_info(decisions)").fetchall()}
+                if "market_timestamp" not in existing:
+                    connection.execute("ALTER TABLE decisions ADD COLUMN market_timestamp TEXT")
                 connection.execute("CREATE INDEX IF NOT EXISTS idx_decisions_created_at ON decisions(created_at)")
         except (OSError, sqlite3.Error):
             self.database_path = None
@@ -68,7 +71,7 @@ class DecisionStore:
             return [DecisionRecord(
                 decision_id=row[0], created_at=row[1], symbol=row[2], timeframe=row[3],
                 signal=row[4], score=float(row[5]), confirmed=bool(row[6]), reason=row[7],
-                execution_allowed=bool(row[8]), outcome=row[9],
+                execution_allowed=bool(row[8]), outcome=row[9], market_timestamp=row[10],
             ) for row in rows]
         except (sqlite3.Error, ValueError, TypeError):
             return []

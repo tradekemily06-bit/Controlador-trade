@@ -103,10 +103,19 @@ class EcosystemService:
             raise ValueError(
                 "dados de mercado ainda não estão validados para o símbolo/timeframe solicitado"
             )
+        gated = self.evaluate_market_snapshot(snapshot)
+        record = DecisionRecord.from_analysis(gated, market_timestamp=snapshot.candles[-1].timestamp.isoformat())
+        self.memory.append(record)
+        self.store.save(record)
+        return record
+
+    def evaluate_market_snapshot(self, snapshot: BrokerMarketDataSnapshot):
+        """Evaluate one validated snapshot without persisting a decision."""
+        if not isinstance(snapshot, BrokerMarketDataSnapshot):
+            raise TypeError("snapshot deve ser BrokerMarketDataSnapshot")
         candles = list(snapshot.candles)
         if len(candles) < 20:
             raise ValueError(f"candles insuficientes para análise: {len(candles)} < 20")
-
         result = self.strategy_pipeline.evaluate(
             candles,
             confirmed=True,
@@ -114,7 +123,6 @@ class EcosystemService:
             symbol=snapshot.symbol,
             timeframe=snapshot.timeframe,
         )
-
         operational_risk = self._current_risk_decision()
         risk_observations = (
             RiskObservation(
@@ -130,7 +138,6 @@ class EcosystemService:
                 ("operational_risk_manager",),
             ),
         )
-        available_risk_domains = tuple(item.domain for item in risk_observations)
         context = self.senior_context.assess(
             SeniorContextInput(
                 context_id=f"market:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}",
@@ -138,23 +145,43 @@ class EcosystemService:
                 available_nodes=("market_data", "price_history", "risk"),
                 observed_nodes=("market_data", "price_history", "risk"),
                 gaps={},
-                relationships_reviewed=(
-                    "price-structure",
-                    "structure-volatility",
-                    "price-liquidity",
-                    "post_breakout-behavior",
-                ),
+                relationships_reviewed=("price-structure", "structure-volatility", "price-liquidity", "post_breakout-behavior"),
                 risk_observations=risk_observations,
-                available_risk_domains=available_risk_domains,
+                available_risk_domains=tuple(item.domain for item in risk_observations),
             )
         )
-        gated = self.senior_analysis_gate.evaluate(
+        return self.senior_analysis_gate.evaluate(
             analysis=result,
             senior_context=context,
             operational_risk=operational_risk,
         )
 
-        record = DecisionRecord.from_analysis(gated)
+    def record_market_analysis(self, result, *, market_timestamp: datetime) -> DecisionRecord | None:
+        """Persist one completed-candle analysis once; return None for duplicates."""
+        if not isinstance(market_timestamp, datetime):
+            raise TypeError("market_timestamp deve ser datetime")
+        timestamp = market_timestamp.isoformat()
+        symbol = getattr(result, "symbol", None)
+        timeframe = getattr(result, "timeframe", None)
+        if self.operational_runtime is not None and symbol and timeframe:
+            try:
+                if self.operational_runtime.daily_journal.has_market_decision(
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    market_timestamp=timestamp,
+                ):
+                    return None
+            except (OSError, ValueError, TypeError):
+                # A broken journal must not authorize a duplicate; memory/store dedupe remains active.
+                pass
+        if any(
+            item.symbol == symbol
+            and item.timeframe == timeframe
+            and item.market_timestamp == timestamp
+            for item in self.memory
+        ):
+            return None
+        record = DecisionRecord.from_analysis(result, market_timestamp=timestamp)
         self.memory.append(record)
         self.store.save(record)
         return record
@@ -168,6 +195,16 @@ class EcosystemService:
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
+
+    def _current_operational_state(self):
+        runtime = self.operational_runtime
+        if runtime is None or runtime.risk_state_provider is None:
+            return None
+        try:
+            state = runtime.risk_state_provider()
+        except Exception:
+            return None
+        return state
 
     def _current_risk_decision(self):
         runtime = self.operational_runtime
@@ -249,12 +286,19 @@ class EcosystemService:
             raise ValueError("amount deve ser positivo")
         if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
             raise ValueError("duration_seconds deve ser inteiro positivo")
-        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else f"demo-{uuid4().hex}"
         decision = next((item for item in self.memory if item.decision_id == decision_id), None) if isinstance(decision_id, str) and decision_id.strip() else None
         if decision is None:
             raise ValueError("decision_id é obrigatório: a execução deve estar vinculada a uma decisão registrada")
         if not decision.is_actionable:
             raise ValueError("a decisão vinculada não está confirmada como COMPRA/VENDA")
+        if decision.outcome is not None:
+            raise ValueError("a decisão já possui resultado; uma decisão liquidada/não nova não pode ser executada novamente")
+        if not decision.market_timestamp:
+            raise ValueError("a decisão não possui timestamp de candle fechado; execução bloqueada")
+        canonical_request_id = f"decision-{decision.decision_id}"
+        rid = request_id.strip() if isinstance(request_id, str) and request_id.strip() else canonical_request_id
+        if rid != canonical_request_id:
+            raise ValueError("request_id não corresponde à identidade canônica da decisão")
         if decision.signal != selected_signal.value:
             raise ValueError("decision_id não corresponde ao sinal selecionado")
         if decision is not None and decision.symbol and decision.symbol != symbol.strip():
@@ -287,6 +331,7 @@ class EcosystemService:
                     timeframe=decision.timeframe if decision is not None else None,
                     score=decision.score if decision is not None else None,
                     reason=decision.reason if decision is not None else None,
+                    market_timestamp=decision.market_timestamp if decision is not None else None,
                 )
             except (OSError, ValueError, TypeError):
                 journal_recorded = False
@@ -301,7 +346,12 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
-        result = self.operational_runtime.market_data_execution_guard.execute(rid, request)
+        result = self.operational_runtime.market_data_execution_guard.execute(
+            rid,
+            request,
+            expected_timeframe=decision.timeframe,
+            expected_market_timestamp=decision.market_timestamp,
+        )
         execution = result.execution
         external_id = execution.external_id if execution is not None else None
         journal_recorded = True
@@ -322,11 +372,18 @@ class EcosystemService:
                 timeframe=decision.timeframe if decision is not None else None,
                 score=decision.score if decision is not None else None,
                 reason=decision.reason if decision is not None else None,
+                market_timestamp=decision.market_timestamp if decision is not None else None,
             )
         except (OSError, ValueError, TypeError):
             # Bookkeeping is deliberately fail-soft: it can never turn an
             # already-completed execution into an operational retry/error.
             journal_recorded = False
+        checkpoint_recorded = True
+        if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"}:
+            try:
+                self.operational_runtime.checkpoint_operation(rid)
+            except (OSError, ValueError, TypeError):
+                checkpoint_recorded = False
         return {
             "request_id": rid,
             "status": result.status.value,
@@ -336,8 +393,48 @@ class EcosystemService:
             "mode": "DEMO",
             "real": False,
             "journal_recorded": journal_recorded,
-            "maintenance_required": not journal_recorded,
+            "checkpoint_recorded": checkpoint_recorded,
+            "maintenance_required": not journal_recorded or not checkpoint_recorded,
         }
+
+    def handle_selected_market_analysis(self, snapshot: BrokerMarketDataSnapshot, result) -> DecisionRecord | None:
+        """Persist the selected closed-candle decision and optionally execute DEMO.
+
+        Automatic operation is opt-in through a dedicated durable authority, never
+        through presentation preferences. A duplicate candle is never executed.
+        """
+        record = self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+        if record is None:
+            return None
+        authority = self.operational_runtime.demo_autonomy if self.operational_runtime is not None else None
+        if authority is None or not authority.state.enabled:
+            return record
+        if not record.is_actionable:
+            return record
+        if authority.state.amount is None or authority.state.duration_seconds is None or authority.state.max_operations_per_day is None:
+            return record
+        current_state = self._current_operational_state()
+        if current_state is None or current_state.trades_today is None:
+            return record
+        try:
+            durable_today = self.operational_runtime.daily_journal.accepted_count_today()
+        except (OSError, ValueError, TypeError):
+            return record
+        broker_today = int(current_state.trades_today)
+        # Use the more conservative count: broker-reported activity may include
+        # operations outside this process, while the durable journal survives
+        # restarts where an in-memory paper executor would otherwise reset to 0.
+        operations_today = max(broker_today, durable_today)
+        if operations_today >= authority.state.max_operations_per_day:
+            return record
+        self.execute_demo(
+            symbol=record.symbol or snapshot.symbol,
+            signal=record.signal,
+            amount=authority.state.amount,
+            duration_seconds=authority.state.duration_seconds,
+            decision_id=record.decision_id,
+        )
+        return record
 
     def daily_journal(self, limit: int = 100) -> dict[str, Any]:
         if self.operational_runtime is None:
@@ -356,6 +453,12 @@ class EcosystemService:
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
                 self.store.save(updated)
+                runtime = self.operational_runtime
+                if runtime is not None:
+                    try:
+                        runtime.daily_journal.record_outcome(decision_id=decision_id, outcome=outcome)
+                    except (OSError, ValueError, TypeError):
+                        pass
                 return updated
         raise ValueError("decision_id não encontrado")
 
@@ -478,7 +581,8 @@ class EcosystemService:
         market_health = str(market_data.get("health"))
         market_blocked = market_health in {"INVALID", "STALE", "GAP", "NOT_CONNECTED"}
         blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
-        return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
+        autonomy = runtime.demo_autonomy.state
+        return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "demo_autonomy": {"enabled": autonomy.enabled, "amount": autonomy.amount, "duration_seconds": autonomy.duration_seconds, "blocked_by_default": not autonomy.enabled, "real": False}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
 
     def system_status(self) -> dict[str, Any]:
         production_storage = self.production_storage.status()

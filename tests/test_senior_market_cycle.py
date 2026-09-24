@@ -39,7 +39,7 @@ def test_cycle_observes_context_temporally_and_uses_validated_knowledge() -> Non
     assert cycle.temporal.present
     assert cycle.temporal.scenarios
     assert cycle.intelligence.status is SeniorIntelligenceStatus.READY
-    assert cycle.intelligence.knowledge_ids == ("knowledge-1",)
+    assert cycle.intelligence.knowledge_ids == ("builtin:senior-professional-baseline", "knowledge-1")
     assert cycle.execution_authorized is False
 
 

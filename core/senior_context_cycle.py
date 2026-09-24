@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Iterable
 
 from core.integrated_market_reading import IntegratedMarketReading, ReadingStatus
+from core.senior_market_intelligence import SeniorIntelligenceAssessment
 from core.senior_market_reasoning import SeniorMarketAssessment
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 from core.temporal_market_context import TemporalMarketContext
@@ -38,6 +39,7 @@ class SeniorContextCycle:
     validated_knowledge_ids: tuple[str, ...]
     unresolved_questions: tuple[str, ...]
     quality: SeniorContextQuality
+    intelligence: SeniorIntelligenceAssessment | None = None
     execution_authorized: bool = False
 
 
@@ -54,6 +56,7 @@ class SeniorContextCycleBoundary:
         senior_assessment: SeniorMarketAssessment,
         risk_assessment: SeniorRiskAssessment,
         validated_knowledge_ids: Iterable[str] = (),
+        intelligence: SeniorIntelligenceAssessment | None = None,
     ) -> SeniorContextCycle:
         if not isinstance(cycle_id, str) or not cycle_id.strip():
             raise ValueError("cycle_id is required")
@@ -67,6 +70,8 @@ class SeniorContextCycleBoundary:
             raise ValueError("senior_assessment is required")
         if not isinstance(risk_assessment, SeniorRiskAssessment):
             raise ValueError("risk_assessment is required")
+        if intelligence is not None and not isinstance(intelligence, SeniorIntelligenceAssessment):
+            raise ValueError("intelligence must be SeniorIntelligenceAssessment when provided")
         if senior_assessment.execution_authorized:
             raise ValueError("senior assessment cannot authorize execution")
         if risk_assessment.execution_authorized:
@@ -112,6 +117,7 @@ class SeniorContextCycleBoundary:
             validated_knowledge_ids=knowledge,
             unresolved_questions=questions,
             quality=quality,
+            intelligence=intelligence,
             execution_authorized=False,
         )
 

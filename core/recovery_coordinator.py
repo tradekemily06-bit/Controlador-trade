@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
@@ -38,7 +37,7 @@ class RecoveryCoordinator:
         checkpoint_store: RuntimeCheckpointStore,
         lifecycle_store: ExecutionLifecycleStore,
         execution_ledger: ExecutionLedger,
-        memory: OperationMemory,
+        memory: object | None = None,
     ) -> None:
         if not isinstance(checkpoint_store, RuntimeCheckpointStore):
             raise ValueError("checkpoint_store inválido.")
@@ -46,11 +45,10 @@ class RecoveryCoordinator:
             raise ValueError("lifecycle_store inválido.")
         if not isinstance(execution_ledger, ExecutionLedger):
             raise ValueError("execution_ledger inválido.")
-        if not isinstance(memory, OperationMemory):
-            raise ValueError("memory inválida.")
         self.checkpoint_store = checkpoint_store
         self.lifecycle_store = lifecycle_store
         self.execution_ledger = execution_ledger
+        # Kept only as a backward-compatible constructor parameter for the historical P4 recorder; recovery is authoritative from checkpoint/lifecycle/ledger and does not depend on in-process memory.
         self.memory = memory
 
     def assess(self) -> RecoveryAssessment:

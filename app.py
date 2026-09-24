@@ -10,6 +10,7 @@ from socketserver import ThreadingMixIn
 from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
+from analysis.decision_store import DecisionStore
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
@@ -17,6 +18,8 @@ from integration.execution_provider import build_demo_execution_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
+from integration.mt5_asset_suitability_bridge import select_mt5_analysis_candidates
+from execution.mt5_instrument_universe import discover_mt5_instruments
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -30,21 +33,55 @@ MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_ma
 MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
+
+def _select_mt5_analysis_symbols() -> tuple[str, ...]:
+    """Discover the broker universe and return evidence-qualified analysis candidates."""
+    try:
+        import MetaTrader5 as mt5  # type: ignore
+    except ImportError:
+        return ()
+    if not mt5.initialize():
+        return ()
+    try:
+        statuses = discover_mt5_instruments(mt5)
+        candidates = select_mt5_analysis_candidates(
+            mt5,
+            statuses,
+            limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_CANDIDATES", "8")),
+        )
+        return tuple(candidate.symbol for candidate in candidates)
+    finally:
+        mt5.shutdown()
+
 if MARKET_DATA is not None:
     MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
         BrokerMarketDataBoundary(MARKET_DATA, MARKET_DATA_PROVIDER),
         OPERATIONAL_RUNTIME.market_data,
         MarketDataRuntimeConfig(
-            symbol=EXECUTION_SYMBOL or "EURUSD",
+            symbol=EXECUTION_SYMBOL,
             timeframe=os.environ.get("CONTROLADOR_EXECUTION_TIMEFRAME", "5m"),
             limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_LIMIT", "120")),
             poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_DATA_POLL_SECONDS", "5")),
         ),
+        symbol_selector=None,
+    )
+NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
+DECISION_DB = os.environ.get("CONTROLADOR_DECISION_DB") or str(RUNTIME_DIR / "decisions.sqlite3")
+SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
+ONBOARDING = EcosystemOnboarding()
+
+if MARKET_DATA_RUNTIME is not None:
+    candidate_selector = (
+        (lambda: (EXECUTION_SYMBOL,))
+        if EXECUTION_SYMBOL
+        else _select_mt5_analysis_symbols
+    )
+    MARKET_DATA_RUNTIME.configure_candidate_analysis(
+        candidate_selector=candidate_selector,
+        candidate_analyzer=SERVICE.evaluate_market_snapshot,
+        selected_result_handler=SERVICE.handle_selected_market_analysis,
     )
     MARKET_DATA_RUNTIME.start()
-NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB)
-ONBOARDING = EcosystemOnboarding()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -107,16 +144,22 @@ def _file_response(start_response, path: Path, content_type: str, request_id: st
     if script_nonce:
         body = body.replace(b"<script>", f'<script nonce="{script_nonce}">'.encode("ascii"), 1)
         if path == WEB_DIR / "index.html":
+            kill_switch_html = (WEB_DIR / "components" / "kill-switch.html").read_text(encoding="utf-8").encode("utf-8")
+            kill_switch_js = (WEB_DIR / "components" / "kill-switch.js").read_text(encoding="utf-8")
             notification_html = (WEB_DIR / "components" / "notifications.html").read_text(encoding="utf-8").encode("utf-8")
             notification_js = (WEB_DIR / "components" / "notifications.js").read_text(encoding="utf-8")
             onboarding_html = (WEB_DIR / "components" / "onboarding.html").read_text(encoding="utf-8").encode("utf-8")
             onboarding_js = (WEB_DIR / "components" / "onboarding.js").read_text(encoding="utf-8")
+            kill_switch_script = f'<script nonce="{script_nonce}">{kill_switch_js}</script>'.encode("utf-8")
             notification_script = f'<script nonce="{script_nonce}">{notification_js}</script>'.encode("utf-8")
             onboarding_script = f'<script nonce="{script_nonce}">{onboarding_js}</script>'.encode("utf-8")
+            kill_switch_mount = kill_switch_html + kill_switch_script
             notification_mount = notification_html + notification_script
             onboarding_mount = onboarding_html + onboarding_script
             anchor = '<div class="section">Visão geral</div>'.encode("utf-8")
             body = body.replace(anchor, notification_mount + onboarding_mount + anchor, 1)
+            config_anchor = '<div class="section" id="config">Configurações</div>'.encode("utf-8")
+            body = body.replace(config_anchor, kill_switch_mount + config_anchor, 1)
     headers = [("Content-Type", content_type), ("Content-Length", str(len(body)))]
     headers.extend(SECURITY.headers(request_id, script_nonce=script_nonce))
     start_response("200 OK", headers)
@@ -136,15 +179,75 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+        if path == "/api/demo-autonomy" and method == "GET":
+            state = OPERATIONAL_RUNTIME.demo_autonomy.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "max_operations_per_day": state.max_operations_per_day, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
+        if path == "/api/demo-autonomy" and method == "POST":
+            authorized, reason = _authorize_internal_update(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            action = str(data.get("action", "")).strip().lower()
+            if action == "disable":
+                state = OPERATIONAL_RUNTIME.demo_autonomy.disable()
+            elif action == "enable":
+                state = OPERATIONAL_RUNTIME.demo_autonomy.enable(amount=data.get("amount"), duration_seconds=data.get("duration_seconds"), max_operations_per_day=data.get("max_operations_per_day"), authorized_at=str(data.get("authorized_at", "")), authorized_by=str(data.get("authorized_by", "")))
+            else:
+                raise ValueError("action deve ser enable ou disable")
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "amount": state.amount, "duration_seconds": state.duration_seconds, "max_operations_per_day": state.max_operations_per_day, "authorized_at": state.authorized_at, "authorized_by": state.authorized_by, "mode": "DEMO", "real": False}, request_id, environ)
         if path == "/api/market/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.market_data_status(), request_id, environ)
         if path == "/api/market/analyze" and method == "POST":
             data = _read_json(environ)
             record = SERVICE.analyze_market(symbol=str(data.get("symbol", "")), timeframe=str(data.get("timeframe", "")), limit=int(data.get("limit", 120)))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), "execution_allowed": False}, request_id, environ)
+        if path == "/api/kill-switch" and method == "GET":
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                return _json_response(start_response, HTTPStatus.OK, {"enabled": True, "reason": "runtime operacional não conectado", "execution_allowed": False}, request_id, environ)
+            state = runtime.kill_switch.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
+        if path == "/api/kill-switch" and method == "POST":
+            data = _read_json(environ)
+            runtime = SERVICE.operational_runtime
+            if runtime is None:
+                raise RuntimeError("runtime operacional não conectado")
+            if str(data.get("action", "")).strip().lower() != "activate":
+                raise ValueError("somente ativação do Kill switch está disponível pela interface")
+            reason = str(data.get("reason", "")).strip()
+            if not reason:
+                raise ValueError("reason é obrigatório")
+            runtime.activate_kill_switch(reason)
+            state = runtime.kill_switch.state
+            return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
+        if path == "/api/leverage/assess" and method == "POST":
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.assess_leverage(_read_json(environ)), request_id, environ)
+        if path == "/api/ecosystem-image" and method == "GET":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", ["profile"])[-1]
+            image = SERVICE.read_ecosystem_image(kind)
+            if image is None:
+                return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "imagem não configurada", "request_id": request_id}, request_id, environ)
+            body, content_type = image
+            headers = [("Content-Type", content_type), ("Content-Length", str(len(body))), ("Cache-Control", "no-store")]
+            headers.extend(SECURITY.headers(request_id))
+            start_response("200 OK", headers)
+            _audit(environ, request_id, 200)
+            return [body]
+        if path == "/api/ecosystem-image" and method == "POST":
+            kind = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True).get("kind", [""])[-1]
+            raw_length = environ.get("CONTENT_LENGTH") or "0"
+            length = int(raw_length)
+            from core.ecosystem_image_store import EcosystemImageStore
+            if length <= 0 or length > EcosystemImageStore.MAX_BYTES:
+                raise ValueError("imagem deve ter entre 1 byte e 5 MB")
+            payload = environ["wsgi.input"].read(length)
+            if len(payload) != length:
+                raise ValueError("payload de imagem incompleto")
+            mime = SERVICE.save_ecosystem_image(kind, payload, str(environ.get("CONTENT_TYPE", "")))
+            return _json_response(start_response, HTTPStatus.OK, {"saved": True, "content_type": mime, "request_id": request_id}, request_id, environ)
         if path == "/api/preferences" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"preferences": SERVICE.get_preferences()}, request_id, environ)
         if path == "/api/preferences" and method == "POST":
@@ -246,6 +349,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
+        if path == "/icons/icon.svg" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "icons" / "icon.svg", "image/svg+xml", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):

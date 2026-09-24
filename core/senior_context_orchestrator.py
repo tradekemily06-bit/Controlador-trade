@@ -16,6 +16,7 @@ from data.models import Candle
 
 from .integrated_market_reading import IntegratedMarketReader
 from .senior_context_cycle import SeniorContextCycle, SeniorContextCycleBoundary
+from .senior_market_intelligence import SeniorMarketIntelligenceBoundary
 from .senior_market_reasoning import SeniorMarketReasoner
 from .senior_risk_reasoning import RiskDomain, RiskObservation, SeniorRiskReasoner
 from .temporal_market_context import TemporalMarketContextEngine
@@ -55,6 +56,7 @@ class SeniorContextOrchestrator:
         self.reader = IntegratedMarketReader()
         self.reasoner = SeniorMarketReasoner()
         self.risk_reasoner = SeniorRiskReasoner()
+        self.intelligence = SeniorMarketIntelligenceBoundary()
         self.cycle_boundary = SeniorContextCycleBoundary()
 
     def assess(self, request: SeniorContextInput) -> SeniorContextCycle:
@@ -73,6 +75,8 @@ class SeniorContextOrchestrator:
             request.risk_observations,
             available_domains=request.available_risk_domains,
         )
+        intelligence = self.intelligence.assess(graph=graph)
+        knowledge_ids = tuple(dict.fromkeys((*intelligence.knowledge_ids, *request.validated_knowledge_ids)))
         return self.cycle_boundary.assemble(
             cycle_id=str(uuid4()),
             whole_graph=graph,
@@ -80,7 +84,7 @@ class SeniorContextOrchestrator:
             market_reading=reading,
             senior_assessment=senior,
             risk_assessment=risk,
-            validated_knowledge_ids=request.validated_knowledge_ids,
+            validated_knowledge_ids=knowledge_ids,
         )
 
     @staticmethod

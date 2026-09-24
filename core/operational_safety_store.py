@@ -103,6 +103,27 @@ class OperationalSafetyStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
 
+    def save_kill_switch_state(self, kill_switch: KillSwitch) -> None:
+        """Persist only the safety switch while preserving audit history."""
+        if not isinstance(kill_switch, KillSwitch):
+            raise TypeError("kill_switch deve ser KillSwitch.")
+        payload = self._read_payload()
+        audit = payload.get("audit", [])
+        execution_audit = payload.get("execution_audit", [])
+        if not isinstance(audit, list) or not isinstance(execution_audit, list):
+            raise ValueError("estado de segurança inválido.")
+        # Validate existing persisted projections before changing only the switch.
+        normalized_audit = [self._audit_dict(self._audit_record(item)) for item in audit]
+        normalized_execution = [self._execution_audit_item(item) for item in execution_audit]
+        state = kill_switch.state
+        payload = {
+            "audit": normalized_audit,
+            "kill_switch": {"enabled": state.enabled, "reason": state.reason},
+            "execution_audit": normalized_execution,
+        }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")

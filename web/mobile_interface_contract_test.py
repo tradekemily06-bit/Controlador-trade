@@ -33,3 +33,13 @@ def test_mobile_ui_keeps_real_execution_blocked():
     assert "REAL BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
+
+
+def test_web_components_do_not_persist_operational_or_onboarding_state_in_browser_storage():
+    components = Path(__file__).parent / "components"
+    offenders = []
+    for script in components.glob("*.js"):
+        source = script.read_text(encoding="utf-8")
+        if "localStorage" in source or "sessionStorage" in source or "indexedDB" in source:
+            offenders.append(script.name)
+    assert offenders == []
