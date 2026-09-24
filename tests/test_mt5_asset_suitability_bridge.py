@@ -33,7 +33,7 @@ def test_bridge_preserves_open_session_and_observable_quote_evidence():
     assert observation.spread_observed == 0.0002
     assert observation.liquidity_observed is True
     assert observation.data_quality_ok is True
-    assert observation.domain_expertise_available is False
+    assert observation.domain_expertise_available is True
 
 
 def test_bridge_does_not_convert_unknown_session_to_open():
