@@ -49,6 +49,7 @@ class ProductionTenantDecisionRepository:
             reason=str(payload["reason"]),
             execution_allowed=bool(payload.get("execution_allowed", False)),
             outcome=payload.get("outcome"),
+            market_timestamp=payload.get("market_timestamp"),
         )
 
     def save(self, record: DecisionRecord, *, tenant_id: str) -> None:
