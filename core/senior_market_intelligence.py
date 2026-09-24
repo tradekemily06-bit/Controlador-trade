@@ -47,6 +47,8 @@ class SeniorIntelligenceAssessment:
     execution_authorized: bool = False
 
 
+BUILT_IN_SENIOR_KNOWLEDGE_ID = "builtin:senior-professional-baseline"
+
 DEFAULT_SENIOR_KNOWLEDGE_STANDARD = SeniorKnowledgeStandard(
     principles=(
         "observar o mercado como um contexto e não como um sinal isolado",
@@ -97,7 +99,7 @@ class SeniorMarketIntelligenceBoundary:
         if any(not isinstance(item, TrustedKnowledge) for item in knowledge):
             raise ValueError("trusted_knowledge must contain validated knowledge only")
 
-        knowledge_ids = tuple(dict.fromkeys(item.knowledge_id for item in knowledge))
+        knowledge_ids = tuple(dict.fromkeys((BUILT_IN_SENIOR_KNOWLEDGE_ID, *(item.knowledge_id for item in knowledge))))
         gaps: list[str] = []
         strengths: list[str] = []
         reassessment: list[str] = []
