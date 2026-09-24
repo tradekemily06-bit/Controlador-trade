@@ -56,6 +56,7 @@ class SeniorContextCycleBoundary:
         senior_assessment: SeniorMarketAssessment,
         risk_assessment: SeniorRiskAssessment,
         validated_knowledge_ids: Iterable[str] = (),
+        intelligence: SeniorIntelligenceAssessment | None = None,
     ) -> SeniorContextCycle:
         if not isinstance(cycle_id, str) or not cycle_id.strip():
             raise ValueError("cycle_id is required")
