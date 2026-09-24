@@ -39,6 +39,7 @@ class SeniorContextCycle:
     validated_knowledge_ids: tuple[str, ...]
     unresolved_questions: tuple[str, ...]
     quality: SeniorContextQuality
+    intelligence: SeniorIntelligenceAssessment | None = None
     execution_authorized: bool = False
 
 
