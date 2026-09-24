@@ -127,6 +127,25 @@ class OperationalSafetyStore:
             payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
             self._atomic_write(payload)
 
+    def append_execution_audit(self, event: dict[str, object]) -> tuple[dict[str, object], ...]:
+        normalized = self._execution_audit_item(event)
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            payload = self._read_payload()
+            audit = payload.get("audit", [])
+            kill_switch = payload.get("kill_switch", {})
+            raw = payload.get("execution_audit", [])
+            if not isinstance(audit, list) or not isinstance(kill_switch, dict) or not isinstance(raw, list):
+                raise ValueError("estado de segurança inválido.")
+            events = [self._execution_audit_item(item) for item in raw]
+            if events:
+                previous = datetime.fromisoformat(str(events[-1]["timestamp"]))
+                current = datetime.fromisoformat(str(normalized["timestamp"]))
+                if current < previous:
+                    raise ValueError("eventos de auditoria devem ser cronológicos.")
+            events.append(normalized)
+            self._atomic_write({"audit": audit, "kill_switch": kill_switch, "execution_audit": events})
+            return tuple(events)
+
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
             payload = self._read_payload()
