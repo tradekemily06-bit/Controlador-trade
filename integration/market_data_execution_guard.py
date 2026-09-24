@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.market_data_runtime_state import MarketDataRuntimeState
 from execution.gateway import ExecutionGateway, GatewayResult, GatewayStatus
@@ -19,7 +20,7 @@ class MarketDataExecutionGuard:
     market_data: MarketDataRuntimeState
     gateway: ExecutionGateway
 
-    def execute(self, request_id: str, request: ExecutionRequest, *, expected_timeframe: str | None = None, **kwargs) -> GatewayResult:
+    def execute(self, request_id: str, request: ExecutionRequest, *, expected_timeframe: str | None = None, expected_market_timestamp: datetime | str | None = None, **kwargs) -> GatewayResult:
         report = self.market_data.report
         if report is None:
             return GatewayResult(
@@ -46,4 +47,4 @@ class MarketDataExecutionGuard:
                 GatewayStatus.BLOCKED,
                 "execução bloqueada: o snapshot validado não está disponível no runtime.",
             )
-        return self.gateway.execute(request_id, request, **kwargs)
+        if expected_market_timestamp is not None:\n            snapshot = self.market_data.snapshot\n            if snapshot is None or not snapshot.candles:\n                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: timestamp do mercado não pode ser validado sem candles.")\n            expected = expected_market_timestamp\n            if isinstance(expected, datetime):\n                expected = expected.isoformat()\n            elif isinstance(expected, str):\n                expected = expected.strip()\n            else:\n                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: timestamp da decisão é inválido.")\n            current = snapshot.candles[-1].timestamp.isoformat()\n            if current != expected:\n                return GatewayResult(\n                    GatewayStatus.BLOCKED,\n                    "execução bloqueada: a decisão pertence a um candle fechado diferente do snapshot atualmente validado.",\n                )\n        return self.gateway.execute(request_id, request, **kwargs)
