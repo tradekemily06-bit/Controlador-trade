@@ -55,3 +55,16 @@ def test_corrupted_journal_is_not_overwritten_automatically(tmp_path):
 
     assert path.read_text(encoding="utf-8") == "{not-json"
     assert journal.summary()["storage_health"] == "CORRUPTED"
+
+
+def test_outcome_is_persisted_against_decision_without_execution_authority(tmp_path):
+    path = tmp_path / "journal.json"
+    journal = DailyOperationJournal(path)
+    journal.append(
+        request_id="demo-1", mode="DEMO", action="OPEN", symbol="EURUSD", signal="COMPRA",
+        amount=1, duration_seconds=60, status="ACCEPTED", accepted=True,
+        external_id="mt5-123", message="ok", decision_id="decision-1",
+    )
+    assert journal.record_outcome(decision_id="decision-1", outcome="WIN") == 1
+    reloaded = DailyOperationJournal(path)
+    assert reloaded.entries()[0].outcome == "WIN"
