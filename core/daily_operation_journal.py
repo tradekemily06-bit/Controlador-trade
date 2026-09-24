@@ -29,6 +29,7 @@ class DailyOperationJournalEntry:
     reason: str | None = None
     market_timestamp: str | None = None
     outcome: str | None = None
+    market_timestamp: str | None = None
 
 
 class DailyOperationJournal:
@@ -82,6 +83,7 @@ class DailyOperationJournal:
         reason: str | None = None,
         market_timestamp: str | None = None,
         outcome: str | None = None,
+        market_timestamp: str | None = None,
         timestamp: datetime | None = None,
     ) -> DailyOperationJournalEntry:
         entry = DailyOperationJournalEntry(
@@ -103,6 +105,7 @@ class DailyOperationJournal:
             reason=None if reason is None else str(reason),
             market_timestamp=None if market_timestamp is None else str(market_timestamp),
             outcome=None if outcome is None else str(outcome),
+            market_timestamp=None if market_timestamp is None else str(market_timestamp),
         )
         with self._lock:
             if self._load_error is not None:
