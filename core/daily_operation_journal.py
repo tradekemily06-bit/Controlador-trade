@@ -173,6 +173,10 @@ class DailyOperationJournal:
                 self._persist()
         return changed
 
+    def accepted_count_today(self, *, now: datetime | None = None) -> int:
+        """Count accepted executions from durable journal history for the current UTC day."""
+        return sum(item.accepted for item in self.today(now=now))
+
     def summary(self) -> dict[str, Any]:
         entries = self.today()
         return {
