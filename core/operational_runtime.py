@@ -9,7 +9,6 @@ from core.kill_switch import KillSwitch
 from core.operational_state import OperationalState
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
-from core.operation_memory import OperationMemory
 from core.operational_safety_store import OperationalSafetyStore
 from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
@@ -85,12 +84,10 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     session_id = uuid4().hex
     if previous_checkpoint is not None and session_id == previous_checkpoint.session_id:
         session_id = f"{session_id}-{datetime.now(timezone.utc).timestamp_ns()}"
-    memory = OperationMemory()
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
-        memory=memory,
     )
     health = RuntimeHealthMonitor(
         ledger=ledger,
