@@ -89,6 +89,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         self.assertFalse(data["execution_allowed"])
         self.assertTrue(SERVICE.operational_runtime.kill_switch.state.enabled)
         SERVICE.operational_runtime.kill_switch.deactivate()
+        SERVICE.operational_runtime.safety_store.save_kill_switch_state(SERVICE.operational_runtime.kill_switch)
 
     def test_dashboard_mounts_shared_runtime_controls(self):
         status, _, body = self.request("/")
