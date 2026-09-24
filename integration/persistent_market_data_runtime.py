@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
 from core.market_data_runtime_state import MarketDataRuntimeState
-from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest
+from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot
+from integration.market_data_candidate_sweep import MarketDataCandidateSweep
 
 
 @dataclass(frozen=True)
@@ -40,17 +41,24 @@ class PersistentMarketDataRuntime:
         state: MarketDataRuntimeState,
         config: MarketDataRuntimeConfig,
         symbol_selector: Callable[[], str | None] | None = None,
+        candidate_selector: Callable[[], Iterable[str]] | None = None,
+        candidate_analyzer: Callable[[BrokerMarketDataSnapshot], object] | None = None,
     ) -> None:
         self._boundary = boundary
         self._state = state
         self._config = config
         self._symbol_selector = symbol_selector
+        self._candidate_selector = candidate_selector
+        self._candidate_analyzer = candidate_analyzer
         self._selected_symbol: str | None = config.symbol
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._last_error: str | None = None
         self._last_success: datetime | None = None
+        self._last_sweep_selected: str | None = None
+        self._last_sweep_candidate_count = 0
+        self._last_sweep_errors: tuple[str, ...] = ()
 
     def start(self) -> None:
         with self._lock:
