@@ -9,6 +9,7 @@ from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditS
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -232,3 +233,47 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_external_observation_resolves_unknown_by_persisted_external_identity(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
+    ledger.mark_accepted_real("req-ext", external_id="ext-42")
+    ledger.mark_unknown("req-ext")
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution")
+    result = gateway.reconcile_external_observation(
+        observation,
+        evidence_id="obs-ext-42",
+        evidence_source="fake-broker-query",
+    )
+    assert result.reconciled is True
+    assert ledger.status("req-ext") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert ledger.reconciliation_evidence("req-ext") == {
+        "evidence_id": "obs-ext-42",
+        "evidence_source": "fake-broker-query",
+    }
+
+
+def test_external_observation_cannot_reconcile_unknown_without_matching_external_identity(tmp_path: Path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
+    ledger.mark_accepted_real("req-ext", external_id="ext-42")
+    ledger.mark_unknown("req-ext")
+    registry = BrokerRegistry()
+    registry.register("fake", FakeAdapter())
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    observation = ExternalOrderObservation("ext-other", ExternalOrderStatus.EXECUTED, "different broker order")
+    try:
+        gateway.reconcile_external_observation(
+            observation,
+            evidence_id="obs-other",
+            evidence_source="fake-broker-query",
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("external observation without a linked external_id must not mutate the ledger")
+    assert ledger.status("req-ext") is ExecutionLedgerStatus.UNKNOWN
