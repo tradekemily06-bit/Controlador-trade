@@ -416,7 +416,16 @@ class EcosystemService:
         current_state = self._current_operational_state()
         if current_state is None or current_state.trades_today is None:
             return record
-        if current_state.trades_today >= authority.state.max_operations_per_day:
+        try:
+            durable_today = self.operational_runtime.daily_journal.accepted_count_today()
+        except (OSError, ValueError, TypeError):
+            return record
+        broker_today = int(current_state.trades_today)
+        # Use the more conservative count: broker-reported activity may include
+        # operations outside this process, while the durable journal survives
+        # restarts where an in-memory paper executor would otherwise reset to 0.
+        operations_today = max(broker_today, durable_today)
+        if operations_today >= authority.state.max_operations_per_day:
             return record
         self.execute_demo(
             symbol=record.symbol or snapshot.symbol,
