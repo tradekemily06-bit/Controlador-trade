@@ -49,9 +49,9 @@ def test_sweep_analyzes_candidates_and_leaves_winner_as_authoritative_snapshot()
     assert provider.requests == ["A", "WIN", "B"]
     assert result.selected is not None
     assert result.selected.result == 100
-    snapshot = sweep._state.validated_snapshot_for_symbol(symbol="WIN")
-    assert snapshot is not None
-    assert snapshot.symbol == "WIN"
+    status = sweep._state.status()
+    assert status["safe_for_analysis"] is True
+    assert status["symbol"] == "WIN"
 
 
 def test_sweep_does_not_poison_good_candidates_when_one_fetch_fails() -> None:
@@ -67,7 +67,8 @@ def test_sweep_does_not_poison_good_candidates_when_one_fetch_fails() -> None:
 
     assert result.selected_symbol == "WIN"
     assert result.candidates[0].error is not None
-    assert sweep._state.validated_snapshot_for_symbol(symbol="WIN") is not None
+    assert sweep._state.status()["safe_for_analysis"] is True
+    assert sweep._state.status()["symbol"] == "WIN"
 
 
 def test_sweep_invalidates_execution_context_when_no_candidate_is_actionable() -> None:
