@@ -75,6 +75,10 @@ if MARKET_DATA_RUNTIME is not None:
         MARKET_DATA_RUNTIME.configure_candidate_analysis(
             candidate_selector=_select_mt5_analysis_symbols,
             candidate_analyzer=SERVICE.evaluate_market_snapshot,
+            selected_result_handler=lambda snapshot, result: SERVICE.record_market_analysis(
+                result,
+                market_timestamp=snapshot.candles[-1].timestamp,
+            ),
         )
         MARKET_DATA_RUNTIME.start()
 
