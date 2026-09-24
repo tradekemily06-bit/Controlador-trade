@@ -75,3 +75,18 @@ def test_guard_allows_healthy_matching_data_to_reach_gateway():
     guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
     result = guard.execute("healthy-data", _request())
     assert result.status is GatewayStatus.ACCEPTED
+
+
+def test_guard_blocks_decision_timeframe_mismatch():
+    state = _state(health=MarketDataHealth.HEALTHY)
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    result = guard.execute("timeframe-mismatch", _request(), expected_timeframe="1m")
+    assert result.status is GatewayStatus.BLOCKED
+    assert "timeframe" in result.message
+
+
+def test_guard_accepts_exact_decision_timeframe():
+    state = _state(health=MarketDataHealth.HEALTHY)
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    result = guard.execute("timeframe-match", _request(), expected_timeframe="5m")
+    assert result.status is GatewayStatus.ACCEPTED
