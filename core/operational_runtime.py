@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -29,16 +30,22 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    recorder: PersistentOperationalRecorder
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
     kill_switch = KillSwitch()
+    recorder = PersistentOperationalRecorder.from_path(
+        root / "operation-memory.json",
+        kill_switch=kill_switch,
+        safety_path=root / "operational-safety.json",
+    )
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
-    memory = OperationMemory()
+    memory = recorder.memory
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
@@ -56,6 +63,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        recorder=recorder,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
@@ -67,4 +75,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        recorder=recorder,
     )
