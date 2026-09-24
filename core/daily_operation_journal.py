@@ -162,8 +162,8 @@ class DailyOperationJournal:
             "total": len(entries),
             "accepted": sum(item.accepted for item in entries),
             "rejected": sum(not item.accepted for item in entries),
-            "wins": 0,
-            "losses": 0,
+            "wins": sum(item.outcome == "WIN" for item in entries),
+            "losses": sum(item.outcome == "LOSS" for item in entries),
             "storage_health": "CORRUPTED" if self._load_error else "OK",
             "note": "resultados WIN/LOSS são liquidados em memória de operação; este diário registra o ciclo operacional",
         }
