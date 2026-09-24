@@ -18,7 +18,7 @@ class _Provider:
         self.requests.append(request.symbol)
         if request.symbol in self.failures:
             raise RuntimeError(f"provider failure for {request.symbol}")
-            start = datetime.now(timezone.utc) - timedelta(minutes=150)
+        start = datetime.now(timezone.utc) - timedelta(minutes=150)
         offset = 100 if request.symbol == "WIN" else 0
         return [Candle(start + timedelta(minutes=5 * i), 100 + offset + i, 101 + offset + i, 99 + offset + i, 100.5 + offset + i) for i in range(30)]
 
