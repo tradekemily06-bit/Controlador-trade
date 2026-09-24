@@ -17,6 +17,7 @@ class DemoAutonomyAuthorization:
     enabled: bool = False
     amount: float | None = None
     duration_seconds: int | None = None
+    max_operations_per_day: int | None = None
     authorized_at: str | None = None
     authorized_by: str | None = None
 
@@ -30,11 +31,13 @@ class DemoAutonomyAuthorizationStore:
     def state(self) -> DemoAutonomyAuthorization:
         return self._state
 
-    def enable(self, *, amount: float, duration_seconds: int, authorized_at: str, authorized_by: str) -> DemoAutonomyAuthorization:
+    def enable(self, *, amount: float, duration_seconds: int, max_operations_per_day: int, authorized_at: str, authorized_by: str) -> DemoAutonomyAuthorization:
         if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
             raise ValueError("amount deve ser positivo")
         if not isinstance(duration_seconds, int) or isinstance(duration_seconds, bool) or duration_seconds <= 0:
             raise ValueError("duration_seconds deve ser inteiro positivo")
+        if not isinstance(max_operations_per_day, int) or isinstance(max_operations_per_day, bool) or max_operations_per_day <= 0:
+            raise ValueError("max_operations_per_day deve ser inteiro positivo")
         if not isinstance(authorized_at, str) or not authorized_at.strip():
             raise ValueError("authorized_at é obrigatório")
         if not isinstance(authorized_by, str) or not authorized_by.strip():
@@ -43,6 +46,7 @@ class DemoAutonomyAuthorizationStore:
             enabled=True,
             amount=float(amount),
             duration_seconds=duration_seconds,
+            max_operations_per_day=max_operations_per_day,
             authorized_at=authorized_at.strip(),
             authorized_by=authorized_by.strip(),
         )
@@ -89,6 +93,8 @@ class DemoAutonomyAuthorizationStore:
             raise ValueError("amount inválido")
         if state.duration_seconds is None or state.duration_seconds <= 0:
             raise ValueError("duration_seconds inválido")
+        if state.max_operations_per_day is None or state.max_operations_per_day <= 0:
+            raise ValueError("max_operations_per_day inválido")
         if not isinstance(state.authorized_at, str) or not state.authorized_at.strip():
             raise ValueError("authorized_at inválido")
         if not isinstance(state.authorized_by, str) or not state.authorized_by.strip():
