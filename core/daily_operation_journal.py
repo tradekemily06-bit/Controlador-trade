@@ -27,6 +27,7 @@ class DailyOperationJournalEntry:
     timeframe: str | None = None
     score: float | None = None
     reason: str | None = None
+    market_timestamp: str | None = None
     outcome: str | None = None
 
 
@@ -79,6 +80,7 @@ class DailyOperationJournal:
         timeframe: str | None = None,
         score: float | None = None,
         reason: str | None = None,
+        market_timestamp: str | None = None,
         outcome: str | None = None,
         timestamp: datetime | None = None,
     ) -> DailyOperationJournalEntry:
@@ -99,6 +101,7 @@ class DailyOperationJournal:
             timeframe=None if timeframe is None else str(timeframe),
             score=None if score is None else float(score),
             reason=None if reason is None else str(reason),
+            market_timestamp=None if market_timestamp is None else str(market_timestamp),
             outcome=None if outcome is None else str(outcome),
         )
         with self._lock:
@@ -135,6 +138,19 @@ class DailyOperationJournal:
             return tuple(
                 entry for entry in reversed(self._entries)
                 if datetime.fromisoformat(entry.timestamp).date() == day
+            )
+
+    def has_market_decision(self, *, symbol: str, timeframe: str, market_timestamp: str) -> bool:
+        """Return whether this closed candle was already processed across restarts."""
+        if not isinstance(symbol, str) or not symbol.strip() or not isinstance(timeframe, str) or not timeframe.strip() or not isinstance(market_timestamp, str) or not market_timestamp.strip():
+            raise ValueError("identidade de candle inválida")
+        with self._lock:
+            return any(
+                entry.decision_id is not None
+                and entry.symbol == symbol.strip()
+                and entry.timeframe == timeframe.strip()
+                and entry.market_timestamp == market_timestamp.strip()
+                for entry in self._entries
             )
 
     def record_outcome(self, *, decision_id: str, outcome: str) -> int:
