@@ -239,6 +239,7 @@ def test_external_observation_resolves_unknown_by_persisted_external_identity(tm
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
     ledger.mark_unknown("req-ext")
+    ledger.bind_external_id("req-ext", external_id="ext-42")
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
