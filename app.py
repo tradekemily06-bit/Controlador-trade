@@ -17,6 +17,8 @@ from integration.execution_provider import build_demo_execution_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
+from execution.mt5_asset_selector import rank_mt5_assets
+from execution.mt5_instrument_universe import discover_mt5_instruments
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -30,16 +32,33 @@ MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_ma
 MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
+
+def _select_mt5_analysis_symbol() -> str | None:
+    """Discover the current MT5 universe and select one eligible symbol read-only."""
+    try:
+        import MetaTrader5 as mt5  # type: ignore
+    except ImportError:
+        return None
+    if not mt5.initialize():
+        return None
+    try:
+        statuses = discover_mt5_instruments(mt5)
+        candidates = rank_mt5_assets(statuses, limit=1)
+        return candidates[0].symbol if candidates else None
+    finally:
+        mt5.shutdown()
+
 if MARKET_DATA is not None:
     MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
         BrokerMarketDataBoundary(MARKET_DATA, MARKET_DATA_PROVIDER),
         OPERATIONAL_RUNTIME.market_data,
         MarketDataRuntimeConfig(
-            symbol=EXECUTION_SYMBOL or "EURUSD",
+            symbol=EXECUTION_SYMBOL,
             timeframe=os.environ.get("CONTROLADOR_EXECUTION_TIMEFRAME", "5m"),
             limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_LIMIT", "120")),
             poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_DATA_POLL_SECONDS", "5")),
         ),
+        symbol_selector=None if EXECUTION_SYMBOL else _select_mt5_analysis_symbol,
     )
     MARKET_DATA_RUNTIME.start()
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
