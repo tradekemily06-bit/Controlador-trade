@@ -11,6 +11,7 @@ from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operational_safety_store import OperationalSafetyStore
 from core.daily_operation_journal import DailyOperationJournal
+from core.demo_autonomy_authorization import DemoAutonomyAuthorizationStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.risk_manager import RiskManager
@@ -42,6 +43,7 @@ class OperationalRuntime:
     risk_manager: RiskManager
     session_id: str
     safety_store: OperationalSafetyStore
+    demo_autonomy: DemoAutonomyAuthorizationStore
 
     def activate_kill_switch(self, reason: str) -> None:
         """Activate and durably persist the shared kill switch."""
@@ -69,6 +71,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
     safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    demo_autonomy = DemoAutonomyAuthorizationStore(root / "demo-autonomy.json")
     persisted_kill_switch = KillSwitch()
     try:
         _, persisted_kill_switch = safety_store.load()
@@ -123,4 +126,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         risk_manager=risk_manager,
         session_id=session_id,
         safety_store=safety_store,
+        demo_autonomy=demo_autonomy,
     )
