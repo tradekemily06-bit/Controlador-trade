@@ -148,3 +148,20 @@ def test_evaluate_market_snapshot_is_side_effect_free_for_candidate_selection():
     assert result.symbol == "EURUSD"
     assert result.timeframe == "5m"
     assert len(service.memory_view()) == 0
+
+
+def test_record_market_analysis_deduplicates_same_closed_candle():
+    service = EcosystemService()
+    snapshot = BrokerMarketDataSnapshot(
+        symbol="EURUSD",
+        timeframe="5m",
+        candles=_candles(30),
+        source="test",
+        received_at=datetime.now(timezone.utc),
+    )
+    result = service.evaluate_market_snapshot(snapshot)
+    first = service.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+    second = service.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+    assert first is not None
+    assert second is None
+    assert len(service.memory_view()) == 1
