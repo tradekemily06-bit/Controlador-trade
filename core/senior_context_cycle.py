@@ -70,6 +70,8 @@ class SeniorContextCycleBoundary:
             raise ValueError("senior_assessment is required")
         if not isinstance(risk_assessment, SeniorRiskAssessment):
             raise ValueError("risk_assessment is required")
+        if intelligence is not None and not isinstance(intelligence, SeniorIntelligenceAssessment):
+            raise ValueError("intelligence must be SeniorIntelligenceAssessment when provided")
         if senior_assessment.execution_authorized:
             raise ValueError("senior assessment cannot authorize execution")
         if risk_assessment.execution_authorized:
