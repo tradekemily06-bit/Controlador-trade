@@ -33,18 +33,22 @@ MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
 
-def _select_mt5_analysis_symbol() -> str | None:
-    """Discover the current MT5 universe and select one eligible symbol read-only."""
+def _select_mt5_analysis_symbols() -> tuple[str, ...]:
+    """Discover the broker universe and return evidence-qualified analysis candidates."""
     try:
         import MetaTrader5 as mt5  # type: ignore
     except ImportError:
-        return None
+        return ()
     if not mt5.initialize():
-        return None
+        return ()
     try:
         statuses = discover_mt5_instruments(mt5)
-        candidates = select_mt5_analysis_candidates(mt5, statuses, limit=1)
-        return candidates[0].symbol if candidates else None
+        candidates = select_mt5_analysis_candidates(
+            mt5,
+            statuses,
+            limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_CANDIDATES", "8")),
+        )
+        return tuple(candidate.symbol for candidate in candidates)
     finally:
         mt5.shutdown()
 
@@ -58,12 +62,22 @@ if MARKET_DATA is not None:
             limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_LIMIT", "120")),
             poll_seconds=float(os.environ.get("CONTROLADOR_MARKET_DATA_POLL_SECONDS", "5")),
         ),
-        symbol_selector=None if EXECUTION_SYMBOL else _select_mt5_analysis_symbol,
+        symbol_selector=None if EXECUTION_SYMBOL else None,
+        candidate_selector=None if EXECUTION_SYMBOL else _select_mt5_analysis_symbols,
     )
-    MARKET_DATA_RUNTIME.start()
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
 ONBOARDING = EcosystemOnboarding()
+
+if MARKET_DATA_RUNTIME is not None:
+    if EXECUTION_SYMBOL:
+        MARKET_DATA_RUNTIME.start()
+    else:
+        MARKET_DATA_RUNTIME.configure_candidate_analysis(
+            candidate_selector=_select_mt5_analysis_symbols,
+            candidate_analyzer=SERVICE.evaluate_market_snapshot,
+        )
+        MARKET_DATA_RUNTIME.start()
 
 
 def _audit(environ, request_id: str, status: int) -> None:
