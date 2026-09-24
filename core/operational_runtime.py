@@ -81,6 +81,10 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
+    previous_checkpoint = checkpoint.load()
+    session_id = uuid4().hex
+    if previous_checkpoint is not None and session_id == previous_checkpoint.session_id:
+        session_id = f"{session_id}-{datetime.now(timezone.utc).timestamp_ns()}"
     memory = OperationMemory()
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
@@ -120,6 +124,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         daily_journal=daily_journal,
         risk_state_provider=provider if callable(provider) else None,
         risk_manager=risk_manager,
-        session_id=uuid4().hex,
+        session_id=session_id,
         safety_store=safety_store,
     )
