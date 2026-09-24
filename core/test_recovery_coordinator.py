@@ -92,3 +92,16 @@ def test_ledger_reserved_or_unknown_blocks_recovery_even_without_lifecycle(tmp_p
     assessment = recovery.assess()
     assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
     assert "reserved-only" in assessment.unknown_request_ids
+
+
+def test_contradictory_terminal_states_require_reconciliation(tmp_path: Path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-contradiction")
+    coordinator.execution_ledger.mark_accepted("req-contradiction")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-contradiction", ExecutionLifecycleState.REJECTED, now, "rejected")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "req-contradiction" in result.unknown_request_ids
