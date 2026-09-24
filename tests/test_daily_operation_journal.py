@@ -18,7 +18,7 @@ def test_daily_journal_persists_without_becoming_execution_authority(tmp_path):
         accepted=True,
         external_id="mt5-123",
         message="ok",
-        timestamp=datetime(2026, 9, 23, tzinfo=timezone.utc),
+        timestamp=datetime.now(timezone.utc),
     )
 
     reloaded = DailyOperationJournal(path)
