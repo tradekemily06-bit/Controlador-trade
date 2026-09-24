@@ -87,7 +87,8 @@ def test_terminal_operation_checkpoint_persists_across_runtime_rebuild(tmp_path)
     assert rebuilt.recovery.assess().state.value == "SAFE_TO_RESUME"
     assert rebuilt.checkpoint_store.load().last_cycle == 1
     assert rebuilt.checkpoint_store.load().last_request_id == "req-001"
-    assert rebuilt.checkpoint_store.load().session_id != runtime.session_id
+    assert rebuilt.session_id != runtime.session_id
+    assert rebuilt.checkpoint_store.load().session_id == runtime.session_id
 
 
 def test_checkpoint_cycles_increase_without_replaying_execution(tmp_path):
