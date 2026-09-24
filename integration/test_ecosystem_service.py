@@ -5,6 +5,7 @@ import pytest
 
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from storage.production_boundary import ProductionStoragePolicy
 
 
@@ -129,3 +130,21 @@ def test_production_operation_accepts_explicit_ready_storage():
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
     assert service.system_status()["real"] == "DESABILITADO"
+
+
+def test_evaluate_market_snapshot_is_side_effect_free_for_candidate_selection():
+    service = EcosystemService()
+    candles = _candles(30)
+    snapshot = BrokerMarketDataSnapshot(
+        symbol="EURUSD",
+        timeframe="5m",
+        candles=candles,
+        source="test",
+        received_at=datetime.now(timezone.utc),
+    )
+
+    result = service.evaluate_market_snapshot(snapshot)
+
+    assert result.symbol == "EURUSD"
+    assert result.timeframe == "5m"
+    assert len(service.memory_view()) == 0
