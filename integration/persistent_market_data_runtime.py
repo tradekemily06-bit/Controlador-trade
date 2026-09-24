@@ -150,27 +150,32 @@ class PersistentMarketDataRuntime:
             self._stop.wait(self._config.poll_seconds)
 
     def _run_candidate_sweep(self) -> None:
-        candidates = tuple(dict.fromkeys(str(item).strip() for item in self._candidate_selector() if str(item).strip()))
-        if not candidates:
-            self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message="nenhum ativo candidato está disponível para análise")
+        try:
+            candidates = tuple(dict.fromkeys(str(item).strip() for item in self._candidate_selector() if str(item).strip()))
+            if not candidates:
+                self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message="nenhum ativo candidato está disponível para análise")
+                with self._lock:
+                    self._last_sweep_selected = None
+                    self._last_sweep_candidate_count = 0
+                    self._last_sweep_errors = ()
+                return
+            sweep = MarketDataCandidateSweep(boundary=self._boundary, state=self._state, timeframe=self._config.timeframe, limit=self._config.limit)
+            result = sweep.sweep(candidates, analyzer=self._candidate_analyzer, is_actionable=self._is_actionable_result, rank_key=self._rank_analysis_result)
+            errors = tuple(f"{item.symbol}: {item.error}" for item in result.candidates if item.error is not None)
             with self._lock:
-                self._last_sweep_selected = None
-                self._last_sweep_candidate_count = 0
-                self._last_sweep_errors = ()
-            return
-        sweep = MarketDataCandidateSweep(boundary=self._boundary, state=self._state, timeframe=self._config.timeframe, limit=self._config.limit)
-        result = sweep.sweep(candidates, analyzer=self._candidate_analyzer, is_actionable=self._is_actionable_result, rank_key=self._rank_analysis_result)
-        errors = tuple(f"{item.symbol}: {item.error}" for item in result.candidates if item.error is not None)
-        with self._lock:
-            self._last_sweep_selected = result.selected_symbol
-            self._last_sweep_candidate_count = len(result.candidates)
-            self._last_sweep_errors = errors
-            self._selected_symbol = result.selected_symbol
-            if result.selected is not None and result.selected.snapshot is not None:
-                self._last_success = result.selected.snapshot.received_at
-                self._last_error = None
-            elif errors:
-                self._last_error = errors[-1]
+                self._last_sweep_selected = result.selected_symbol
+                self._last_sweep_candidate_count = len(result.candidates)
+                self._last_sweep_errors = errors
+                self._selected_symbol = result.selected_symbol
+                if result.selected is not None and result.selected.snapshot is not None:
+                    self._last_success = result.selected.snapshot.received_at
+                    self._last_error = None
+                elif errors:
+                    self._last_error = errors[-1]
+        except Exception as exc:
+            self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message=f"falha no sweep de oportunidades: {type(exc).__name__}: {exc}")
+            with self._lock:
+                self._last_error = str(exc)
 
     @staticmethod
     def _is_actionable_result(result: object) -> bool:
