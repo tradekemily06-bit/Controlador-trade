@@ -363,6 +363,12 @@ class EcosystemService:
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
                 self.store.save(updated)
+                runtime = self.operational_runtime
+                if runtime is not None:
+                    try:
+                        runtime.daily_journal.record_outcome(decision_id=decision_id, outcome=outcome)
+                    except (OSError, ValueError, TypeError):
+                        pass
                 return updated
         raise ValueError("decision_id não encontrado")
 
