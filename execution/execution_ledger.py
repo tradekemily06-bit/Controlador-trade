@@ -5,10 +5,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from core.file_lock import locked_file
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -68,24 +65,20 @@ class ExecutionLedger:
         os.replace(temporary, self.path)
 
     def _mutate_locked(self, mutation) -> None:
-        """Serialize read/modify/write so two processes cannot reserve the same ID."""
-        lock_path = self.path.with_name(f".{self.path.name}.lock")
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                self._load()
-                mutation()
-                self._write()
-            finally:
-                if fcntl is not None:
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        """Serialize read/modify/write across supported OS processes."""
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            self._load()
+            mutation()
+            self._write()
+
+    def _read_locked(self, reader):
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            self._load()
+            return reader()
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
         self._validate_id(request_id)
-        self._load()
-        return self._states.get(request_id)
+        return self._read_locked(lambda: self._states.get(request_id))
 
     def contains(self, request_id: str) -> bool:
         return self.status(request_id) is not None
@@ -137,8 +130,7 @@ class ExecutionLedger:
         self._mutate_locked(mutation)
 
     def records(self) -> tuple[str, ...]:
-        self._load()
-        return tuple(sorted(self._states))
+        return self._read_locked(lambda: tuple(sorted(self._states)))
 
     @staticmethod
     def _validate_id(request_id: str) -> None:
