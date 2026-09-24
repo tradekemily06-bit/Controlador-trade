@@ -104,5 +104,5 @@ def test_contradictory_terminal_states_require_reconciliation(tmp_path: Path):
     )
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
-    assert "ACCEPTED sem ledger" not in result.message
+    assert "estados terminais contraditórios" in result.message
     assert "req-contradiction" not in result.unknown_request_ids
