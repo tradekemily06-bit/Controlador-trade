@@ -10,6 +10,7 @@ from core.operational_state import OperationalState
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.operational_safety_store import OperationalSafetyStore
 from core.daily_operation_journal import DailyOperationJournal
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
@@ -41,6 +42,12 @@ class OperationalRuntime:
     risk_state_provider: Callable[[], OperationalState] | None
     risk_manager: RiskManager
     session_id: str
+    safety_store: OperationalSafetyStore
+
+    def activate_kill_switch(self, reason: str) -> None:
+        """Activate and durably persist the shared kill switch."""
+        self.kill_switch.activate(reason)
+        self.safety_store.save_kill_switch_state(self.kill_switch)
 
     def checkpoint_operation(self, request_id: str) -> bool:
         """Persist the last terminal operation without authorizing or replaying it."""
@@ -62,7 +69,15 @@ class OperationalRuntime:
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None, risk_state_provider: Callable[[], OperationalState] | None = None, kill_switch: KillSwitch | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
-    kill_switch = kill_switch or KillSwitch()
+    safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    persisted_kill_switch = KillSwitch()
+    try:
+        _, persisted_kill_switch = safety_store.load()
+    except ValueError:
+        persisted_kill_switch.activate("estado de segurança persistido inválido")
+    kill_switch = kill_switch or persisted_kill_switch
+    if persisted_kill_switch.state.enabled and not kill_switch.state.enabled:
+        kill_switch.activate(persisted_kill_switch.state.reason or "estado persistido")
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
@@ -106,4 +121,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         risk_state_provider=provider if callable(provider) else None,
         risk_manager=risk_manager,
         session_id=uuid4().hex,
+        safety_store=safety_store,
     )
