@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -11,14 +11,14 @@ from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketD
 
 @dataclass(frozen=True)
 class MarketDataRuntimeConfig:
-    symbol: str = "EURUSD"
+    symbol: str | None = "EURUSD"
     timeframe: str = "5m"
     limit: int = 100
     poll_seconds: float = 5.0
 
     def __post_init__(self) -> None:
-        if not self.symbol.strip():
-            raise ValueError("symbol obrigatório")
+        if self.symbol is not None and not self.symbol.strip():
+            raise ValueError("symbol não pode ser vazio quando informado")
         if not self.timeframe.strip():
             raise ValueError("timeframe obrigatório")
         if self.limit <= 0:
@@ -39,10 +39,13 @@ class PersistentMarketDataRuntime:
         boundary: BrokerMarketDataBoundary,
         state: MarketDataRuntimeState,
         config: MarketDataRuntimeConfig,
+        symbol_selector: Callable[[], str | None] | None = None,
     ) -> None:
         self._boundary = boundary
         self._state = state
         self._config = config
+        self._symbol_selector = symbol_selector
+        self._selected_symbol: str | None = config.symbol
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -70,22 +73,34 @@ class PersistentMarketDataRuntime:
             return {
                 **report,
                 "runtime": "RUNNING" if self._thread is not None and self._thread.is_alive() else "STOPPED",
-                "symbol": self._config.symbol,
+                "symbol": self._selected_symbol,
                 "timeframe": self._config.timeframe,
                 "last_success": self._last_success.isoformat() if self._last_success else None,
                 "last_error": self._last_error,
             }
 
     def _run(self) -> None:
-        request = BrokerMarketDataRequest(
-            symbol=self._config.symbol,
-            timeframe=self._config.timeframe,
-            limit=self._config.limit,
-        )
         expected_interval = self._timeframe_seconds(self._config.timeframe)
         while not self._stop.is_set():
+            symbol = self._resolve_symbol()
+            if symbol is None:
+                self._state.invalidate(
+                    source=self._boundary.source,
+                    symbol=self._selected_symbol or "AUTO",
+                    timeframe=self._config.timeframe,
+                    message="nenhum ativo MT5 elegível está disponível para análise",
+                )
+                self._stop.wait(self._config.poll_seconds)
+                continue
+            request = BrokerMarketDataRequest(
+                symbol=symbol,
+                timeframe=self._config.timeframe,
+                limit=self._config.limit,
+            )
             try:
                 snapshot = self._boundary.fetch(request)
+                with self._lock:
+                    self._selected_symbol = symbol
                 self._state.update(
                     snapshot,
                     now=datetime.now().astimezone(),
@@ -97,13 +112,27 @@ class PersistentMarketDataRuntime:
             except Exception as exc:
                 self._state.invalidate(
                     source=self._boundary.source,
-                    symbol=self._config.symbol,
+                    symbol=self._selected_symbol or 'AUTO',
                     timeframe=self._config.timeframe,
                     message=f"falha ao atualizar dados de mercado: {type(exc).__name__}: {exc}",
                 )
                 with self._lock:
                     self._last_error = str(exc)
             self._stop.wait(self._config.poll_seconds)
+
+    def _resolve_symbol(self) -> str | None:
+        if self._symbol_selector is None:
+            return self._config.symbol.strip() if self._config.symbol else None
+        try:
+            selected = self._symbol_selector()
+        except Exception as exc:
+            with self._lock:
+                self._last_error = f"falha ao selecionar ativo: {type(exc).__name__}: {exc}"
+            return None
+        if selected is None:
+            return None
+        selected = str(selected).strip()
+        return selected or None
 
     @staticmethod
     def _timeframe_seconds(timeframe: str) -> int | None:
