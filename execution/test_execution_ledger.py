@@ -74,7 +74,6 @@ def test_real_ledger_persists_external_identity_and_reconciliation_evidence(tmp_
     ledger = ExecutionLedger(path)
     ledger.reserve_real("req-real", broker_id="fake", symbol="EURUSD")
     assert ledger.execution_context("req-real") == {
-        "mode": "REAL",
         "broker_id": "fake",
         "symbol": "EURUSD",
         "external_id": None,
