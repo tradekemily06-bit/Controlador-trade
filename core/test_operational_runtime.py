@@ -98,3 +98,25 @@ def test_checkpoint_cycles_increase_without_replaying_execution(tmp_path):
     checkpoint = runtime.checkpoint_store.load()
     assert checkpoint.last_cycle == 2
     assert checkpoint.last_request_id == "req-002"
+
+
+def test_kill_switch_state_survives_runtime_rebuild(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    runtime.activate_kill_switch("bloqueio persistente")
+
+    rebuilt = build_operational_runtime(tmp_path)
+
+    assert rebuilt.kill_switch.state.enabled is True
+    assert rebuilt.kill_switch.state.reason == "bloqueio persistente"
+    assert rebuilt.gateway._kill_switch is rebuilt.kill_switch
+
+
+def test_corrupt_persisted_safety_state_fails_closed(tmp_path):
+    path = tmp_path / "operational-safety.json"
+    path.write_text("{invalid", encoding="utf-8")
+
+    runtime = build_operational_runtime(tmp_path)
+
+    assert runtime.kill_switch.state.enabled is True
+    assert "inválido" in (runtime.kill_switch.state.reason or "")
+    assert runtime.gateway._kill_switch is runtime.kill_switch
