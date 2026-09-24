@@ -164,7 +164,8 @@ def application(environ, start_response):
             reason = str(data.get("reason", "")).strip()
             if not reason:
                 raise ValueError("reason é obrigatório")
-            state = runtime.kill_switch.activate(reason)
+            runtime.activate_kill_switch(reason)
+            state = runtime.kill_switch.state
             return _json_response(start_response, HTTPStatus.OK, {"enabled": state.enabled, "reason": state.reason, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
