@@ -95,7 +95,9 @@ class ExecutionLedger:
             symbol = raw_context.get("symbol")
             account_id = raw_context.get("account_id")
             external_id = raw_context.get("external_id")
-            if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip() or not isinstance(account_id, str) or not account_id.strip():
+            if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip():
+                raise ValueError("ledger de execução inválido.")
+            if account_id is not None and (not isinstance(account_id, str) or not account_id.strip()):
                 raise ValueError("ledger de execução inválido.")
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
@@ -104,7 +106,7 @@ class ExecutionLedger:
                 if external_id in seen_external_ids:
                     raise ValueError("ledger de execução inválido: external_id duplicado.")
                 seen_external_ids.add(external_id)
-            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "account_id": account_id.strip(), "external_id": external_id}
+            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "account_id": account_id.strip() if isinstance(account_id, str) else None, "external_id": external_id}
         return states, evidence, context
 
     def _write(self) -> None:
