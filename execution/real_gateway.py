@@ -6,7 +6,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
-from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderReconciliationBoundary, ExternalOrderStatus, ReconciliationResult
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus, ReconciliationResult
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -29,7 +29,7 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, external_order_query: ExternalOrderQueryPort | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -37,6 +37,7 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._processed_request_ids: set[str] = set(ledger.records())
+        self._external_order_query = external_order_query
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
@@ -135,8 +136,15 @@ class RealExecutionGateway:
         """Apply a broker observation to the authoritative REAL ledger; never resubmits."""
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido.")
+        if self._external_order_query is None:
+            raise RuntimeError("fonte confiável de consulta externa não configurada; reconciliação manual é bloqueada.")
+        observed = self._external_order_query.query_order(observation.external_id)
+        if not isinstance(observed, ExternalOrderObservation):
+            raise ValueError("fonte externa retornou observação inválida.")
+        if observed != observation:
+            raise ValueError("observação fornecida difere da observação obtida pela fonte externa confiável.")
         boundary = ExternalOrderReconciliationBoundary()
-        result = boundary.reconcile(observation.external_id, observation)
+        result = boundary.reconcile(observed.external_id, observed)
         current = self._ledger.status(request_id)
         context = self._ledger.execution_context(request_id)
         if context is None:
