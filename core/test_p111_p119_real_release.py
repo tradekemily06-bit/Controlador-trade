@@ -46,6 +46,15 @@ class UnknownAdapter:
         raise TimeoutError("timeout after dispatch")
 
 
+class TrustedOrderQuery:
+    def __init__(self, observation):
+        self.observation = observation
+
+    def query_order(self, external_id):
+        assert external_id == self.observation.external_id
+        return self.observation
+
+
 def _authorization():
     return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True, "user-a", "tenant-a", "account-a")
 
@@ -254,8 +263,12 @@ def test_external_observation_resolves_unknown_by_persisted_external_identity(tm
     ledger.bind_external_id("req-ext", external_id="ext-42")
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
     observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution")
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        external_order_query=TrustedOrderQuery(observation),
+    )
     result = gateway.reconcile_external_observation(
         "req-ext",
         observation,
