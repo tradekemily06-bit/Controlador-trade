@@ -80,3 +80,15 @@ def test_invalid_persisted_state_fails_closed(tmp_path):
 def test_invalid_store_dependency_is_rejected():
     with pytest.raises(TypeError, match="store deve ser OperationMemoryStore"):
         PersistentOperationalRecorder(store=object())
+
+
+def test_concurrent_recorders_do_not_lose_memory_append(tmp_path):
+    path = tmp_path / "operations.json"
+    first = PersistentOperationalRecorder.from_path(path)
+    second = PersistentOperationalRecorder.from_path(path)
+
+    first.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 10, tzinfo=timezone.utc))
+    second.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 11, tzinfo=timezone.utc))
+
+    restored = PersistentOperationalRecorder.from_path(path)
+    assert len(restored.memory.records()) == 2
