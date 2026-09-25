@@ -23,6 +23,17 @@ class BrokerAdapterGateway:
     def __init__(self, registry: BrokerRegistry) -> None:
         self._registry = registry
 
+    def adapter_id(self, broker: str) -> str:
+        """Return the adapter identity bound to a broker registration."""
+        try:
+            adapter = self._registry.get(broker)
+        except BrokerRegistryError as exc:
+            raise AdapterGatewayError(str(exc)) from exc
+        adapter_id = getattr(adapter, "adapter_id", None)
+        if not isinstance(adapter_id, str) or not adapter_id.strip():
+            raise AdapterGatewayError("adapter REAL sem identidade explícita; dispatch bloqueado.")
+        return adapter_id.strip()
+
     def execute(self, broker: str, request: ExecutionRequest) -> AdapterExecutionResult:
         try:
             adapter = self._registry.get(broker)
