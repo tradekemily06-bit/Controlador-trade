@@ -373,6 +373,35 @@ def test_real_gateway_blocks_mismatched_adapter_identity(tmp_path: Path):
     assert adapter.calls == 0
 
 
+class ViewerIdentityProvider:
+    def resolve_identity(self):
+        from saas.contracts import SaaSRole
+        from saas.identity import TrustedIdentity
+        return TrustedIdentity("user-a", "tenant-a", SaaSRole.VIEWER)
+
+
+def test_real_gateway_requires_execution_authorized_role(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    production_gate = ProductionOperationGate(
+        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True),
+        identity_provider=ViewerIdentityProvider(),
+    )
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "ledger.json"),
+        production_gate=production_gate,
+    )
+    auth = _authorization()
+    result = gateway.execute(
+        broker="fake", request_id="viewer-real", request=_request(),
+        authorization=auth, admission=_admission(auth), safety=_safety(auth),
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
 def test_real_gateway_blocks_mismatched_identity_scope(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
