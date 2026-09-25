@@ -71,3 +71,33 @@ def test_safety_store_requires_valid_dependencies(tmp_path):
     store = OperationalSafetyStore(tmp_path / "safety.json")
     with pytest.raises(TypeError, match="audit deve ser DecisionAudit"):
         store.save(object(), object())
+
+
+def test_concurrent_recorders_do_not_lose_audit_events(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    second = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    first.record_decision(snapshot(), timestamp=datetime(2026, 9, 9, 2, 10, tzinfo=timezone.utc))
+    second.record_decision(snapshot(), timestamp=datetime(2026, 9, 9, 2, 11, tzinfo=timezone.utc))
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert len(restored.audit.records()) == 2
+
+
+def test_stale_recorder_cannot_overwrite_persisted_kill_switch(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    second = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    first.activate_kill_switch("bloqueio de emergência")
+    second.record_decision(
+        snapshot(),
+        timestamp=datetime(2026, 9, 9, 2, 12, tzinfo=timezone.utc),
+    )
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.kill_switch.state.enabled is True
+    assert restored.kill_switch.state.reason == "bloqueio de emergência"
