@@ -47,14 +47,15 @@ class UnknownAdapter:
 
 
 def _authorization():
-    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
+    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True, "user-a", "tenant-a", "account-a")
 
 
 def _admission(auth):
     return RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="a116", audit_verified=True,
         authorization_active=auth.active, safety_ready=True,
-        broker_available=True, broker_id="fake",
+        broker_available=True, broker_id="fake", subject_id=auth.subject_id,
+        tenant_id=auth.tenant_id, account_id=auth.account_id,
     )
 
 
@@ -137,6 +138,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
         authorization_active=False, safety_ready=False, broker_available=True, broker_id="fake",
+        subject_id="user-a", tenant_id="tenant-a", account_id="account-a",
     )
     safety = RealSafetyGate().evaluate(
         authorization_active=False, kill_switch_clear=True,
