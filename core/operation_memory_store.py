@@ -86,6 +86,11 @@ class OperationMemoryStore:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            current = self._load_unlocked()
+            current_records = current.records()
+            new_records = memory.records()
+            if len(new_records) < len(current_records) or new_records[:len(current_records)] != current_records:
+                raise ValueError("snapshot de memória desatualizado; use mutação atômica.")
             self._write_unlocked(memory)
 
     def append(self, record: OperationMemoryRecord) -> OperationMemory:
