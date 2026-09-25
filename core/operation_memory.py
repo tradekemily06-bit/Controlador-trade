@@ -68,13 +68,15 @@ class OperationMemory:
         self._records.append(record)
 
     def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemoryRecord:
-        """Replace one pending entry with its validated final result."""
+        """Replace one uniquely identified pending entry with its validated final result."""
         if result not in _VALID_RESULTS - {"PENDENTE"}:
             raise MemoryValidationError("resultado final inválido.")
-        try:
-            index = self._records.index(record)
-        except ValueError as exc:
-            raise MemoryValidationError("registro não encontrado na memória.") from exc
+        matches = [index for index, item in enumerate(self._records) if item == record]
+        if not matches:
+            raise MemoryValidationError("registro não encontrado na memória.")
+        if len(matches) > 1:
+            raise MemoryValidationError("registro de memória ambíguo; liquidação exige identidade única.")
+        index = matches[0]
         if self._records[index].result != "PENDENTE":
             raise MemoryValidationError("somente registros pendentes podem ser liquidados.")
         updated = OperationMemoryRecord(
