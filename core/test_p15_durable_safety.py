@@ -101,3 +101,17 @@ def test_stale_recorder_cannot_overwrite_persisted_kill_switch(tmp_path):
     restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
     assert restored.kill_switch.state.enabled is True
     assert restored.kill_switch.state.reason == "bloqueio de emergência"
+
+
+def test_stale_safety_snapshot_cannot_disable_kill_switch(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    second = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    first.activate_kill_switch("bloqueio")
+    with pytest.raises(ValueError, match="kill switch persistido ativo"):
+        second.safety_store.save(second.audit, second.kill_switch)
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.kill_switch.state.enabled is True
