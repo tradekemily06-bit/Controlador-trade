@@ -58,30 +58,54 @@ class OperationMemoryStore:
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("registro persistido inválido.") from exc
 
+    def _load_unlocked(self) -> OperationMemory:
+        memory = OperationMemory()
+        if not self.path.exists():
+            return memory
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("arquivo de memória inválido.") from exc
+        if not isinstance(payload, list):
+            raise ValueError("arquivo de memória deve conter uma lista.")
+        for item in payload:
+            memory.append(self._deserialize(item))
+        return memory
+
+    def _write_unlocked(self, memory: OperationMemory) -> None:
+        payload = [self._serialize(record) for record in memory.records()]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
     def save(self, memory: OperationMemory) -> None:
         if not isinstance(memory, OperationMemory):
             raise TypeError("memory deve ser OperationMemory.")
-        payload = [self._serialize(record) for record in memory.records()]
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = self.path.with_name(f".{self.path.name}.tmp")
-            temporary.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-                encoding="utf-8",
-            )
-            os.replace(temporary, self.path)
+            self._write_unlocked(memory)
+
+    def append(self, record: OperationMemoryRecord) -> OperationMemory:
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            memory = self._load_unlocked()
+            memory.append(record)
+            self._write_unlocked(memory)
+            return memory
+
+    def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemory:
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            memory = self._load_unlocked()
+            memory.settle(record, result)
+            self._write_unlocked(memory)
+            return memory
 
     def load(self) -> OperationMemory:
-        memory = OperationMemory()
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
-            if not self.path.exists():
-                return memory
-            try:
-                payload = json.loads(self.path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise ValueError("arquivo de memória inválido.") from exc
-            if not isinstance(payload, list):
-                raise ValueError("arquivo de memória deve conter uma lista.")
-            for item in payload:
-                memory.append(self._deserialize(item))
-        return memory
+            return self._load_unlocked()
