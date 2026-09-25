@@ -2,6 +2,13 @@ import pytest
 
 from security.production_operation_gate import ProductionOperationGate
 from storage.production_boundary import ProductionStoragePolicy
+from saas.contracts import SaaSRole
+from saas.identity import TrustedIdentity
+
+
+class FakeIdentityProvider:
+    def resolve_identity(self):
+        return TrustedIdentity("user-a", "tenant-a", SaaSRole.OWNER)
 
 
 def test_gate_fails_closed_when_storage_is_not_ready():
@@ -32,7 +39,7 @@ def test_gate_authorizes_only_explicitly_ready_scoped_storage():
         tenant_scoped=True,
         durable=True,
     )
-    gate = ProductionOperationGate(policy)
+    gate = ProductionOperationGate(policy, identity_provider=FakeIdentityProvider())
 
     context = gate.authorize(subject_id="  user-a  ", tenant_id="  tenant-a  ")
 
