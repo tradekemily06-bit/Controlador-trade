@@ -100,7 +100,17 @@ def test_stale_memory_snapshot_is_rejected_instead_of_overwriting_newer_data(tmp
     second = PersistentOperationalRecorder.from_path(path)
 
     first.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 20, tzinfo=timezone.utc))
-    with pytest.raises(ValueError, match="snapshot de memória desatualizado"):
-        second.recorder.memory.append(
-            OperationMemoryStore(path).load().records()[0]
+    second.recorder.memory.append(
+        OperationMemoryStore(path).load().records()[0].__class__(
+            timestamp=datetime(2026, 9, 9, 1, 21, tzinfo=timezone.utc),
+            signal=Signal.COMPRA,
+            score=82.0,
+            decision="EXECUTAR",
+            reason="stale snapshot",
+            result="PENDENTE",
+            symbol="TEST",
+            timeframe="5m",
         )
+    )
+    with pytest.raises(ValueError, match="snapshot de memória desatualizado"):
+        second.recorder.store.save(second.recorder.memory)
