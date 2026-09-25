@@ -25,6 +25,7 @@ class ProductionOperationGate:
         subject_id: str | None,
         tenant_id: str | None,
     ) -> ProductionRequestContext:
+        supplied = require_production_context(subject_id=subject_id, tenant_id=tenant_id)
         if self.identity_provider is None:
             raise PermissionError("trusted identity provider is not configured")
         trusted = IdentityBoundary().resolve(self.identity_provider)
