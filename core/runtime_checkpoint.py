@@ -29,6 +29,16 @@ class RuntimeCheckpointStore:
         self._validate(checkpoint)
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.exists():
+                current = self._load_unlocked()
+                if current is not None and checkpoint.updated_at < current.updated_at:
+                    raise ValueError("checkpoint mais antigo não pode sobrescrever estado persistido.")
+                if (
+                    current is not None
+                    and checkpoint.session_id == current.session_id
+                    and checkpoint.last_cycle < current.last_cycle
+                ):
+                    raise ValueError("checkpoint não pode regredir o ciclo da mesma sessão.")
             temporary = self.path.with_name(f".{self.path.name}.tmp")
             temporary.write_text(
                 json.dumps(
@@ -46,24 +56,27 @@ class RuntimeCheckpointStore:
             )
             os.replace(temporary, self.path)
 
+    def _load_unlocked(self) -> RuntimeCheckpoint | None:
+        if not self.path.exists():
+            return None
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError
+            checkpoint = RuntimeCheckpoint(
+                session_id=data["session_id"],
+                last_cycle=data["last_cycle"],
+                last_request_id=data.get("last_request_id"),
+                updated_at=datetime.fromisoformat(data["updated_at"]),
+            )
+            self._validate(checkpoint)
+            return checkpoint
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError("checkpoint de runtime inválido.") from exc
+
     def load(self) -> RuntimeCheckpoint | None:
         with locked_file(self.path.with_name(f".{self.path.name}.lock")):
-            if not self.path.exists():
-                return None
-            try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-                if not isinstance(data, dict):
-                    raise ValueError
-                checkpoint = RuntimeCheckpoint(
-                    session_id=data["session_id"],
-                    last_cycle=data["last_cycle"],
-                    last_request_id=data.get("last_request_id"),
-                    updated_at=datetime.fromisoformat(data["updated_at"]),
-                )
-                self._validate(checkpoint)
-                return checkpoint
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-                raise ValueError("checkpoint de runtime inválido.") from exc
+            return self._load_unlocked()
 
     @staticmethod
     def _validate(checkpoint: RuntimeCheckpoint) -> None:
