@@ -15,9 +15,17 @@ from storage.production_boundary import ProductionStoragePolicy
 
 def _gateway(registry, ledger):
     production_gate = ProductionOperationGate(
-        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True)
+        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True),
+        identity_provider=FakeIdentityProvider(),
     )
     return RealExecutionGateway(BrokerAdapterGateway(registry), ledger, production_gate=production_gate)
+
+
+class FakeIdentityProvider:
+    def resolve_identity(self):
+        from saas.contracts import SaaSRole
+        from saas.identity import TrustedIdentity
+        return TrustedIdentity("user-a", "tenant-a", SaaSRole.OWNER)
 
 
 class MissingExternalIdAdapter:
