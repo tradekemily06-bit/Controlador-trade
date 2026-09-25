@@ -212,15 +212,13 @@ class RealExecutionGateway:
         evidence_id: str,
         evidence_source: str,
     ) -> None:
-        """Reconcile only with explicit evidence; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(
-            request_id,
-            executed=executed,
-            evidence_id=evidence_id,
-            evidence_source=evidence_source,
+        """Reject caller-supplied REAL reconciliation evidence.
+
+        REAL state resolution must come from the trusted external observation
+        path. This compatibility method remains fail-closed so arbitrary
+        caller input cannot turn UNKNOWN/RESERVED into a terminal state.
+        """
+        raise RuntimeError(
+            "reconciliação REAL manual bloqueada; use "
+            "reconcile_external_observation() com uma fonte externa confiável."
         )
