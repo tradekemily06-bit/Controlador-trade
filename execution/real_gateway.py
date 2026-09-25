@@ -11,6 +11,7 @@ from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from security.production_operation_gate import ProductionOperationGate
+from saas.contracts import SaaSRole
 from storage.production_boundary import ProductionStoragePolicy
 
 
@@ -92,10 +93,18 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "escopo de identidade/conta da admissão difere da autorização.")
 
         try:
-            self._production_gate.authorize(
+            production_context = self._production_gate.authorize(
                 subject_id=authorization.subject_id,
                 tenant_id=authorization.tenant_id,
             )
+            # The SaaS authorization contract grants the EXECUTION entitlement
+            # only to OWNER. A merely authenticated production identity must not
+            # become a REAL trading authority by passing this gate alone.
+            if production_context.role is not SaaSRole.OWNER:
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "identidade de produção não possui autorização de execução REAL.",
+                )
         except (PermissionError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"production gate bloqueou a operação REAL: {exc}")
 
