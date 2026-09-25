@@ -107,3 +107,13 @@ def test_reconciliation_rejects_reused_evidence(tmp_path: Path):
     ledger.mark_unknown("req-2")
     with pytest.raises(ValueError):
         ledger.reconcile("req-2", executed=False, evidence_id="event-1", evidence_source="fake-broker")
+
+
+def test_generic_record_cannot_finalize_real_reservation(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve_real("real-1", broker_id="fake", symbol="EURUSD")
+
+    with pytest.raises(ValueError, match="record\(\) genérico"):
+        ledger.record("real-1")
+
+    assert ledger.status("real-1") is ExecutionLedgerStatus.RESERVED
