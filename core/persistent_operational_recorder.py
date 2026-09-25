@@ -157,7 +157,10 @@ class PersistentOperationalRecorder:
         return state
 
     def deactivate_kill_switch(self):
-        state = self.kill_switch.deactivate()
         if self.safety_store is not None:
-            self.safety_store.set_kill_switch(self.kill_switch)
-        return state
+            _, persisted_kill_switch = self.safety_store.load()
+            state = persisted_kill_switch.deactivate()
+            self.recorder.kill_switch = persisted_kill_switch
+            self.safety_store.set_kill_switch(persisted_kill_switch)
+            return state
+        return self.kill_switch.deactivate()
