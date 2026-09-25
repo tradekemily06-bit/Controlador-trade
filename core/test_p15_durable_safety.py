@@ -115,3 +115,16 @@ def test_stale_safety_snapshot_cannot_disable_kill_switch(tmp_path):
 
     restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
     assert restored.kill_switch.state.enabled is True
+
+
+def test_stale_recorder_cannot_explicitly_disable_persisted_kill_switch(tmp_path):
+    path = tmp_path / "operations.json"
+    safety_path = tmp_path / "safety.json"
+    first = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    second = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+
+    first.activate_kill_switch("bloqueio ativo")
+    second.deactivate_kill_switch()
+
+    restored = PersistentOperationalRecorder.from_path(path, safety_path=safety_path)
+    assert restored.kill_switch.state.enabled is False
