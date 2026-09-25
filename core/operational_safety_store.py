@@ -114,6 +114,46 @@ class OperationalSafetyStore:
             }
             self._atomic_write(payload)
 
+    def append_audit(self, record: DecisionAuditRecord) -> tuple[DecisionAuditRecord, ...]:
+        if not isinstance(record, DecisionAuditRecord):
+            raise TypeError("record deve ser DecisionAuditRecord.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            payload = self._read_payload()
+            raw_audit = payload.get("audit", [])
+            if not isinstance(raw_audit, list):
+                raise ValueError("auditoria persistida inválida.")
+            audit = [self._audit_record(item) for item in raw_audit]
+            if audit and record.timestamp < audit[-1].timestamp:
+                raise ValueError("eventos de auditoria devem ser cronológicos.")
+            audit.append(record)
+            kill_switch = payload.get("kill_switch", {})
+            execution_audit = payload.get("execution_audit", [])
+            if not isinstance(kill_switch, dict) or not isinstance(execution_audit, list):
+                raise ValueError("estado de segurança inválido.")
+            self._atomic_write({
+                "audit": [self._audit_dict(item) for item in audit],
+                "kill_switch": kill_switch,
+                "execution_audit": [self._execution_audit_item(item) for item in execution_audit],
+            })
+            return tuple(audit)
+
+    def set_kill_switch(self, kill_switch: KillSwitch) -> KillSwitchState:
+        if not isinstance(kill_switch, KillSwitch):
+            raise TypeError("kill_switch deve ser KillSwitch.")
+        state = kill_switch.state
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            payload = self._read_payload()
+            audit = payload.get("audit", [])
+            execution_audit = payload.get("execution_audit", [])
+            if not isinstance(audit, list) or not isinstance(execution_audit, list):
+                raise ValueError("estado de segurança inválido.")
+            self._atomic_write({
+                "audit": [self._audit_dict(self._audit_record(item)) for item in audit],
+                "kill_switch": {"enabled": state.enabled, "reason": state.reason},
+                "execution_audit": [self._execution_audit_item(item) for item in execution_audit],
+            })
+        return state
+
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
