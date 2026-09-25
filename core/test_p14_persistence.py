@@ -92,3 +92,15 @@ def test_concurrent_recorders_do_not_lose_memory_append(tmp_path):
 
     restored = PersistentOperationalRecorder.from_path(path)
     assert len(restored.memory.records()) == 2
+
+
+def test_stale_memory_snapshot_is_rejected_instead_of_overwriting_newer_data(tmp_path):
+    path = tmp_path / "operations.json"
+    first = PersistentOperationalRecorder.from_path(path)
+    second = PersistentOperationalRecorder.from_path(path)
+
+    first.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 20, tzinfo=timezone.utc))
+    with pytest.raises(ValueError, match="snapshot de memória desatualizado"):
+        second.recorder.memory.append(
+            OperationMemoryStore(path).load().records()[0]
+        )
