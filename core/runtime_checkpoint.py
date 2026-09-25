@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+from core.file_lock import locked_file
 
 
 @dataclass(frozen=True)
@@ -24,23 +27,36 @@ class RuntimeCheckpointStore:
 
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
-        )
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            if self.path.exists():
+                current = self._load_unlocked()
+                if current is not None and checkpoint.updated_at < current.updated_at:
+                    raise ValueError("checkpoint mais antigo não pode sobrescrever estado persistido.")
+                if (
+                    current is not None
+                    and checkpoint.session_id == current.session_id
+                    and checkpoint.last_cycle < current.last_cycle
+                ):
+                    raise ValueError("checkpoint não pode regredir o ciclo da mesma sessão.")
+            temporary = self.path.with_name(f".{self.path.name}.tmp")
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "session_id": checkpoint.session_id,
+                        "last_cycle": checkpoint.last_cycle,
+                        "last_request_id": checkpoint.last_request_id,
+                        "updated_at": checkpoint.updated_at.isoformat(),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self.path)
 
-    def load(self) -> RuntimeCheckpoint | None:
+    def _load_unlocked(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
             return None
         try:
@@ -57,6 +73,10 @@ class RuntimeCheckpointStore:
             return checkpoint
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             raise ValueError("checkpoint de runtime inválido.") from exc
+
+    def load(self) -> RuntimeCheckpoint | None:
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            return self._load_unlocked()
 
     @staticmethod
     def _validate(checkpoint: RuntimeCheckpoint) -> None:

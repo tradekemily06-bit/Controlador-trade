@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
+import math
 
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
@@ -85,7 +86,7 @@ class ExecutionGateway:
             if existing is not None:
                 if existing.state is ExecutionLifecycleState.UNKNOWN:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
-                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
+                if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
@@ -95,11 +96,17 @@ class ExecutionGateway:
         try:
             result = self._executor.execute(request)
         except Exception as exc:
-            self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            try:
+                self._mark_unknown(request_id, event_time, f"resultado do executor é incerto: {type(exc).__name__}: {exc}")
+            except (OSError, ValueError) as persistence_exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou e o estado UNKNOWN não pôde ser persistido; replay bloqueado até recuperação: {persistence_exc}")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor falhou; resultado marcado como UNKNOWN: {type(exc).__name__}: {exc}")
 
         if not isinstance(result, ExecutionResult):
-            self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            try:
+                self._mark_unknown(request_id, event_time, "executor retornou resultado inválido")
+            except (OSError, ValueError) as persistence_exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"executor retornou resultado inválido e o estado UNKNOWN não pôde ser persistido; replay bloqueado até recuperação: {persistence_exc}")
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
@@ -137,7 +144,7 @@ class ExecutionGateway:
             elif current.state is not ExecutionLifecycleState.UNKNOWN:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
         except (OSError, ValueError):
-            pass
+            raise
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
@@ -151,8 +158,8 @@ class ExecutionGateway:
             return "sinal AGUARDAR não pode ser executado."
         if not request.symbol.strip():
             return "Símbolo não pode ser vazio."
-        if request.amount <= 0:
-            return "Valor da execução deve ser positivo."
-        if request.duration_seconds <= 0:
-            return "Duração deve ser positiva."
+        if not isinstance(request.amount, (int, float)) or isinstance(request.amount, bool) or not math.isfinite(request.amount) or request.amount <= 0:
+            return "Valor da execução deve ser um número finito e positivo."
+        if not isinstance(request.duration_seconds, int) or isinstance(request.duration_seconds, bool) or request.duration_seconds <= 0:
+            return "Duração deve ser um inteiro positivo."
         return None

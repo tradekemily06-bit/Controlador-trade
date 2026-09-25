@@ -80,3 +80,49 @@ def test_invalid_persisted_state_fails_closed(tmp_path):
 def test_invalid_store_dependency_is_rejected():
     with pytest.raises(TypeError, match="store deve ser OperationMemoryStore"):
         PersistentOperationalRecorder(store=object())
+
+
+def test_concurrent_recorders_do_not_lose_memory_append(tmp_path):
+    path = tmp_path / "operations.json"
+    first = PersistentOperationalRecorder.from_path(path)
+    second = PersistentOperationalRecorder.from_path(path)
+
+    first.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 10, tzinfo=timezone.utc))
+    second.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 11, tzinfo=timezone.utc))
+
+    restored = PersistentOperationalRecorder.from_path(path)
+    assert len(restored.memory.records()) == 2
+
+
+def test_stale_memory_snapshot_is_rejected_instead_of_overwriting_newer_data(tmp_path):
+    path = tmp_path / "operations.json"
+    first = PersistentOperationalRecorder.from_path(path)
+    second = PersistentOperationalRecorder.from_path(path)
+
+    first.record_operation(snapshot(), timestamp=datetime(2026, 9, 9, 1, 20, tzinfo=timezone.utc))
+    second.recorder.memory.append(
+        OperationMemoryStore(path).load().records()[0].__class__(
+            timestamp=datetime(2026, 9, 9, 1, 21, tzinfo=timezone.utc),
+            signal=Signal.COMPRA,
+            score=82.0,
+            decision="EXECUTAR",
+            reason="stale snapshot",
+            result="PENDENTE",
+            symbol="TEST",
+            timeframe="5m",
+        )
+    )
+    with pytest.raises(ValueError, match="snapshot de memória desatualizado"):
+        second.store.save(second.recorder.memory)
+
+
+def test_settle_rejects_ambiguous_duplicate_records(tmp_path):
+    path = tmp_path / "operations.json"
+    recorder = PersistentOperationalRecorder.from_path(path)
+    timestamp = datetime(2026, 9, 9, 1, 30, tzinfo=timezone.utc)
+
+    first = recorder.record_operation(snapshot(), timestamp=timestamp)
+    recorder.record_operation(snapshot(), timestamp=timestamp)
+
+    with pytest.raises(ValueError, match="ambíguo"):
+        recorder.settle_operation(first.memory, "WIN")

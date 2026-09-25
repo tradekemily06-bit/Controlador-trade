@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -57,14 +57,41 @@ class RecoveryCoordinator:
         try:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
-            ledger_ids = set(self.execution_ledger.records())
+            ledger_snapshot = self.execution_ledger.snapshot()
+            ledger_ids = set(ledger_snapshot)
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        lifecycle_unknown = {r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN}
+        ledger_uncertain = {
+            request_id
+            for request_id, status in ledger_snapshot.items()
+            if status in (ExecutionLedgerStatus.RESERVED, ExecutionLedgerStatus.UNKNOWN)
+        }
+        unknown = tuple(sorted(lifecycle_unknown | ledger_uncertain))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if (
+                r.state is ExecutionLifecycleState.ACCEPTED
+                and (
+                    r.request_id not in ledger_ids
+                    or ledger_snapshot.get(r.request_id) in (
+                        ExecutionLedgerStatus.REJECTED,
+                        ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                    )
+                )
+            )
+            or (
+                r.state is ExecutionLifecycleState.REJECTED
+                and ledger_snapshot.get(r.request_id) in (
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                )
+            )
+        ]
         if unknown or pending or inconsistent:
             details = []
             if unknown:
@@ -72,7 +99,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("estados terminais contraditórios requerem reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,

@@ -34,3 +34,22 @@ def test_negative_cycle_is_rejected(tmp_path):
     store = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
     with pytest.raises(ValueError):
         store.save(RuntimeCheckpoint("session", -1, None, datetime.now(timezone.utc)))
+
+def test_checkpoint_rejects_stale_timestamp(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    store.save(RuntimeCheckpoint("new-session", 5, "req-005", now))
+    with pytest.raises(ValueError, match="mais antigo"):
+        store.save(RuntimeCheckpoint("old-session", 99, "req-old", now - timedelta(seconds=1)))
+
+
+def test_checkpoint_rejects_cycle_regression_within_session(tmp_path):
+    path = tmp_path / "checkpoint.json"
+    store = RuntimeCheckpointStore(path)
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    store.save(RuntimeCheckpoint("session", 5, "req-005", now))
+    with pytest.raises(ValueError, match="regredir"):
+        store.save(RuntimeCheckpoint("session", 4, "req-004", now + timedelta(seconds=1)))

@@ -241,4 +241,11 @@ class EcosystemService:
         return {"mode": "SIMULACAO", "execution_allowed": False, "execution": "bloqueada_por_padrao", "decision_engine": components["decision_engine"], "memory": components["memory"], "replay": components["replay"], "statistics": components["statistics"], "risk_gate": components["risk_gate"], "learning": components["learning"], "news": components["news"], "mt5_demo": components["mt5_demo"], "real": components["real"], "saas": components["saas"], "components": components, "health": health, "alerts": [alert.to_dict() for alert in alerts], "memory_persistence": "SQLITE" if self.store.database_path else "IN_MEMORY", "production_storage": production_storage, "production_operation_gate": production_gate, "operational_observability": self.operational_observability(), **identity}
 
     def health_alerts(self) -> list[dict[str, Any]]:
-        return [asdict(item) for item in build_health_alerts(self.operational_observability())]
+        # Health alerts are built from the normalized component status map.
+        # Passing the nested observability object here would stringify whole
+        # dictionaries and create false CRITICAL alerts.
+        status = self.system_status()
+        components = status.get("components", {})
+        if not isinstance(components, dict):
+            return []
+        return [asdict(item) for item in build_health_alerts(components)]

@@ -17,10 +17,12 @@ class ExternalOrderObservation:
     external_id: str
     status: ExternalOrderStatus
     message: str
+    broker_id: str | None = None
+    account_id: str | None = None
 
 
 class ExternalOrderQueryPort(Protocol):
-    def query_order(self, external_id: str) -> ExternalOrderObservation:
+    def query_order(self, external_id: str, *, broker_id: str, account_id: str) -> ExternalOrderObservation:
         ...
 
 

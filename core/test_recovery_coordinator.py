@@ -1,3 +1,4 @@
+from pathlib import Path
 from datetime import datetime, timezone
 
 import pytest
@@ -75,3 +76,33 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_ledger_reserved_or_unknown_blocks_recovery_even_without_lifecycle(tmp_path: Path):
+    checkpoint = RuntimeCheckpointStore(tmp_path / "checkpoint.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("reserved-only")
+    recovery = RecoveryCoordinator(
+        checkpoint_store=checkpoint,
+        lifecycle_store=lifecycle,
+        execution_ledger=ledger,
+        memory=OperationMemory(),
+    )
+    assessment = recovery.assess()
+    assert assessment.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "reserved-only" in assessment.unknown_request_ids
+
+
+def test_contradictory_terminal_states_require_reconciliation(tmp_path: Path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-contradiction")
+    coordinator.execution_ledger.mark_accepted("req-contradiction")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-contradiction", ExecutionLifecycleState.REJECTED, now, "rejected")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert "estados terminais contraditórios" in result.message
+    assert "req-contradiction" not in result.unknown_request_ids

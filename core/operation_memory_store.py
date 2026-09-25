@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
 from datetime import datetime
+from pathlib import Path
 
+from core.file_lock import locked_file
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
 
@@ -56,17 +58,7 @@ class OperationMemoryStore:
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("registro persistido inválido.") from exc
 
-    def save(self, memory: OperationMemory) -> None:
-        if not isinstance(memory, OperationMemory):
-            raise TypeError("memory deve ser OperationMemory.")
-        payload = [self._serialize(record) for record in memory.records()]
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-
-    def load(self) -> OperationMemory:
+    def _load_unlocked(self) -> OperationMemory:
         memory = OperationMemory()
         if not self.path.exists():
             return memory
@@ -79,3 +71,46 @@ class OperationMemoryStore:
         for item in payload:
             memory.append(self._deserialize(item))
         return memory
+
+    def _write_unlocked(self, memory: OperationMemory) -> None:
+        payload = [self._serialize(record) for record in memory.records()]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
+    def save(self, memory: OperationMemory) -> None:
+        if not isinstance(memory, OperationMemory):
+            raise TypeError("memory deve ser OperationMemory.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            current = self._load_unlocked()
+            current_records = current.records()
+            new_records = memory.records()
+            if len(new_records) < len(current_records) or new_records[:len(current_records)] != current_records:
+                raise ValueError("snapshot de memória desatualizado; use mutação atômica.")
+            self._write_unlocked(memory)
+
+    def append(self, record: OperationMemoryRecord) -> OperationMemory:
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            memory = self._load_unlocked()
+            memory.append(record)
+            self._write_unlocked(memory)
+            return memory
+
+    def settle(self, record: OperationMemoryRecord, result: str) -> OperationMemory:
+        if not isinstance(record, OperationMemoryRecord):
+            raise TypeError("record deve ser OperationMemoryRecord.")
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            memory = self._load_unlocked()
+            memory.settle(record, result)
+            self._write_unlocked(memory)
+            return memory
+
+    def load(self) -> OperationMemory:
+        with locked_file(self.path.with_name(f".{self.path.name}.lock")):
+            return self._load_unlocked()

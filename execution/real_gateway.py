@@ -6,9 +6,13 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus, ReconciliationResult
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from security.production_operation_gate import ProductionOperationGate
+from saas.contracts import SaaSRole
+from storage.production_boundary import ProductionStoragePolicy
 
 
 class RealGatewayStatus(str):
@@ -28,7 +32,7 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, external_order_query: ExternalOrderQueryPort | None = None, production_gate: ProductionOperationGate | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -36,12 +40,16 @@ class RealExecutionGateway:
         self._gateway = adapter_gateway
         self._ledger = ledger
         self._processed_request_ids: set[str] = set(ledger.records())
+        self._external_order_query = external_order_query
+        self._production_gate = production_gate or ProductionOperationGate(ProductionStoragePolicy())
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
+            return False
+        if not isinstance(request.account_id, str) or not request.account_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -68,6 +76,37 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        try:
+            bound_adapter_id = self._gateway.adapter_id(broker)
+        except Exception as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"adapter REAL não possui identidade verificável: {exc}")
+        if bound_adapter_id.strip().lower() != authorization.adapter_id.strip().lower():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "adapter da requisição difere da autorização REAL.")
+        if request.account_id.strip() != authorization.account_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "account_id da requisição difere da autorização.")
+        if (
+            admission.subject_id != authorization.subject_id
+            or admission.tenant_id != authorization.tenant_id
+            or admission.account_id != authorization.account_id
+            or admission.broker_id.strip().lower() != authorization.broker_id.strip().lower()
+        ):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "escopo de identidade/conta da admissão difere da autorização.")
+
+        try:
+            production_context = self._production_gate.authorize(
+                subject_id=authorization.subject_id,
+                tenant_id=authorization.tenant_id,
+            )
+            # The SaaS authorization contract grants the EXECUTION entitlement
+            # only to OWNER. A merely authenticated production identity must not
+            # become a REAL trading authority by passing this gate alone.
+            if production_context.role is not SaaSRole.OWNER:
+                return RealGatewayResult(
+                    RealGatewayStatus.BLOCKED,
+                    "identidade de produção não possui autorização de execução REAL.",
+                )
+        except (PermissionError, ValueError) as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"production gate bloqueou a operação REAL: {exc}")
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
@@ -80,7 +119,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
-            self._ledger.reserve(request_id)
+            self._ledger.reserve_real(request_id, broker_id=broker, symbol=request.symbol, account_id=authorization.account_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
@@ -118,16 +157,110 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
 
         try:
-            self._ledger.mark_accepted(request_id)
+            self._ledger.mark_accepted_real(request_id, external_id=result.execution.external_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
 
-    def reconcile_unknown(self, request_id: str, *, executed: bool) -> None:
-        """Explicitly reconcile UNKNOWN/RESERVED; never resubmits the order."""
-        if self._ledger.status(request_id) not in (
-            ExecutionLedgerStatus.UNKNOWN,
-            ExecutionLedgerStatus.RESERVED,
-        ):
-            raise ValueError("request_id não está em estado incerto reconciliável.")
-        self._ledger.reconcile(request_id, executed=executed)
+    def reconcile_external_observation(
+        self,
+        request_id: str,
+        observation: ExternalOrderObservation,
+        *,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> ReconciliationResult:
+        """Apply a broker observation to the authoritative REAL ledger; never resubmits."""
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id inválido.")
+        if self._external_order_query is None:
+            raise RuntimeError("fonte confiável de consulta externa não configurada; reconciliação manual é bloqueada.")
+        context = self._ledger.execution_context(request_id)
+        if context is None:
+            raise ValueError("request_id não possui contexto REAL no ledger.")
+        broker_id = context.get("broker_id")
+        account_id = context.get("account_id")
+        if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(account_id, str) or not account_id.strip():
+            raise ValueError("operação REAL sem identidade persistida de broker/conta.")
+        observed = self._external_order_query.query_order(
+            observation.external_id,
+            broker_id=broker_id,
+            account_id=account_id,
+        )
+        if not isinstance(observed, ExternalOrderObservation):
+            raise ValueError("fonte externa retornou observação inválida.")
+        if observed != observation:
+            raise ValueError("observação fornecida difere da observação obtida pela fonte externa confiável.")
+        boundary = ExternalOrderReconciliationBoundary()
+        result = boundary.reconcile(observed.external_id, observed)
+        current = self._ledger.status(request_id)
+        linked_external_id = context.get("external_id")
+        if observed.broker_id is not None and observed.broker_id.strip().lower() != broker_id.strip().lower():
+            raise ValueError("observação externa pertence a outro broker.")
+        if observed.account_id is not None and observed.account_id.strip() != account_id.strip():
+            raise ValueError("observação externa pertence a outra conta.")
+        if linked_external_id not in (None, result.external_id):
+            raise ValueError("external_id observado difere da identidade REAL persistida.")
+        if linked_external_id is None:
+            raise ValueError("operação REAL sem external_id persistido não pode ser reconciliada por observação externa.")
+
+        if result.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=False,
+                message=f"operação {request_id} permanece sem estado terminal: {result.message}",
+            )
+
+        if current in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED):
+            self._ledger.reconcile(
+                request_id,
+                executed=result.status is ExternalOrderStatus.EXECUTED,
+                evidence_id=evidence_id,
+                evidence_source=evidence_source,
+            )
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=True,
+                message=f"operação {request_id} reconciliada no ledger: {result.message}",
+            )
+
+        if current is ExecutionLedgerStatus.ACCEPTED:
+            if result.status is ExternalOrderStatus.NOT_EXECUTED:
+                raise ValueError("observação externa contradiz um aceite REAL já persistido.")
+            return ReconciliationResult(
+                external_id=result.external_id,
+                status=result.status,
+                reconciled=True,
+                message=f"operação {request_id} já está aceita no ledger; observação externa confirma o aceite.",
+            )
+
+        if current is ExecutionLedgerStatus.REJECTED and result.status is ExternalOrderStatus.EXECUTED:
+            raise ValueError("observação externa contradiz uma rejeição REAL já persistida.")
+
+        return ReconciliationResult(
+            external_id=result.external_id,
+            status=result.status,
+            reconciled=False,
+            message=f"operação {request_id} já possui estado terminal {current.value}; nenhuma mutação aplicada.",
+        )
+
+    def reconcile_unknown(
+        self,
+        request_id: str,
+        *,
+        executed: bool,
+        evidence_id: str,
+        evidence_source: str,
+    ) -> None:
+        """Reject caller-supplied REAL reconciliation evidence.
+
+        REAL state resolution must come from the trusted external observation
+        path. This compatibility method remains fail-closed so arbitrary
+        caller input cannot turn UNKNOWN/RESERVED into a terminal state.
+        """
+        raise RuntimeError(
+            "reconciliação REAL manual bloqueada; use "
+            "reconcile_external_observation() com uma fonte externa confiável."
+        )

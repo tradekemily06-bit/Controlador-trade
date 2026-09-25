@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from saas.identity import IdentityBoundary, IdentityProvider
 from security.request_context import ProductionRequestContext, require_production_context
 from storage.production_boundary import ProductionStoragePolicy
 
@@ -16,6 +17,7 @@ class ProductionOperationGate:
     """
 
     storage: ProductionStoragePolicy
+    identity_provider: IdentityProvider | None = None
 
     def authorize(
         self,
@@ -23,7 +25,15 @@ class ProductionOperationGate:
         subject_id: str | None,
         tenant_id: str | None,
     ) -> ProductionRequestContext:
-        context = require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+        supplied = require_production_context(subject_id=subject_id, tenant_id=tenant_id)
+        if self.identity_provider is None:
+            raise PermissionError("trusted identity provider is not configured")
+        trusted = IdentityBoundary().resolve(self.identity_provider)
+        context = require_production_context(subject_id=trusted.subject_id, tenant_id=trusted.tenant_id)
+        if supplied.subject_id != context.subject_id:
+            raise PermissionError("production subject does not match trusted identity")
+        if supplied.tenant_id != context.tenant_id:
+            raise PermissionError("production tenant does not match trusted identity")
         if not self.storage.authorize_write(
             authenticated=context.is_valid(),
             tenant_id=context.tenant_id,
@@ -37,4 +47,5 @@ class ProductionOperationGate:
             "authorized": False,
             "storage_state": storage["state"],
             "real_execution": "DESABILITADO",
+            "trusted_identity_provider": "CONFIGURED" if self.identity_provider is not None else "NOT_CONFIGURED",
         }
