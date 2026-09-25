@@ -160,7 +160,18 @@ class RealExecutionGateway:
             raise ValueError("request_id inválido.")
         if self._external_order_query is None:
             raise RuntimeError("fonte confiável de consulta externa não configurada; reconciliação manual é bloqueada.")
-        observed = self._external_order_query.query_order(observation.external_id)
+        context = self._ledger.execution_context(request_id)
+        if context is None:
+            raise ValueError("request_id não possui contexto REAL no ledger.")
+        broker_id = context.get("broker_id")
+        account_id = context.get("account_id")
+        if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(account_id, str) or not account_id.strip():
+            raise ValueError("operação REAL sem identidade persistida de broker/conta.")
+        observed = self._external_order_query.query_order(
+            observation.external_id,
+            broker_id=broker_id,
+            account_id=account_id,
+        )
         if not isinstance(observed, ExternalOrderObservation):
             raise ValueError("fonte externa retornou observação inválida.")
         if observed != observation:
@@ -168,10 +179,11 @@ class RealExecutionGateway:
         boundary = ExternalOrderReconciliationBoundary()
         result = boundary.reconcile(observed.external_id, observed)
         current = self._ledger.status(request_id)
-        context = self._ledger.execution_context(request_id)
-        if context is None:
-            raise ValueError("request_id não possui contexto REAL no ledger.")
         linked_external_id = context.get("external_id")
+        if observed.broker_id is not None and observed.broker_id.strip().lower() != broker_id.strip().lower():
+            raise ValueError("observação externa pertence a outro broker.")
+        if observed.account_id is not None and observed.account_id.strip() != account_id.strip():
+            raise ValueError("observação externa pertence a outra conta.")
         if linked_external_id not in (None, result.external_id):
             raise ValueError("external_id observado difere da identidade REAL persistida.")
         if linked_external_id is None:
