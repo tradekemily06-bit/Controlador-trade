@@ -15,6 +15,8 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from security.production_operation_gate import ProductionOperationGate
+from storage.production_boundary import ProductionStoragePolicy
 
 
 class FakeAdapter:
@@ -55,6 +57,18 @@ class TrustedOrderQuery:
         return self.observation
 
 
+def _gateway(registry, ledger, external_order_query=None):
+    production_gate = ProductionOperationGate(
+        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True)
+    )
+    return RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ledger,
+        external_order_query=external_order_query,
+        production_gate=production_gate,
+    )
+
+
 def _authorization():
     return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True, "user-a", "tenant-a", "account-a")
 
@@ -77,7 +91,7 @@ def _safety(auth):
 
 
 def _request():
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, account_id="account-a")
 
 
 def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
@@ -107,7 +121,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     adapter = FakeAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = _gateway(registry, ledger)
     result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
@@ -200,7 +214,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(path))
+    gateway = _gateway(registry, ExecutionLedger(path))
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
@@ -237,7 +251,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL, account_id="account-a")
     result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
@@ -264,11 +278,7 @@ def test_external_observation_resolves_unknown_by_persisted_external_identity(tm
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
     observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution")
-    gateway = RealExecutionGateway(
-        BrokerAdapterGateway(registry),
-        ledger,
-        external_order_query=TrustedOrderQuery(observation),
-    )
+    gateway = _gateway(registry, ledger, external_order_query=TrustedOrderQuery(observation))
     result = gateway.reconcile_external_observation(
         "req-ext",
         observation,
