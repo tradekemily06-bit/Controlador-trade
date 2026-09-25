@@ -19,6 +19,13 @@ from security.production_operation_gate import ProductionOperationGate
 from storage.production_boundary import ProductionStoragePolicy
 
 
+class FakeIdentityProvider:
+    def resolve_identity(self):
+        from saas.contracts import SaaSRole
+        from saas.identity import TrustedIdentity
+        return TrustedIdentity("user-a", "tenant-a", SaaSRole.OWNER)
+
+
 class FakeAdapter:
     adapter_id = "fake-adapter"
 
@@ -67,7 +74,8 @@ class TrustedOrderQuery:
 
 def _gateway(registry, ledger, external_order_query=None):
     production_gate = ProductionOperationGate(
-        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True)
+        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True),
+        identity_provider=FakeIdentityProvider(),
     )
     return RealExecutionGateway(
         BrokerAdapterGateway(registry),
@@ -164,7 +172,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
     registry.register("fake", adapter)
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
     auth = RealExecutionAuthorization("a", "audit", "fake", "adapter", False, False)
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=False,
@@ -185,14 +193,14 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     adapter = UnknownAdapter()
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = _gateway(registry, ledger)
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
     first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
-    restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    restored = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
     second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert second.status == RealGatewayStatus.UNKNOWN
 
