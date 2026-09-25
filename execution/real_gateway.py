@@ -104,7 +104,7 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "request_id já processado; replay REAL recusado.")
 
         try:
-            self._ledger.reserve_real(request_id, broker_id=broker, symbol=request.symbol)
+            self._ledger.reserve_real(request_id, broker_id=broker, symbol=request.symbol, account_id=authorization.account_id)
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
