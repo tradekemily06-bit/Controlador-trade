@@ -171,8 +171,12 @@ class OperationalSafetyStore:
             payload = self._read_payload()
             audit = payload.get("audit", [])
             kill_switch = payload.get("kill_switch", {})
-            if not isinstance(audit, list) or not isinstance(kill_switch, dict):
+            current = payload.get("execution_audit", [])
+            if not isinstance(audit, list) or not isinstance(kill_switch, dict) or not isinstance(current, list):
                 raise ValueError("estado de segurança inválido.")
+            current_normalized = [self._execution_audit_item(item) for item in current]
+            if len(normalized) < len(current_normalized) or normalized[:len(current_normalized)] != current_normalized:
+                raise ValueError("snapshot de auditoria de execução desatualizado; use append_execution_audit.")
             payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
             self._atomic_write(payload)
 
