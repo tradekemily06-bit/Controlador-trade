@@ -168,6 +168,8 @@ class ExecutionLedger:
     def record(self, request_id: str) -> None:
         self._validate_id(request_id)
         def mutation() -> None:
+            if request_id in self._execution_context:
+                raise ValueError("record() genérico não pode finalizar uma reserva REAL.")
             if request_id not in self._states:
                 self._states[request_id] = ExecutionLedgerStatus.ACCEPTED
         self._mutate_locked(mutation)
