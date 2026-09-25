@@ -15,6 +15,9 @@ class RealAdmission:
     audit_id: str
     status: RealAdmissionStatus
     broker_id: str
+    subject_id: str
+    tenant_id: str
+    account_id: str
     reasons: tuple[str, ...]
 
     @property
@@ -25,9 +28,11 @@ class RealAdmission:
 class RealAdmissionBoundary:
     def admit(self, *, admission_id: str, audit_id: str, audit_verified: bool,
               authorization_active: bool, safety_ready: bool,
-              broker_available: bool, broker_id: str) -> RealAdmission:
+              broker_available: bool, broker_id: str, subject_id: str, tenant_id: str, account_id: str) -> RealAdmission:
         if not admission_id.strip() or not audit_id.strip() or not broker_id.strip():
             raise ValueError("identificadores e broker_id são obrigatórios.")
+        if not subject_id.strip() or not tenant_id.strip() or not account_id.strip():
+            raise ValueError("subject_id, tenant_id e account_id são obrigatórios para REAL.")
         reasons = []
         for ok, label in (
             (audit_verified, "auditoria P116 não verificada"),
@@ -38,4 +43,4 @@ class RealAdmissionBoundary:
             if not ok:
                 reasons.append(label)
         status = RealAdmissionStatus.ADMITTED if not reasons else RealAdmissionStatus.BLOCKED
-        return RealAdmission(admission_id, audit_id, status, broker_id, tuple(reasons))
+        return RealAdmission(admission_id, audit_id, status, broker_id, subject_id.strip(), tenant_id.strip(), account_id.strip(), tuple(reasons))
