@@ -176,8 +176,13 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     safety = _safety(auth)
     result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
-    gateway.reconcile_unknown("unknown-2", executed=True, evidence_id="broker-event-unknown-2", evidence_source="fake-broker")
-    assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    try:
+        gateway.reconcile_unknown("unknown-2", executed=True, evidence_id="broker-event-unknown-2", evidence_source="fake-broker")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("manual REAL reconciliation must be blocked")
+    assert ledger.status("unknown-2") is ExecutionLedgerStatus.UNKNOWN
 
 
 def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path):
@@ -193,8 +198,13 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
-    gateway.reconcile_unknown("crashed", executed=False, evidence_id="broker-event-crashed", evidence_source="fake-broker")
-    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED
+    try:
+        gateway.reconcile_unknown("crashed", executed=False, evidence_id="broker-event-crashed", evidence_source="fake-broker")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("manual REAL reconciliation must be blocked")
+    assert ExecutionLedger(path).status("crashed") is ExecutionLedgerStatus.RESERVED
 
 
 def test_real_ledger_prevents_stale_instance_duplicate_reservation(tmp_path: Path):
