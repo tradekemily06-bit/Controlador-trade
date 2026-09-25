@@ -9,6 +9,15 @@ from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 from execution.real_gateway import RealExecutionGateway, RealGatewayStatus
+from security.production_operation_gate import ProductionOperationGate
+from storage.production_boundary import ProductionStoragePolicy
+
+
+def _gateway(registry, ledger):
+    production_gate = ProductionOperationGate(
+        ProductionStoragePolicy(required=True, provider_configured=True, tenant_scoped=True, durable=True)
+    )
+    return RealExecutionGateway(BrokerAdapterGateway(registry), ledger, production_gate=production_gate)
 
 
 class MissingExternalIdAdapter:
@@ -23,7 +32,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
     registry = BrokerRegistry()
     registry.register("fake", MissingExternalIdAdapter())
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    gateway = _gateway(registry, ledger)
     authorization = RealExecutionAuthorization("auth", "audit", "fake", "adapter", True, True, "user-a", "tenant-a", "account-a")
     admission = RealAdmissionBoundary().admit(
         admission_id="adm", audit_id="audit", audit_verified=True,
@@ -37,7 +46,7 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
     )
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, account_id="account-a")
 
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
