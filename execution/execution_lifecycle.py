@@ -107,9 +107,12 @@ class ExecutionLifecycleStore:
         self._validate(record)
 
         def mutation() -> None:
+            from core.execution_lifecycle_guard import ExecutionLifecycleGuard
+
             previous = self._records.get(record.request_id)
-            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            transition = ExecutionLifecycleGuard().validate(previous, record.state)
+            if not transition.allowed:
+                raise ValueError(transition.reason)
             self._records[record.request_id] = record
 
         self._mutate_locked(mutation)
@@ -122,6 +125,8 @@ class ExecutionLifecycleStore:
             return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("request_id não pode ser vazio.")
         if state not in (ExecutionLifecycleState.ACCEPTED, ExecutionLifecycleState.REJECTED):
             raise ValueError("reconciliação exige estado ACCEPTED ou REJECTED.")
 
@@ -132,6 +137,8 @@ class ExecutionLifecycleStore:
             current = self._records.get(request_id)
             if current is None:
                 raise ValueError("execução não encontrada.")
+            if current.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("reconciliação exige estado UNKNOWN.")
             result = ExecutionLifecycleRecord(request_id, state, updated_at, message)
             self._validate(result)
             self._records[request_id] = result
