@@ -278,3 +278,29 @@ def test_external_observation_cannot_reconcile_unknown_without_matching_external
     else:
         raise AssertionError("external observation without a linked external_id must not mutate the ledger")
     assert ledger.status("req-ext") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_real_unknown_persistence_failure_leaves_reserved_replay_block(tmp_path: Path, monkeypatch):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+
+    def fail_mark_unknown(_request_id):
+        raise OSError("falha de persistência simulada")
+
+    monkeypatch.setattr(ledger, "mark_unknown", fail_mark_unknown)
+    result = gateway.execute(
+        broker="fake",
+        request_id="persist-fail",
+        request=_request(),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+
+    assert result.status == RealGatewayStatus.UNKNOWN
+    assert ledger.status("persist-fail") is ExecutionLedgerStatus.RESERVED
