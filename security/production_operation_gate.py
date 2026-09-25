@@ -30,9 +30,9 @@ class ProductionOperationGate:
             raise PermissionError("trusted identity provider is not configured")
         trusted = IdentityBoundary().resolve(self.identity_provider)
         context = require_production_context(subject_id=trusted.subject_id, tenant_id=trusted.tenant_id)
-        if subject_id is not None and subject_id.strip() != context.subject_id:
+        if supplied.subject_id != context.subject_id:
             raise PermissionError("production subject does not match trusted identity")
-        if tenant_id is not None and tenant_id.strip() != context.tenant_id:
+        if supplied.tenant_id != context.tenant_id:
             raise PermissionError("production tenant does not match trusted identity")
         if not self.storage.authorize_write(
             authenticated=context.is_valid(),
