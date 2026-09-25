@@ -3,11 +3,7 @@ from datetime import datetime, timezone
 from core.models import Signal
 from core.operation_memory import OperationMemoryRecord
 
-import pytest
-
 from core.operational_runtime import build_operational_runtime
-from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
-
 
 def test_runtime_restores_persistent_kill_switch(tmp_path):
     first = build_operational_runtime(tmp_path)
