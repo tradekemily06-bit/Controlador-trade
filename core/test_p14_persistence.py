@@ -113,4 +113,16 @@ def test_stale_memory_snapshot_is_rejected_instead_of_overwriting_newer_data(tmp
         )
     )
     with pytest.raises(ValueError, match="snapshot de memória desatualizado"):
-        second.recorder.store.save(second.recorder.memory)
+        second.store.save(second.recorder.memory)
+
+
+def test_settle_rejects_ambiguous_duplicate_records(tmp_path):
+    path = tmp_path / "operations.json"
+    recorder = PersistentOperationalRecorder.from_path(path)
+    timestamp = datetime(2026, 9, 9, 1, 30, tzinfo=timezone.utc)
+
+    first = recorder.record_operation(snapshot(), timestamp=timestamp)
+    recorder.record_operation(snapshot(), timestamp=timestamp)
+
+    with pytest.raises(ValueError, match="ambíguo"):
+        recorder.settle_operation(first.memory, "WIN")
