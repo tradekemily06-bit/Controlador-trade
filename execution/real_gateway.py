@@ -10,6 +10,8 @@ from core.p121_external_order_reconciliation import ExternalOrderObservation, Ex
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
+from security.production_operation_gate import ProductionOperationGate
+from storage.production_boundary import ProductionStoragePolicy
 
 
 class RealGatewayStatus(str):
@@ -29,7 +31,7 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, external_order_query: ExternalOrderQueryPort | None = None) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, external_order_query: ExternalOrderQueryPort | None = None, production_gate: ProductionOperationGate | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
@@ -38,12 +40,15 @@ class RealExecutionGateway:
         self._ledger = ledger
         self._processed_request_ids: set[str] = set(ledger.records())
         self._external_order_query = external_order_query
+        self._production_gate = production_gate or ProductionOperationGate(ProductionStoragePolicy())
 
     @staticmethod
     def _valid_request(request: ExecutionRequest) -> bool:
         if not isinstance(request, ExecutionRequest):
             return False
         if request.mode is not ExecutionMode.REAL:
+            return False
+        if not isinstance(request.account_id, str) or not request.account_id.strip():
             return False
         if not isinstance(request.symbol, str) or not request.symbol.strip():
             return False
@@ -70,6 +75,8 @@ class RealExecutionGateway:
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker inválido.")
         if broker.strip().lower() != authorization.broker_id.strip().lower():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "broker da requisição difere da autorização.")
+        if request.account_id.strip() != authorization.account_id.strip():
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "account_id da requisição difere da autorização.")
         if (
             admission.subject_id != authorization.subject_id
             or admission.tenant_id != authorization.tenant_id
@@ -77,6 +84,14 @@ class RealExecutionGateway:
             or admission.broker_id.strip().lower() != authorization.broker_id.strip().lower()
         ):
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "escopo de identidade/conta da admissão difere da autorização.")
+
+        try:
+            self._production_gate.authorize(
+                subject_id=authorization.subject_id,
+                tenant_id=authorization.tenant_id,
+            )
+        except (PermissionError, ValueError) as exc:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, f"production gate bloqueou a operação REAL: {exc}")
 
         current_status = self._ledger.status(request_id)
         if current_status is not None:
