@@ -60,3 +60,26 @@ def test_stale_lifecycle_instances_preserve_each_other_updates(tmp_path):
     restored = ExecutionLifecycleStore(path)
     assert restored.get("req-1").state is ExecutionLifecycleState.PENDING
     assert restored.get("req-2").state is ExecutionLifecycleState.PENDING
+
+def test_persistence_boundary_rejects_all_terminal_backtracking(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("accepted", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("accepted", ExecutionLifecycleState.ACCEPTED, now))
+    with pytest.raises(ValueError, match="transição inválida"):
+        store.put(ExecutionLifecycleRecord("accepted", ExecutionLifecycleState.REJECTED, now))
+
+    store.put(ExecutionLifecycleRecord("rejected", ExecutionLifecycleState.PENDING, now))
+    store.put(ExecutionLifecycleRecord("rejected", ExecutionLifecycleState.REJECTED, now))
+    with pytest.raises(ValueError, match="transição inválida"):
+        store.put(ExecutionLifecycleRecord("rejected", ExecutionLifecycleState.ACCEPTED, now))
+
+
+def test_reconciliation_cannot_bypass_non_unknown_state(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    store = ExecutionLifecycleStore(path)
+    store.put(ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.PENDING, now))
+    with pytest.raises(ValueError, match="exige estado UNKNOWN"):
+        store.reconcile("req-1", ExecutionLifecycleState.ACCEPTED, updated_at=now)
