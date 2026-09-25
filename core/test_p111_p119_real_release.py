@@ -306,3 +306,24 @@ def test_real_unknown_persistence_failure_leaves_reserved_replay_block(tmp_path:
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("persist-fail") is ExecutionLedgerStatus.RESERVED
+
+
+def test_real_gateway_blocks_mismatched_identity_scope(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    admission = RealAdmissionBoundary().admit(
+        admission_id="adm", audit_id="a116", audit_verified=True,
+        authorization_active=True, safety_ready=True,
+        broker_available=True, broker_id="fake",
+        subject_id="other-user", tenant_id=auth.tenant_id, account_id=auth.account_id,
+    )
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="scope-mismatch", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
