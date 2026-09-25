@@ -52,8 +52,10 @@ class TrustedOrderQuery:
     def __init__(self, observation):
         self.observation = observation
 
-    def query_order(self, external_id):
+    def query_order(self, external_id, *, broker_id, account_id):
         assert external_id == self.observation.external_id
+        assert broker_id == self.observation.broker_id
+        assert account_id == self.observation.account_id
         return self.observation
 
 
@@ -272,12 +274,12 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
 
 def test_external_observation_resolves_unknown_by_persisted_external_identity(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
-    ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD")
+    ledger.reserve_real("req-ext", broker_id="fake", symbol="EURUSD", account_id="account-a")
     ledger.mark_unknown("req-ext")
     ledger.bind_external_id("req-ext", external_id="ext-42")
     registry = BrokerRegistry()
     registry.register("fake", FakeAdapter())
-    observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution")
+    observation = ExternalOrderObservation("ext-42", ExternalOrderStatus.EXECUTED, "broker confirms execution", "fake", "account-a")
     gateway = _gateway(registry, ledger, external_order_query=TrustedOrderQuery(observation))
     result = gateway.reconcile_external_observation(
         "req-ext",
