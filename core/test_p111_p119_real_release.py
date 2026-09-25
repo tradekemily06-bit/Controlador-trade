@@ -20,6 +20,8 @@ from storage.production_boundary import ProductionStoragePolicy
 
 
 class FakeAdapter:
+    adapter_id = "fake-adapter"
+
     def __init__(self, available=True):
         self.available = available
         self.calls = 0
@@ -33,6 +35,8 @@ class FakeAdapter:
 
 
 class NoExternalIdAdapter:
+    adapter_id = "fake-adapter"
+
     def is_available(self):
         return True
 
@@ -41,6 +45,8 @@ class NoExternalIdAdapter:
 
 
 class UnknownAdapter:
+    adapter_id = "fake-adapter"
+
     def is_available(self):
         return True
 
@@ -341,6 +347,22 @@ def test_real_unknown_persistence_failure_leaves_reserved_replay_block(tmp_path:
 
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("persist-fail") is ExecutionLedgerStatus.RESERVED
+
+
+def test_real_gateway_blocks_mismatched_adapter_identity(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = _gateway(registry, ExecutionLedger(tmp_path / "ledger.json"))
+    auth = RealExecutionAuthorization("auth", "a111", "fake", "other-adapter", True, True, "user-a", "tenant-a", "account-a")
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake", request_id="adapter-mismatch", request=_request(),
+        authorization=auth, admission=admission, safety=safety,
+    )
+    assert result.status == RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
 
 
 def test_real_gateway_blocks_mismatched_identity_scope(tmp_path: Path):
