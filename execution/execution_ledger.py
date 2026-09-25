@@ -93,8 +93,9 @@ class ExecutionLedger:
                 raise ValueError("ledger de execução inválido.")
             broker_id = raw_context.get("broker_id")
             symbol = raw_context.get("symbol")
+            account_id = raw_context.get("account_id")
             external_id = raw_context.get("external_id")
-            if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip():
+            if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip() or not isinstance(account_id, str) or not account_id.strip():
                 raise ValueError("ledger de execução inválido.")
             if external_id is not None and (not isinstance(external_id, str) or not external_id.strip()):
                 raise ValueError("ledger de execução inválido.")
@@ -103,7 +104,7 @@ class ExecutionLedger:
                 if external_id in seen_external_ids:
                     raise ValueError("ledger de execução inválido: external_id duplicado.")
                 seen_external_ids.add(external_id)
-            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": external_id}
+            context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "account_id": account_id.strip(), "external_id": external_id}
         return states, evidence, context
 
     def _write(self) -> None:
@@ -154,15 +155,15 @@ class ExecutionLedger:
             self._states[request_id] = ExecutionLedgerStatus.RESERVED
         self._mutate_locked(mutation)
 
-    def reserve_real(self, request_id: str, *, broker_id: str, symbol: str) -> None:
+    def reserve_real(self, request_id: str, *, broker_id: str, symbol: str, account_id: str) -> None:
         self._validate_id(request_id)
-        if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("identidade REAL de broker e símbolo é obrigatória.")
+        if not isinstance(broker_id, str) or not broker_id.strip() or not isinstance(symbol, str) or not symbol.strip() or not isinstance(account_id, str) or not account_id.strip():
+            raise ValueError("identidade REAL de broker, conta e símbolo é obrigatória.")
         def mutation() -> None:
             if request_id in self._states:
                 raise ValueError("request_id já possui estado; replay REAL recusado.")
             self._states[request_id] = ExecutionLedgerStatus.RESERVED
-            self._execution_context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "external_id": None}
+            self._execution_context[request_id] = {"broker_id": broker_id.strip(), "symbol": symbol.strip(), "account_id": account_id.strip(), "external_id": None}
         self._mutate_locked(mutation)
 
     def record(self, request_id: str) -> None:
