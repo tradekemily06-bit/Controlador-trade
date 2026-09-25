@@ -107,8 +107,17 @@ class OperationalSafetyStore:
             if not isinstance(execution_audit, list):
                 raise ValueError("auditoria de execução persistida inválida.")
             execution_audit = [self._execution_audit_item(item) for item in execution_audit]
+            current_audit = [self._audit_record(item) for item in payload.get("audit", [])]
+            incoming_audit = audit.records()
+            if len(incoming_audit) < len(current_audit) or incoming_audit[:len(current_audit)] != tuple(current_audit):
+                raise ValueError("snapshot de auditoria desatualizado; use mutação atômica.")
+            current_state = payload.get("kill_switch", {})
+            if not isinstance(current_state, dict):
+                raise ValueError("estado do kill switch inválido.")
+            if bool(current_state.get("enabled", False)) and not state.enabled:
+                raise ValueError("kill switch persistido ativo não pode ser desligado por snapshot desatualizado; use transição explícita.")
             payload = {
-                "audit": [self._audit_dict(record) for record in audit.records()],
+                "audit": [self._audit_dict(record) for record in incoming_audit],
                 "kill_switch": {"enabled": state.enabled, "reason": state.reason},
                 "execution_audit": execution_audit,
             }
