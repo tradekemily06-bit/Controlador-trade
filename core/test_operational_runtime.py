@@ -14,6 +14,9 @@ def test_shared_runtime_starts_fail_closed_and_exposes_authoritative_state(tmp_p
     assert runtime.gateway._kill_switch is runtime.kill_switch
     assert runtime.gateway._ledger is runtime.execution_ledger
     assert runtime.gateway._lifecycle is runtime.execution_lifecycle
+    assert runtime.gateway._recorder is runtime.recorder
+    assert runtime.recorder.memory is runtime.recovery.memory
+    assert runtime.recorder.kill_switch is runtime.kill_switch
     assert snapshot["execution"] == {
         "allowed": False,
         "mode": "DEMO",
