@@ -19,6 +19,7 @@ def make_intent() -> ExecutionIntent:
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
         created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+        cycle_id="cycle-44",
     )
 
 

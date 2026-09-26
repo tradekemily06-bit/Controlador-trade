@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
+from uuid import uuid4
 
 from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
@@ -79,6 +80,7 @@ class TradingRuntime:
         stop_reason = None
 
         for index in range(1, max_cycles + 1):
+            cycle_id = str(uuid4())
             orchestration = self.orchestrator.evaluate(
                 request,
                 operational_state=operational_state,
@@ -89,6 +91,7 @@ class TradingRuntime:
                 daily_result=daily_result,
                 operations_count=operations_count,
                 consecutive_losses=consecutive_losses,
+                cycle_id=cycle_id,
             )
             plan = None
             execution_result = None
@@ -114,6 +117,8 @@ class TradingRuntime:
                         session_id=session_id,
                         last_cycle=index,
                         last_request_id=request_id,
+                        last_decision_id=getattr(orchestration, "decision_id", None) or None,
+                        last_cycle_id=getattr(orchestration, "cycle_id", None) or None,
                         updated_at=datetime.now(timezone.utc),
                     )
                 )
