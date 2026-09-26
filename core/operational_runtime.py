@@ -5,6 +5,8 @@ from pathlib import Path
 
 from core.kill_switch import KillSwitch
 from core.operation_lineage import OperationLineageStore
+from core.controlled_automation_runtime import ControlledAutomationRuntime
+from core.p41_controlled_automation import AutomationPolicy
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
@@ -31,6 +33,7 @@ class OperationalRuntime:
     gateway: ExecutionGateway
     lineage: OperationLineageStore
     market_data: MarketDataRuntimeState
+    controlled_automation: ControlledAutomationRuntime
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
@@ -62,6 +65,10 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         lineage=lineage,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    # Automation is explicitly opt-in; the shared runtime starts fail-closed.
+    controlled_automation = ControlledAutomationRuntime(
+        policy=AutomationPolicy(enabled=False, minimum_interval_seconds=0)
+    )
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
@@ -72,4 +79,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         gateway=gateway,
         lineage=lineage,
         market_data=market_data,
+        controlled_automation=controlled_automation,
     )
