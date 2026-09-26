@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from core.decision_engine import FinalDecision
 from core.execution_intent import ExecutionIntent
@@ -17,6 +17,8 @@ class ExecutionPlan:
 
     request_id: str
     request: ExecutionRequest
+    decision_id: str | None = None
+    cycle_id: str | None = None
 
 
 class ExecutionCoordinator:
@@ -60,6 +62,8 @@ class ExecutionCoordinator:
                 mode=mode,
                 request_id=request_id,
             ),
+            decision_id=orchestration.decision_id,
+            cycle_id=orchestration.cycle_id,
         )
 
     def execute_plan(
@@ -77,6 +81,9 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
         if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
+        if plan.decision_id != orchestration.decision_id or plan.cycle_id != orchestration.cycle_id:
+            return GatewayResult(GatewayStatus.BLOCKED, "linhagem da decisão não corresponde ao plano.")
+
         intent = ExecutionIntent(
             request_id=plan.request_id,
             symbol=plan.request.symbol,
@@ -85,10 +92,18 @@ class ExecutionCoordinator:
             duration_seconds=plan.request.duration_seconds,
             mode=plan.request.mode,
             created_at=orchestration.timestamp,
+            decision_id=plan.decision_id,
+            cycle_id=plan.cycle_id,
+        )
+        snapshot = replace(
+            orchestration.snapshot,
+            decision_id=plan.decision_id,
+            cycle_id=plan.cycle_id,
+            request_id=plan.request_id,
         )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
             senior_context=orchestration.senior_context,
-            snapshot=orchestration.snapshot,
+            snapshot=snapshot,
             entry_conditions=entry_conditions,
         )
