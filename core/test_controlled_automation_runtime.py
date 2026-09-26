@@ -55,7 +55,7 @@ def test_controlled_automation_chains_p41_to_p44_and_dispatch_state():
 
 def test_blocked_admission_never_reaches_dispatch():
     runtime = ControlledAutomationRuntime(
-        policy=__import__("core.p41_controlled_automation", fromlist=["AutomationPolicy"]).AutomationPolicy(
+        policy=AutomationPolicy(
             enabled=True, minimum_interval_seconds=0
         )
     )
@@ -90,3 +90,20 @@ def test_complete_maps_gateway_acceptance_to_terminal_lifecycle():
 
     result = runtime.complete(prepared, Result())
     assert result.lifecycle.state.value == "COMPLETED"
+
+
+def test_cycle_mismatch_is_blocked_at_handoff():
+    runtime = ControlledAutomationRuntime(policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0))
+    mismatched = intent()
+    mismatched = ExecutionIntent(
+        request_id=mismatched.request_id, symbol=mismatched.symbol, signal=mismatched.signal,
+        amount=mismatched.amount, duration_seconds=mismatched.duration_seconds,
+        mode=mismatched.mode, created_at=mismatched.created_at,
+        decision_id=mismatched.decision_id, cycle_id="different-cycle",
+    )
+    result = runtime.prepare(
+        cycle_id="cycle-4", requested_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
+        readiness=readiness(), risk_budget=budget(), intent=mismatched,
+    )
+    assert not result.handoff.handed_off
+    assert result.lifecycle.state.value == "BLOCKED"
