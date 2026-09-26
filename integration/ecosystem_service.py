@@ -59,6 +59,32 @@ class EcosystemService:
             raise RuntimeError("runtime operacional não conectado")
         return self.operational_runtime.market_data.update(snapshot, now=now, expected_interval_seconds=expected_interval_seconds)
 
+    def mt5_market_data(self, *, symbol: str, timeframe: str = "5m", limit: int = 50, mt5_module: Any = None) -> dict[str, Any]:
+        """Read validated completed candles from MT5 DEMO through the core feed boundary."""
+        from data.feed import MarketDataRequest
+        from integration.mt5_runtime_feed import build_mt5_demo_runtime_feed
+
+        feed = build_mt5_demo_runtime_feed(mt5_module=mt5_module)
+        result = feed.fetch(MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit))
+        return {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "source": result.source,
+            "received_at": result.received_at.isoformat(),
+            "candles": [
+                {
+                    "timestamp": candle.timestamp.isoformat(),
+                    "open": candle.open,
+                    "high": candle.high,
+                    "low": candle.low,
+                    "close": candle.close,
+                    "volume": candle.volume,
+                }
+                for candle in result.candles
+            ],
+            "execution_allowed": False,
+        }
+
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
