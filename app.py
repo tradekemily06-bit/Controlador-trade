@@ -141,6 +141,14 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/mt5/market-data" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            symbol = (query.get("symbol") or ["EURUSD"])[-1].strip()
+            timeframe = (query.get("timeframe") or ["5m"])[-1].strip()
+            limit = int((query.get("limit") or ["50"])[-1])
+            if not symbol or not timeframe or not 1 <= limit <= 500:
+                raise ValueError("symbol, timeframe ou limit inválido")
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.mt5_market_data(symbol=symbol, timeframe=timeframe, limit=limit), request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
