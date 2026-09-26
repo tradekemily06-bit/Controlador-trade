@@ -26,7 +26,7 @@ class OrchestrationResult:
     decision: DecisionResult
     snapshot: DecisionSnapshot
     timestamp: datetime
-    decision_id: str
+    decision_id: str = ""
     cycle_id: str | None = None
     senior_context: SeniorContextCycle | None = None
 
