@@ -6,6 +6,7 @@ from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
+from core.models import Signal
 from core.operation_lineage import OperationLineage, OperationLineageStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from execution.execution_ledger import ExecutionLedger
