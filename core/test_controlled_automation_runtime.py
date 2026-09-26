@@ -7,6 +7,7 @@ from core.demo_readiness import DemoReadinessReport
 from core.execution_intent import ExecutionIntent
 from core.models import Signal
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
+from core.p41_controlled_automation import AutomationPolicy
 from execution.ports import ExecutionMode
 
 
@@ -34,7 +35,7 @@ def budget():
 
 def test_controlled_automation_chains_p41_to_p44_and_dispatch_state():
     runtime = ControlledAutomationRuntime(
-        policy=__import__("core.p41_controlled_automation", fromlist=["AutomationPolicy"]).AutomationPolicy(
+        policy=AutomationPolicy(
             enabled=True, minimum_interval_seconds=0
         )
     )
