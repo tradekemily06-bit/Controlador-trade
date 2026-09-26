@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.p4_operational_recorder import P4OperationalRecorder
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -28,6 +29,7 @@ class OperationalRuntime:
     recovery: RecoveryCoordinator
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
+    recorder: P4OperationalRecorder
     market_data: MarketDataRuntimeState
 
 
@@ -39,6 +41,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
     memory = OperationMemory()
+    recorder = P4OperationalRecorder(memory=memory, kill_switch=kill_switch)
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
@@ -54,6 +57,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     gateway = ExecutionGateway(
         executor or PaperExecutor(),
         kill_switch,
+        recorder=recorder,
         ledger=ledger,
         lifecycle=lifecycle,
     )
@@ -66,5 +70,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         recovery=recovery,
         health=health,
         gateway=gateway,
+        recorder=recorder,
         market_data=market_data,
     )
