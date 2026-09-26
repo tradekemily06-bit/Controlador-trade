@@ -11,9 +11,9 @@ class RuntimeCheckpoint:
     session_id: str
     last_cycle: int
     last_request_id: str | None
+    updated_at: datetime
     last_decision_id: str | None = None
     last_cycle_id: str | None = None
-    updated_at: datetime | None = None
 
 
 class RuntimeCheckpointStore:
