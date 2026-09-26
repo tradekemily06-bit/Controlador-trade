@@ -62,8 +62,8 @@ class ExecutionCoordinator:
                 mode=mode,
                 request_id=request_id,
             ),
-            decision_id=orchestration.decision_id,
-            cycle_id=orchestration.cycle_id,
+            decision_id=orchestration.decision_id or None,
+            cycle_id=orchestration.cycle_id or None,
         )
 
     def execute_plan(
@@ -95,12 +95,14 @@ class ExecutionCoordinator:
             decision_id=plan.decision_id,
             cycle_id=plan.cycle_id,
         )
-        snapshot = replace(
-            orchestration.snapshot,
-            decision_id=plan.decision_id,
-            cycle_id=plan.cycle_id,
-            request_id=plan.request_id,
-        )
+        snapshot = orchestration.snapshot
+        if plan.decision_id and plan.cycle_id:
+            snapshot = replace(
+                snapshot,
+                decision_id=plan.decision_id,
+                cycle_id=plan.cycle_id,
+                request_id=plan.request_id,
+            )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
             senior_context=orchestration.senior_context,
