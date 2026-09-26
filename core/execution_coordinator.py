@@ -81,8 +81,11 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
         if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
-        if plan.decision_id != orchestration.decision_id or plan.cycle_id != orchestration.cycle_id:
-            return GatewayResult(GatewayStatus.BLOCKED, "linhagem da decisão não corresponde ao plano.")
+        plan_lineage = (plan.decision_id, plan.cycle_id)
+        orchestration_lineage = (orchestration.decision_id or None, orchestration.cycle_id or None)
+        if any(plan_lineage) or any(orchestration_lineage):
+            if plan_lineage != orchestration_lineage or not all(plan_lineage):
+                return GatewayResult(GatewayStatus.BLOCKED, "linhagem da decisão não corresponde ao plano.")
 
         intent = ExecutionIntent(
             request_id=plan.request_id,
