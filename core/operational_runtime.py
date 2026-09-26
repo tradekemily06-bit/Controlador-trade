@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.kill_switch import KillSwitch
+from core.operation_lineage import OperationLineageStore
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
@@ -28,6 +29,7 @@ class OperationalRuntime:
     recovery: RecoveryCoordinator
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
+    lineage: OperationLineageStore
     market_data: MarketDataRuntimeState
 
 
@@ -51,11 +53,13 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         checkpoint_store=checkpoint,
         recovery=recovery,
     )
+    lineage = OperationLineageStore(root / "operation-lineage.json")
     gateway = ExecutionGateway(
         executor or PaperExecutor(),
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        lineage=lineage,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
@@ -66,5 +70,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         recovery=recovery,
         health=health,
         gateway=gateway,
+        lineage=lineage,
         market_data=market_data,
     )
