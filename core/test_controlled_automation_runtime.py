@@ -78,7 +78,7 @@ def test_complete_maps_gateway_acceptance_to_terminal_lifecycle():
         )
     )
     prepared = runtime.prepare(
-        cycle_id="cycle-3",
+        cycle_id="cycle-1",
         requested_at=datetime(2026, 9, 25, tzinfo=timezone.utc),
         readiness=readiness(),
         risk_budget=budget(),
