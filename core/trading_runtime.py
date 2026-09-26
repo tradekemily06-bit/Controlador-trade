@@ -117,8 +117,8 @@ class TradingRuntime:
                         session_id=session_id,
                         last_cycle=index,
                         last_request_id=request_id,
-                        last_decision_id=orchestration.decision_id,
-                        last_cycle_id=orchestration.cycle_id,
+                        last_decision_id=getattr(orchestration, "decision_id", None) or None,
+                        last_cycle_id=getattr(orchestration, "cycle_id", None) or None,
                         updated_at=datetime.now(timezone.utc),
                     )
                 )
