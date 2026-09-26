@@ -30,6 +30,9 @@ class DecisionSnapshot:
     consecutive_losses: int | None
     symbol: str | None
     timeframe: str | None
+    decision_id: str | None = None
+    cycle_id: str | None = None
+    request_id: str | None = None
 
     @classmethod
     def from_results(
@@ -40,6 +43,9 @@ class DecisionSnapshot:
         decision: DecisionResult,
         market_context: MarketContextResult | None,
         operational_state: OperationalState | None,
+        decision_id: str | None = None,
+        cycle_id: str | None = None,
+        request_id: str | None = None,
     ) -> "DecisionSnapshot":
         return cls(
             signal=analysis.signal.value,
@@ -50,28 +56,17 @@ class DecisionSnapshot:
             actionable=quality.actionable,
             decision=decision.decision,
             decision_reason=decision.reason,
-            market_context=(
-                market_context.context.value if market_context is not None else None
-            ),
-            market_direction=(
-                market_context.direction.value if market_context is not None else None
-            ),
-            market_score=(
-                market_context.score if market_context is not None else None
-            ),
+            market_context=market_context.context.value if market_context is not None else None,
+            market_direction=market_context.direction.value if market_context is not None else None,
+            market_score=market_context.score if market_context is not None else None,
             operational_state_available=operational_state is not None,
-            trades_today=(
-                operational_state.trades_today
-                if operational_state is not None
-                else None
-            ),
-            consecutive_losses=(
-                operational_state.consecutive_losses
-                if operational_state is not None
-                else None
-            ),
+            trades_today=operational_state.trades_today if operational_state is not None else None,
+            consecutive_losses=operational_state.consecutive_losses if operational_state is not None else None,
             symbol=analysis.symbol,
             timeframe=analysis.timeframe,
+            decision_id=decision_id,
+            cycle_id=cycle_id,
+            request_id=request_id,
         )
 
     def explain(self) -> str:
@@ -106,4 +101,7 @@ class DecisionSnapshot:
             "consecutive_losses": self.consecutive_losses,
             "symbol": self.symbol,
             "timeframe": self.timeframe,
+            "decision_id": self.decision_id,
+            "cycle_id": self.cycle_id,
+            "request_id": self.request_id,
         }
