@@ -11,7 +11,9 @@ class RuntimeCheckpoint:
     session_id: str
     last_cycle: int
     last_request_id: str | None
-    updated_at: datetime
+    last_decision_id: str | None = None
+    last_cycle_id: str | None = None
+    updated_at: datetime | None = None
 
 
 class RuntimeCheckpointStore:
@@ -31,7 +33,9 @@ class RuntimeCheckpointStore:
                     "session_id": checkpoint.session_id,
                     "last_cycle": checkpoint.last_cycle,
                     "last_request_id": checkpoint.last_request_id,
-                    "updated_at": checkpoint.updated_at.isoformat(),
+                    "last_decision_id": checkpoint.last_decision_id,
+                    "last_cycle_id": checkpoint.last_cycle_id,
+                    "updated_at": checkpoint.updated_at.isoformat() if checkpoint.updated_at else datetime.now().isoformat(),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -51,6 +55,8 @@ class RuntimeCheckpointStore:
                 session_id=data["session_id"],
                 last_cycle=data["last_cycle"],
                 last_request_id=data.get("last_request_id"),
+                last_decision_id=data.get("last_decision_id"),
+                last_cycle_id=data.get("last_cycle_id"),
                 updated_at=datetime.fromisoformat(data["updated_at"]),
             )
             self._validate(checkpoint)
@@ -66,9 +72,9 @@ class RuntimeCheckpointStore:
             raise ValueError("checkpoint inválido.")
         if not isinstance(checkpoint.last_cycle, int) or isinstance(checkpoint.last_cycle, bool) or checkpoint.last_cycle < 0:
             raise ValueError("checkpoint inválido.")
-        if checkpoint.last_request_id is not None and (
-            not isinstance(checkpoint.last_request_id, str) or not checkpoint.last_request_id.strip()
-        ):
-            raise ValueError("request_id do checkpoint inválido.")
+        for name in ("last_request_id", "last_decision_id", "last_cycle_id"):
+            value = getattr(checkpoint, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} do checkpoint inválido.")
         if not isinstance(checkpoint.updated_at, datetime):
             raise ValueError("checkpoint inválido.")
