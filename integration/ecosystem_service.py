@@ -125,6 +125,20 @@ class EcosystemService:
             self._finalize_verified_outcome(request_id, observation)
         return result
 
+    def observe_closed_and_finalize(self, request_id: str) -> Any:
+        """Reobserve delayed external history and use the same verified learning path."""
+        if self.outcome_port is None:
+            raise RuntimeError("external outcome adapter não conectado")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None or not lineage.external_id:
+            raise RuntimeError("request_id sem linhagem/external_id persistido")
+        observation = self.outcome_port.observe_closed_position(request_id)
+        if observation is not None:
+            self._finalize_verified_outcome(request_id, observation)
+        return observation
+
     def _finalize_verified_outcome(self, request_id: str, observation: Any) -> None:
         """Reconcile external facts and feed verified learning/statistics automatically."""
         from core.p49_outcome_reconciliation import ExternalOutcomeObservation
