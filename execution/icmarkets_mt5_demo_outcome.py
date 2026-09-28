@@ -33,6 +33,7 @@ class MT5OutcomeEvidence:
             external_reference=self.external_close_id,
             external_container_id=self.external_container_id,
             external_result_ids=self.external_result_ids,
+            observed_at=self.observed_at,
         )
 
 
