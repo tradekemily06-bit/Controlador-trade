@@ -79,5 +79,5 @@ def test_demo_close_flows_into_verified_memory_and_learning(tmp_path, monkeypatc
 
     assert result.observation is not None
     assert service.memory[0].outcome == "WIN"
-    journal = service.post_demo_learning.learning.learning.journal
+    journal = service.post_demo_learning.post_demo.learning.journal
     assert journal.verified_note(dedupe_key="cycle:cycle-e2e").note_id == "operation-learning-cycle-e2e"
