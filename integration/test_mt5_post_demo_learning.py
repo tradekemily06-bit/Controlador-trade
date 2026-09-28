@@ -21,7 +21,7 @@ def evidence(cycle_id="cycle-1"):
     return ExternalOutcomeObservation(
         cycle_id=cycle_id,
         external_container_id="123",
-        external_close_id="900",
+        external_reference="900",
         external_result_ids=("602",),
         observed_at=datetime.now(timezone.utc),
         financial_result=10.3,
