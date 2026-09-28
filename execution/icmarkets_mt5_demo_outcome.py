@@ -17,9 +17,9 @@ class MT5OutcomeEvidence:
     decision_id: str
     cycle_id: str
     request_id: str
-    position_id: str
-    close_external_id: str
-    deal_ids: tuple[str, ...]
+    external_container_id: str
+    external_close_id: str
+    external_result_ids: tuple[str, ...]
     financial_result: float
     outcome: Literal["WIN", "LOSS", "DRAW"]
     observed_at: datetime
@@ -35,8 +35,8 @@ class MT5OutcomeEvidence:
 @dataclass(frozen=True)
 class MT5CloseResult:
     request_id: str
-    position_id: str
-    close_external_id: str | None
+    external_container_id: str
+    external_close_id: str | None
     position_closed: bool
     outcome_evidence: MT5OutcomeEvidence | None
     message: str
@@ -96,24 +96,24 @@ class ICMarketsMT5DemoOutcomeBridge:
 
         try:
             self._require_demo(mt5)
-            position_id = lineage.position_id or self._resolve_position_id(mt5, lineage.external_id)
-            if not position_id:
+            external_container_id = lineage.external_container_id or self._resolve_external_container_id(mt5, lineage.external_id)
+            if not external_container_id:
                 raise MT5OutcomeBridgeError(
-                    "não foi possível resolver position_id a partir do external_id; resultado permanece UNKNOWN."
+                    "não foi possível resolver external_container_id a partir do external_id; resultado permanece UNKNOWN."
                 )
-            if lineage.position_id != position_id:
-                lineage = self.lineage.attach_position_id(request_id, position_id, updated_at=event_time)
+            if lineage.external_container_id != external_container_id:
+                lineage = self.lineage.attach_external_container_id(request_id, external_container_id, updated_at=event_time)
 
-            position = self._get_single_position(mt5, position_id)
+            position = self._get_single_position(mt5, external_container_id)
             if position is None:
                 evidence = self._observe_closed_position(mt5, lineage, event_time)
                 if evidence is None:
                     return MT5CloseResult(
-                        request_id, position_id, lineage.close_external_id, False, None,
+                        request_id, external_container_id, lineage.external_close_id, False, None,
                         "posição já não está aberta, mas os deals de saída ainda não foram confirmados.",
                     )
                 return MT5CloseResult(
-                    request_id, position_id, lineage.close_external_id, True, evidence,
+                    request_id, external_container_id, lineage.external_close_id, True, evidence,
                     "posição já estava fechada; resultado financeiro confirmado por deals.",
                 )
 
@@ -158,7 +158,7 @@ class ICMarketsMT5DemoOutcomeBridge:
                 "deviation": self.deviation,
                 "magic": self.magic,
                 "comment": "ControladorTrading-DEMO-CLOSE",
-                "position": int(position_id),
+                "position": int(external_container_id),
                 "type_time": getattr(mt5, "ORDER_TIME_GTC", 0),
                 "type_filling": filling,
             }
@@ -184,31 +184,31 @@ class ICMarketsMT5DemoOutcomeBridge:
                     f"fechamento rejeitado pelo MT5: retcode={getattr(result, 'retcode', None)}"
                 )
 
-            close_external_id = getattr(result, "order", None) or getattr(result, "deal", None)
-            if close_external_id is None:
+            external_close_id = getattr(result, "order", None) or getattr(result, "deal", None)
+            if external_close_id is None:
                 raise MT5OutcomeBridgeError(
                     "fechamento aceito sem order/deal identificável; resultado permanece UNKNOWN."
                 )
-            lineage = self.lineage.attach_close_external_id(
-                request_id, str(close_external_id), updated_at=event_time
+            lineage = self.lineage.attach_external_close_id(
+                request_id, str(external_close_id), updated_at=event_time
             )
 
-            remaining = self._get_single_position(mt5, position_id)
+            remaining = self._get_single_position(mt5, external_container_id)
             if remaining is not None:
                 return MT5CloseResult(
-                    request_id, position_id, str(close_external_id), False, None,
+                    request_id, external_container_id, str(external_close_id), False, None,
                     "fechamento parcial/posição ainda aberta; resultado financeiro não foi fechado.",
                 )
 
             evidence = self._observe_closed_position(mt5, lineage, event_time)
             if evidence is None:
                 return MT5CloseResult(
-                    request_id, position_id, str(close_external_id), True, None,
+                    request_id, external_container_id, str(external_close_id), True, None,
                     "posição fechada, mas deals de saída ainda não foram confirmados; resultado permanece UNKNOWN.",
                 )
 
             return MT5CloseResult(
-                request_id, position_id, str(close_external_id), True, evidence,
+                request_id, external_container_id, str(external_close_id), True, evidence,
                 "posição fechada e resultado financeiro confirmado por deals MT5.",
             )
         finally:
@@ -221,15 +221,15 @@ class ICMarketsMT5DemoOutcomeBridge:
         lineage = self.lineage.get(request_id)
         if lineage is None:
             raise ValueError("request_id sem linhagem persistida.")
-        if not lineage.position_id:
-            raise ValueError("position_id ainda não foi resolvido.")
+        if not lineage.external_container_id:
+            raise ValueError("external_container_id ainda não foi resolvido.")
         event_time = now or datetime.now(timezone.utc)
         mt5 = self._module()
         if not mt5.initialize():
             raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             self._require_demo(mt5)
-            if self._get_single_position(mt5, lineage.position_id) is not None:
+            if self._get_single_position(mt5, lineage.external_container_id) is not None:
                 return None
             return self._observe_closed_position(mt5, lineage, event_time)
         finally:
@@ -244,7 +244,7 @@ class ICMarketsMT5DemoOutcomeBridge:
         lineage: OperationLineage,
         observed_at: datetime,
     ) -> MT5OutcomeEvidence | None:
-        deals = mt5.history_deals_get(position=int(lineage.position_id))
+        deals = mt5.history_deals_get(position=int(lineage.external_container_id))
         if deals is None:
             return None
 
@@ -266,7 +266,7 @@ class ICMarketsMT5DemoOutcomeBridge:
             )
 
         exit_deals.sort(key=deal_key)
-        deal_ids = tuple(str(getattr(deal, "ticket")) for deal in exit_deals)
+        external_result_ids = tuple(str(getattr(deal, "ticket")) for deal in exit_deals)
         financial = 0.0
         for deal in exit_deals:
             financial += self._money(deal, "profit")
@@ -282,13 +282,13 @@ class ICMarketsMT5DemoOutcomeBridge:
         else:
             outcome = "DRAW"
 
-        close_external_id = lineage.close_external_id or str(getattr(exit_deals[-1], "ticket", ""))
-        if not close_external_id:
+        external_close_id = lineage.external_close_id or str(getattr(exit_deals[-1], "ticket", ""))
+        if not external_close_id:
             return None
-        if lineage.close_external_id is None:
-            lineage = self.lineage.attach_close_external_id(
+        if lineage.external_close_id is None:
+            lineage = self.lineage.attach_external_close_id(
                 lineage.request_id,
-                close_external_id,
+                external_close_id,
                 updated_at=observed_at,
             )
 
@@ -296,16 +296,16 @@ class ICMarketsMT5DemoOutcomeBridge:
             decision_id=lineage.decision_id,
             cycle_id=lineage.cycle_id,
             request_id=lineage.request_id,
-            position_id=lineage.position_id,
-            close_external_id=close_external_id,
-            deal_ids=deal_ids,
+            external_container_id=lineage.external_container_id,
+            external_close_id=external_close_id,
+            external_result_ids=external_result_ids,
             financial_result=float(financial),
             outcome=outcome,
             observed_at=observed_at,
         )
-        self.lineage.attach_deal_ids(
+        self.lineage.attach_external_result_ids(
             lineage.request_id,
-            deal_ids,
+            external_result_ids,
             updated_at=observed_at,
         )
         return evidence
@@ -328,7 +328,7 @@ class ICMarketsMT5DemoOutcomeBridge:
         return float(value)
 
     @staticmethod
-    def _resolve_position_id(mt5: Any, external_id: str | None) -> str | None:
+    def _resolve_external_container_id(mt5: Any, external_id: str | None) -> str | None:
         if not external_id:
             return None
         try:
@@ -339,27 +339,27 @@ class ICMarketsMT5DemoOutcomeBridge:
         deals = mt5.history_deals_get(ticket=ticket)
         if deals:
             for deal in deals:
-                position_id = getattr(deal, "position_id", None)
-                if position_id:
-                    return str(position_id)
+                external_container_id = getattr(deal, "external_container_id", None)
+                if external_container_id:
+                    return str(external_container_id)
 
         orders = mt5.history_orders_get(ticket=ticket)
         if orders:
             for order in orders:
-                position_id = getattr(order, "position_id", None)
-                if position_id:
-                    return str(position_id)
+                external_container_id = getattr(order, "external_container_id", None)
+                if external_container_id:
+                    return str(external_container_id)
 
         return None
 
     @staticmethod
-    def _get_single_position(mt5: Any, position_id: str) -> Any | None:
-        positions = mt5.positions_get(ticket=int(position_id))
+    def _get_single_position(mt5: Any, external_container_id: str) -> Any | None:
+        positions = mt5.positions_get(ticket=int(external_container_id))
         if positions is None:
             return None
         items = list(positions)
         if len(items) > 1:
-            raise MT5OutcomeBridgeError("mais de uma posição encontrada para o mesmo position_id.")
+            raise MT5OutcomeBridgeError("mais de uma posição encontrada para o mesmo external_container_id.")
         return items[0] if items else None
 
     @staticmethod
