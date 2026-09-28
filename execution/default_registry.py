@@ -4,6 +4,7 @@ from typing import Any
 
 from core.kill_switch import KillSwitch
 from execution.broker_registry import BrokerRegistry
+from execution.ports import AdapterConnectionIdentity
 from execution.gateway import ExecutionGateway
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 
@@ -23,6 +24,12 @@ def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) ->
         ICMarketsMT5DemoAdapter(
             ICMarketsMT5DemoConfig(symbol=symbol),
             mt5_module=mt5_module,
+        ),
+        identity=AdapterConnectionIdentity(
+            broker_id="ic_markets",
+            platform_id="mt5",
+            adapter_id=IC_MARKETS_MT5_DEMO,
+            transport_id="metatrader5_python_terminal",
         ),
     )
     return registry
