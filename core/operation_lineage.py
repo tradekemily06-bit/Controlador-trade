@@ -15,6 +15,9 @@ class OperationLineage:
     cycle_id: str
     request_id: str
     external_id: str | None = None
+    position_id: str | None = None
+    close_external_id: str | None = None
+    deal_ids: tuple[str, ...] = ()
     updated_at: datetime | None = None
 
     def __post_init__(self) -> None:
@@ -22,8 +25,16 @@ class OperationLineage:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{name} é obrigatório.")
-        if self.external_id is not None and (not isinstance(self.external_id, str) or not self.external_id.strip()):
-            raise ValueError("external_id inválido.")
+        for name in ("external_id", "position_id", "close_external_id"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} inválido.")
+        if not isinstance(self.deal_ids, tuple) or any(
+            not isinstance(value, str) or not value.strip() for value in self.deal_ids
+        ):
+            raise ValueError("deal_ids inválido.")
+        if len(set(self.deal_ids)) != len(self.deal_ids):
+            raise ValueError("deal_ids não podem conter duplicados.")
         if self.updated_at is not None and not isinstance(self.updated_at, datetime):
             raise ValueError("updated_at inválido.")
 
@@ -49,11 +60,17 @@ class OperationLineageStore:
             for request_id, raw in payload.items():
                 if not isinstance(raw, dict):
                     raise ValueError
+                raw_deals = raw.get("deal_ids", ())
+                if not isinstance(raw_deals, (list, tuple)):
+                    raise ValueError
                 record = OperationLineage(
                     decision_id=str(raw["decision_id"]),
                     cycle_id=str(raw["cycle_id"]),
                     request_id=str(raw.get("request_id", request_id)),
                     external_id=raw.get("external_id"),
+                    position_id=raw.get("position_id"),
+                    close_external_id=raw.get("close_external_id"),
+                    deal_ids=tuple(str(value) for value in raw_deals),
                     updated_at=datetime.fromisoformat(raw["updated_at"]) if raw.get("updated_at") else None,
                 )
                 if record.request_id != request_id:
@@ -71,6 +88,9 @@ class OperationLineageStore:
                 "cycle_id": record.cycle_id,
                 "request_id": record.request_id,
                 "external_id": record.external_id,
+                "position_id": record.position_id,
+                "close_external_id": record.close_external_id,
+                "deal_ids": list(record.deal_ids),
                 "updated_at": record.updated_at.isoformat() if record.updated_at else None,
             }
             for request_id, record in sorted(self._records.items())
@@ -87,6 +107,12 @@ class OperationLineageStore:
                 raise ValueError("request_id não pode mudar de decisão/ciclo.")
             if current.external_id is not None and record.external_id != current.external_id:
                 raise ValueError("external_id persistido não pode ser substituído.")
+            if current.position_id is not None and record.position_id != current.position_id:
+                raise ValueError("position_id persistido não pode ser substituído.")
+            if current.close_external_id is not None and record.close_external_id != current.close_external_id:
+                raise ValueError("close_external_id persistido não pode ser substituído.")
+            if current.deal_ids and record.deal_ids != current.deal_ids:
+                raise ValueError("deal_ids persistidos não podem ser substituídos.")
         self._records[record.request_id] = record
         self._save()
 
@@ -98,7 +124,62 @@ class OperationLineageStore:
             raise ValueError("external_id é obrigatório.")
         if current.external_id is not None and current.external_id != external_id:
             raise ValueError("external_id conflitante.")
-        updated = OperationLineage(current.decision_id, current.cycle_id, current.request_id, external_id, updated_at)
+        updated = OperationLineage(
+            current.decision_id, current.cycle_id, current.request_id,
+            external_id, current.position_id, current.close_external_id,
+            current.deal_ids, updated_at,
+        )
+        self.put(updated)
+        return updated
+
+    def attach_position_id(self, request_id: str, position_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
+        current = self.get(request_id)
+        if current is None:
+            raise ValueError("request_id sem linhagem persistida.")
+        if not isinstance(position_id, str) or not position_id.strip():
+            raise ValueError("position_id é obrigatório.")
+        if current.position_id is not None and current.position_id != position_id:
+            raise ValueError("position_id conflitante.")
+        updated = OperationLineage(
+            current.decision_id, current.cycle_id, current.request_id,
+            current.external_id, position_id, current.close_external_id,
+            current.deal_ids, updated_at,
+        )
+        self.put(updated)
+        return updated
+
+    def attach_close_external_id(self, request_id: str, close_external_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
+        current = self.get(request_id)
+        if current is None:
+            raise ValueError("request_id sem linhagem persistida.")
+        if not isinstance(close_external_id, str) or not close_external_id.strip():
+            raise ValueError("close_external_id é obrigatório.")
+        if current.close_external_id is not None and current.close_external_id != close_external_id:
+            raise ValueError("close_external_id conflitante.")
+        updated = OperationLineage(
+            current.decision_id, current.cycle_id, current.request_id,
+            current.external_id, current.position_id, close_external_id,
+            current.deal_ids, updated_at,
+        )
+        self.put(updated)
+        return updated
+
+    def attach_deal_ids(self, request_id: str, deal_ids: tuple[str, ...], *, updated_at: datetime | None = None) -> OperationLineage:
+        current = self.get(request_id)
+        if current is None:
+            raise ValueError("request_id sem linhagem persistida.")
+        if not isinstance(deal_ids, tuple) or not deal_ids or any(
+            not isinstance(value, str) or not value.strip() for value in deal_ids
+        ):
+            raise ValueError("deal_ids são obrigatórios.")
+        normalized = tuple(dict.fromkeys(deal_ids))
+        if current.deal_ids and current.deal_ids != normalized:
+            raise ValueError("deal_ids conflitantes.")
+        updated = OperationLineage(
+            current.decision_id, current.cycle_id, current.request_id,
+            current.external_id, current.position_id, current.close_external_id,
+            normalized, updated_at,
+        )
         self.put(updated)
         return updated
 
