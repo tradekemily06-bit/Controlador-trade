@@ -344,14 +344,14 @@ class ICMarketsMT5DemoOutcomeBridge:
         deals = mt5.history_deals_get(ticket=ticket)
         if deals:
             for deal in deals:
-                external_container_id = getattr(deal, "external_container_id", None)
+                external_container_id = getattr(deal, "position_id", None)
                 if external_container_id:
                     return str(external_container_id)
 
         orders = mt5.history_orders_get(ticket=ticket)
         if orders:
             for order in orders:
-                external_container_id = getattr(order, "external_container_id", None)
+                external_container_id = getattr(order, "position_id", None)
                 if external_container_id:
                     return str(external_container_id)
 
