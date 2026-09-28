@@ -26,7 +26,7 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomePort
 from integration.news_provider import UnconfiguredNewsProvider
-from integration.post_demo_learning import PostDemoLearningBridge
+from integration.post_demo_learning import PostExecutionLearningBridge
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -47,7 +47,7 @@ class EcosystemService:
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
         self.outcome_port = outcome_port
-        self.post_demo_learning = PostDemoLearningBridge()
+        self.post_demo_learning = PostExecutionLearningBridge()
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
         self.learning_sources: dict[str, LearningSource] = {}
