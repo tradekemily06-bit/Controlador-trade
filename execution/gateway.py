@@ -8,6 +8,7 @@ from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.operation_lineage import OperationLineage, OperationLineageStore
+from core.operation_context_store import OperationContextStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
@@ -47,6 +48,7 @@ class ExecutionGateway:
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
         lineage: OperationLineageStore | None = None,
+        operation_context: OperationContextStore | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -58,6 +60,7 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._lineage = lineage
+        self._operation_context = operation_context
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -76,6 +79,11 @@ class ExecutionGateway:
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
         lineage_record = None
+        if self._operation_context is not None and snapshot is not None:
+            try:
+                self._operation_context.put(request_id, snapshot)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"contexto operacional não pôde ser persistido: {exc}")
         if self._lineage is not None and snapshot is not None:
             if not snapshot.decision_id or not snapshot.cycle_id:
                 return GatewayResult(GatewayStatus.BLOCKED, "linhagem obrigatória: decision_id e cycle_id ausentes.")
