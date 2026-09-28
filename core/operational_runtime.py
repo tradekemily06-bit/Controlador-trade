@@ -16,7 +16,6 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
-from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
 from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
 
@@ -33,7 +32,6 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     lineage: OperationLineageStore
-    mt5_outcome: ICMarketsMT5DemoOutcomeBridge
     market_data: MarketDataRuntimeState
     controlled_automation: ControlledAutomationRuntime
 
@@ -66,7 +64,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         lifecycle=lifecycle,
         lineage=lineage,
     )
-    mt5_outcome = ICMarketsMT5DemoOutcomeBridge(lineage=lineage)
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     # Automation is explicitly opt-in; the shared runtime starts fail-closed.
     controlled_automation = ControlledAutomationRuntime(
@@ -81,7 +78,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         lineage=lineage,
-        mt5_outcome=mt5_outcome,
         market_data=market_data,
         controlled_automation=controlled_automation,
     )
