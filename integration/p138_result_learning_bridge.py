@@ -15,6 +15,7 @@ from core.operation_learning_journal import (
 )
 from core.p128_learning_handoff import OperationLearningHandoff, OperationLearningHandoffBoundary
 from core.p50_automation_result_snapshot import AutomationResultSnapshot
+from core.p49_outcome_reconciliation import ReconciliationState
 
 
 class ResultLearningBridge:
@@ -63,9 +64,23 @@ class ResultLearningBridge:
             questions=self.journal.default_questions(outcome),
             lessons=lessons,
         )
-        return self.handoff.build(
+        handoff = self.handoff.build(
             snapshot=snapshot,
             note=note,
             analysis=analysis,
             market_context=market_context,
         )
+        if snapshot.reconciliation_state is ReconciliationState.MATCHED:
+            dedupe_key = self.journal.verified_dedupe_key(snapshot)
+            if not self.journal.persist_verified_note(note, dedupe_key=dedupe_key):
+                existing = self.journal.verified_note(dedupe_key=dedupe_key)
+                if existing is None:
+                    raise RuntimeError("verified learning persistence conflict")
+                note = existing
+                handoff = self.handoff.build(
+                    snapshot=snapshot,
+                    note=note,
+                    analysis=analysis,
+                    market_context=market_context,
+                )
+        return handoff
