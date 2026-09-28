@@ -237,12 +237,7 @@ def application(environ, start_response):
                 status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
                 return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ)
-            if SERVICE.outcome_port is None:
-                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {
-                    "error": "external outcome adapter não conectado",
-                    "request_id": request_id,
-                }, request_id, environ)
-            observation = SERVICE.outcome_port.observe_closed_position(str(data.get("request_id", "")))
+            observation = SERVICE.observe_closed_and_finalize(str(data.get("request_id", "")))
             return _json_response(start_response, HTTPStatus.OK, {
                 "observation": (
                     {
