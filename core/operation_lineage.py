@@ -111,8 +111,11 @@ class OperationLineageStore:
                 raise ValueError("external_container_id persistido não pode ser substituído.")
             if current.external_close_id is not None and record.external_close_id != current.external_close_id:
                 raise ValueError("external_close_id persistido não pode ser substituído.")
-            if current.external_result_ids and record.external_result_ids != current.external_result_ids:
-                raise ValueError("external_result_ids persistidos não podem ser substituídos.")
+            if current.external_result_ids:
+                current_ids = set(current.external_result_ids)
+                incoming_ids = set(record.external_result_ids)
+                if not current_ids.issubset(incoming_ids):
+                    raise ValueError("external_result_ids persistidos não podem desaparecer.")
         self._records[record.request_id] = record
         self._save()
 
