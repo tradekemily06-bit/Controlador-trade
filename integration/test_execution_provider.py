@@ -24,3 +24,25 @@ def test_ic_markets_mt5_demo_requires_explicit_provider():
 def test_unknown_provider_fails_closed():
     with pytest.raises(ExecutionProviderConfigurationError):
         build_demo_execution_port("unknown-provider")
+
+
+def test_arbitrary_registered_provider_is_supported_without_provider_code_change():
+    from execution.broker_registry import BrokerRegistry
+    from execution.ports import ExecutionResult
+
+    class FutureAdapter:
+        def execute(self, request):
+            return ExecutionResult(True, "ok", "future-1")
+
+        def is_available(self):
+            return True
+
+    registry = BrokerRegistry()
+    registry.register("future-broker-platform", FutureAdapter())
+
+    executor = build_demo_execution_port(
+        "future-broker-platform",
+        registry=registry,
+    )
+
+    assert isinstance(executor, FutureAdapter)
