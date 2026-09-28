@@ -143,7 +143,7 @@ def test_partial_close_does_not_create_financial_outcome(tmp_path):
 def test_foreign_magic_position_is_never_closed(tmp_path):
     store = OperationLineageStore(tmp_path / "lineage.json")
     lineage(store)
-    mt5 = FakeMT5(magic=999999)
+    mt5 = FakeMT5(remaining=True, magic=999999)
     bridge = ICMarketsMT5DemoOutcomeBridge(lineage=store, mt5_module=mt5)
 
     with pytest.raises(RuntimeError, match="magic"):
