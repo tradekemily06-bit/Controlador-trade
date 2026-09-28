@@ -52,6 +52,12 @@ class BrokerRegistry:
         adapter = self.get(name)
         return bool(adapter.is_available())
 
+    def identity(self, name: str) -> AdapterConnectionIdentity | None:
+        normalized = self._normalize_name(name)
+        if normalized not in self._adapters:
+            raise BrokerRegistryError(f"adapter não registrado: {normalized}")
+        return self._identities.get(normalized)
+
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
             BrokerAdapterInfo(
