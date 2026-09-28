@@ -93,15 +93,11 @@ class EcosystemService:
         """
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
-        bridge = self.operational_runtime.mt5_outcome
-        if mt5_module is not None:
-            from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
-            bridge = ICMarketsMT5DemoOutcomeBridge(
-                lineage=self.operational_runtime.lineage,
-                mt5_module=mt5_module,
-                magic=bridge.magic,
-                deviation=bridge.deviation,
-            )
+        from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
+        bridge = ICMarketsMT5DemoOutcomeBridge(
+            lineage=self.operational_runtime.lineage,
+            mt5_module=mt5_module,
+        )
         result = bridge.close_and_observe(request_id)
         evidence = result.outcome_evidence
         return {
