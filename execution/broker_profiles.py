@@ -36,6 +36,17 @@ LHFX_MT5_DEMO = BrokerProfile(
 )
 
 
-def supported_demo_profiles() -> tuple[BrokerProfile, ...]:
-    """Return configured demo environments without exposing account credentials."""
-    return (IC_MARKETS_MT5_DEMO, LHFX_MT5_DEMO)
+def supported_demo_profiles(
+    extra_profiles: tuple[BrokerProfile, ...] = (),
+) -> tuple[BrokerProfile, ...]:
+    """Return configured demo environments plus any externally registered profiles.
+
+    The built-in tuple is only the current configuration, not an architectural
+    limit. New brokers/platforms can be supplied without changing the core.
+    """
+    if not isinstance(extra_profiles, tuple):
+        raise ValueError("extra_profiles deve ser uma tupla.")
+    for profile in extra_profiles:
+        if not isinstance(profile, BrokerProfile):
+            raise ValueError("extra_profiles contém perfil inválido.")
+    return (IC_MARKETS_MT5_DEMO, LHFX_MT5_DEMO, *extra_profiles)
