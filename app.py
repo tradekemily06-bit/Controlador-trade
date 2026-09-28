@@ -231,6 +231,19 @@ def application(environ, start_response):
                 "execution_authorized": False,
                 "real": "DISABLED",
             }, request_id, environ)
+        if path == "/api/outcome/reconcile" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            results = SERVICE.reconcile_pending_outcomes(limit=int(data.get("limit", 50)))
+            return _json_response(start_response, HTTPStatus.OK, {
+                "results": list(results),
+                "execution_authorized": False,
+                "orders_sent": False,
+                "real": "DISABLED",
+            }, request_id, environ)
         if path == "/api/outcome/observe" and method == "POST":
             authorized, reason = _authorize_demo_outcome(environ)
             if not authorized:
