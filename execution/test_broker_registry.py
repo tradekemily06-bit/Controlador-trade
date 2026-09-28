@@ -1,7 +1,7 @@
 import pytest
 
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionResult
+from execution.ports import AdapterConnectionIdentity, ExecutionResult
 
 
 class FakeAdapter:
@@ -68,3 +68,17 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_keeps_broker_platform_adapter_and_transport_independent():
+    registry = BrokerRegistry()
+    identity = AdapterConnectionIdentity(
+        broker_id="broker-a",
+        platform_id="platform-b",
+        adapter_id="adapter-c",
+        transport_id="transport-d",
+    )
+    registry.register("future-route", FakeAdapter(), identity=identity)
+
+    assert registry.identity("future-route") == identity
+    assert registry.info()[0].identity == identity
