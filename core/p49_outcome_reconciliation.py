@@ -14,9 +14,15 @@ class ReconciliationState(str, Enum):
 
 @dataclass(frozen=True)
 class ExternalOutcomeObservation:
+    """Broker-neutral factual observation produced by an external adapter."""
+
     cycle_id: str
     outcome: str
     financial_result: float | None
+    source: str | None = None
+    external_reference: str | None = None
+    external_container_id: str | None = None
+    external_result_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
