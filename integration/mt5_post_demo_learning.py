@@ -52,9 +52,9 @@ class MT5PostDemoLearningBridge:
             what_happened=what_happened,
             why_assessment=why_assessment,
             evidence=evidence_notes + (
-                f"MT5 position_id={evidence.position_id}",
-                f"MT5 close_external_id={evidence.close_external_id}",
-                f"MT5 deal_ids={','.join(evidence.deal_ids)}",
+                f"MT5 external_container_id={evidence.external_container_id}",
+                f"MT5 external_close_id={evidence.external_close_id}",
+                f"MT5 external_result_ids={','.join(evidence.external_result_ids)}",
             ),
             lessons=lessons,
         )
