@@ -7,7 +7,7 @@ from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 from integration.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
 
 
-class PostDemoLearningBridge:
+class PostExecutionLearningBridge:
     """Broker-neutral handoff from verified external facts to P139.
 
     The concrete broker/platform adapter is responsible for obtaining facts.
@@ -64,3 +64,7 @@ class PostDemoLearningBridge:
             ),
             lessons=lessons,
         )
+
+
+# Backward-compatible name for existing DEMO callers. The contract itself is mode-neutral.
+PostDemoLearningBridge = PostExecutionLearningBridge
