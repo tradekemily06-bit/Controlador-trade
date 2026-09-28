@@ -192,11 +192,13 @@ def application(environ, start_response):
         if path == "/api/statistics" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.statistics(), request_id, environ)
         if path == "/api/outcome" and method == "POST":
-            return _json_response(start_response, HTTPStatus.GONE, {
-                "error": "resultado operacional manual foi desativado",
-                "use": "/api/outcome/close",
-                "study_only": "anotações manuais pertencem ao modo de estudo/replay e não à operação",
-                "request_id": request_id,
+            data = _read_json(environ)
+            record = SERVICE.record_study_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")))
+            return _json_response(start_response, HTTPStatus.OK, {
+                **record.to_dict(),
+                "study_only": True,
+                "execution_authorized": False,
+                "operational_result_verified": False,
             }, request_id, environ)
         if path == "/api/outcome/close" and method == "POST":
             authorized, reason = _authorize_demo_outcome(environ)
