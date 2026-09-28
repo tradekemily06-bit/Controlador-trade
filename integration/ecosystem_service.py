@@ -199,9 +199,9 @@ class EcosystemService:
             raise RuntimeError("linhagem operacional necessária para resultado verificado não foi encontrada")
         if lineage.cycle_id != observation.cycle_id:
             raise RuntimeError("cycle_id da observação não corresponde à linhagem")
-        self.record_verified_outcome(lineage.decision_id, observation)
         if context is None:
-            return
+            raise RuntimeError("contexto operacional original ausente; resultado verificado não pode avançar para aprendizado")
+
         if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id:
             raise RuntimeError("identidade operacional não corresponde à observação externa")
         if not all(value is not None for value in (context.market_context, context.market_direction, context.market_score, context.symbol, context.timeframe)):
@@ -222,16 +222,19 @@ class EcosystemService:
             terminal_state=AutomationLifecycleState.COMPLETED,
             closed_at=observation.observed_at,
         )
-        self.post_demo_learning.process(
+        learning_result = self.post_demo_learning.process(
             evidence=observation,
             closure=closure,
             analysis=analysis,
             market_context=market_context,
             note_id=f"operation-learning-{observation.cycle_id}",
-            what_happened=f"Operação DEMO encerrada com resultado externo {observation.outcome}; resultado financeiro={observation.financial_result}.",
+            what_happened=f"Operação encerrada com resultado externo {observation.outcome}; resultado financeiro={observation.financial_result}.",
             why_assessment="Registro factual reconciliado com a evidência externa do adapter.",
             lessons=("Revisar o contexto original e as evidências antes de transformar o caso em conhecimento validado.",),
         )
+        from core.p49_outcome_reconciliation import ReconciliationState
+        if learning_result.reconciliation.state is not ReconciliationState.MATCHED:
+            raise RuntimeError("resultado externo não reconciliado; memória operacional permanece sem atualização")
         self.record_verified_outcome(lineage.decision_id, observation)
 
     def record_verified_outcome(self, decision_id: str, observation: Any) -> DecisionRecord:
