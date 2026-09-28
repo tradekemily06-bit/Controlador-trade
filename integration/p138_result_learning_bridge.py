@@ -72,7 +72,11 @@ class ResultLearningBridge:
         )
         if snapshot.reconciliation_state is ReconciliationState.MATCHED:
             dedupe_key = self.journal.verified_dedupe_key(snapshot)
-            if not self.journal.persist_verified_note(note, dedupe_key=dedupe_key):
+            if not self.journal.persist_verified_note(
+                note,
+                dedupe_key=dedupe_key,
+                evidence_identity=self.journal.verified_evidence_identity(snapshot),
+            ):
                 existing = self.journal.verified_note(dedupe_key=dedupe_key)
                 if existing is None:
                     raise RuntimeError("verified learning persistence conflict")
