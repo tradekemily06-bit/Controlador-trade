@@ -38,12 +38,12 @@ class FakeMT5:
 
     def history_deals_get(self, **kwargs):
         if "ticket" in kwargs:
-            return (SimpleNamespace(position_id=123, ticket=501),)
+            return (SimpleNamespace(external_container_id=123, ticket=501),)
         return (
             SimpleNamespace(
                 ticket=601,
                 order=701,
-                position_id=123,
+                external_container_id=123,
                 entry=self.DEAL_ENTRY_IN,
                 time_msc=1000,
                 profit=0.0,
@@ -54,7 +54,7 @@ class FakeMT5:
             SimpleNamespace(
                 ticket=602,
                 order=702,
-                position_id=123,
+                external_container_id=123,
                 entry=self.DEAL_ENTRY_OUT,
                 time_msc=2000,
                 profit=12.0,
@@ -110,8 +110,8 @@ def test_close_resolves_position_closes_and_builds_factual_result(tmp_path):
 
     assert result.position_closed is True
     assert result.outcome_evidence is not None
-    assert result.outcome_evidence.position_id == "123"
-    assert result.outcome_evidence.deal_ids == ("602",)
+    assert result.outcome_evidence.external_container_id == "123"
+    assert result.outcome_evidence.external_result_ids == ("602",)
     assert result.outcome_evidence.financial_result == pytest.approx(10.3)
     assert result.outcome_evidence.outcome == "WIN"
     assert result.outcome_evidence.as_observation().cycle_id == "cycle-1"
@@ -120,9 +120,9 @@ def test_close_resolves_position_closes_and_builds_factual_result(tmp_path):
     assert mt5.sent_payload["type"] == mt5.ORDER_TYPE_SELL
 
     stored = store.get("request-1")
-    assert stored.position_id == "123"
-    assert stored.close_external_id == "900"
-    assert stored.deal_ids == ("602",)
+    assert stored.external_container_id == "123"
+    assert stored.external_close_id == "900"
+    assert stored.external_result_ids == ("602",)
     assert mt5.shutdown_called is True
 
 
@@ -136,8 +136,8 @@ def test_partial_close_does_not_create_financial_outcome(tmp_path):
 
     assert result.position_closed is False
     assert result.outcome_evidence is None
-    assert store.get("request-1").close_external_id == "900"
-    assert store.get("request-1").deal_ids == ()
+    assert store.get("request-1").external_close_id == "900"
+    assert store.get("request-1").external_result_ids == ()
 
 
 def test_foreign_magic_position_is_never_closed(tmp_path):
@@ -155,7 +155,7 @@ def test_foreign_magic_position_is_never_closed(tmp_path):
 def test_already_closed_position_can_be_observed_without_sending(tmp_path):
     store = OperationLineageStore(tmp_path / "lineage.json")
     lineage(store)
-    store.attach_position_id("request-1", "123")
+    store.attach_external_container_id("request-1", "123")
     mt5 = FakeMT5()
     bridge = ICMarketsMT5DemoOutcomeBridge(lineage=store, mt5_module=mt5)
 
