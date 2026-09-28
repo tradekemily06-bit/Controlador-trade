@@ -81,6 +81,23 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _authorize_demo_outcome(environ) -> tuple[bool, str]:
+    """Allow local DEMO control while requiring an explicit token remotely."""
+    remote = str(environ.get("REMOTE_ADDR") or "").strip()
+    if remote in {"127.0.0.1", "::1"}:
+        return True, "local-demo"
+    expected = os.environ.get("CONTROLADOR_DEMO_OUTCOME_TOKEN", "").strip()
+    if not expected:
+        return False, "demo outcome control is not configured for remote access"
+    provided = str(environ.get("HTTP_AUTHORIZATION", ""))
+    if not provided.startswith("Bearer "):
+        return False, "demo outcome authorization required"
+    token = provided[7:].strip()
+    if not token or not hmac.compare_digest(token, expected):
+        return False, "demo outcome authorization denied"
+    return True, "authorized"
+
+
 def _authorize_internal_update(environ) -> tuple[bool, str]:
     expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
     if not expected:
@@ -179,6 +196,10 @@ def application(environ, start_response):
             record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")))
             return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
         if path == "/api/outcome/close" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ)
             result = SERVICE.close_and_observe(str(data.get("request_id", "")))
             observation = result.observation
@@ -205,6 +226,10 @@ def application(environ, start_response):
                 "real": "DISABLED",
             }, request_id, environ)
         if path == "/api/outcome/observe" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
             data = _read_json(environ)
             if SERVICE.outcome_port is None:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {
