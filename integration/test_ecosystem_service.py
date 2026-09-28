@@ -153,7 +153,29 @@ def test_external_outcome_port_is_injected_without_broker_knowledge():
         def observe_closed_position(self, request_id):
             return None
 
-    service = EcosystemService(outcome_port=FutureOutcomePort())
+    from core.operation_lineage import OperationLineage, OperationLineageStore
+    from core.operational_runtime import build_operational_runtime
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime("/tmp/controlador-service-outcome-test", executor=None)
+    runtime.lineage.put(
+        OperationLineage(
+            decision_id="decision-future",
+            cycle_id="cycle-future",
+            request_id="request-future",
+            external_id="external-1",
+        )
+    )
+    runtime.execution_ledger.record("request-future")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "request-future",
+            ExecutionLifecycleState.ACCEPTED,
+            datetime.now(timezone.utc),
+            "accepted",
+        )
+    )
+    service = EcosystemService(outcome_port=FutureOutcomePort(), operational_runtime=runtime)
     result = service.close_and_observe("request-future")
 
     assert result.closed is True
