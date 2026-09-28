@@ -38,7 +38,7 @@ def build_demo_outcome_registry(
     return registry
 
 
-def build_demo_outcome_port(
+def build_external_outcome_port(
     provider: str,
     *,
     lineage: OperationLineageStore,
@@ -59,5 +59,9 @@ def build_demo_outcome_port(
         return selected.get(normalized)
     except OutcomeRegistryError as exc:
         raise OutcomeProviderConfigurationError(
-            f"provedor de resultado DEMO não suportado: {provider!r}"
+            f"provedor de resultado externo não suportado: {provider!r}"
         ) from exc
+
+
+# Compatibility API. The returned contract is mode-neutral and can be used by DEMO or REAL adapters.
+build_demo_outcome_port = build_external_outcome_port
