@@ -13,6 +13,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from integration.outcome_provider import build_demo_outcome_port, OutcomeProviderConfigurationError
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -23,7 +24,19 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+OUTCOME_PORT = None
+if EXECUTION_PROVIDER.strip().lower() != "paper":
+    try:
+        OUTCOME_PORT = build_demo_outcome_port(
+            EXECUTION_PROVIDER,
+            lineage=OPERATIONAL_RUNTIME.lineage,
+        )
+    except OutcomeProviderConfigurationError:
+        OUTCOME_PORT = None
+SERVICE = ConfiguredEcosystemService(
+    operational_runtime=OPERATIONAL_RUNTIME,
+    outcome_port=OUTCOME_PORT,
+)
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -165,6 +178,57 @@ def application(environ, start_response):
             data = _read_json(environ)
             record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")))
             return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
+        if path == "/api/outcome/close" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.close_and_observe(str(data.get("request_id", "")))
+            observation = result.observation
+            return _json_response(start_response, HTTPStatus.OK, {
+                "request_id": result.request_id,
+                "external_container_id": result.external_container_id,
+                "external_close_id": result.external_close_id,
+                "closed": result.closed,
+                "message": result.message,
+                "observation": (
+                    {
+                        "cycle_id": observation.cycle_id,
+                        "outcome": observation.outcome,
+                        "financial_result": observation.financial_result,
+                        "source": observation.source,
+                        "external_reference": observation.external_reference,
+                        "external_container_id": observation.external_container_id,
+                        "external_result_ids": list(observation.external_result_ids),
+                        "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
+                    }
+                    if observation is not None else None
+                ),
+                "execution_authorized": False,
+                "real": "DISABLED",
+            }, request_id, environ)
+        if path == "/api/outcome/observe" and method == "POST":
+            data = _read_json(environ)
+            if SERVICE.outcome_port is None:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "error": "external outcome adapter não conectado",
+                    "request_id": request_id,
+                }, request_id, environ)
+            observation = SERVICE.outcome_port.observe_closed_position(str(data.get("request_id", "")))
+            return _json_response(start_response, HTTPStatus.OK, {
+                "observation": (
+                    {
+                        "cycle_id": observation.cycle_id,
+                        "outcome": observation.outcome,
+                        "financial_result": observation.financial_result,
+                        "source": observation.source,
+                        "external_reference": observation.external_reference,
+                        "external_container_id": observation.external_container_id,
+                        "external_result_ids": list(observation.external_result_ids),
+                        "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
+                    }
+                    if observation is not None else None
+                ),
+                "execution_authorized": False,
+                "real": "DISABLED",
+            }, request_id, environ)
         if path == "/api/risk" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET":
