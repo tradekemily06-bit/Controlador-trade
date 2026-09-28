@@ -29,6 +29,10 @@ class MT5OutcomeEvidence:
             cycle_id=self.cycle_id,
             outcome=self.outcome,
             financial_result=self.financial_result,
+            source="MT5_DEMO",
+            external_reference=self.external_close_id,
+            external_container_id=self.external_container_id,
+            external_result_ids=self.external_result_ids,
         )
 
 
