@@ -115,7 +115,7 @@ class EcosystemService:
         return {
             "request_id": result.request_id,
             "position_id": result.external_container_id,
-            "close_external_id": result.external_close_id,
+            "external_close_id": result.external_close_id,
             "position_closed": result.position_closed,
             "message": result.message,
             "verified_result": (
@@ -124,7 +124,7 @@ class EcosystemService:
                     "decision_id": evidence.decision_id,
                     "outcome": evidence.outcome,
                     "financial_result": evidence.financial_result,
-                    "deal_ids": list(evidence.external_result_ids),
+                    "external_result_ids": list(evidence.external_result_ids),
                     "observed_at": evidence.observed_at.isoformat(),
                 }
                 if evidence is not None
