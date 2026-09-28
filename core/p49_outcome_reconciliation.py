@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from core.p48_automation_outcome import AutomationOutcome
@@ -23,6 +24,7 @@ class ExternalOutcomeObservation:
     external_reference: str | None = None
     external_container_id: str | None = None
     external_result_ids: tuple[str, ...] = ()
+    observed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
