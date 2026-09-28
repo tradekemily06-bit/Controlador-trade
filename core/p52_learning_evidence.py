@@ -10,9 +10,9 @@ class LearningEvidence:
     cycle_id: str
     outcome: str
     financial_result: float | None
-    external_result_ids: tuple[str, ...]
-    external_reference: str | None
-    external_container_id: str | None
+    external_result_ids: tuple[str, ...] = ()
+    external_reference: str | None = None
+    external_container_id: str | None = None
     factual: bool = True
 
 
