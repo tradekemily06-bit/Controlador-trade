@@ -18,6 +18,9 @@ class LearningIngestionRecord:
     cycle_id: str
     outcome: str
     financial_result: float | None
+    external_result_ids: tuple[str, ...]
+    external_reference: str | None
+    external_container_id: str | None
     eligibility: LearningEligibility
 
 
@@ -38,5 +41,8 @@ class LearningIngestionBoundary:
             cycle_id=snapshot.cycle_id,
             outcome=snapshot.outcome,
             financial_result=snapshot.financial_result,
+            external_result_ids=snapshot.external_result_ids,
+            external_reference=snapshot.external_reference,
+            external_container_id=snapshot.external_container_id,
             eligibility=eligibility,
         )
