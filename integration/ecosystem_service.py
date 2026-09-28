@@ -145,6 +145,35 @@ class EcosystemService:
             self._finalize_verified_outcome(request_id, observation)
         return result
 
+    def reconcile_pending_outcomes(self, *, limit: int = 50) -> tuple[dict[str, Any], ...]:
+        """Read-only external reconciliation; it never sends a close/order."""
+        if self.outcome_port is None or self.operational_runtime is None:
+            return ()
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit deve ser inteiro positivo")
+        results: list[dict[str, Any]] = []
+        for lineage in self.operational_runtime.lineage.records():
+            if len(results) >= limit:
+                break
+            if not lineage.external_id or lineage.external_result_ids:
+                continue
+            try:
+                observation = self.observe_closed_and_finalize(lineage.request_id)
+                results.append({
+                    "request_id": lineage.request_id,
+                    "observed": observation is not None,
+                    "outcome": observation.outcome if observation is not None else None,
+                    "financial_result": observation.financial_result if observation is not None else None,
+                    "external_result_ids": list(observation.external_result_ids) if observation is not None else [],
+                })
+            except Exception as exc:
+                results.append({
+                    "request_id": lineage.request_id,
+                    "observed": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+        return tuple(results)
+
     def observe_closed_and_finalize(self, request_id: str) -> Any:
         """Reobserve delayed external history and use the same verified learning path."""
         if self.outcome_port is None:
