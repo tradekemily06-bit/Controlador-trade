@@ -5,6 +5,7 @@ from pathlib import Path
 
 from core.kill_switch import KillSwitch
 from core.operation_lineage import OperationLineageStore
+from core.operation_context_store import OperationContextStore
 from core.controlled_automation_runtime import ControlledAutomationRuntime
 from core.p41_controlled_automation import AutomationPolicy
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
@@ -32,6 +33,7 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     lineage: OperationLineageStore
+    operation_context: OperationContextStore
     market_data: MarketDataRuntimeState
     controlled_automation: ControlledAutomationRuntime
 
@@ -57,12 +59,14 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         recovery=recovery,
     )
     lineage = OperationLineageStore(root / "operation-lineage.json")
+    operation_context = OperationContextStore(root / "operation-context.json")
     gateway = ExecutionGateway(
         executor or PaperExecutor(),
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
         lineage=lineage,
+        operation_context=operation_context,
     )
     market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     # Automation is explicitly opt-in; the shared runtime starts fail-closed.
@@ -78,6 +82,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         lineage=lineage,
+        operation_context=operation_context,
         market_data=market_data,
         controlled_automation=controlled_automation,
     )
