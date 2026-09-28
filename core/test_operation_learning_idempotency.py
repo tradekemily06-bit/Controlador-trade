@@ -1,4 +1,6 @@
-from core.operation_learning_journal import OperationLearningJournal, OperationOutcome
+import pytest
+
+from core.operation_learning_journal import LearningIdentityConflict, OperationLearningJournal, OperationOutcome
 from core.p49_outcome_reconciliation import ReconciliationState
 from core.p50_automation_result_snapshot import AutomationResultSnapshot
 
@@ -61,3 +63,21 @@ def test_verified_learning_accepts_delayed_external_history_growth_as_same_recor
         evidence_identity=journal.verified_evidence_identity(second),
     )
     assert journal.verified_note(dedupe_key="cycle:cycle-idempotent").note_id == "note-1"
+
+
+def test_conflicting_verified_identity_fails_closed(tmp_path):
+    journal = OperationLearningJournal(str(tmp_path / "learning.sqlite3"))
+    first = snapshot(("deal-1",), 10.0)
+    created = note(journal, "note-1")
+    journal.persist_verified_note(
+        created,
+        dedupe_key=journal.verified_dedupe_key(first),
+        evidence_identity=journal.verified_evidence_identity(first),
+    )
+    conflict = snapshot(("deal-99",), 10.0)
+    with pytest.raises(LearningIdentityConflict):
+        journal.persist_verified_note(
+            note(journal, "note-2"),
+            dedupe_key=journal.verified_dedupe_key(conflict),
+            evidence_identity=journal.verified_evidence_identity(conflict),
+        )
