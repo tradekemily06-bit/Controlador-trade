@@ -34,7 +34,6 @@ def test_composes_integrated_snapshot():
 
 
 def test_rejects_mixed_cycles():
-    closure, outcome, reconciliation = artifacts()
     closure, outcome, reconciliation, observation = artifacts()
     mismatched = OutcomeReconciliation("other-cycle", ReconciliationState.MATCHED, "explicit facts match")
     with pytest.raises(ValueError):
@@ -49,10 +48,10 @@ def test_rejects_terminal_state_mismatch():
 
 
 def test_unknown_cannot_be_matched():
-    closure, _, reconciliation = artifacts()
+    closure, _, reconciliation, observation = artifacts()
     unknown = AutomationOutcome("cycle-50", AutomationLifecycleState.COMPLETED, datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc), "UNKNOWN", None)
     with pytest.raises(ValueError):
-        AutomationResultSnapshotBoundary().compose(closure, unknown, reconciliation)
+        AutomationResultSnapshotBoundary().compose(closure, unknown, reconciliation, observation)
 
 
 def test_snapshot_is_immutable():
