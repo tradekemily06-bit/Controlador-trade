@@ -88,13 +88,30 @@ class EcosystemService:
         }
 
     def close_and_observe(self, request_id: str) -> ExternalCloseResult:
-        """Close/observe through whichever external adapter was injected.
+        """Close/observe through the injected external adapter after lifecycle gates.
 
-        The service has no broker/platform knowledge. If no adapter is bound,
-        the operation is unavailable rather than silently selecting a broker.
+        Closing is an operational mutation even in DEMO. It therefore cannot be
+        reached merely because a lineage record exists: the persisted execution
+        ledger and lifecycle must both confirm an accepted execution. The service
+        remains broker/platform neutral.
         """
         if self.outcome_port is None:
             raise RuntimeError("external outcome adapter não conectado")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None:
+            raise RuntimeError("request_id sem linhagem persistida")
+        if not lineage.external_id:
+            raise RuntimeError("request_id sem external_id de execução")
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+        ledger_state = self.operational_runtime.execution_ledger.status(request_id)
+        lifecycle = self.operational_runtime.execution_lifecycle.get(request_id)
+        if ledger_state not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
+            raise RuntimeError("fechamento bloqueado: execução não está aceita no ledger")
+        if lifecycle is None or lifecycle.state is not ExecutionLifecycleState.ACCEPTED:
+            raise RuntimeError("fechamento bloqueado: ciclo de execução não está ACCEPTED")
         return self.outcome_port.close_and_observe(request_id)
 
     def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
