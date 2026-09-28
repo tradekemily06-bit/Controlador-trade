@@ -38,12 +38,12 @@ class FakeMT5:
 
     def history_deals_get(self, **kwargs):
         if "ticket" in kwargs:
-            return (SimpleNamespace(external_container_id=123, ticket=501),)
+            return (SimpleNamespace(position_id=123, ticket=501),)
         return (
             SimpleNamespace(
                 ticket=601,
                 order=701,
-                external_container_id=123,
+                position_id=123,
                 entry=self.DEAL_ENTRY_IN,
                 time_msc=1000,
                 profit=0.0,
@@ -54,7 +54,7 @@ class FakeMT5:
             SimpleNamespace(
                 ticket=602,
                 order=702,
-                external_container_id=123,
+                position_id=123,
                 entry=self.DEAL_ENTRY_OUT,
                 time_msc=2000,
                 profit=12.0,
