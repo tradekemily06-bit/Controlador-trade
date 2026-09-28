@@ -10,6 +10,9 @@ class LearningEvidence:
     cycle_id: str
     outcome: str
     financial_result: float | None
+    external_result_ids: tuple[str, ...]
+    external_reference: str | None
+    external_container_id: str | None
     factual: bool = True
 
 
@@ -27,4 +30,7 @@ class LearningEvidenceBoundary:
             cycle_id=record.cycle_id,
             outcome=record.outcome,
             financial_result=record.financial_result,
+            external_result_ids=record.external_result_ids,
+            external_reference=record.external_reference,
+            external_container_id=record.external_container_id,
         )
