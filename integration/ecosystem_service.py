@@ -24,7 +24,7 @@ from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
-from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomePort
+from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomeObserver, ExternalOutcomePort
 from integration.news_provider import UnconfiguredNewsProvider
 from integration.post_demo_learning import PostExecutionLearningBridge
 from security.identity_boundary import IdentityPolicy
@@ -36,7 +36,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, outcome_port: ExternalOutcomePort | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, outcome_port: ExternalOutcomePort | None = None, outcome_observer: ExternalOutcomeObserver | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -47,6 +47,7 @@ class EcosystemService:
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
         self.outcome_port = outcome_port
+        self.outcome_observer = outcome_observer or outcome_port
         self.post_demo_learning = PostExecutionLearningBridge()
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
@@ -147,7 +148,7 @@ class EcosystemService:
 
     def reconcile_pending_outcomes(self, *, limit: int = 50) -> tuple[dict[str, Any], ...]:
         """Read-only external reconciliation; it never sends a close/order."""
-        if self.outcome_port is None or self.operational_runtime is None:
+        if self.outcome_observer is None or self.operational_runtime is None:
             return ()
         if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
             raise ValueError("limit deve ser inteiro positivo")
@@ -176,14 +177,14 @@ class EcosystemService:
 
     def observe_closed_and_finalize(self, request_id: str) -> Any:
         """Reobserve delayed external history and use the same verified learning path."""
-        if self.outcome_port is None:
-            raise RuntimeError("external outcome adapter não conectado")
+        if self.outcome_observer is None:
+            raise RuntimeError("external outcome observer não conectado")
         if self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         lineage = self.operational_runtime.lineage.get(request_id)
         if lineage is None or not lineage.external_id:
             raise RuntimeError("request_id sem linhagem/external_id persistido")
-        observation = self.outcome_port.observe_closed_position(request_id)
+        observation = self.outcome_observer.observe_closed_position(request_id)
         if observation is not None:
             self._finalize_verified_outcome(request_id, observation)
         return observation
