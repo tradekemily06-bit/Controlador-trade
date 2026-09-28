@@ -76,6 +76,7 @@ class PostDemoLearningBoundary:
             closure,
             automation_outcome,
             reconciliation,
+            external_observation=external_observation,
         )
         handoff = self.learning.build(
             snapshot=snapshot,
