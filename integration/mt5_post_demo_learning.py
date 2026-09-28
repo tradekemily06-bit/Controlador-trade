@@ -4,7 +4,7 @@ from core.market_context import MarketContextResult
 from core.models import AnalysisResult
 from core.p47_automation_closure import AutomationClosure
 from core.p128_learning_handoff import OperationLearningHandoff
-from execution.icmarkets_mt5_demo_outcome import MT5OutcomeEvidence
+from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 from integration.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
 
 
@@ -21,7 +21,7 @@ class MT5PostDemoLearningBridge:
     def process(
         self,
         *,
-        evidence: MT5OutcomeEvidence,
+        evidence: ExternalOutcomeObservation,
         closure: AutomationClosure,
         analysis: AnalysisResult,
         market_context: MarketContextResult,
@@ -31,7 +31,7 @@ class MT5PostDemoLearningBridge:
         evidence_notes: tuple[str, ...] = (),
         lessons: tuple[str, ...] = (),
     ) -> PostDemoLearningResult:
-        if not isinstance(evidence, MT5OutcomeEvidence):
+        if not isinstance(evidence, ExternalOutcomeObservation):
             raise ValueError("MT5 outcome evidence inválida.")
         if not isinstance(closure, AutomationClosure):
             raise ValueError("automation closure inválida.")
@@ -45,7 +45,7 @@ class MT5PostDemoLearningBridge:
             observed_at=evidence.observed_at,
             outcome=evidence.outcome,
             financial_result=evidence.financial_result,
-            external_observation=evidence.as_observation(),
+            external_observation=evidence,
             analysis=analysis,
             market_context=market_context,
             note_id=note_id,
