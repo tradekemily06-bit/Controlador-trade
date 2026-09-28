@@ -8,7 +8,7 @@ from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 
 @dataclass(frozen=True)
 class ExternalCloseResult:
-    """Broker-neutral close status returned by an external outcome adapter."""
+    """Broker-neutral close status returned by an external close adapter."""
 
     request_id: str
     external_container_id: str | None
@@ -18,15 +18,30 @@ class ExternalCloseResult:
     message: str
 
 
-class ExternalOutcomePort(Protocol):
-    """Contract for any broker/platform adapter that can close and observe an operation.
+class ExternalOutcomeObserver(Protocol):
+    """Read-only contract for factual external result observation.
 
-    The ecosystem depends only on this contract. A concrete adapter may use MT5,
-    cTrader, a broker REST API, FIX, a terminal bridge, or another transport.
+    This capability is deliberately separate from closing. REAL integrations can
+    receive verified broker facts through this contract without being granted a
+    generic position-close mutation.
     """
+
+    def observe_closed_position(self, request_id: str) -> ExternalOutcomeObservation | None:
+        ...
+
+
+class ExternalClosePort(Protocol):
+    """Mutation contract for a controlled external close operation."""
 
     def close_and_observe(self, request_id: str) -> ExternalCloseResult:
         ...
 
-    def observe_closed_position(self, request_id: str) -> ExternalOutcomeObservation | None:
-        ...
+
+class ExternalOutcomePort(ExternalClosePort, ExternalOutcomeObserver, Protocol):
+    """Backward-compatible combined close + observation contract.
+
+    DEMO adapters may implement both capabilities. A future REAL integration
+    may expose only ExternalOutcomeObserver until its own explicit close
+    authorization boundary is wired. No broker/platform/transport is encoded
+    here.
+    """
