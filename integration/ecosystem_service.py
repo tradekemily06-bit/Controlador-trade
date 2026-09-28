@@ -146,8 +146,11 @@ class EcosystemService:
             raise RuntimeError("adapter retornou observação externa inválida")
         context = self.operational_runtime.operation_context.get(request_id)
         lineage = self.operational_runtime.lineage.get(request_id)
-        if lineage is None or context is None:
-            raise RuntimeError("contexto operacional necessário para aprendizagem não foi encontrado")
+        if lineage is None:
+            raise RuntimeError("linhagem operacional necessária para resultado verificado não foi encontrada")
+        self.record_verified_outcome(lineage.decision_id, observation)
+        if context is None:
+            return
         if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id or lineage.cycle_id != observation.cycle_id:
             raise RuntimeError("identidade operacional não corresponde à observação externa")
         if not all(value is not None for value in (context.market_context, context.market_direction, context.market_score, context.symbol, context.timeframe)):
@@ -287,10 +290,8 @@ class EcosystemService:
         raise ValueError("decision_id não encontrado")
 
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
-        raise RuntimeError(
-            "resultado operacional manual bloqueado; use record_study_outcome() apenas em estudo/replay "
-            "ou a cadeia externa de fechamento e reconciliação"
-        )
+        """Backward-compatible study annotation; HTTP uses the explicit study-only route."""
+        return self.record_study_outcome(decision_id, outcome)
 
     def statistics(self) -> dict[str, Any]:
         breakdowns = summarize_breakdowns(self.memory)
