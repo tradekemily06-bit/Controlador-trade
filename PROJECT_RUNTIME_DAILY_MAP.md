@@ -2,7 +2,7 @@
 
 ## Estado desta composição
 
-Esta documentação descreve a composição operacional DEMO atualmente conectada. REAL continua desabilitado e nenhum módulo desta cadeia pode habilitá-lo.
+Esta documentação descreve a composição operacional comum. A prova concreta atual é DEMO; REAL continua desabilitado. DEMO e REAL devem atravessar as mesmas portas de execução, fechamento, observação, reconciliação, memória e aprendizado. A diferença de modo fica restrita à autorização, ao adapter/transport e à fronteira de segurança.
 
 ## 1. Caminho diário principal
 
@@ -168,6 +168,10 @@ Composição atual do adapter de resultado:
 `ICMarketsMT5DemoOutcomeBridge → MT5ExternalOutcomeAdapter → ExternalOutcomePort`
 
 MT5 fica na borda.
+
+### REAL — mesma cadeia, outra fronteira
+
+Quando REAL for autorizado, ele não recebe uma cadeia paralela. O `RealExecutionGateway` continua sendo a porta de admissão/execução REAL, enquanto o resultado financeiro deve entrar no mesmo `ExternalOutcomePort` e seguir P49 → P50 → P138/P139 → journal. A autorização REAL, o safety gate, o broker/adaptador e o ledger continuam específicos da fronteira REAL.
 
 ### cTrader
 
