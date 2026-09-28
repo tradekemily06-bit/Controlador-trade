@@ -282,12 +282,22 @@ class ICMarketsMT5DemoOutcomeBridge:
         else:
             outcome = "DRAW"
 
+        close_external_id = lineage.close_external_id or str(getattr(exit_deals[-1], "ticket", ""))
+        if not close_external_id:
+            return None
+        if lineage.close_external_id is None:
+            lineage = self.lineage.attach_close_external_id(
+                lineage.request_id,
+                close_external_id,
+                updated_at=observed_at,
+            )
+
         evidence = MT5OutcomeEvidence(
             decision_id=lineage.decision_id,
             cycle_id=lineage.cycle_id,
             request_id=lineage.request_id,
             position_id=lineage.position_id,
-            close_external_id=lineage.close_external_id or str(getattr(exit_deals[-1], "order", "")),
+            close_external_id=close_external_id,
             deal_ids=deal_ids,
             financial_result=float(financial),
             outcome=outcome,
