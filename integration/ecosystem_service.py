@@ -195,7 +195,8 @@ class EcosystemService:
             results.append({"step": index, **record.to_dict()})
         return results
 
-    def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+    def record_study_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+        """Record a manual study/replay annotation, never an operational result."""
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
                 updated = record.with_outcome(outcome)
@@ -203,6 +204,12 @@ class EcosystemService:
                 self.store.save(updated)
                 return updated
         raise ValueError("decision_id não encontrado")
+
+    def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+        raise RuntimeError(
+            "resultado operacional manual bloqueado; use record_study_outcome() apenas em estudo/replay "
+            "ou a cadeia externa de fechamento e reconciliação"
+        )
 
     def statistics(self) -> dict[str, Any]:
         breakdowns = summarize_breakdowns(self.memory)
