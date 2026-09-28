@@ -110,12 +110,14 @@ class OperationLearningJournal:
                     if (
                         current_identity.get("cycle_id") != identity.get("cycle_id")
                         or current_identity.get("outcome") != identity.get("outcome")
-                        or current_identity.get("financial_result") != identity.get("financial_result")
+                        or current_identity.get("external_container_id") != identity.get("external_container_id")
                     ):
                         return False
                     current_ids = set(current_identity.get("external_result_ids", ()))
                     incoming_ids = set(identity.get("external_result_ids", ()))
                     if not current_ids.issubset(incoming_ids) and not incoming_ids.issubset(current_ids):
+                        return False
+                    if current_ids == incoming_ids and current_identity.get("financial_result") != identity.get("financial_result"):
                         return False
                     if current_identity.get("external_container_id") != identity.get("external_container_id"):
                         return False
