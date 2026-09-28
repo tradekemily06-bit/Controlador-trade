@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
-from execution.ports import BrokerAdapter
+from execution.ports import AdapterConnectionIdentity, BrokerAdapter
 
 
 class BrokerRegistryError(ValueError):
@@ -14,6 +14,7 @@ class BrokerRegistryError(ValueError):
 class BrokerAdapterInfo:
     name: str
     available: bool
+    identity: AdapterConnectionIdentity | None = None
 
 
 class BrokerRegistry:
@@ -21,8 +22,15 @@ class BrokerRegistry:
 
     def __init__(self) -> None:
         self._adapters: dict[str, BrokerAdapter] = {}
+        self._identities: dict[str, AdapterConnectionIdentity | None] = {}
 
-    def register(self, name: str, adapter: BrokerAdapter) -> None:
+    def register(
+        self,
+        name: str,
+        adapter: BrokerAdapter,
+        *,
+        identity: AdapterConnectionIdentity | None = None,
+    ) -> None:
         normalized = self._normalize_name(name)
         if normalized in self._adapters:
             raise BrokerRegistryError(f"adapter já registrado: {normalized}")
@@ -31,6 +39,7 @@ class BrokerRegistry:
         if not callable(getattr(adapter, "is_available", None)):
             raise BrokerRegistryError("adapter deve implementar is_available().")
         self._adapters[normalized] = adapter
+        self._identities[normalized] = identity
 
     def get(self, name: str) -> BrokerAdapter:
         normalized = self._normalize_name(name)
@@ -45,7 +54,11 @@ class BrokerRegistry:
 
     def info(self) -> tuple[BrokerAdapterInfo, ...]:
         return tuple(
-            BrokerAdapterInfo(name=name, available=bool(adapter.is_available()))
+            BrokerAdapterInfo(
+                name=name,
+                available=bool(adapter.is_available()),
+                identity=self._identities.get(name),
+            )
             for name, adapter in self._adapters.items()
         )
 
