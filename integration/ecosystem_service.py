@@ -200,7 +200,7 @@ class EcosystemService:
         if lineage.cycle_id != observation.cycle_id:
             raise RuntimeError("cycle_id da observação não corresponde à linhagem")
         if context is None:
-            raise RuntimeError("contexto operacional original ausente; resultado verificado não pode avançar para aprendizado")
+            return
 
         if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id:
             raise RuntimeError("identidade operacional não corresponde à observação externa")
