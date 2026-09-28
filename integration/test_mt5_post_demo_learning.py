@@ -22,9 +22,9 @@ def evidence(cycle_id="cycle-1"):
         decision_id="decision-1",
         cycle_id=cycle_id,
         request_id="request-1",
-        position_id="123",
-        close_external_id="900",
-        deal_ids=("602",),
+        external_container_id="123",
+        external_close_id="900",
+        external_result_ids=("602",),
         financial_result=10.3,
         outcome="WIN",
         observed_at=datetime.now(timezone.utc),
@@ -57,7 +57,7 @@ def test_verified_mt5_evidence_is_forwarded_to_p139():
     assert post_demo.kwargs["outcome"] == "WIN"
     assert post_demo.kwargs["financial_result"] == 10.3
     assert post_demo.kwargs["external_observation"].cycle_id == "cycle-1"
-    assert "MT5 position_id=123" in post_demo.kwargs["evidence"]
+    assert "MT5 external_container_id=123" in post_demo.kwargs["evidence"]
 
 
 def test_bridge_rejects_cycle_mismatch():
