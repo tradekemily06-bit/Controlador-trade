@@ -40,3 +40,23 @@ class BrokerAdapter(Protocol):
 
     def is_available(self) -> bool:
         ...
+
+
+@dataclass(frozen=True)
+class AdapterConnectionIdentity:
+    """Provider-neutral identity of the external connection path.
+
+    A broker, trading platform, adapter implementation and transport are
+    separate dimensions. None of them is a finite list owned by the core.
+    """
+
+    broker_id: str
+    platform_id: str
+    adapter_id: str
+    transport_id: str
+
+    def __post_init__(self) -> None:
+        for name in ("broker_id", "platform_id", "adapter_id", "transport_id"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{name} é obrigatório.")
