@@ -30,7 +30,7 @@ from integration.p138_result_learning_bridge import ResultLearningBridge
 
 
 @dataclass(frozen=True)
-class PostDemoLearningResult:
+class PostExecutionLearningResult:
     """Immutable post-operation artifacts with no execution authority."""
 
     outcome: AutomationOutcome
@@ -40,7 +40,7 @@ class PostDemoLearningResult:
     execution_authorized: bool = False
 
 
-class PostDemoLearningBoundary:
+class PostExecutionLearningBoundary:
     """Close the factual post-DEMO lifecycle without inventing outcome data."""
 
     def __init__(self, *, learning: ResultLearningBridge | None = None) -> None:
@@ -88,10 +88,15 @@ class PostDemoLearningBoundary:
             evidence=evidence,
             lessons=lessons,
         )
-        return PostDemoLearningResult(
+        return PostExecutionLearningResult(
             outcome=automation_outcome,
             reconciliation=reconciliation,
             snapshot=snapshot,
             handoff=handoff,
             execution_authorized=False,
         )
+
+
+# Backward-compatible names for existing DEMO integrations; the boundary itself is mode-neutral.
+PostDemoLearningResult = PostExecutionLearningResult
+PostDemoLearningBoundary = PostExecutionLearningBoundary
