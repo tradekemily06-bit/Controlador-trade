@@ -173,8 +173,15 @@ class OperationLineageStore:
         ):
             raise ValueError("external_result_ids são obrigatórios.")
         normalized = tuple(dict.fromkeys(external_result_ids))
-        if current.external_result_ids and current.external_result_ids != normalized:
-            raise ValueError("external_result_ids conflitantes.")
+        if current.external_result_ids:
+            current_ids = set(current.external_result_ids)
+            incoming_ids = set(normalized)
+            # External history may become complete after the first observation.
+            # Existing IDs are immutable evidence; newly discovered IDs may be
+            # appended, but the persisted identity can never be replaced.
+            if not current_ids.issubset(incoming_ids):
+                raise ValueError("external_result_ids conflitantes: IDs persistidos desapareceram.")
+            normalized = tuple(sorted(incoming_ids))
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
             current.external_id, current.external_container_id, current.external_close_id,
