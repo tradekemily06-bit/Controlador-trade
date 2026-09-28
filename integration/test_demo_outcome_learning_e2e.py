@@ -81,3 +81,39 @@ def test_demo_close_flows_into_verified_memory_and_learning(tmp_path, monkeypatc
     assert service.memory[0].outcome == "WIN"
     journal = service.post_demo_learning.post_demo.learning.journal
     assert journal.verified_note(dedupe_key="cycle:cycle-e2e").note_id == "operation-learning-cycle-e2e"
+
+
+def test_unreconciled_external_observation_never_updates_operational_memory(tmp_path, monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_LEARNING_DB", str(tmp_path / "learning.sqlite3"))
+    runtime = build_operational_runtime(tmp_path / "runtime")
+    service = EcosystemService(operational_runtime=runtime, outcome_port=FakeOutcomePort())
+    record = service.analyze({
+        "score": 90, "confirmed": True, "filters_ok": True,
+        "symbol": "EURUSD", "timeframe": "5m",
+    })
+    snapshot = DecisionSnapshot(
+        signal=record.signal, analysis_score=record.score, confirmed=record.confirmed,
+        quality_score=90.0, quality_level="HIGH", actionable=True,
+        decision="EXECUTAR", decision_reason=record.reason,
+        market_context=MarketContext.FAVORAVEL.value, market_direction="ALTA", market_score=80.0,
+        operational_state_available=True, trades_today=0, consecutive_losses=0,
+        symbol=record.symbol, timeframe=record.timeframe,
+        decision_id=record.decision_id, cycle_id="cycle-mismatch", request_id="request-mismatch",
+    )
+    runtime.operation_context.put("request-mismatch", snapshot)
+    runtime.lineage.put(OperationLineage(
+        decision_id=record.decision_id, cycle_id="cycle-mismatch",
+        request_id="request-mismatch", external_id="entry-1",
+    ))
+    runtime.execution_ledger.record("request-mismatch")
+    runtime.execution_lifecycle.put(ExecutionLifecycleRecord(
+        "request-mismatch", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), "accepted",
+    ))
+
+    try:
+        service.close_and_observe("request-mismatch")
+    except RuntimeError as exc:
+        assert "cycle_id" in str(exc)
+    else:
+        raise AssertionError("mismatched external evidence must fail closed")
+    assert service.memory[0].outcome is None
