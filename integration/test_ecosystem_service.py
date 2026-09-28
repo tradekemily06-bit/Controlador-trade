@@ -187,6 +187,7 @@ def test_external_observer_can_reconcile_without_close_capability():
     from datetime import datetime, timezone
     from core.p49_outcome_reconciliation import ExternalOutcomeObservation
     from core.operation_lineage import OperationLineage
+    from core.operational_runtime import build_operational_runtime
 
     class ObserverOnly:
         def observe_closed_position(self, request_id):
