@@ -181,3 +181,39 @@ def test_external_outcome_port_is_injected_without_broker_knowledge():
 
     assert result.closed is True
     assert result.observation.source == "future"
+
+
+def test_external_observer_can_reconcile_without_close_capability():
+    from datetime import datetime, timezone
+    from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+    from core.operation_lineage import OperationLineage
+
+    class ObserverOnly:
+        def observe_closed_position(self, request_id):
+            return ExternalOutcomeObservation(
+                cycle_id="cycle-observer",
+                outcome="DRAW",
+                financial_result=0.0,
+                source="future-real-observer",
+                external_container_id="container-observer",
+                external_reference="close-observer",
+                external_result_ids=("deal-observer",),
+                observed_at=datetime.now(timezone.utc),
+            )
+
+    runtime = build_operational_runtime("/tmp/controlador-service-observer-test", executor=None)
+    service = EcosystemService(outcome_observer=ObserverOnly(), operational_runtime=runtime)
+    record = service.analyze({"score": 80, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    runtime.lineage.put(
+        OperationLineage(
+            decision_id=record.decision_id,
+            cycle_id="cycle-observer",
+            request_id="request-observer",
+            external_id="external-observer",
+        )
+    )
+
+    observation = service.observe_closed_and_finalize("request-observer")
+
+    assert observation is not None
+    assert observation.source == "future-real-observer"
