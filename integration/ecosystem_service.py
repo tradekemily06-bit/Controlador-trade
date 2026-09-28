@@ -8,6 +8,11 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.p47_automation_closure import AutomationClosure
+from core.p46_automation_lifecycle import AutomationLifecycleState
+from core.market_context import MarketContext, MarketContextResult
+from core.market_direction import MarketDirection
+from core.models import AnalysisResult, Signal
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
@@ -21,6 +26,7 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
 from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomePort
 from integration.news_provider import UnconfiguredNewsProvider
+from integration.post_demo_learning import PostDemoLearningBridge
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
 from security.request_context import ProductionRequestContext, require_production_context
@@ -41,6 +47,7 @@ class EcosystemService:
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
         self.outcome_port = outcome_port
+        self.post_demo_learning = PostDemoLearningBridge()
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
         self.learning_sources: dict[str, LearningSource] = {}
@@ -112,7 +119,67 @@ class EcosystemService:
             raise RuntimeError("fechamento bloqueado: execução não está aceita no ledger")
         if lifecycle is None or lifecycle.state is not ExecutionLifecycleState.ACCEPTED:
             raise RuntimeError("fechamento bloqueado: ciclo de execução não está ACCEPTED")
-        return self.outcome_port.close_and_observe(request_id)
+        result = self.outcome_port.close_and_observe(request_id)
+        observation = result.observation
+        if observation is not None:
+            self._finalize_verified_outcome(request_id, observation)
+        return result
+
+    def _finalize_verified_outcome(self, request_id: str, observation: Any) -> None:
+        """Reconcile external facts and feed verified learning/statistics automatically."""
+        from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+        if not isinstance(observation, ExternalOutcomeObservation):
+            raise RuntimeError("adapter retornou observação externa inválida")
+        context = self.operational_runtime.operation_context.get(request_id)
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None or context is None:
+            raise RuntimeError("contexto operacional necessário para aprendizagem não foi encontrado")
+        if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id or lineage.cycle_id != observation.cycle_id:
+            raise RuntimeError("identidade operacional não corresponde à observação externa")
+        if not all(value is not None for value in (context.market_context, context.market_direction, context.market_score, context.symbol, context.timeframe)):
+            raise RuntimeError("contexto de mercado original incompleto; aprendizagem automática foi bloqueada")
+        analysis = AnalysisResult(
+            Signal(context.signal), float(context.analysis_score), context.decision_reason,
+            bool(context.confirmed), context.symbol, context.timeframe,
+        )
+        market_context = MarketContextResult(
+            MarketContext(context.market_context), float(context.market_score),
+            "Contexto de mercado capturado no snapshot da decisão.",
+            MarketDirection(context.market_direction),
+        )
+        if observation.observed_at is None:
+            raise RuntimeError("observação externa sem observed_at")
+        closure = AutomationClosure(
+            cycle_id=observation.cycle_id,
+            terminal_state=AutomationLifecycleState.COMPLETED,
+            closed_at=observation.observed_at,
+        )
+        self.post_demo_learning.process(
+            evidence=observation,
+            closure=closure,
+            analysis=analysis,
+            market_context=market_context,
+            note_id=f"operation-learning-{observation.cycle_id}",
+            what_happened=f"Operação DEMO encerrada com resultado externo {observation.outcome}; resultado financeiro={observation.financial_result}.",
+            why_assessment="Registro factual reconciliado com a evidência externa do adapter.",
+            lessons=("Revisar o contexto original e as evidências antes de transformar o caso em conhecimento validado.",),
+        )
+        self.record_verified_outcome(lineage.decision_id, observation)
+
+    def record_verified_outcome(self, decision_id: str, observation: Any) -> DecisionRecord:
+        """Update operational decision memory only from an explicit external observation."""
+        from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+        if not isinstance(observation, ExternalOutcomeObservation):
+            raise ValueError("observação externa inválida")
+        if observation.outcome not in {"WIN", "LOSS", "DRAW"}:
+            raise ValueError("resultado externo não é final")
+        for index, record in enumerate(self.memory):
+            if record.decision_id == decision_id:
+                updated = record.with_outcome(observation.outcome)
+                self.memory[index] = updated
+                self.store.save(updated)
+                return updated
+        raise ValueError("decision_id não encontrado")
 
     def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
         """Compatibility wrapper that still uses the generic, gated outcome port.
