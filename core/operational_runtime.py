@@ -33,9 +33,9 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     lineage: OperationLineageStore
-    operation_context: OperationContextStore
     market_data: MarketDataRuntimeState
     controlled_automation: ControlledAutomationRuntime
+    operation_context: OperationContextStore | None = None
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
