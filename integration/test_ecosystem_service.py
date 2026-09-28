@@ -176,6 +176,15 @@ def test_external_outcome_port_is_injected_without_broker_knowledge():
         )
     )
     service = EcosystemService(outcome_port=FutureOutcomePort(), operational_runtime=runtime)
+    record = service.analyze({"score": 80, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    runtime.lineage.put(
+        OperationLineage(
+            decision_id=record.decision_id,
+            cycle_id="cycle-future",
+            request_id="request-future",
+            external_id="external-1",
+        )
+    )
     result = service.close_and_observe("request-future")
 
     assert result.closed is True
