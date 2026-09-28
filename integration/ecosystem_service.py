@@ -102,7 +102,7 @@ class EcosystemService:
         evidence = result.outcome_evidence
         return {
             "request_id": result.request_id,
-            "position_id": result.position_id,
+            "position_id": result.external_container_id,
             "close_external_id": result.close_external_id,
             "position_closed": result.position_closed,
             "message": result.message,
