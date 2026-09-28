@@ -4,7 +4,7 @@ import pytest
 
 from core.p46_automation_lifecycle import AutomationLifecycleState
 from core.p47_automation_closure import AutomationClosure
-from execution.icmarkets_mt5_demo_outcome import MT5OutcomeEvidence
+from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 from integration.mt5_post_demo_learning import MT5PostDemoLearningBridge
 
 
@@ -18,16 +18,13 @@ class FakePostDemo:
 
 
 def evidence(cycle_id="cycle-1"):
-    return MT5OutcomeEvidence(
-        decision_id="decision-1",
+    return ExternalOutcomeObservation(
         cycle_id=cycle_id,
-        request_id="request-1",
         external_container_id="123",
         external_close_id="900",
         external_result_ids=("602",),
         financial_result=10.3,
         outcome="WIN",
-        observed_at=datetime.now(timezone.utc),
     )
 
 
