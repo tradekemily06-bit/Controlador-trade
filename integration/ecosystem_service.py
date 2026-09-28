@@ -148,10 +148,12 @@ class EcosystemService:
         lineage = self.operational_runtime.lineage.get(request_id)
         if lineage is None:
             raise RuntimeError("linhagem operacional necessária para resultado verificado não foi encontrada")
+        if lineage.cycle_id != observation.cycle_id:
+            raise RuntimeError("cycle_id da observação não corresponde à linhagem")
         self.record_verified_outcome(lineage.decision_id, observation)
         if context is None:
             return
-        if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id or lineage.cycle_id != observation.cycle_id:
+        if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id:
             raise RuntimeError("identidade operacional não corresponde à observação externa")
         if not all(value is not None for value in (context.market_context, context.market_direction, context.market_score, context.symbol, context.timeframe)):
             raise RuntimeError("contexto de mercado original incompleto; aprendizagem automática foi bloqueada")
