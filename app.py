@@ -20,6 +20,7 @@ from security_audit import AUDIT
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
+os.environ.setdefault("CONTROLADOR_LEARNING_DB", str(RUNTIME_DIR / "learning.sqlite3"))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
