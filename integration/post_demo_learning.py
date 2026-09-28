@@ -4,7 +4,7 @@ from core.market_context import MarketContextResult
 from core.models import AnalysisResult
 from core.p47_automation_closure import AutomationClosure
 from core.p49_outcome_reconciliation import ExternalOutcomeObservation
-from integration.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
+from integration.p139_post_demo_learning import PostExecutionLearningBoundary, PostExecutionLearningResult
 
 
 class PostExecutionLearningBridge:
@@ -15,8 +15,8 @@ class PostExecutionLearningBridge:
     transport. P139 remains the owner of reconciliation/learning progression.
     """
 
-    def __init__(self, *, post_demo: PostDemoLearningBoundary | None = None) -> None:
-        self.post_demo = post_demo or PostDemoLearningBoundary()
+    def __init__(self, *, post_demo: PostExecutionLearningBoundary | None = None) -> None:
+        self.post_demo = post_demo or PostExecutionLearningBoundary()
 
     def process(
         self,
@@ -30,7 +30,7 @@ class PostExecutionLearningBridge:
         why_assessment: str,
         evidence_notes: tuple[str, ...] = (),
         lessons: tuple[str, ...] = (),
-    ) -> PostDemoLearningResult:
+    ) -> PostExecutionLearningResult:
         if not isinstance(evidence, ExternalOutcomeObservation):
             raise ValueError("evidência externa inválida.")
         if not isinstance(closure, AutomationClosure):
