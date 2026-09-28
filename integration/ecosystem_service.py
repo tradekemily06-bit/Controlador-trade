@@ -115,36 +115,31 @@ class EcosystemService:
         return self.outcome_port.close_and_observe(request_id)
 
     def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
-        """Close one persisted MT5 DEMO operation and return verified factual evidence.
+        """Compatibility wrapper that still uses the generic, gated outcome port.
 
-        This is an application boundary only; it never enables REAL and never
-        converts an order acknowledgement into a financial result.
+        MT5-specific construction is intentionally kept at the application
+        composition edge. This method cannot bypass the generic lifecycle/ledger
+        gate used by close_and_observe().
         """
-        if self.operational_runtime is None:
-            raise RuntimeError("runtime operacional não conectado")
-        from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
-        bridge = ICMarketsMT5DemoOutcomeBridge(
-            lineage=self.operational_runtime.lineage,
-            mt5_module=mt5_module,
-        )
-        result = bridge.close_and_observe(request_id)
-        evidence = result.outcome_evidence
+        if self.outcome_port is None:
+            raise RuntimeError("external outcome adapter não conectado")
+        result = self.close_and_observe(request_id)
+        observation = result.observation
         return {
             "request_id": result.request_id,
             "position_id": result.external_container_id,
             "external_close_id": result.external_close_id,
-            "position_closed": result.position_closed,
+            "position_closed": result.closed,
             "message": result.message,
             "verified_result": (
                 {
-                    "cycle_id": evidence.cycle_id,
-                    "decision_id": evidence.decision_id,
-                    "outcome": evidence.outcome,
-                    "financial_result": evidence.financial_result,
-                    "external_result_ids": list(evidence.external_result_ids),
-                    "observed_at": evidence.observed_at.isoformat(),
+                    "cycle_id": observation.cycle_id,
+                    "outcome": observation.outcome,
+                    "financial_result": observation.financial_result,
+                    "external_result_ids": list(observation.external_result_ids),
+                    "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
                 }
-                if evidence is not None
+                if observation is not None
                 else None
             ),
             "execution_authorized": False,
