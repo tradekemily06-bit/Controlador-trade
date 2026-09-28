@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from enum import Enum
+import json
+import os
+import sqlite3
+from pathlib import Path
+from threading import Lock
 
 
 class OperationOutcome(str, Enum):
@@ -33,13 +38,101 @@ class OperationLearningNote:
 
 
 class OperationLearningJournal:
-    """Records what happened after an operation and creates questions for later validation.
+    """Records post-operation learning and durably deduplicates verified observations.
 
-    This is an observation/learning record, not a strategy rule. Both favorable and
-    unfavorable outcomes are retained so the ecosystem can study success and failure,
-    challenge its own interpretation, and reduce repeat errors. A note never grants
-    execution authority.
+    The journal is independent from execution authority. When a SQLite path is
+    configured, verified learning notes survive restarts and the external-result
+    identity becomes the idempotency key. Without a path, the journal keeps the
+    original in-memory behavior.
     """
+
+    def __init__(self, database_path: str | None = None) -> None:
+        self.database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_LEARNING_DB")
+        self._lock = Lock()
+        if self.database_path:
+            self._initialize()
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.database_path or ":memory:", timeout=5)
+
+    def _initialize(self) -> None:
+        try:
+            path = Path(self.database_path or "")
+            if path.parent != Path("."):
+                path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock, self._connect() as connection:
+                connection.execute(
+                    "CREATE TABLE IF NOT EXISTS operation_learning_notes ("
+                    "note_id TEXT PRIMARY KEY, dedupe_key TEXT UNIQUE NOT NULL, payload TEXT NOT NULL)"
+                )
+        except (OSError, sqlite3.Error):
+            self.database_path = None
+
+    def persist_verified_note(self, note: OperationLearningNote, *, dedupe_key: str) -> bool:
+        """Persist one verified note exactly once; return False for the same evidence key."""
+        if not isinstance(note, OperationLearningNote):
+            raise ValueError("invalid operation learning note")
+        self._required(dedupe_key, "dedupe_key")
+        if not self.database_path:
+            return True
+        payload = json.dumps({
+            "note_id": note.note_id,
+            "outcome": note.outcome.value,
+            "what_happened": note.what_happened,
+            "why_assessment": note.why_assessment,
+            "market_context": note.market_context,
+            "evidence": list(note.evidence),
+            "questions": [asdict(item) for item in note.questions],
+            "lessons": list(note.lessons),
+        }, ensure_ascii=False, sort_keys=True)
+        try:
+            with self._lock, self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO operation_learning_notes(note_id, dedupe_key, payload) VALUES (?, ?, ?)",
+                    (note.note_id, dedupe_key.strip(), payload),
+                )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+        except sqlite3.Error:
+            return False
+
+    def verified_note(self, *, dedupe_key: str) -> OperationLearningNote | None:
+        if not self.database_path:
+            return None
+        self._required(dedupe_key, "dedupe_key")
+        try:
+            with self._lock, self._connect() as connection:
+                row = connection.execute(
+                    "SELECT payload FROM operation_learning_notes WHERE dedupe_key = ?",
+                    (dedupe_key.strip(),),
+                ).fetchone()
+            if row is None:
+                return None
+            payload = json.loads(row[0])
+            return OperationLearningNote(
+                note_id=payload["note_id"], outcome=OperationOutcome(payload["outcome"]),
+                what_happened=payload["what_happened"], why_assessment=payload["why_assessment"],
+                market_context=payload["market_context"], evidence=tuple(payload.get("evidence", ())),
+                questions=tuple(InvestigationQuestion(**item) for item in payload.get("questions", ())),
+                lessons=tuple(payload.get("lessons", ())),
+            )
+        except (sqlite3.Error, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def verified_dedupe_key(snapshot) -> str:
+        """Build a stable identity from external evidence, never from WIN/LOSS alone."""
+        ids = tuple(sorted(set(getattr(snapshot, "external_result_ids", ()) or ())))
+        if ids:
+            return "deals:" + "|".join(ids)
+        reference = getattr(snapshot, "external_reference", None)
+        container = getattr(snapshot, "external_container_id", None)
+        if reference:
+            return f"reference:{reference}"
+        if container:
+            return f"container:{container}"
+        raise ValueError("verified result requires external evidence identity")
 
     def create_note(
         self,
