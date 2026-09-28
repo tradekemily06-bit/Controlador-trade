@@ -238,17 +238,17 @@ class ICMarketsMT5DemoOutcomeBridge:
         lineage = self.lineage.get(request_id)
         if lineage is None:
             raise ValueError("request_id sem linhagem persistida.")
-        if not lineage.external_container_id:
-            resolved = self._resolve_external_container_id(mt5, lineage.external_id)
-            if not resolved:
-                raise ValueError("external_container_id ainda não foi resolvido.")
-            lineage = self.lineage.attach_external_container_id(request_id, resolved, updated_at=event_time)
         event_time = now or datetime.now(timezone.utc)
         mt5 = self._module()
         if not mt5.initialize():
             raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             self._require_demo(mt5)
+            if not lineage.external_container_id:
+                resolved = self._resolve_external_container_id(mt5, lineage.external_id)
+                if not resolved:
+                    raise ValueError("external_container_id ainda não foi resolvido.")
+                lineage = self.lineage.attach_external_container_id(request_id, resolved, updated_at=event_time)
             if self._get_single_position(mt5, lineage.external_container_id) is not None:
                 return None
             return self._observe_closed_position(mt5, lineage, event_time)
