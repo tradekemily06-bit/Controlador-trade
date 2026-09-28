@@ -21,8 +21,9 @@ class FakeMT5:
     DEAL_ENTRY_INOUT = 2
     DEAL_ENTRY_OUT_BY = 3
 
-    def __init__(self, *, remaining=False, magic=2609001):
+    def __init__(self, *, remaining=False, magic=2609001, close_remaining=False):
         self.remaining = remaining
+        self.close_remaining = close_remaining
         self.magic = magic
         self.sent_payload = None
         self.shutdown_called = False
@@ -80,7 +81,7 @@ class FakeMT5:
 
     def order_send(self, payload):
         self.sent_payload = payload
-        self.remaining = False
+        self.remaining = self.close_remaining
         return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=900, deal=901)
 
     def last_error(self):
@@ -101,7 +102,7 @@ def lineage(store):
 def test_close_resolves_position_closes_and_builds_factual_result(tmp_path):
     store = OperationLineageStore(tmp_path / "lineage.json")
     lineage(store)
-    mt5 = FakeMT5()
+    mt5 = FakeMT5(remaining=True)
     bridge = ICMarketsMT5DemoOutcomeBridge(lineage=store, mt5_module=mt5)
 
     result = bridge.close_and_observe(
@@ -130,7 +131,7 @@ def test_close_resolves_position_closes_and_builds_factual_result(tmp_path):
 def test_partial_close_does_not_create_financial_outcome(tmp_path):
     store = OperationLineageStore(tmp_path / "lineage.json")
     lineage(store)
-    mt5 = FakeMT5(remaining=True)
+    mt5 = FakeMT5(remaining=True, close_remaining=True)
     bridge = ICMarketsMT5DemoOutcomeBridge(lineage=store, mt5_module=mt5)
 
     result = bridge.close_and_observe("request-1")
