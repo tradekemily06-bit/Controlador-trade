@@ -80,6 +80,7 @@ class FakeMT5:
 
     def order_send(self, payload):
         self.sent_payload = payload
+        self.remaining = False
         return SimpleNamespace(retcode=self.TRADE_RETCODE_DONE, order=900, deal=901)
 
     def last_error(self):
