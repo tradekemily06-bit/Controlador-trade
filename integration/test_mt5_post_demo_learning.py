@@ -55,7 +55,7 @@ def test_verified_mt5_evidence_is_forwarded_to_p139():
     assert post_demo.kwargs["outcome"] == "WIN"
     assert post_demo.kwargs["financial_result"] == 10.3
     assert post_demo.kwargs["external_observation"].cycle_id == "cycle-1"
-    assert "MT5 external_container_id=123" in post_demo.kwargs["evidence"]
+    assert "external container=123" in post_demo.kwargs["evidence"]
 
 
 def test_bridge_rejects_cycle_mismatch():
