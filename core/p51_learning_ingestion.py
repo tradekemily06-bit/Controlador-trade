@@ -18,10 +18,10 @@ class LearningIngestionRecord:
     cycle_id: str
     outcome: str
     financial_result: float | None
+    eligibility: LearningEligibility
     external_result_ids: tuple[str, ...] = ()
     external_reference: str | None = None
     external_container_id: str | None = None
-    eligibility: LearningEligibility
 
 
 class LearningIngestionBoundary:
