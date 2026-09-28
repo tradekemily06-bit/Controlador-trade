@@ -119,6 +119,26 @@ class EcosystemService:
             raise RuntimeError("fechamento bloqueado: execução não está aceita no ledger")
         if lifecycle is None or lifecycle.state is not ExecutionLifecycleState.ACCEPTED:
             raise RuntimeError("fechamento bloqueado: ciclo de execução não está ACCEPTED")
+        if lineage.external_close_id:
+            observation = self.outcome_port.observe_closed_position(request_id)
+            if observation is not None:
+                self._finalize_verified_outcome(request_id, observation)
+                return ExternalCloseResult(
+                    request_id=request_id,
+                    external_container_id=lineage.external_container_id or "",
+                    external_close_id=lineage.external_close_id,
+                    closed=True,
+                    observation=observation,
+                    message="fechamento já registrado; resultado externo confirmado por reobservação.",
+                )
+            return ExternalCloseResult(
+                request_id=request_id,
+                external_container_id=lineage.external_container_id or "",
+                external_close_id=lineage.external_close_id,
+                closed=False,
+                observation=None,
+                message="fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+            )
         result = self.outcome_port.close_and_observe(request_id)
         observation = result.observation
         if observation is not None:
