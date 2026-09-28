@@ -59,7 +59,7 @@ def test_verified_external_evidence_is_forwarded_to_p139():
 
 
 def test_bridge_rejects_cycle_mismatch():
-    bridge = MT5PostDemoLearningBridge(post_demo=FakePostDemo())
+    bridge = PostDemoLearningBridge(post_demo=FakePostDemo())
 
     with pytest.raises(ValueError, match="cycle_id"):
         bridge.process(
