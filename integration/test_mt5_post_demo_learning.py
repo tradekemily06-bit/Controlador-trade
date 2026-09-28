@@ -5,7 +5,7 @@ import pytest
 from core.p46_automation_lifecycle import AutomationLifecycleState
 from core.p47_automation_closure import AutomationClosure
 from core.p49_outcome_reconciliation import ExternalOutcomeObservation
-from integration.mt5_post_demo_learning import MT5PostDemoLearningBridge
+from integration.post_demo_learning import PostDemoLearningBridge
 
 
 class FakePostDemo:
@@ -37,9 +37,9 @@ def closure(cycle_id="cycle-1"):
     )
 
 
-def test_verified_mt5_evidence_is_forwarded_to_p139():
+def test_verified_external_evidence_is_forwarded_to_p139():
     post_demo = FakePostDemo()
-    bridge = MT5PostDemoLearningBridge(post_demo=post_demo)
+    bridge = PostDemoLearningBridge(post_demo=post_demo)
 
     result = bridge.process(
         evidence=evidence(),
@@ -55,7 +55,7 @@ def test_verified_mt5_evidence_is_forwarded_to_p139():
     assert post_demo.kwargs["outcome"] == "WIN"
     assert post_demo.kwargs["financial_result"] == 10.3
     assert post_demo.kwargs["external_observation"].cycle_id == "cycle-1"
-    assert "external container=123" in post_demo.kwargs["evidence"]
+    assert "external_container_id=123" in post_demo.kwargs["evidence"]
 
 
 def test_bridge_rejects_cycle_mismatch():
