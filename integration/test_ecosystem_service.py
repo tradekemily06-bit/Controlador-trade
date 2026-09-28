@@ -129,3 +129,32 @@ def test_production_operation_accepts_explicit_ready_storage():
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
     assert service.system_status()["real"] == "DESABILITADO"
+
+
+def test_external_outcome_port_is_injected_without_broker_knowledge():
+    from execution.external_outcome_port import ExternalCloseResult
+    from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+    from datetime import datetime, timezone
+
+    class FutureOutcomePort:
+        def close_and_observe(self, request_id):
+            observation = ExternalOutcomeObservation(
+                cycle_id="cycle-future",
+                outcome="WIN",
+                financial_result=1.0,
+                source="future",
+                external_container_id="container-1",
+                external_reference="close-1",
+                external_result_ids=("result-1",),
+                observed_at=datetime.now(timezone.utc),
+            )
+            return ExternalCloseResult(request_id, "container-1", "close-1", True, observation, "ok")
+
+        def observe_closed_position(self, request_id):
+            return None
+
+    service = EcosystemService(outcome_port=FutureOutcomePort())
+    result = service.close_and_observe("request-future")
+
+    assert result.closed is True
+    assert result.observation.source == "future"
