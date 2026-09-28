@@ -158,14 +158,6 @@ def test_external_outcome_port_is_injected_without_broker_knowledge():
     from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
 
     runtime = build_operational_runtime("/tmp/controlador-service-outcome-test", executor=None)
-    runtime.lineage.put(
-        OperationLineage(
-            decision_id="decision-future",
-            cycle_id="cycle-future",
-            request_id="request-future",
-            external_id="external-1",
-        )
-    )
     runtime.execution_ledger.record("request-future")
     runtime.execution_lifecycle.put(
         ExecutionLifecycleRecord(
