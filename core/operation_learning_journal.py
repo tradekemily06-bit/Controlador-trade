@@ -136,6 +136,8 @@ class OperationLearningJournal:
                             (json.dumps(current, ensure_ascii=False, sort_keys=True), dedupe_key.strip()),
                         )
                 return True
+            except LearningIdentityConflict:
+                raise
             except (sqlite3.Error, OSError, json.JSONDecodeError, TypeError, ValueError, KeyError):
                 return False
         except sqlite3.Error:
