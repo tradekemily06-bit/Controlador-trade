@@ -9,6 +9,10 @@ from pathlib import Path
 from threading import Lock
 
 
+class LearningIdentityConflict(ValueError):
+    """Raised when one cycle presents incompatible verified external evidence."""
+
+
 class OperationOutcome(str, Enum):
     WIN = "WIN"
     LOSS = "LOSS"
@@ -112,13 +116,13 @@ class OperationLearningJournal:
                         or current_identity.get("outcome") != identity.get("outcome")
                         or current_identity.get("external_container_id") != identity.get("external_container_id")
                     ):
-                        return False
+                        raise LearningIdentityConflict("verified external identity conflicts with the existing cycle")
                     current_ids = set(current_identity.get("external_result_ids", ()))
                     incoming_ids = set(identity.get("external_result_ids", ()))
                     if not current_ids.issubset(incoming_ids) and not incoming_ids.issubset(current_ids):
-                        return False
+                        raise LearningIdentityConflict("verified external result IDs conflict with the existing cycle")
                     if current_ids == incoming_ids and current_identity.get("financial_result") != identity.get("financial_result"):
-                        return False
+                        raise LearningIdentityConflict("financial result conflicts for the same external result IDs")
                     if current_identity.get("external_container_id") != identity.get("external_container_id"):
                         return False
                     if incoming_ids != current_ids:
