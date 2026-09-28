@@ -85,6 +85,47 @@ class EcosystemService:
             "execution_allowed": False,
         }
 
+    def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
+        """Close one persisted MT5 DEMO operation and return verified factual evidence.
+
+        This is an application boundary only; it never enables REAL and never
+        converts an order acknowledgement into a financial result.
+        """
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        bridge = self.operational_runtime.mt5_outcome
+        if mt5_module is not None:
+            from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
+            bridge = ICMarketsMT5DemoOutcomeBridge(
+                lineage=self.operational_runtime.lineage,
+                mt5_module=mt5_module,
+                magic=bridge.magic,
+                deviation=bridge.deviation,
+            )
+        result = bridge.close_and_observe(request_id)
+        evidence = result.outcome_evidence
+        return {
+            "request_id": result.request_id,
+            "position_id": result.position_id,
+            "close_external_id": result.close_external_id,
+            "position_closed": result.position_closed,
+            "message": result.message,
+            "verified_result": (
+                {
+                    "cycle_id": evidence.cycle_id,
+                    "decision_id": evidence.decision_id,
+                    "outcome": evidence.outcome,
+                    "financial_result": evidence.financial_result,
+                    "deal_ids": list(evidence.deal_ids),
+                    "observed_at": evidence.observed_at.isoformat(),
+                }
+                if evidence is not None
+                else None
+            ),
+            "execution_authorized": False,
+            "real": "DISABLED",
+        }
+
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
         record = DecisionRecord.from_analysis(result)
