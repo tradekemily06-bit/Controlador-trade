@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from execution.external_outcome_port import ExternalCloseResult
+from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
 
 
@@ -24,6 +25,6 @@ class MT5ExternalOutcomeAdapter:
             message=result.message,
         )
 
-    def observe_closed_position(self, request_id: str):
+    def observe_closed_position(self, request_id: str) -> ExternalOutcomeObservation | None:
         evidence = self._bridge.observe_closed_position(request_id)
         return evidence.as_observation() if evidence is not None else None
