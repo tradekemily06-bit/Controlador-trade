@@ -19,6 +19,7 @@ from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
 from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from data.models import Candle
+from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomePort
 from integration.news_provider import UnconfiguredNewsProvider
 from security.identity_boundary import IdentityPolicy
 from security.production_operation_gate import ProductionOperationGate
@@ -29,7 +30,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, outcome_port: ExternalOutcomePort | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -39,6 +40,7 @@ class EcosystemService:
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
+        self.outcome_port = outcome_port
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
         self.learning_sources: dict[str, LearningSource] = {}
@@ -84,6 +86,16 @@ class EcosystemService:
             ],
             "execution_allowed": False,
         }
+
+    def close_and_observe(self, request_id: str) -> ExternalCloseResult:
+        """Close/observe through whichever external adapter was injected.
+
+        The service has no broker/platform knowledge. If no adapter is bound,
+        the operation is unavailable rather than silently selecting a broker.
+        """
+        if self.outcome_port is None:
+            raise RuntimeError("external outcome adapter não conectado")
+        return self.outcome_port.close_and_observe(request_id)
 
     def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
         """Close one persisted MT5 DEMO operation and return verified factual evidence.
