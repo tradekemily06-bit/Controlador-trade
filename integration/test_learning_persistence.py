@@ -63,3 +63,17 @@ def test_learning_persistence_is_never_reported_as_trading_authority(tmp_path, m
     assert summary["execution_allowed"] is False
     assert summary["learning_authorizes_trading"] is False
     assert summary["learning_persistence"] == "SQLITE"
+
+
+def test_runtime_learning_path_is_shared_by_learning_store_and_verified_journal(tmp_path):
+    database = tmp_path / "runtime-learning.sqlite3"
+
+    first = EcosystemService(learning_database_path=str(database))
+    journal = first.post_demo_learning.post_demo.learning.journal
+
+    assert first.learning_store.database_path == str(database)
+    assert journal.database_path == str(database)
+
+    second = EcosystemService(learning_database_path=str(database))
+    assert second.learning_store.database_path == str(database)
+    assert second.post_demo_learning.post_demo.learning.journal.database_path == str(database)
