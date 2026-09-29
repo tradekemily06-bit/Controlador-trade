@@ -11,6 +11,8 @@ from analysis.statistics import summarize, summarize_breakdowns, summarize_perio
 from core.ecosystem_health import build_health_alerts
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.learning_store import LearningStore
+from core.operation_learning_journal import OperationLearningJournal
+from core.p128_learning_handoff import OperationLearningHandoffBoundary
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
 from core.decision_snapshot import DecisionSnapshot
@@ -19,6 +21,8 @@ from core.market_context import MarketContextEngine
 from core.decision_engine import FinalDecision
 from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomeObserver, ExternalOutcomePort
 from integration.post_demo_learning import PostExecutionLearningBridge
+from integration.p138_result_learning_bridge import ResultLearningBridge
+from integration.p139_post_demo_learning import PostExecutionLearningBoundary
 from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot, BrokerMarketDataPort
 from analysis.pipeline import StrategyPipeline
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
@@ -41,7 +45,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured", outcome_port: ExternalOutcomePort | None = None, outcome_observer: ExternalOutcomeObserver | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured", outcome_port: ExternalOutcomePort | None = None, outcome_observer: ExternalOutcomeObserver | None = None, learning_database_path: str | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -53,10 +57,18 @@ class EcosystemService:
         self.operational_runtime = operational_runtime
         self.outcome_port = outcome_port
         self.outcome_observer = outcome_observer or outcome_port
-        self.post_demo_learning = PostExecutionLearningBridge()
+        learning_journal = OperationLearningJournal(database_path=learning_database_path)
+        self.post_demo_learning = PostExecutionLearningBridge(
+            post_demo=PostExecutionLearningBoundary(
+                learning=ResultLearningBridge(
+                    journal=learning_journal,
+                    handoff=OperationLearningHandoffBoundary(),
+                )
+            )
+        )
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
-        self.learning_store = LearningStore()
+        self.learning_store = LearningStore(database_path=learning_database_path)
         (
             self.learning_sources,
             self.learning_resources,
