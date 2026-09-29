@@ -207,3 +207,51 @@ def test_accepted_without_external_identity_requires_reconciliation(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
+
+
+def test_reconciled_executed_is_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lineage_store.put(OperationLineage("d1", "c1", "req-1", updated_at=now))
+    coordinator.operation_context_store.put("req-1", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="d1", cycle_id="c1", request_id="req-1",
+    ))
+    coordinator.execution_ledger.record("req-1")
+    coordinator.execution_ledger.reconcile("req-1", executed=True)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now)
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
+
+
+def test_reconciled_not_executed_is_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lineage_store.put(OperationLineage("d1", "c1", "req-1", updated_at=now))
+    coordinator.operation_context_store.put("req-1", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="d1", cycle_id="c1", request_id="req-1",
+    ))
+    coordinator.execution_ledger.record("req-1")
+    coordinator.execution_ledger.reconcile("req-1", executed=False)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now)
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
