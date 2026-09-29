@@ -21,6 +21,7 @@ from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
 from integration.mt5_asset_suitability_bridge import select_mt5_analysis_candidates
 from execution.mt5_instrument_universe import discover_mt5_instruments
+from execution.mt5_runtime_lock import mt5_session_lock
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -39,23 +40,24 @@ if EXECUTION_PROVIDER.strip().lower() != "paper":
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
 
 def _select_mt5_analysis_symbols() -> tuple[str, ...]:
-    """Discover the broker universe and return evidence-qualified analysis candidates."""
+    """Discover the broker universe through the shared MT5 session boundary."""
     try:
         import MetaTrader5 as mt5  # type: ignore
     except ImportError:
         return ()
-    if not mt5.initialize():
-        return ()
-    try:
-        statuses = discover_mt5_instruments(mt5)
-        candidates = select_mt5_analysis_candidates(
-            mt5,
-            statuses,
-            limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_CANDIDATES", "8")),
-        )
-        return tuple(candidate.symbol for candidate in candidates)
-    finally:
-        mt5.shutdown()
+    with mt5_session_lock():
+        if not mt5.initialize():
+            return ()
+        try:
+            statuses = discover_mt5_instruments(mt5)
+            candidates = select_mt5_analysis_candidates(
+                mt5,
+                statuses,
+                limit=int(os.environ.get("CONTROLADOR_MARKET_DATA_CANDIDATES", "8")),
+            )
+            return tuple(candidate.symbol for candidate in candidates)
+        finally:
+            mt5.shutdown()
 
 if MARKET_DATA is not None:
     MARKET_DATA_RUNTIME = PersistentMarketDataRuntime(
