@@ -24,7 +24,7 @@ from analysis.pipeline import StrategyPipeline
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
 from core.p128_learning_source_gate import LearningSource, LearningSourceGate, LearningSourceStatus, LearningSourceType
 from core.risk_manager import RiskManager
-from core.models import Signal
+from core.models import AnalysisResult, Signal
 from execution.ports import ExecutionMode, ExecutionRequest
 from core.signal_engine import SignalEngine
 from core.senior_context_orchestrator import SeniorContextInput, SeniorContextOrchestrator
