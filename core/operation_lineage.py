@@ -133,82 +133,86 @@ class OperationLineageStore:
         self._save()
 
     def attach_external_id(self, request_id: str, external_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("request_id sem linhagem persistida.")
-        if not isinstance(external_id, str) or not external_id.strip():
-            raise ValueError("external_id é obrigatório.")
-        if current.external_id is not None and current.external_id != external_id:
-            raise ValueError("external_id conflitante.")
-        updated = OperationLineage(
-            current.decision_id, current.cycle_id, current.request_id,
-            external_id, current.external_container_id, current.external_close_id,
-            current.external_close_ids, current.external_result_ids, updated_at,
-        )
-        self.put(updated)
-        return updated
+        with self._lock:
+            current = self.get(request_id)
+            if current is None:
+                raise ValueError("request_id sem linhagem persistida.")
+            if not isinstance(external_id, str) or not external_id.strip():
+                raise ValueError("external_id é obrigatório.")
+            if current.external_id is not None and current.external_id != external_id:
+                raise ValueError("external_id conflitante.")
+            updated = OperationLineage(
+                current.decision_id, current.cycle_id, current.request_id,
+                external_id, current.external_container_id, current.external_close_id,
+                current.external_close_ids, current.external_result_ids, updated_at,
+            )
+            self.put(updated)
+            return updated
 
     def attach_external_container_id(self, request_id: str, external_container_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("request_id sem linhagem persistida.")
-        if not isinstance(external_container_id, str) or not external_container_id.strip():
-            raise ValueError("external_container_id é obrigatório.")
-        if current.external_container_id is not None and current.external_container_id != external_container_id:
-            raise ValueError("external_container_id conflitante.")
-        updated = OperationLineage(
-            decision_id=current.decision_id,
-            cycle_id=current.cycle_id,
-            request_id=current.request_id,
-            external_id=current.external_id,
-            external_container_id=external_container_id,
-            external_close_id=current.external_close_id,
-            external_close_ids=current.external_close_ids,
-            external_result_ids=current.external_result_ids,
-            updated_at=updated_at,
-        )
-        self.put(updated)
-        return updated
+        with self._lock:
+            current = self.get(request_id)
+            if current is None:
+                raise ValueError("request_id sem linhagem persistida.")
+            if not isinstance(external_container_id, str) or not external_container_id.strip():
+                raise ValueError("external_container_id é obrigatório.")
+            if current.external_container_id is not None and current.external_container_id != external_container_id:
+                raise ValueError("external_container_id conflitante.")
+            updated = OperationLineage(
+                decision_id=current.decision_id,
+                cycle_id=current.cycle_id,
+                request_id=current.request_id,
+                external_id=current.external_id,
+                external_container_id=external_container_id,
+                external_close_id=current.external_close_id,
+                external_close_ids=current.external_close_ids,
+                external_result_ids=current.external_result_ids,
+                updated_at=updated_at,
+            )
+            self.put(updated)
+            return updated
 
     def attach_external_close_id(self, request_id: str, external_close_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("request_id sem linhagem persistida.")
-        if not isinstance(external_close_id, str) or not external_close_id.strip():
-            raise ValueError("external_close_id é obrigatório.")
-        updated = OperationLineage(
-            current.decision_id, current.cycle_id, current.request_id,
-            current.external_id, current.external_container_id, current.external_close_id or external_close_id,
-            tuple(dict.fromkeys((*current.external_close_ids, external_close_id))), current.external_result_ids, updated_at,
-        )
-        self.put(updated)
-        return updated
+        with self._lock:
+            current = self.get(request_id)
+            if current is None:
+                raise ValueError("request_id sem linhagem persistida.")
+            if not isinstance(external_close_id, str) or not external_close_id.strip():
+                raise ValueError("external_close_id é obrigatório.")
+            updated = OperationLineage(
+                current.decision_id, current.cycle_id, current.request_id,
+                current.external_id, current.external_container_id, current.external_close_id or external_close_id,
+                tuple(dict.fromkeys((*current.external_close_ids, external_close_id))), current.external_result_ids, updated_at,
+            )
+            self.put(updated)
+            return updated
 
     def attach_external_result_ids(self, request_id: str, external_result_ids: tuple[str, ...], *, updated_at: datetime | None = None) -> OperationLineage:
-        current = self.get(request_id)
-        if current is None:
-            raise ValueError("request_id sem linhagem persistida.")
-        if not isinstance(external_result_ids, tuple) or not external_result_ids or any(
-            not isinstance(value, str) or not value.strip() for value in external_result_ids
-        ):
-            raise ValueError("external_result_ids são obrigatórios.")
-        normalized = tuple(dict.fromkeys(external_result_ids))
-        if current.external_result_ids:
-            current_ids = set(current.external_result_ids)
-            incoming_ids = set(normalized)
-            # External history may become complete after the first observation.
-            # Existing IDs are immutable evidence; newly discovered IDs may be
-            # appended, but the persisted identity can never be replaced.
-            if not current_ids.issubset(incoming_ids):
-                raise ValueError("external_result_ids conflitantes: IDs persistidos desapareceram.")
-            normalized = tuple(dict.fromkeys((*current.external_result_ids, *normalized)))
-        updated = OperationLineage(
-            current.decision_id, current.cycle_id, current.request_id,
-            current.external_id, current.external_container_id, current.external_close_id,
-            current.external_close_ids, normalized, updated_at,
-        )
-        self.put(updated)
-        return updated
+        with self._lock:
+            current = self.get(request_id)
+            if current is None:
+                raise ValueError("request_id sem linhagem persistida.")
+            if not isinstance(external_result_ids, tuple) or not external_result_ids or any(
+                not isinstance(value, str) or not value.strip() for value in external_result_ids
+            ):
+                raise ValueError("external_result_ids são obrigatórios.")
+            normalized = tuple(dict.fromkeys(external_result_ids))
+            if current.external_result_ids:
+                current_ids = set(current.external_result_ids)
+                incoming_ids = set(normalized)
+                # External history may become complete after the first observation.
+                # Existing IDs are immutable evidence; newly discovered IDs may be
+                # appended, but the persisted identity can never be replaced.
+                if not current_ids.issubset(incoming_ids):
+                    raise ValueError("external_result_ids conflitantes: IDs persistidos desapareceram.")
+                normalized = tuple(dict.fromkeys((*current.external_result_ids, *normalized)))
+            updated = OperationLineage(
+                current.decision_id, current.cycle_id, current.request_id,
+                current.external_id, current.external_container_id, current.external_close_id,
+                current.external_close_ids, normalized, updated_at,
+            )
+            self.put(updated)
+            return updated
 
     def get(self, request_id: str) -> OperationLineage | None:
         if not isinstance(request_id, str) or not request_id.strip():
