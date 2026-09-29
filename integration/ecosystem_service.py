@@ -13,6 +13,10 @@ from core.learning_content import ContentType, LearningActivity, LearningAttempt
 from core.learning_store import LearningStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
+from core.decision_snapshot import DecisionSnapshot
+from core.signal_quality import SignalQualityEvaluator
+from core.market_context import MarketContextEngine
+from core.decision_engine import FinalDecision
 from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomeObserver, ExternalOutcomePort
 from integration.post_demo_learning import PostExecutionLearningBridge
 from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot, BrokerMarketDataPort
@@ -66,6 +70,7 @@ class EcosystemService:
         # Broker market data is owned by the persistent runtime; these constructor
         # arguments remain accepted for compatibility but do not create a second path.
         self.market_data_boundary = None
+        self._senior_cycles_by_decision: dict[str, Any] = {}
 
     def _persist_learning(self) -> None:
         self.learning_store.save(
@@ -155,11 +160,13 @@ class EcosystemService:
                 available_risk_domains=tuple(item.domain for item in risk_observations),
             )
         )
-        return self.senior_analysis_gate.evaluate(
+        gated = self.senior_analysis_gate.evaluate(
             analysis=result,
             senior_context=context,
             operational_risk=operational_risk,
         )
+        self._senior_cycles_by_decision[f"pending:{snapshot.symbol}:{snapshot.timeframe}:{candles[-1].timestamp.isoformat()}"] = context
+        return gated
 
     def record_market_analysis(self, result, *, market_timestamp: datetime) -> DecisionRecord | None:
         """Persist one completed-candle analysis once; return None for duplicates."""
@@ -186,7 +193,15 @@ class EcosystemService:
             for item in self.memory
         ):
             return None
-        record = DecisionRecord.from_analysis(result, market_timestamp=timestamp)
+        pending_key = f"pending:{symbol}:{timeframe}:{timestamp}"
+        senior_cycle = self._senior_cycles_by_decision.pop(pending_key, None)
+        record = DecisionRecord.from_analysis(
+            result,
+            market_timestamp=timestamp,
+            cycle_id=senior_cycle.cycle_id if senior_cycle is not None else None,
+        )
+        if senior_cycle is not None:
+            self._senior_cycles_by_decision[record.decision_id] = senior_cycle
         self.memory.append(record)
         self.store.save(record)
         return record
@@ -542,9 +557,58 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
+        senior_cycle = self._senior_cycles_by_decision.get(decision.decision_id)
+        if senior_cycle is None:
+            return {
+                "request_id": rid,
+                "status": "BLOCKED",
+                "accepted": False,
+                "message": "ciclo sênior da decisão não está disponível; execução bloqueada para preservar a linhagem.",
+                "external_id": None,
+                "mode": "DEMO",
+                "real": False,
+                "journal_recorded": False,
+                "checkpoint_recorded": False,
+                "maintenance_required": True,
+            }
+        market_context = MarketContextEngine().evaluate_from_candles(
+            candles=list(self.operational_runtime.market_data.snapshot.candles)
+        )
+        quality = SignalQualityEvaluator().evaluate(
+            AnalysisResult(
+                Signal(decision.signal),
+                decision.score,
+                decision.reason,
+                decision.confirmed,
+                decision.symbol,
+                decision.timeframe,
+            )
+        )
+        snapshot = DecisionSnapshot(
+            signal=decision.signal,
+            analysis_score=decision.score,
+            confirmed=decision.confirmed,
+            quality_score=quality.score,
+            quality_level=quality.level.value,
+            actionable=quality.actionable,
+            decision=FinalDecision.EXECUTAR.value,
+            decision_reason=decision.reason,
+            market_context=market_context.context.value,
+            market_direction=market_context.direction.value,
+            market_score=market_context.score,
+            operational_state_available=current_state is not None,
+            trades_today=current_state.trades_today if current_state is not None else None,
+            consecutive_losses=current_state.consecutive_losses if current_state is not None else None,
+            symbol=decision.symbol,
+            timeframe=decision.timeframe,
+            decision_id=decision.decision_id,
+            cycle_id=decision.cycle_id,
+            request_id=rid,
+        )
         result = self.operational_runtime.market_data_execution_guard.execute(
             rid,
             request,
+            snapshot=snapshot,
             expected_timeframe=decision.timeframe,
             expected_market_timestamp=decision.market_timestamp,
         )
