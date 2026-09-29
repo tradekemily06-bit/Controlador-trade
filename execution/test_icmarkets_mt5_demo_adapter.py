@@ -13,6 +13,7 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    TRADE_RETCODE_DONE_PARTIAL = 10010
 
     def __init__(self, check_code=0, send_result=True):
         self.check_code = check_code
@@ -122,3 +123,19 @@ def test_missing_order_send_response_is_uncertain():
     assert result.accepted is False
     assert result.uncertain is True
     assert "incerto" in result.message
+
+
+def test_partial_fill_is_accepted_with_external_identity():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    original = mt5.order_send
+    def partial(payload):
+        mt5.calls.append(("order_send_partial", payload))
+        return SimpleNamespace(retcode=mt5.TRADE_RETCODE_DONE_PARTIAL, order=123457, deal=654322)
+    mt5.order_send = partial
+
+    result = adapter.execute(request())
+
+    assert result.accepted is True
+    assert result.external_id == "123457"
