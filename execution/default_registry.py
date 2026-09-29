@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.operational_runtime import build_operational_runtime
 from execution.broker_registry import BrokerRegistry
 from execution.gateway import ExecutionGateway
+from execution.ports import AdapterConnectionIdentity
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
@@ -25,6 +26,12 @@ def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) ->
         ICMarketsMT5DemoAdapter(
             ICMarketsMT5DemoConfig(symbol=symbol),
             mt5_module=mt5_module,
+        ),
+        identity=AdapterConnectionIdentity(
+            broker_id="ic_markets",
+            platform_id="mt5",
+            adapter_id=IC_MARKETS_MT5_DEMO,
+            transport_id="metatrader5_python_terminal",
         ),
     )
     return registry
