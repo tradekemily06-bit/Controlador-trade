@@ -80,3 +80,41 @@ def test_market_analysis_uses_the_same_cycle_and_candle_claim_as_automatic_runti
     assert runtime.daily_journal.has_market_decision(
         symbol="EURUSD", timeframe="5m", market_timestamp=record.market_timestamp
     ) is True
+
+
+
+def test_selected_market_analysis_callback_is_present_and_cleans_transient_candidates(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from core.p122_broker_market_data import BrokerMarketDataSnapshot
+    from data.models import Candle
+
+    runtime = build_operational_runtime(tmp_path)
+    service = EcosystemService(operational_runtime=runtime)
+    assert callable(service.handle_selected_market_analysis)
+
+    base = datetime(2026, 9, 29, 2, 0, tzinfo=timezone.utc)
+    candles = tuple(
+        Candle(
+            timestamp=base + timedelta(minutes=5 * index),
+            open=100.0 + index,
+            high=101.0 + index,
+            low=99.0 + index,
+            close=100.5 + index,
+            volume=1000.0,
+        )
+        for index in range(20)
+    )
+    snapshot = BrokerMarketDataSnapshot(
+        symbol="EURUSD",
+        timeframe="5m",
+        candles=candles,
+        source="test",
+        received_at=base,
+    )
+    service._senior_cycles_by_decision["pending:GBPUSD:5m:old"] = object()
+    result = service.evaluate_market_snapshot(snapshot)
+    record = service.handle_selected_market_analysis(snapshot, result)
+
+    assert record is not None
+    assert "pending:GBPUSD:5m:old" not in service._senior_cycles_by_decision
+    assert record.cycle_id
