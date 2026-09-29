@@ -71,7 +71,7 @@ def test_market_analysis_uses_the_same_cycle_and_candle_claim_as_automatic_runti
         source="test",
         received_at=base + timedelta(minutes=100),
     )
-    runtime.market_data.set_snapshot(snapshot)
+    runtime.market_data.update(snapshot, now=snapshot.received_at, expected_interval_seconds=300)
 
     record = service.analyze_market(symbol="EURUSD", timeframe="5m")
 
