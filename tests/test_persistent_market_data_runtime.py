@@ -54,24 +54,30 @@ def test_runtime_can_configure_provider_neutral_candidate_analysis_before_start(
 
 
 def test_candidate_handler_failure_does_not_deadlock_runtime_status() -> None:
-    from datetime import datetime, timedelta, timezone
-    from data.models import Candle
-    from core.p122_broker_market_data import BrokerMarketDataSnapshot
     import threading
     import time
+    from datetime import datetime, timedelta, timezone
+
+    from core.p122_broker_market_data import BrokerMarketDataBoundary
+    from data.models import Candle
 
     state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
 
-    class Boundary:
-        source = "test"
-
-        def fetch(self, request):
+    class Provider:
+        def fetch_market_data(self, request):
             now = datetime.now(timezone.utc)
             candles = tuple(
-                Candle(timestamp=now, open=1.0, high=1.1, low=0.9, close=1.05, volume=1.0)
-                for _ in range(30)
+                Candle(
+                    timestamp=now - timedelta(minutes=5 * (29 - index) + 1),
+                    open=1.0,
+                    high=1.1,
+                    low=0.9,
+                    close=1.05,
+                    volume=1.0,
+                )
+                for index in range(30)
             )
-            return BrokerMarketDataSnapshot(request.symbol, request.timeframe, candles, self.source, now)
+            return candles
 
     callback_failed = threading.Event()
 
@@ -80,11 +86,15 @@ def test_candidate_handler_failure_does_not_deadlock_runtime_status() -> None:
         raise RuntimeError("callback failure")
 
     runtime = PersistentMarketDataRuntime(
-        Boundary(),
+        BrokerMarketDataBoundary(Provider(), "test"),
         state,
         MarketDataRuntimeConfig(symbol="EURUSD", timeframe="5m", limit=30, poll_seconds=0.01),
         candidate_selector=lambda: ("EURUSD",),
-        candidate_analyzer=lambda snapshot: type("Result", (), {"signal": "COMPRA", "confirmed": True, "score": 80.0})(),
+        candidate_analyzer=lambda snapshot: type(
+            "Result",
+            (),
+            {"signal": "COMPRA", "confirmed": True, "score": 80.0},
+        )(),
         selected_result_handler=handler,
     )
     runtime.start()
