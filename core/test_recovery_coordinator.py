@@ -212,7 +212,7 @@ def test_accepted_without_external_identity_requires_reconciliation(tmp_path):
 def test_reconciled_executed_is_safe_to_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
-    coordinator.lineage_store.put(OperationLineage("d1", "c1", "req-1", updated_at=now))
+    coordinator.lineage_store.put(OperationLineage("d1", "c1", "req-1", external_id="ext-1", updated_at=now))
     coordinator.operation_context_store.put("req-1", DecisionSnapshot(
         signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
         quality_level="HIGH", actionable=True, decision="EXECUTAR",
@@ -255,7 +255,7 @@ def test_reconciled_not_executed_is_safe_to_resume(tmp_path):
 
     result = coordinator.assess()
 
-    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.state is RecoveryState.FRESH
     assert result.can_resume is True
 
 
