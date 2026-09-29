@@ -194,10 +194,17 @@ class EcosystemService:
             for item in self.memory
         ):
             return None
+        pending_key = f"pending:{symbol}:{timeframe}:{timestamp}"
+        senior_cycle = self._senior_cycles_by_decision.get(pending_key)
+        record = DecisionRecord.from_analysis(
+            result,
+            market_timestamp=timestamp,
+            cycle_id=senior_cycle.cycle_id if senior_cycle is not None else None,
+        )
         if self.operational_runtime is not None and symbol and timeframe:
             try:
                 if not self.operational_runtime.daily_journal.claim_market_decision(
-                    decision_id=str(getattr(result, "decision_id", "") or uuid4().hex),
+                    decision_id=record.decision_id,
                     symbol=symbol,
                     timeframe=timeframe,
                     market_timestamp=timestamp,
@@ -207,13 +214,7 @@ class EcosystemService:
                 # A durable dedupe failure must fail closed: automatic execution
                 # cannot safely proceed without a unique candle claim.
                 return None
-        pending_key = f"pending:{symbol}:{timeframe}:{timestamp}"
-        senior_cycle = self._senior_cycles_by_decision.pop(pending_key, None)
-        record = DecisionRecord.from_analysis(
-            result,
-            market_timestamp=timestamp,
-            cycle_id=senior_cycle.cycle_id if senior_cycle is not None else None,
-        )
+        self._senior_cycles_by_decision.pop(pending_key, None)
         if senior_cycle is not None:
             self._senior_cycles_by_decision[record.decision_id] = senior_cycle
         self.memory.append(record)
