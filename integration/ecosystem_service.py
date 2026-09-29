@@ -800,11 +800,9 @@ class EcosystemService:
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
                 self.store.save(updated)
-                if runtime is not None:
-                    try:
-                        runtime.daily_journal.record_outcome(decision_id=decision_id, outcome=outcome)
-                    except (OSError, ValueError, TypeError):
-                        pass
+                # Manual study/replay outcomes do not belong in the operational
+                # journal. Operational outcomes enter that journal only through
+                # the external close/reconciliation path.
                 return updated
         raise ValueError("decision_id não encontrado")
 
