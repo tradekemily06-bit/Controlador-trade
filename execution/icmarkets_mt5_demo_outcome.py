@@ -6,6 +6,7 @@ from typing import Any, Literal
 from threading import RLock
 
 from core.operation_lineage import OperationLineage, OperationLineageStore
+from core.cross_process_file_lock import cross_process_file_lock
 from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 
 
@@ -90,7 +91,7 @@ class ICMarketsMT5DemoOutcomeBridge:
         return self._mt5
 
     def close_and_observe(self, request_id: str, *, now: datetime | None = None) -> MT5CloseResult:
-        with self._close_lock:
+        with self._close_lock, cross_process_file_lock(self.lineage.path):
             lineage = self.lineage.get(request_id)
             if lineage is None:
                 raise ValueError("request_id sem linhagem persistida.")
