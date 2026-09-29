@@ -72,6 +72,7 @@ class RecoveryCoordinator:
         ledger_reserved = set()
         ledger_unknown = set()
         ledger_accepted = set()
+        ledger_rejected = set()
         ledger_reconciled_executed = set()
         ledger_reconciled_not_executed = set()
         for request_id in ledger_ids:
@@ -82,6 +83,8 @@ class RecoveryCoordinator:
                 ledger_unknown.add(request_id)
             elif status is not None and status.value == "ACCEPTED":
                 ledger_accepted.add(request_id)
+            elif status is not None and status.value == "REJECTED":
+                ledger_rejected.add(request_id)
             elif status is not None and status.value == "RECONCILED_EXECUTED":
                 ledger_reconciled_executed.add(request_id)
             elif status is not None and status.value == "RECONCILED_NOT_EXECUTED":
@@ -98,7 +101,7 @@ class RecoveryCoordinator:
                 or (
                     r.state is ExecutionLifecycleState.REJECTED
                     and r.request_id not in ledger_reconciled_not_executed
-                    and r.request_id not in {rid for rid in ledger_ids if self.execution_ledger.status(rid).value == "REJECTED"}
+                    and r.request_id not in ledger_rejected
                 )
                 or (r.state is ExecutionLifecycleState.PENDING and r.request_id not in ledger_reserved and r.request_id not in ledger_unknown)
             )
