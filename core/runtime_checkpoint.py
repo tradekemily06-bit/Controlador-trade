@@ -4,6 +4,9 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import os
+
+from core.cross_process_file_lock import cross_process_file_lock
 
 
 @dataclass(frozen=True)
@@ -27,22 +30,26 @@ class RuntimeCheckpointStore:
     def save(self, checkpoint: RuntimeCheckpoint) -> None:
         self._validate(checkpoint)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(
-                {
-                    "session_id": checkpoint.session_id,
-                    "last_cycle": checkpoint.last_cycle,
-                    "last_request_id": checkpoint.last_request_id,
-                    "last_decision_id": checkpoint.last_decision_id,
-                    "last_cycle_id": checkpoint.last_cycle_id,
-                    "updated_at": checkpoint.updated_at.isoformat() if checkpoint.updated_at else datetime.now().isoformat(),
-                },
-                ensure_ascii=False,
-                indent=2,
-                sort_keys=True,
-            ),
-            encoding="utf-8",
+        payload = json.dumps(
+            {
+                "session_id": checkpoint.session_id,
+                "last_cycle": checkpoint.last_cycle,
+                "last_request_id": checkpoint.last_request_id,
+                "last_decision_id": checkpoint.last_decision_id,
+                "last_cycle_id": checkpoint.last_cycle_id,
+                "updated_at": checkpoint.updated_at.isoformat() if checkpoint.updated_at else datetime.now().isoformat(),
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
         )
+        with cross_process_file_lock(self.path):
+            temporary = self.path.with_name("." + self.path.name + ".tmp")
+            with temporary.open("w", encoding="utf-8") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, self.path)
 
     def load(self) -> RuntimeCheckpoint | None:
         if not self.path.exists():
