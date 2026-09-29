@@ -159,6 +159,57 @@ class DailyOperationJournal:
                 for entry in self._entries
             )
 
+    def claim_market_decision(
+        self,
+        *,
+        decision_id: str,
+        symbol: str,
+        timeframe: str,
+        market_timestamp: str,
+        timestamp: datetime | None = None,
+    ) -> bool:
+        """Atomically claim one closed candle across processes.
+
+        A claim is a durable reservation: another process cannot create a
+        second decision for the same symbol/timeframe/candle after the claim.
+        """
+        values = (decision_id, symbol, timeframe, market_timestamp)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("identidade de decisão/candle inválida")
+        entry = DailyOperationJournalEntry(
+            timestamp=(timestamp or datetime.now(timezone.utc)).isoformat(),
+            request_id=f"analysis-{decision_id}",
+            mode="ANALYSIS",
+            action="ANALYZE",
+            symbol=symbol.strip(),
+            signal="AGUARDAR",
+            amount=0.0,
+            duration_seconds=0,
+            status="MARKET_DECISION_RESERVED",
+            accepted=False,
+            external_id=None,
+            message="candle reservado atomicamente para uma única análise.",
+            decision_id=decision_id.strip(),
+            timeframe=timeframe.strip(),
+            market_timestamp=market_timestamp.strip(),
+        )
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
+            if self._load_error is not None:
+                raise OSError("diário automático indisponível; deduplicação não pode ser validada")
+            exists = any(
+                item.decision_id is not None
+                and item.symbol == symbol.strip()
+                and item.timeframe == timeframe.strip()
+                and item.market_timestamp == market_timestamp.strip()
+                for item in self._entries
+            )
+            if exists:
+                return False
+            self._entries.append(entry)
+            self._persist()
+            return True
+
     def record_outcome(self, *, decision_id: str, outcome: str) -> int:
         """Attach a terminal outcome to journal entries for the decision, without execution authority."""
         if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
