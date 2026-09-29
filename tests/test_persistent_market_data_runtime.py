@@ -54,7 +54,7 @@ def test_runtime_can_configure_provider_neutral_candidate_analysis_before_start(
 
 
 def test_candidate_handler_failure_does_not_deadlock_runtime_status() -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     from data.models import Candle
     from core.p122_broker_market_data import BrokerMarketDataSnapshot
     import threading
