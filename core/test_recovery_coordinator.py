@@ -132,3 +132,57 @@ def test_missing_lineage_for_persisted_lifecycle_requires_reconciliation(tmp_pat
     result = coordinator.assess()
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
+
+
+def test_legacy_lineage_close_id_migrates_to_close_ids(tmp_path):
+    path = tmp_path / "lineage.json"
+    path.write_text(
+        '{"req-1": {"decision_id": "d1", "cycle_id": "c1", "request_id": "req-1", '
+        '"external_id": "position-1", "external_close_id": "close-1", '
+        '"external_result_ids": ["deal-1"], "updated_at": null}}',
+        encoding="utf-8",
+    )
+    store = OperationLineageStore(path)
+    record = store.get("req-1")
+    assert record is not None
+    assert record.external_close_id == "close-1"
+    assert record.external_close_ids == ("close-1",)
+
+
+def test_multiple_close_ids_append_without_replacing_first(tmp_path):
+    store = OperationLineageStore(tmp_path / "lineage.json")
+    now = datetime.now(timezone.utc)
+    store.put(OperationLineage("d1", "c1", "req-1", updated_at=now))
+    first = store.attach_external_close_id("req-1", "close-1", updated_at=now)
+    second = store.attach_external_close_id("req-1", "close-2", updated_at=now)
+    repeated = store.attach_external_close_id("req-1", "close-2", updated_at=now)
+    assert first.external_close_id == "close-1"
+    assert second.external_close_id == "close-1"
+    assert second.external_close_ids == ("close-1", "close-2")
+    assert repeated.external_close_ids == ("close-1", "close-2")
+
+
+def test_external_container_update_preserves_history(tmp_path):
+    store = OperationLineageStore(tmp_path / "lineage.json")
+    now = datetime.now(timezone.utc)
+    store.put(OperationLineage(
+        "d1", "c1", "req-1",
+        external_id="position-1",
+        external_close_id="close-1",
+        external_close_ids=("close-1",),
+        external_result_ids=("deal-1",),
+        updated_at=now,
+    ))
+    updated = store.attach_external_container_id("req-1", "container-1", updated_at=now)
+    assert updated.external_container_id == "container-1"
+    assert updated.external_close_ids == ("close-1",)
+    assert updated.external_result_ids == ("deal-1",)
+
+
+def test_external_result_ids_append_new_evidence_without_reordering(tmp_path):
+    store = OperationLineageStore(tmp_path / "lineage.json")
+    now = datetime.now(timezone.utc)
+    store.put(OperationLineage("d1", "c1", "req-1", updated_at=now))
+    store.attach_external_result_ids("req-1", ("deal-1",), updated_at=now)
+    updated = store.attach_external_result_ids("req-1", ("deal-1", "deal-2"), updated_at=now)
+    assert updated.external_result_ids == ("deal-1", "deal-2")
