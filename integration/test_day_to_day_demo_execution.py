@@ -226,3 +226,47 @@ def test_execute_demo_requires_registered_confirmed_decision(tmp_path: Path):
         assert "decision_id" in str(exc)
     else:
         raise AssertionError("execution without a decision must be blocked")
+
+
+def test_mt5_close_recovers_external_exit_history_before_sending_again(tmp_path):
+    from types import SimpleNamespace
+    from core.operation_lineage import OperationLineage, OperationLineageStore
+    from execution.icmarkets_mt5_demo_outcome import ICMarketsMT5DemoOutcomeBridge
+
+    class RecoveringMT5:
+        ACCOUNT_TRADE_MODE_DEMO = 2
+        DEAL_ENTRY_OUT = 1
+        DEAL_ENTRY_INOUT = 2
+        DEAL_ENTRY_OUT_BY = 3
+        def __init__(self):
+            self.send_calls = 0
+        def initialize(self): return True
+        def shutdown(self): pass
+        def account_info(self): return SimpleNamespace(trade_mode=2)
+        def history_deals_get(self, **kwargs):
+            if "position" in kwargs:
+                return [SimpleNamespace(entry=1, ticket=777, profit=5.0, swap=0.0, commission=0.0, fee=0.0)]
+            return []
+        def history_orders_get(self, **kwargs): return []
+        def positions_get(self, ticket):
+            return []
+        def order_send(self, payload):
+            self.send_calls += 1
+            raise AssertionError("não pode reenviar fechamento após recuperar deal externo")
+        def order_check(self, payload):
+            raise AssertionError("não deve chegar ao order_check")
+        def last_error(self): return (1, "unexpected")
+
+    path = tmp_path / "lineage.json"
+    lineage = OperationLineageStore(path)
+    lineage.put(OperationLineage("d1", "c1", "req-1", external_id="123", external_container_id="456"))
+    mt5 = RecoveringMT5()
+    bridge = ICMarketsMT5DemoOutcomeBridge(lineage=lineage, mt5_module=mt5)
+    result = bridge.close_and_observe("req-1")
+
+    assert mt5.send_calls == 0
+    assert result.external_close_id == "777"
+    restored = lineage.get("req-1")
+    assert restored is not None
+    assert restored.external_close_id == "777"
+    assert restored.external_result_ids == ("777",)
