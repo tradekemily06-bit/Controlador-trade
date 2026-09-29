@@ -267,3 +267,46 @@ def test_demo_execution_blocks_when_persisted_recovery_requires_reconciliation(t
     assert result["accepted"] is False
     assert result["status"] == "BLOCKED_RECOVERY"
     assert result["recovery_state"] == "REQUIRES_RECONCILIATION"
+
+
+def test_partial_external_result_remains_reconcilable_until_final_outcome(tmp_path):
+    from types import SimpleNamespace
+
+    runtime = build_operational_runtime(tmp_path)
+    record = EcosystemService(operational_runtime=runtime).analyze({
+        "score": 85,
+        "confirmed": True,
+        "filters_ok": True,
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+    })
+
+    calls = []
+
+    class Observer:
+        def observe_closed_position(self, request_id):
+            calls.append(request_id)
+            return None
+
+    service = EcosystemService(
+        operational_runtime=runtime,
+        outcome_observer=Observer(),
+    )
+    service.memory.append(record)
+    runtime.lineage.put(
+        OperationLineage(
+            record.decision_id,
+            "cycle-partial",
+            "request-partial",
+            external_id="1001",
+            external_container_id="2001",
+            external_close_id="3001",
+            external_close_ids=("3001",),
+            external_result_ids=("3001",),
+        )
+    )
+
+    result = service.reconcile_pending_outcomes()
+
+    assert calls == ["request-partial"]
+    assert result[0]["observed"] is False
