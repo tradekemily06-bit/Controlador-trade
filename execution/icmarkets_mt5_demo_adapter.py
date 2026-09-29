@@ -254,8 +254,14 @@ class ICMarketsMT5DemoAdapter:
                     )
 
                 retcode = getattr(result, "retcode", None)
-                success_code = getattr(mt5, "TRADE_RETCODE_DONE", None)
-                if success_code is None or retcode != success_code:
+                success_codes = {
+                    value for value in (
+                        getattr(mt5, "TRADE_RETCODE_DONE", None),
+                        getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None),
+                    )
+                    if value is not None
+                }
+                if not success_codes or retcode not in success_codes:
                     return ExecutionResult(False, f"ordem rejeitada pelo MT5: retcode={retcode}")
 
                 external_id = getattr(result, "order", None) or getattr(result, "deal", None)
