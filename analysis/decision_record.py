@@ -26,9 +26,10 @@ class DecisionRecord:
     execution_allowed: bool = False
     outcome: str | None = None
     market_timestamp: str | None = None
+    cycle_id: str | None = None
 
     @classmethod
-    def from_analysis(cls, result: AnalysisResult, *, market_timestamp: str | None = None) -> "DecisionRecord":
+    def from_analysis(cls, result: AnalysisResult, *, market_timestamp: str | None = None, cycle_id: str | None = None) -> "DecisionRecord":
         return cls(
             decision_id=str(uuid4()),
             created_at=datetime.now(timezone.utc).isoformat(),
@@ -39,6 +40,7 @@ class DecisionRecord:
             confirmed=bool(result.confirmed),
             reason=result.reason,
             market_timestamp=market_timestamp,
+            cycle_id=cycle_id,
         )
 
     def to_dict(self) -> dict[str, Any]:
