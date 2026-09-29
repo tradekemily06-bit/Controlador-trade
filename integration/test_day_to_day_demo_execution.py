@@ -139,7 +139,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="duplicate-demo",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
 
@@ -205,7 +205,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     journal = runtime.daily_journal.entries()[0]
     assert journal.decision_id == decision.decision_id
     assert journal.timeframe == "5m"
-    assert journal.score == 88
+    assert journal.score == decision.score
 
 
 def test_execute_demo_requires_registered_confirmed_decision(tmp_path: Path):
