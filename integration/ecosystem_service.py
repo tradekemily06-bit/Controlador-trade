@@ -187,6 +187,13 @@ class EcosystemService:
         timestamp = market_timestamp.isoformat()
         symbol = getattr(result, "symbol", None)
         timeframe = getattr(result, "timeframe", None)
+        if any(
+            item.symbol == symbol
+            and item.timeframe == timeframe
+            and item.market_timestamp == timestamp
+            for item in self.memory
+        ):
+            return None
         if self.operational_runtime is not None and symbol and timeframe:
             try:
                 if not self.operational_runtime.daily_journal.claim_market_decision(
@@ -200,13 +207,6 @@ class EcosystemService:
                 # A durable dedupe failure must fail closed: automatic execution
                 # cannot safely proceed without a unique candle claim.
                 return None
-        if any(
-            item.symbol == symbol
-            and item.timeframe == timeframe
-            and item.market_timestamp == timestamp
-            for item in self.memory
-        ):
-            return None
         pending_key = f"pending:{symbol}:{timeframe}:{timestamp}"
         senior_cycle = self._senior_cycles_by_decision.pop(pending_key, None)
         record = DecisionRecord.from_analysis(
