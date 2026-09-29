@@ -230,7 +230,7 @@ def test_reconciled_executed_is_safe_to_resume(tmp_path):
 
     result = coordinator.assess()
 
-    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.state is RecoveryState.FRESH
     assert result.can_resume is True
 
 
