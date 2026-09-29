@@ -13,6 +13,8 @@ from core.learning_content import ContentType, LearningActivity, LearningAttempt
 from core.learning_store import LearningStore
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
+from execution.external_outcome_port import ExternalCloseResult, ExternalOutcomeObserver, ExternalOutcomePort
+from integration.post_demo_learning import PostExecutionLearningBridge
 from core.p122_broker_market_data import BrokerMarketDataBoundary, BrokerMarketDataRequest, BrokerMarketDataSnapshot, BrokerMarketDataPort
 from analysis.pipeline import StrategyPipeline
 from core.p128_learning_professor import LearningProfessor, ProfessorActivitySpec
@@ -35,7 +37,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured") -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, market_data_provider: BrokerMarketDataPort | None = None, market_data_source: str = "unconfigured", outcome_port: ExternalOutcomePort | None = None, outcome_observer: ExternalOutcomeObserver | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -45,6 +47,9 @@ class EcosystemService:
         self.production_storage = production_storage or ProductionStoragePolicy()
         self.production_gate = ProductionOperationGate(self.production_storage)
         self.operational_runtime = operational_runtime
+        self.outcome_port = outcome_port
+        self.outcome_observer = outcome_observer or outcome_port
+        self.post_demo_learning = PostExecutionLearningBridge()
         self.learning_source_gate = LearningSourceGate()
         self.learning_professor = LearningProfessor()
         self.learning_store = LearningStore()
@@ -216,6 +221,197 @@ class EcosystemService:
                 return RiskDecision(False, f"Estado operacional de risco indisponível: {type(exc).__name__}")
             return self.risk.evaluate(state=state)
         return self.risk.evaluate()
+
+    def close_and_observe(self, request_id: str) -> ExternalCloseResult:
+        """Close/observe through the injected external adapter after lifecycle gates.
+
+        Closing is an operational mutation even in DEMO. It therefore cannot be
+        reached merely because a lineage record exists: the persisted execution
+        ledger and lifecycle must both confirm an accepted execution. The service
+        remains broker/platform neutral.
+        """
+        if self.outcome_port is None:
+            raise RuntimeError("external outcome adapter não conectado")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None:
+            raise RuntimeError("request_id sem linhagem persistida")
+        if not lineage.external_id:
+            raise RuntimeError("request_id sem external_id de execução")
+        from execution.execution_ledger import ExecutionLedgerStatus
+        from execution.execution_lifecycle import ExecutionLifecycleState
+        ledger_state = self.operational_runtime.execution_ledger.status(request_id)
+        lifecycle = self.operational_runtime.execution_lifecycle.get(request_id)
+        if ledger_state not in (ExecutionLedgerStatus.ACCEPTED, ExecutionLedgerStatus.RECONCILED_EXECUTED):
+            raise RuntimeError("fechamento bloqueado: execução não está aceita no ledger")
+        if lifecycle is None or lifecycle.state is not ExecutionLifecycleState.ACCEPTED:
+            raise RuntimeError("fechamento bloqueado: ciclo de execução não está ACCEPTED")
+        if lineage.external_close_id:
+            observation = self.outcome_port.observe_closed_position(request_id)
+            if observation is not None:
+                self._finalize_verified_outcome(request_id, observation)
+                return ExternalCloseResult(
+                    request_id=request_id,
+                    external_container_id=lineage.external_container_id or "",
+                    external_close_id=lineage.external_close_id,
+                    closed=True,
+                    observation=observation,
+                    message="fechamento já registrado; resultado externo confirmado por reobservação.",
+                )
+            return ExternalCloseResult(
+                request_id=request_id,
+                external_container_id=lineage.external_container_id or "",
+                external_close_id=lineage.external_close_id,
+                closed=False,
+                observation=None,
+                message="fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+            )
+        result = self.outcome_port.close_and_observe(request_id)
+        observation = result.observation
+        if observation is not None:
+            self._finalize_verified_outcome(request_id, observation)
+        return result
+
+    def reconcile_pending_outcomes(self, *, limit: int = 50) -> tuple[dict[str, Any], ...]:
+        """Read-only external reconciliation; it never sends a close/order."""
+        if self.outcome_observer is None or self.operational_runtime is None:
+            return ()
+        if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+            raise ValueError("limit deve ser inteiro positivo")
+        results: list[dict[str, Any]] = []
+        for lineage in self.operational_runtime.lineage.records():
+            if len(results) >= limit:
+                break
+            if not lineage.external_id or lineage.external_result_ids:
+                continue
+            try:
+                observation = self.observe_closed_and_finalize(lineage.request_id)
+                results.append({
+                    "request_id": lineage.request_id,
+                    "observed": observation is not None,
+                    "outcome": observation.outcome if observation is not None else None,
+                    "financial_result": observation.financial_result if observation is not None else None,
+                    "external_result_ids": list(observation.external_result_ids) if observation is not None else [],
+                })
+            except Exception as exc:
+                results.append({
+                    "request_id": lineage.request_id,
+                    "observed": False,
+                    "error": f"{type(exc).__name__}: {exc}",
+                })
+        return tuple(results)
+
+    def observe_closed_and_finalize(self, request_id: str) -> Any:
+        """Reobserve delayed external history and use the same verified learning path."""
+        if self.outcome_observer is None:
+            raise RuntimeError("external outcome observer não conectado")
+        if self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None or not lineage.external_id:
+            raise RuntimeError("request_id sem linhagem/external_id persistido")
+        observation = self.outcome_observer.observe_closed_position(request_id)
+        if observation is not None:
+            self._finalize_verified_outcome(request_id, observation)
+        return observation
+
+    def _finalize_verified_outcome(self, request_id: str, observation: Any) -> None:
+        """Reconcile external facts and feed verified learning/statistics automatically."""
+        from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+        if not isinstance(observation, ExternalOutcomeObservation):
+            raise RuntimeError("adapter retornou observação externa inválida")
+        context = self.operational_runtime.operation_context.get(request_id)
+        lineage = self.operational_runtime.lineage.get(request_id)
+        if lineage is None:
+            raise RuntimeError("linhagem operacional necessária para resultado verificado não foi encontrada")
+        if lineage.cycle_id != observation.cycle_id:
+            raise RuntimeError("cycle_id da observação não corresponde à linhagem")
+        if context is None:
+            return
+
+        if context.request_id not in (None, request_id) or context.cycle_id != observation.cycle_id:
+            raise RuntimeError("identidade operacional não corresponde à observação externa")
+        if not all(value is not None for value in (context.market_context, context.market_direction, context.market_score, context.symbol, context.timeframe)):
+            raise RuntimeError("contexto de mercado original incompleto; aprendizagem automática foi bloqueada")
+        analysis = AnalysisResult(
+            Signal(context.signal), float(context.analysis_score), context.decision_reason,
+            bool(context.confirmed), context.symbol, context.timeframe,
+        )
+        market_context = MarketContextResult(
+            MarketContext(context.market_context), float(context.market_score),
+            "Contexto de mercado capturado no snapshot da decisão.",
+            MarketDirection(context.market_direction),
+        )
+        if observation.observed_at is None:
+            raise RuntimeError("observação externa sem observed_at")
+        closure = AutomationClosure(
+            cycle_id=observation.cycle_id,
+            terminal_state=AutomationLifecycleState.COMPLETED,
+            closed_at=observation.observed_at,
+        )
+        learning_result = self.post_demo_learning.process(
+            evidence=observation,
+            closure=closure,
+            analysis=analysis,
+            market_context=market_context,
+            note_id=f"operation-learning-{observation.cycle_id}",
+            what_happened=f"Operação encerrada com resultado externo {observation.outcome}; resultado financeiro={observation.financial_result}.",
+            why_assessment="Registro factual reconciliado com a evidência externa do adapter.",
+            lessons=("Revisar o contexto original e as evidências antes de transformar o caso em conhecimento validado.",),
+        )
+        from core.p49_outcome_reconciliation import ReconciliationState
+        if learning_result.reconciliation.state is not ReconciliationState.MATCHED:
+            raise RuntimeError("resultado externo não reconciliado; memória operacional permanece sem atualização")
+        self.record_verified_outcome(lineage.decision_id, observation)
+
+    def record_verified_outcome(self, decision_id: str, observation: Any) -> DecisionRecord:
+        """Update operational decision memory only from an explicit external observation."""
+        from core.p49_outcome_reconciliation import ExternalOutcomeObservation
+        if not isinstance(observation, ExternalOutcomeObservation):
+            raise ValueError("observação externa inválida")
+        if observation.outcome not in {"WIN", "LOSS", "DRAW"}:
+            raise ValueError("resultado externo não é final")
+        for index, record in enumerate(self.memory):
+            if record.decision_id == decision_id:
+                updated = record.with_outcome(observation.outcome)
+                self.memory[index] = updated
+                self.store.save(updated)
+                return updated
+        raise ValueError("decision_id não encontrado")
+
+    def mt5_close_and_observe(self, *, request_id: str, mt5_module: Any = None) -> dict[str, Any]:
+        """Compatibility wrapper that still uses the generic, gated outcome port.
+
+        MT5-specific construction is intentionally kept at the application
+        composition edge. This method cannot bypass the generic lifecycle/ledger
+        gate used by close_and_observe().
+        """
+        if self.outcome_port is None:
+            raise RuntimeError("external outcome adapter não conectado")
+        result = self.close_and_observe(request_id)
+        observation = result.observation
+        return {
+            "request_id": result.request_id,
+            "position_id": result.external_container_id,
+            "external_close_id": result.external_close_id,
+            "position_closed": result.closed,
+            "message": result.message,
+            "verified_result": (
+                {
+                    "cycle_id": observation.cycle_id,
+                    "outcome": observation.outcome,
+                    "financial_result": observation.financial_result,
+                    "external_result_ids": list(observation.external_result_ids),
+                    "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
+                }
+                if observation is not None
+                else None
+            ),
+            "execution_authorized": False,
+            "real": "DISABLED",
+        }
+
 
     def analyze(self, payload: dict[str, Any]) -> DecisionRecord:
         result = self.engine.evaluate(score=payload.get("score", 50), confirmed=payload.get("confirmed", False), filters_ok=payload.get("filters_ok", True), symbol=payload.get("symbol"), timeframe=payload.get("timeframe"))
