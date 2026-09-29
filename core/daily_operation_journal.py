@@ -225,6 +225,37 @@ class DailyOperationJournal:
             self._persist()
             return True
 
+    def release_market_decision(self, *, decision_id: str, symbol: str, timeframe: str, market_timestamp: str) -> bool:
+        """Release one exact analysis reservation after a failed local persistence step.
+
+        This never releases a reservation that has already been replaced by another
+        journal entry, and it never affects execution records.
+        """
+        values = (decision_id, symbol, timeframe, market_timestamp)
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("identidade de decisão/candle inválida")
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
+            if self._load_error is not None:
+                raise OSError("diário automático indisponível; reserva não pode ser alterada")
+            index = next(
+                (
+                    index
+                    for index, item in enumerate(self._entries)
+                    if item.status == "MARKET_DECISION_RESERVED"
+                    and item.decision_id == decision_id.strip()
+                    and item.symbol == symbol.strip()
+                    and item.timeframe == timeframe.strip()
+                    and item.market_timestamp == market_timestamp.strip()
+                ),
+                None,
+            )
+            if index is None:
+                return False
+            self._entries.pop(index)
+            self._persist()
+            return True
+
     def record_outcome(self, *, decision_id: str, outcome: str) -> int:
         """Attach a terminal outcome to journal entries for the decision, without execution authority."""
         if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
