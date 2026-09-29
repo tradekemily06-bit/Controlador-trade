@@ -110,7 +110,22 @@ class DailyOperationJournal:
             self._load()
             if self._load_error is not None:
                 raise OSError("diário automático indisponível; histórico existente requer inspeção manual")
-            self._entries.append(entry)
+            reservation_index = next(
+                (
+                    index
+                    for index, existing in enumerate(self._entries)
+                    if existing.status == "MARKET_DECISION_RESERVED"
+                    and existing.decision_id == entry.decision_id
+                    and existing.symbol == entry.symbol
+                    and existing.timeframe == entry.timeframe
+                    and existing.market_timestamp == entry.market_timestamp
+                ),
+                None,
+            )
+            if reservation_index is None:
+                self._entries.append(entry)
+            else:
+                self._entries[reservation_index] = entry
             self._persist()
         return entry
 
