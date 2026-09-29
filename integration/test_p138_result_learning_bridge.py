@@ -15,6 +15,8 @@ def _snapshot(outcome="WIN"):
         outcome=outcome,
         financial_result=25.0 if outcome == "WIN" else -25.0,
         reconciliation_state=ReconciliationState.MATCHED,
+        external_container_id="position-138",
+        external_result_ids=("deal-138-entry", "deal-138-exit"),
     )
 
 

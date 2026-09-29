@@ -5,7 +5,7 @@ import pytest
 from core.p46_automation_lifecycle import AutomationLifecycleState
 from core.p47_automation_closure import AutomationClosure
 from core.p48_automation_outcome import AutomationOutcome
-from core.p49_outcome_reconciliation import OutcomeReconciliation, ReconciliationState
+from core.p49_outcome_reconciliation import ExternalOutcomeObservation, OutcomeReconciliation, ReconciliationState
 from core.p50_automation_result_snapshot import AutomationResultSnapshotBoundary
 
 
@@ -13,7 +13,8 @@ def artifacts():
     closure = AutomationClosure("cycle-50", AutomationLifecycleState.COMPLETED, datetime(2026, 9, 9, 12, tzinfo=timezone.utc))
     outcome = AutomationOutcome("cycle-50", AutomationLifecycleState.COMPLETED, datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc), "WIN", 15.0)
     reconciliation = OutcomeReconciliation("cycle-50", ReconciliationState.MATCHED, "explicit facts match")
-    return closure, outcome, reconciliation
+    observation = ExternalOutcomeObservation("cycle-50", "WIN", 15.0, external_container_id="position-50", external_result_ids=("deal-50-entry", "deal-50-exit"))
+    return closure, outcome, reconciliation, observation
 
 
 def test_composes_integrated_snapshot():
@@ -26,24 +27,24 @@ def test_composes_integrated_snapshot():
 
 
 def test_rejects_mixed_cycles():
-    closure, outcome, reconciliation = artifacts()
+    closure, outcome, reconciliation, observation = artifacts()
     mismatched = OutcomeReconciliation("other-cycle", ReconciliationState.MATCHED, "explicit facts match")
     with pytest.raises(ValueError):
-        AutomationResultSnapshotBoundary().compose(closure, outcome, mismatched)
+        AutomationResultSnapshotBoundary().compose(closure, outcome, mismatched, observation)
 
 
 def test_rejects_terminal_state_mismatch():
-    closure, outcome, reconciliation = artifacts()
+    closure, outcome, reconciliation, observation = artifacts()
     mismatched = AutomationOutcome("cycle-50", AutomationLifecycleState.BLOCKED, outcome.observed_at, "UNKNOWN", None)
     with pytest.raises(ValueError):
-        AutomationResultSnapshotBoundary().compose(closure, mismatched, reconciliation)
+        AutomationResultSnapshotBoundary().compose(closure, mismatched, reconciliation, observation)
 
 
 def test_unknown_cannot_be_matched():
-    closure, _, reconciliation = artifacts()
+    closure, _, reconciliation, _ = artifacts()
     unknown = AutomationOutcome("cycle-50", AutomationLifecycleState.COMPLETED, datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc), "UNKNOWN", None)
     with pytest.raises(ValueError):
-        AutomationResultSnapshotBoundary().compose(closure, unknown, reconciliation)
+        AutomationResultSnapshotBoundary().compose(closure, unknown, reconciliation, None)
 
 
 def test_snapshot_is_immutable():

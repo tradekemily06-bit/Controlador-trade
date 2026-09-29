@@ -19,6 +19,8 @@ class ExecutionIntent:
     duration_seconds: int
     mode: ExecutionMode
     created_at: datetime
+    decision_id: str | None = None
+    cycle_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.request_id, str) or not self.request_id.strip():
@@ -37,6 +39,10 @@ class ExecutionIntent:
             raise ValueError("modo de execução inválido.")
         if self.mode is ExecutionMode.REAL:
             raise ValueError("execução REAL permanece bloqueada nesta etapa.")
+        for name in ("decision_id", "cycle_id"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"{name} inválido.")
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at inválido.")
 

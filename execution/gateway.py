@@ -8,6 +8,8 @@ from typing import Callable
 from core.decision_snapshot import DecisionSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
+from core.operation_lineage import OperationLineage, OperationLineageStore
+from core.operation_context_store import OperationContextStore
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
@@ -31,6 +33,7 @@ class GatewayResult:
     message: str
     execution: ExecutionResult | None = None
     recorded_operation: RecordedOperation | None = None
+    lineage: OperationLineage | None = None
 
     @property
     def accepted(self) -> bool:
@@ -48,6 +51,8 @@ class ExecutionGateway:
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
         risk_check: Callable[[], RiskDecision] | None = None,
+        lineage: OperationLineageStore | None = None,
+        operation_context: OperationContextStore | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -59,6 +64,8 @@ class ExecutionGateway:
         self._ledger = ledger
         self._lifecycle = lifecycle
         self._risk_check = risk_check
+        self._lineage = lineage
+        self._operation_context = operation_context
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -76,23 +83,24 @@ class ExecutionGateway:
 
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
+        lineage_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
 
         if not self._kill_switch.allows_execution():
-            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
+            return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}", lineage=lineage_record)
 
         if self._risk_check is not None:
             try:
                 risk = self._risk_check()
             except Exception as exc:
-                return GatewayResult(GatewayStatus.RISK_BLOCKED, f"risco indisponível; execução bloqueada: {type(exc).__name__}: {exc}")
+                return GatewayResult(GatewayStatus.RISK_BLOCKED, f"risco indisponível; execução bloqueada: {type(exc).__name__}: {exc}", lineage=lineage_record)
             if not isinstance(risk, RiskDecision) or not risk.allowed:
                 reason = risk.reason if isinstance(risk, RiskDecision) else "decisão de risco inválida"
-                return GatewayResult(GatewayStatus.RISK_BLOCKED, reason)
+                return GatewayResult(GatewayStatus.RISK_BLOCKED, reason, lineage=lineage_record)
 
         if request_id in self._processed_request_ids or (self._ledger is not None and self._ledger.contains(request_id)):
-            return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.")
+            return GatewayResult(GatewayStatus.DUPLICATE, "request_id já processado; execução duplicada recusada.", lineage=lineage_record)
 
         if self._lifecycle is not None:
             existing = self._lifecycle.get(request_id)
@@ -101,6 +109,28 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        lineage_record = None
+        if self._operation_context is not None and snapshot is not None:
+            try:
+                self._operation_context.put(request_id, snapshot)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"contexto operacional não pôde ser persistido: {exc}")
+        if self._lineage is not None and snapshot is not None:
+            if not snapshot.decision_id or not snapshot.cycle_id:
+                return GatewayResult(GatewayStatus.BLOCKED, "linhagem obrigatória: decision_id e cycle_id ausentes.")
+            if snapshot.request_id is not None and snapshot.request_id != request_id:
+                return GatewayResult(GatewayStatus.BLOCKED, "linhagem: request_id não corresponde ao gateway.")
+            try:
+                lineage_record = OperationLineage(
+                    decision_id=snapshot.decision_id,
+                    cycle_id=snapshot.cycle_id,
+                    request_id=request_id,
+                    updated_at=event_time,
+                )
+                self._lineage.put(lineage_record)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"linhagem não pôde ser persistida: {exc}")
 
         # Reserve the request durably before touching the broker. This closes the
         # cross-process race where two callers could both observe an unseen ID and
@@ -170,11 +200,17 @@ class ExecutionGateway:
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência do ciclo falhou; estado UNKNOWN: {exc}", result)
         self._processed_request_ids.add(request_id)
 
+        if lineage_record is not None and result.external_id:
+            try:
+                lineage_record = self._lineage.attach_external_id(request_id, result.external_id, updated_at=event_time)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"external_id aceito mas linhagem não foi atualizada: {exc}", result, lineage=lineage_record)
+
         recorded_operation = None
         if snapshot is not None and self._recorder is not None:
             recorded_operation = self._recorder.record_operation(snapshot, timestamp=event_time, entry_conditions=entry_conditions, audit_record=audit_record)
 
-        return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
+        return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation, lineage_record)
 
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
         # Every uncertain broker outcome must be durable even when one of the

@@ -35,20 +35,16 @@ def seed_healthy_market_data(runtime):
     )
 
 def _registered_decision(service, runtime, *, signal: str) -> DecisionRecord:
-    market_timestamp = runtime.market_data.snapshot.candles[-1].timestamp.isoformat()
-    record = DecisionRecord.from_analysis(
-        AnalysisResult(
-            signal=Signal(signal),
-            score=88,
-            reason="test registered operational decision",
-            confirmed=True,
-            symbol="EURUSD",
-            timeframe="5m",
-        ),
-        market_timestamp=market_timestamp,
+    validated = runtime.market_data.snapshot
+    assert validated is not None
+    gated = service.evaluate_market_snapshot(validated)
+    assert gated.signal is Signal(signal)
+    record = service.record_market_analysis(
+        gated,
+        market_timestamp=validated.candles[-1].timestamp,
     )
-    service.memory.append(record)
-    service.store.save(record)
+    assert record is not None
+    assert record.cycle_id
     return record
 
 
@@ -98,7 +94,7 @@ def test_execute_demo_routes_explicit_action_through_shared_gateway(tmp_path: Pa
     assert executor.requests[0].signal is Signal.COMPRA
     journal = runtime.daily_journal.entries()
     assert len(journal) == 1
-    assert journal[0].request_id == "ui-demo-1"
+    assert journal[0].request_id == f"decision-{decision.decision_id}"
     assert journal[0].external_id == "ext-demo-1"
 
 
@@ -129,7 +125,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
     service = EcosystemService(operational_runtime=runtime)
     seed_healthy_market_data(runtime)
 
-    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    decision = _registered_decision(service, runtime, signal="COMPRA")
     first = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
@@ -143,7 +139,7 @@ def test_gateway_duplicate_request_stays_blocked(tmp_path: Path):
         signal="COMPRA",
         amount=0.01,
         duration_seconds=60,
-        request_id="duplicate-demo",
+        request_id=f"decision-{decision.decision_id}",
         decision_id=decision.decision_id,
     )
 
@@ -162,7 +158,7 @@ def test_execute_demo_respects_configured_risk_gate(tmp_path: Path):
     runtime = build_operational_runtime(tmp_path, executor=executor)
     service = EcosystemService(operational_runtime=runtime)
     seed_healthy_market_data(runtime)
-    decision = service.analyze({"score": 88, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
+    decision = _registered_decision(service, runtime, signal="COMPRA")
     first = service.execute_demo(
         symbol="EURUSD",
         signal="COMPRA",
@@ -209,7 +205,7 @@ def test_execute_demo_automatically_links_latest_decision_context(tmp_path: Path
     journal = runtime.daily_journal.entries()[0]
     assert journal.decision_id == decision.decision_id
     assert journal.timeframe == "5m"
-    assert journal.score == 88
+    assert journal.score == decision.score
 
 
 def test_execute_demo_requires_registered_confirmed_decision(tmp_path: Path):

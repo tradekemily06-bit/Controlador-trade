@@ -15,6 +15,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from integration.outcome_provider import build_demo_outcome_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
@@ -32,6 +33,9 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_markets_mt5_demo").strip().lower()
 MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
+OUTCOME_PORT = None
+if EXECUTION_PROVIDER.strip().lower() != "paper":
+    OUTCOME_PORT = build_demo_outcome_port(EXECUTION_PROVIDER, lineage=OPERATIONAL_RUNTIME.lineage)
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
 
 def _select_mt5_analysis_symbols() -> tuple[str, ...]:
@@ -67,7 +71,7 @@ if MARKET_DATA is not None:
     )
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 DECISION_DB = os.environ.get("CONTROLADOR_DECISION_DB") or str(RUNTIME_DIR / "decisions.sqlite3")
-SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
+SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"), outcome_port=OUTCOME_PORT)
 ONBOARDING = EcosystemOnboarding()
 
 if MARKET_DATA_RUNTIME is not None:
@@ -123,6 +127,24 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     if not 1 <= limit <= maximum:
         raise ValueError(f"limit deve estar entre 1 e {maximum}")
     return limit
+
+
+def _authorize_demo_outcome(environ) -> tuple[bool, str]:
+    """Allow local DEMO control while requiring an explicit token remotely."""
+    remote = str(environ.get("REMOTE_ADDR") or "").strip()
+    if remote in {"127.0.0.1", "::1"}:
+        return True, "local-demo"
+    expected = os.environ.get("CONTROLADOR_DEMO_OUTCOME_TOKEN", "").strip()
+    if not expected:
+        return False, "demo outcome control is not configured for remote access"
+    provided = str(environ.get("HTTP_AUTHORIZATION", ""))
+    if not provided.startswith("Bearer "):
+        return False, "demo outcome authorization required"
+    token = provided[7:].strip()
+    if not token or not hmac.compare_digest(token, expected):
+        return False, "demo outcome authorization denied"
+    return True, "authorized"
+
 
 
 def _authorize_internal_update(environ) -> tuple[bool, str]:
@@ -299,6 +321,73 @@ def application(environ, start_response):
             data = _read_json(environ)
             record = SERVICE.record_outcome(str(data.get("decision_id", "")), str(data.get("outcome", "")))
             return _json_response(start_response, HTTPStatus.OK, record.to_dict(), request_id, environ)
+        if path == "/api/outcome/close" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            result = SERVICE.close_and_observe(str(data.get("request_id", "")))
+            observation = result.observation
+            return _json_response(start_response, HTTPStatus.OK, {
+                "request_id": result.request_id,
+                "external_container_id": result.external_container_id,
+                "external_close_id": result.external_close_id,
+                "closed": result.closed,
+                "message": result.message,
+                "observation": (
+                    {
+                        "cycle_id": observation.cycle_id,
+                        "outcome": observation.outcome,
+                        "financial_result": observation.financial_result,
+                        "source": observation.source,
+                        "external_reference": observation.external_reference,
+                        "external_container_id": observation.external_container_id,
+                        "external_result_ids": list(observation.external_result_ids),
+                        "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
+                    }
+                    if observation is not None else None
+                ),
+                "execution_authorized": False,
+                "real": "DISABLED",
+            }, request_id, environ)
+        if path == "/api/outcome/reconcile" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            results = SERVICE.reconcile_pending_outcomes(limit=int(data.get("limit", 50)))
+            return _json_response(start_response, HTTPStatus.OK, {
+                "results": list(results),
+                "execution_authorized": False,
+                "orders_sent": False,
+                "real": "DISABLED",
+            }, request_id, environ)
+        if path == "/api/outcome/observe" and method == "POST":
+            authorized, reason = _authorize_demo_outcome(environ)
+            if not authorized:
+                status = HTTPStatus.SERVICE_UNAVAILABLE if reason == "demo outcome control is not configured for remote access" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, status, {"error": reason, "request_id": request_id}, request_id, environ)
+            data = _read_json(environ)
+            observation = SERVICE.observe_closed_and_finalize(str(data.get("request_id", "")))
+            return _json_response(start_response, HTTPStatus.OK, {
+                "observation": (
+                    {
+                        "cycle_id": observation.cycle_id,
+                        "outcome": observation.outcome,
+                        "financial_result": observation.financial_result,
+                        "source": observation.source,
+                        "external_reference": observation.external_reference,
+                        "external_container_id": observation.external_container_id,
+                        "external_result_ids": list(observation.external_result_ids),
+                        "observed_at": observation.observed_at.isoformat() if observation.observed_at else None,
+                    }
+                    if observation is not None else None
+                ),
+                "execution_authorized": False,
+                "real": "DISABLED",
+            }, request_id, environ)
         if path == "/api/risk" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.risk_status(), request_id, environ)
         if path == "/api/news" and method == "GET":

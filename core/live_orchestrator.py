@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine, DecisionResult, FinalDecision
@@ -24,6 +25,8 @@ class OrchestrationResult:
     decision: DecisionResult
     snapshot: DecisionSnapshot
     timestamp: datetime
+    decision_id: str = ""
+    cycle_id: str | None = None
     senior_context: SeniorContextCycle | None = None
 
     @property
@@ -63,8 +66,15 @@ class TradingOrchestrator:
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
+        decision_id: str | None = None,
+        cycle_id: str | None = None,
     ) -> OrchestrationResult:
         timestamp = datetime.now(timezone.utc)
+        decision_id = decision_id or str(uuid4())
+        if not isinstance(decision_id, str) or not decision_id.strip():
+            raise ValueError("decision_id inválido.")
+        if cycle_id is not None and (not isinstance(cycle_id, str) or not cycle_id.strip()):
+            raise ValueError("cycle_id inválido.")
         market_data = self.feed.fetch(request)
         analysis = self.pipeline.evaluate(
             list(market_data.candles),
@@ -89,6 +99,8 @@ class TradingOrchestrator:
             decision=decision,
             market_context=market_context,
             operational_state=operational_state,
+            decision_id=decision_id,
+            cycle_id=cycle_id,
         )
         return OrchestrationResult(
             market_data=market_data,
@@ -97,5 +109,7 @@ class TradingOrchestrator:
             decision=decision,
             snapshot=snapshot,
             timestamp=timestamp,
+            decision_id=decision_id,
+            cycle_id=cycle_id,
             senior_context=senior_context,
         )
