@@ -139,7 +139,7 @@ class OperationLineageStore:
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
             external_id, current.external_container_id, current.external_close_id,
-            current.external_result_ids, updated_at,
+            current.external_close_ids, current.external_result_ids, updated_at,
         )
         self.put(updated)
         return updated
@@ -171,7 +171,7 @@ class OperationLineageStore:
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
             current.external_id, current.external_container_id, external_close_id,
-            current.external_result_ids, updated_at,
+            tuple(dict.fromkeys((*current.external_close_ids, external_close_id))), current.external_result_ids, updated_at,
         )
         self.put(updated)
         return updated
@@ -197,7 +197,7 @@ class OperationLineageStore:
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
             current.external_id, current.external_container_id, current.external_close_id,
-            normalized, updated_at,
+            current.external_close_ids, normalized, updated_at,
         )
         self.put(updated)
         return updated
