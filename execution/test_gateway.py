@@ -219,3 +219,51 @@ def test_gateway_rejects_inconsistent_accepted_uncertain_result(tmp_path):
 
     assert result.status is GatewayStatus.EXECUTOR_ERROR
     assert ledger.status("req-inconsistent") is ExecutionLedgerStatus.UNKNOWN
+
+
+def test_operational_gateway_treats_accepted_without_external_id_as_unknown(tmp_path):
+    from core.decision_snapshot import DecisionSnapshot
+    from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+    from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+
+    class MissingExternalIdExecutor:
+        def execute(self, _request):
+            return ExecutionResult(True, "accepted but no external id", None)
+
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = ExecutionGateway(
+        MissingExternalIdExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+    )
+
+    # Legacy gateway without lineage remains compatible; the operational runtime
+    # supplies lineage and therefore activates the stricter external-identity rule.
+    from core.operation_lineage import OperationLineageStore
+    from core.operation_context_store import OperationContextStore
+    from core.decision_snapshot import DecisionSnapshot
+    lineage = OperationLineageStore(tmp_path / "lineage.json")
+    context = OperationContextStore(tmp_path / "context.json")
+    gateway = ExecutionGateway(
+        MissingExternalIdExecutor(),
+        KillSwitch(),
+        ledger=ledger,
+        lifecycle=lifecycle,
+        lineage=lineage,
+        operation_context=context,
+    )
+    snapshot = DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="d1", cycle_id="c1", request_id="req-no-external",
+    )
+    result = gateway.execute("req-no-external", request(), snapshot=snapshot)
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ledger.status("req-no-external") is ExecutionLedgerStatus.UNKNOWN
+    assert lifecycle.get("req-no-external").state is ExecutionLifecycleState.UNKNOWN
