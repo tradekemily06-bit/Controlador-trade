@@ -113,6 +113,11 @@ class ICMarketsMT5DemoOutcomeBridge:
                 if lineage.external_container_id != external_container_id:
                     lineage = self.lineage.attach_external_container_id(request_id, external_container_id, updated_at=event_time)
 
+                # Recover broker-side close evidence before considering another
+                # close request. This closes the crash window where MT5 accepted a
+                # close but the process died before external_close_id was persisted.
+                lineage = self._recover_external_close_history(mt5, lineage, event_time)
+
                 if lineage.external_close_id:
                     position = self._get_single_position(mt5, external_container_id)
                     if position is None:
@@ -265,6 +270,37 @@ class ICMarketsMT5DemoOutcomeBridge:
                 mt5.shutdown()
             except Exception:
                 pass
+
+    def _recover_external_close_history(
+        self,
+        mt5: Any,
+        lineage: OperationLineage,
+        observed_at: datetime,
+    ) -> OperationLineage:
+        """Recover already-executed exit deals before issuing another close."""
+        deals = mt5.history_deals_get(position=int(lineage.external_container_id or 0))
+        if deals is None:
+            return lineage
+
+        exit_ids = tuple(
+            str(getattr(deal, "ticket"))
+            for deal in deals
+            if getattr(deal, "entry", None) in self._entry_constants(mt5)
+            and getattr(deal, "ticket", None) is not None
+        )
+        if not exit_ids:
+            return lineage
+
+        lineage = self.lineage.attach_external_close_id(
+            lineage.request_id,
+            exit_ids[-1],
+            updated_at=observed_at,
+        )
+        return self.lineage.attach_external_result_ids(
+            lineage.request_id,
+            exit_ids,
+            updated_at=observed_at,
+        )
 
     def _observe_closed_position(
         self,
