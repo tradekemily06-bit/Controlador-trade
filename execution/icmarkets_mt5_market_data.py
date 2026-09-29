@@ -8,6 +8,8 @@ from data.models import Candle
 from data.normalizer import normalize_candle
 
 
+from execution.mt5_runtime_lock import mt5_session_lock
+
 class MT5MarketDataError(RuntimeError):
     """Raised when the MT5 market-data runtime cannot be used safely."""
 
@@ -62,51 +64,52 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
         if not isinstance(request, BrokerMarketDataRequest):
-            raise TypeError("request deve ser BrokerMarketDataRequest")
+        with mt5_session_lock():
+                raise TypeError("request deve ser BrokerMarketDataRequest")
 
-        mt5 = self._module()
-        timeframe = self._timeframe(request.timeframe)
-        if not mt5.initialize():
-            raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
+            mt5 = self._module()
+            timeframe = self._timeframe(request.timeframe)
+            if not mt5.initialize():
+                raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
-        try:
-            account = mt5.account_info()
-            if account is None or not self._is_demo_account(account, mt5):
-                raise MT5MarketDataError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
+            try:
+                account = mt5.account_info()
+                if account is None or not self._is_demo_account(account, mt5):
+                    raise MT5MarketDataError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
 
-            if not mt5.symbol_select(request.symbol, True):
-                raise MT5MarketDataError(f"símbolo não disponível no MT5: {request.symbol}")
+                if not mt5.symbol_select(request.symbol, True):
+                    raise MT5MarketDataError(f"símbolo não disponível no MT5: {request.symbol}")
 
-            # start_pos=1 excludes the currently forming candle so analysis
-            # never treats an unfinished bar as a confirmed candle.
-            rates = mt5.copy_rates_from_pos(request.symbol, timeframe, 1, request.limit)
-            if rates is None:
-                raise MT5MarketDataError(
-                    f"dados indisponíveis para {request.symbol}: {self._last_error(mt5)}"
-                )
-
-            candles: list[Candle] = []
-            for rate in rates:
-                timestamp = datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc)
-                volume = rate["tick_volume"]
-                if volume is None:
-                    volume = rate["real_volume"]
-                candles.append(
-                    normalize_candle(
-                        timestamp=timestamp,
-                        open=rate["open"],
-                        high=rate["high"],
-                        low=rate["low"],
-                        close=rate["close"],
-                        volume=volume,
+                # start_pos=1 excludes the currently forming candle so analysis
+                # never treats an unfinished bar as a confirmed candle.
+                rates = mt5.copy_rates_from_pos(request.symbol, timeframe, 1, request.limit)
+                if rates is None:
+                    raise MT5MarketDataError(
+                        f"dados indisponíveis para {request.symbol}: {self._last_error(mt5)}"
                     )
-                )
 
-            return tuple(candles)
-        finally:
-            mt5.shutdown()
+                candles: list[Candle] = []
+                for rate in rates:
+                    timestamp = datetime.fromtimestamp(int(rate["time"]), tz=timezone.utc)
+                    volume = rate["tick_volume"]
+                    if volume is None:
+                        volume = rate["real_volume"]
+                    candles.append(
+                        normalize_candle(
+                            timestamp=timestamp,
+                            open=rate["open"],
+                            high=rate["high"],
+                            low=rate["low"],
+                            close=rate["close"],
+                            volume=volume,
+                        )
+                    )
 
-    @staticmethod
+                return tuple(candles)
+            finally:
+                mt5.shutdown()
+
+        @staticmethod
     def _last_error(mt5: Any) -> str:
         try:
             return str(mt5.last_error())
