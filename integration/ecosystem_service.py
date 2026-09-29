@@ -591,7 +591,7 @@ class EcosystemService:
             quality_score=quality.score,
             quality_level=quality.level.value,
             actionable=quality.actionable,
-            decision=FinalDecision.EXECUTAR.value,
+            decision=FinalDecision.EXECUTAR,
             decision_reason=decision.reason,
             market_context=market_context.context.value,
             market_direction=market_context.direction.value,
