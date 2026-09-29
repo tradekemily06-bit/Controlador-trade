@@ -79,7 +79,7 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
 def test_terminal_operation_checkpoint_persists_identity_across_runtime_rebuild(tmp_path):
     runtime = build_operational_runtime(tmp_path)
     now = datetime.now(timezone.utc)
-    runtime.lineage.put(OperationLineage("decision-001", "cycle-001", "req-001", updated_at=now))
+    runtime.lineage.put(OperationLineage("decision-001", "cycle-001", "req-001", external_id="ext-001", updated_at=now))
     runtime.operation_context.put("req-001", DecisionSnapshot(
         signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
         quality_level="HIGH", actionable=True, decision="EXECUTAR",
