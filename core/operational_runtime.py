@@ -6,6 +6,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from core.kill_switch import KillSwitch
+from core.operation_lineage import OperationLineageStore
+from core.operation_context_store import OperationContextStore
+from core.controlled_automation_runtime import ControlledAutomationRuntime
+from core.p41_controlled_automation import AutomationPolicy
 from core.operational_state import OperationalState
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
@@ -44,6 +48,9 @@ class OperationalRuntime:
     session_id: str
     safety_store: OperationalSafetyStore
     demo_autonomy: DemoAutonomyAuthorizationStore
+    lineage: OperationLineageStore
+    operation_context: OperationContextStore
+    controlled_automation: ControlledAutomationRuntime
 
     def activate_kill_switch(self, reason: str) -> None:
         """Activate and durably persist the shared kill switch."""
@@ -103,11 +110,18 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
     provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
     risk_manager = RiskManager()
+    lineage = OperationLineageStore(root / "operation-lineage.json")
+    operation_context = OperationContextStore(root / "operation-context.json")
+    controlled_automation = ControlledAutomationRuntime(
+        policy=AutomationPolicy(enabled=False, minimum_interval_seconds=0)
+    )
     gateway = ExecutionGateway(
         selected_executor,
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        lineage=lineage,
+        operation_context=operation_context,
         risk_check=lambda: risk_manager.evaluate(state=provider() if callable(provider) else None),
     )
     market_data_execution_guard = MarketDataExecutionGuard(market_data=market_data, gateway=gateway)
@@ -127,4 +141,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         session_id=session_id,
         safety_store=safety_store,
         demo_autonomy=demo_autonomy,
+        lineage=lineage,
+        operation_context=operation_context,
+        controlled_automation=controlled_automation,
     )
