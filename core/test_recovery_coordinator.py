@@ -41,7 +41,7 @@ def test_checkpoint_without_identity_requires_reconciliation(tmp_path):
 def test_checkpoint_with_matching_identity_allows_safe_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
-    coordinator.lineage_store.put(OperationLineage("decision-3", "cycle-3", "req-3", updated_at=now))
+    coordinator.lineage_store.put(OperationLineage("decision-3", "cycle-3", "req-3", external_id="ext-3", updated_at=now))
     coordinator.operation_context_store.put("req-3", DecisionSnapshot(
         signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
         quality_level="HIGH", actionable=True, decision="EXECUTAR",
@@ -50,6 +50,11 @@ def test_checkpoint_with_matching_identity_allows_safe_resume(tmp_path):
         consecutive_losses=0, symbol="EURUSD", timeframe="5m",
         decision_id="decision-3", cycle_id="cycle-3", request_id="req-3",
     ))
+    coordinator.execution_ledger.reserve("req-3")
+    coordinator.execution_ledger.mark_accepted("req-3")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.ACCEPTED, now)
+    )
     coordinator.checkpoint_store.save(RuntimeCheckpoint(
         "s1", 3, "req-3", now, last_decision_id="decision-3", last_cycle_id="cycle-3"
     ))
