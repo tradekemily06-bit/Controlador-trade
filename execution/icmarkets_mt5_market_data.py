@@ -109,7 +109,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
             finally:
                 mt5.shutdown()
 
-        @staticmethod
+    @staticmethod
     def _last_error(mt5: Any) -> str:
         try:
             return str(mt5.last_error())
