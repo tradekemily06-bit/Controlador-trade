@@ -578,6 +578,21 @@ class EcosystemService:
             mode=ExecutionMode.DEMO,
             request_id=rid,
         )
+        recovery = self.operational_runtime.recovery.assess()
+        if not recovery.can_resume:
+            return {
+                "request_id": rid,
+                "status": "BLOCKED_RECOVERY",
+                "accepted": False,
+                "message": f"execução bloqueada até reconciliar o estado persistido: {recovery.message}",
+                "external_id": None,
+                "mode": "DEMO",
+                "real": False,
+                "journal_recorded": False,
+                "checkpoint_recorded": False,
+                "maintenance_required": True,
+                "recovery_state": recovery.state.value,
+            }
         risk_decision = self._current_risk_decision()
         if not risk_decision.allowed:
             journal_recorded = True
