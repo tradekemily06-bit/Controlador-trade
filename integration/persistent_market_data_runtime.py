@@ -178,11 +178,11 @@ class PersistentMarketDataRuntime:
                     snapshot = result.selected.snapshot
                     candle_key = (snapshot.symbol, snapshot.timeframe, snapshot.candles[-1].timestamp.isoformat())
                     should_process = candle_key != self._last_processed_candle_key
-                    self._last_processed_candle_key = candle_key
                     handler = self._selected_result_handler
                 else:
                     should_process = False
                     handler = None
+                    candle_key = None
                 callback_payload = (snapshot, result.selected.result) if should_process and handler is not None else None
                 if errors and result.selected is None:
                     self._last_error = errors[-1]
@@ -193,6 +193,9 @@ class PersistentMarketDataRuntime:
                 except Exception as exc:
                     with self._lock:
                         self._last_error = f"falha ao registrar análise selecionada: {type(exc).__name__}: {exc}"
+                else:
+                    with self._lock:
+                        self._last_processed_candle_key = candle_key
         except Exception as exc:
             self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message=f"falha no sweep de oportunidades: {type(exc).__name__}: {exc}")
             with self._lock:
