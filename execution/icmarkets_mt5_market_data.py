@@ -63,8 +63,8 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
-        if not isinstance(request, BrokerMarketDataRequest):
         with mt5_session_lock():
+            if not isinstance(request, BrokerMarketDataRequest):
                 raise TypeError("request deve ser BrokerMarketDataRequest")
 
             mt5 = self._module()
