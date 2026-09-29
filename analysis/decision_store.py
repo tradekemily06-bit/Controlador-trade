@@ -51,17 +51,19 @@ class DecisionStore:
         except (OSError, sqlite3.Error):
             self.database_path = None
 
-    def save(self, record: DecisionRecord) -> None:
+    def save(self, record: DecisionRecord) -> bool:
+        """Persist a decision and report whether durable storage accepted it."""
         if not self.database_path:
-            return
+            return True
         placeholders = ", ".join("?" for _ in self._COLUMNS)
         columns = ", ".join(self._COLUMNS)
         values = tuple(record.to_dict()[column] for column in self._COLUMNS)
         try:
             with self._lock, self._connect() as connection:
                 connection.execute(f"INSERT OR REPLACE INTO decisions ({columns}) VALUES ({placeholders})", values)
+            return True
         except sqlite3.Error:
-            pass
+            return False
 
     def load(self) -> list[DecisionRecord]:
         if not self.database_path:
