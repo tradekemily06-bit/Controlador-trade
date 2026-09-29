@@ -49,11 +49,11 @@ class ICMarketsMT5DemoAdapter:
         return self._mt5
 
     def is_available(self) -> bool:
-        mt5 = None
-        try:
-            mt5 = self._module()
-            if not mt5.initialize():
         with mt5_session_lock():
+            mt5 = None
+            try:
+                mt5 = self._module()
+                if not mt5.initialize():
                     return False
                 account = mt5.account_info()
                 return account is not None and self._is_demo_account(account, mt5)
@@ -175,16 +175,16 @@ class ICMarketsMT5DemoAdapter:
                     pass
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
-        if request.mode is not ExecutionMode.DEMO:
-            return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
-        if request.signal is Signal.AGUARDAR:
-            return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
-        if not math.isfinite(request.amount) or request.amount <= 0:
-            return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
-
-        mt5 = self._module()
-        if not mt5.initialize():
         with mt5_session_lock():
+            if request.mode is not ExecutionMode.DEMO:
+                return ExecutionResult(False, "IC Markets MT5 adapter aceita somente DEMO.")
+            if request.signal is Signal.AGUARDAR:
+                return ExecutionResult(False, "AGUARDAR não pode gerar ordem.")
+            if not math.isfinite(request.amount) or request.amount <= 0:
+                return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
+
+            mt5 = self._module()
+            if not mt5.initialize():
                 return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
 
             try:
