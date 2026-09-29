@@ -641,7 +641,7 @@ class EcosystemService:
         checkpoint_recorded = True
         if result.status.value in {"ACCEPTED", "EXECUTION_REJECTED"}:
             try:
-                self.operational_runtime.checkpoint_operation(rid)
+                self.operational_runtime.checkpoint_operation(rid, decision_id=decision.decision_id, cycle_id=decision.cycle_id)
             except (OSError, ValueError, TypeError):
                 checkpoint_recorded = False
         return {
