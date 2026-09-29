@@ -230,3 +230,40 @@ def test_manual_study_outcome_does_not_enter_operational_journal(tmp_path):
 
     assert service.statistics()["wins"] == 1
     assert runtime.daily_journal.entries() == ()
+def test_demo_execution_blocks_when_persisted_recovery_requires_reconciliation(tmp_path):
+    from dataclasses import replace
+    from datetime import datetime, timezone
+    from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
+
+    runtime = build_operational_runtime(tmp_path)
+    service = EcosystemService(operational_runtime=runtime)
+    record = service.analyze({
+        "score": 85,
+        "confirmed": True,
+        "filters_ok": True,
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+    })
+    service.memory[0] = replace(
+        record,
+        market_timestamp=datetime(2026, 9, 29, 5, 0, tzinfo=timezone.utc).isoformat(),
+    )
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord(
+            "unrelated-pending",
+            ExecutionLifecycleState.PENDING,
+            datetime.now(timezone.utc),
+        )
+    )
+
+    result = service.execute_demo(
+        symbol="EURUSD",
+        signal=record.signal,
+        amount=1,
+        duration_seconds=60,
+        decision_id=record.decision_id,
+    )
+
+    assert result["accepted"] is False
+    assert result["status"] == "BLOCKED_RECOVERY"
+    assert result["recovery_state"] == "REQUIRES_RECONCILIATION"
