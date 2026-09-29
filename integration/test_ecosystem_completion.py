@@ -33,7 +33,7 @@ def test_manual_outcome_is_blocked_when_decision_has_operational_lineage(tmp_pat
     runtime = build_operational_runtime(tmp_path)
     service = EcosystemService(operational_runtime=runtime)
     record = service.analyze({"score": 85, "confirmed": True, "filters_ok": True, "symbol": "EURUSD", "timeframe": "5m"})
-    runtime.lineage.put(OperationLineage("decision-x", "cycle-x", "request-x"))
+    runtime.lineage.put(OperationLineage(record.decision_id, "cycle-x", "request-x"))
     operational = record.with_outcome("OPEN")
     service.memory[0] = operational
     try:
