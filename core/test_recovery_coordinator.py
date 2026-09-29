@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 import pytest
 
 from core.operation_memory import OperationMemory
+from core.operation_lineage import OperationLineage, OperationLineageStore
+from core.operation_context_store import OperationContextStore
+from core.decision_snapshot import DecisionSnapshot
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from execution.execution_ledger import ExecutionLedger
@@ -15,6 +18,8 @@ def make_coordinator(tmp_path):
         lifecycle_store=ExecutionLifecycleStore(tmp_path / "lifecycle.json"),
         execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
         memory=OperationMemory(),
+        lineage_store=OperationLineageStore(tmp_path / "lineage.json"),
+        operation_context_store=OperationContextStore(tmp_path / "context.json"),
     )
 
 
@@ -75,3 +80,33 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_checkpoint_identity_mismatch_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lineage_store.put(OperationLineage("decision-1", "cycle-1", "req-1", updated_at=now))
+    coordinator.operation_context_store.put("req-1", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="decision-1", cycle_id="cycle-1", request_id="req-1",
+    ))
+    coordinator.checkpoint_store.save(RuntimeCheckpoint(
+        "s1", 1, "req-1", now, last_decision_id="wrong", last_cycle_id="cycle-1"
+    ))
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_missing_lineage_for_persisted_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc))
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
