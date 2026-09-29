@@ -110,18 +110,22 @@ class ICMarketsMT5DemoOutcomeBridge:
                 lineage = self.lineage.attach_external_container_id(request_id, external_container_id, updated_at=event_time)
 
             if lineage.external_close_id:
-                evidence = self._observe_closed_position(mt5, lineage, event_time)
-                if evidence is None:
+                position = self._get_single_position(mt5, external_container_id)
+                if position is None:
+                    evidence = self._observe_closed_position(mt5, lineage, event_time)
+                    if evidence is None:
+                        return MT5CloseResult(
+                            request_id, external_container_id, lineage.external_close_id, False, None,
+                            "fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+                        )
                     return MT5CloseResult(
-                        request_id, external_container_id, lineage.external_close_id, False, None,
-                        "fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+                        request_id, external_container_id, lineage.external_close_id, True, evidence,
+                        "fechamento já registrado; resultado financeiro confirmado por reobservação.",
                     )
-                return MT5CloseResult(
-                    request_id, external_container_id, lineage.external_close_id, True, evidence,
-                    "fechamento já registrado; resultado financeiro confirmado por reobservação.",
-                )
-
-            position = self._get_single_position(mt5, external_container_id)
+                # A previous close was partial. A new explicit close request may
+                # finish the remaining volume; every close identity is preserved.
+            else:
+                position = self._get_single_position(mt5, external_container_id)
             if position is None:
                 evidence = self._observe_closed_position(mt5, lineage, event_time)
                 if evidence is None:
