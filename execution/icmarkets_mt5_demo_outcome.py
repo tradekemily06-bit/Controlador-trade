@@ -93,8 +93,8 @@ class ICMarketsMT5DemoOutcomeBridge:
         return self._mt5
 
     def close_and_observe(self, request_id: str, *, now: datetime | None = None) -> MT5CloseResult:
-        with self._close_lock, cross_process_file_lock(self.lineage.path.with_name(self.lineage.path.name + '.close')):
         with mt5_session_lock():
+            with self._close_lock, cross_process_file_lock(self.lineage.path.with_name(self.lineage.path.name + '.close')):
                 lineage = self.lineage.get(request_id)
                 if lineage is None:
                     raise ValueError("request_id sem linhagem persistida.")
@@ -251,13 +251,13 @@ class ICMarketsMT5DemoOutcomeBridge:
                         pass
 
     def observe_closed_position(self, request_id: str, *, now: datetime | None = None) -> MT5OutcomeEvidence | None:
-        lineage = self.lineage.get(request_id)
-        if lineage is None:
-            raise ValueError("request_id sem linhagem persistida.")
-        event_time = now or datetime.now(timezone.utc)
-        mt5 = self._module()
-        if not mt5.initialize():
         with mt5_session_lock():
+            lineage = self.lineage.get(request_id)
+            if lineage is None:
+                raise ValueError("request_id sem linhagem persistida.")
+            event_time = now or datetime.now(timezone.utc)
+            mt5 = self._module()
+            if not mt5.initialize():
                 raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
             try:
                 self._require_demo(mt5)
