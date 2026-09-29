@@ -153,9 +153,15 @@ class OperationLineageStore:
         if current.external_container_id is not None and current.external_container_id != external_container_id:
             raise ValueError("external_container_id conflitante.")
         updated = OperationLineage(
-            current.decision_id, current.cycle_id, current.request_id,
-            current.external_id, external_container_id, current.external_close_id,
-            current.external_result_ids, updated_at,
+            decision_id=current.decision_id,
+            cycle_id=current.cycle_id,
+            request_id=current.request_id,
+            external_id=current.external_id,
+            external_container_id=external_container_id,
+            external_close_id=current.external_close_id,
+            external_close_ids=current.external_close_ids,
+            external_result_ids=current.external_result_ids,
+            updated_at=updated_at,
         )
         self.put(updated)
         return updated
@@ -191,7 +197,7 @@ class OperationLineageStore:
             # appended, but the persisted identity can never be replaced.
             if not current_ids.issubset(incoming_ids):
                 raise ValueError("external_result_ids conflitantes: IDs persistidos desapareceram.")
-            normalized = tuple(sorted(incoming_ids))
+            normalized = tuple(dict.fromkeys((*current.external_result_ids, *normalized)))
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
             current.external_id, current.external_container_id, current.external_close_id,
