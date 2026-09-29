@@ -221,7 +221,8 @@ def test_reconciled_executed_is_safe_to_resume(tmp_path):
         consecutive_losses=0, symbol="EURUSD", timeframe="5m",
         decision_id="d1", cycle_id="c1", request_id="req-1",
     ))
-    coordinator.execution_ledger.record("req-1")
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_unknown("req-1")
     coordinator.execution_ledger.reconcile("req-1", executed=True)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now)
@@ -245,7 +246,8 @@ def test_reconciled_not_executed_is_safe_to_resume(tmp_path):
         consecutive_losses=0, symbol="EURUSD", timeframe="5m",
         decision_id="d1", cycle_id="c1", request_id="req-1",
     ))
-    coordinator.execution_ledger.record("req-1")
+    coordinator.execution_ledger.reserve("req-1")
+    coordinator.execution_ledger.mark_unknown("req-1")
     coordinator.execution_ledger.reconcile("req-1", executed=False)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.REJECTED, now)
