@@ -186,6 +186,18 @@ class ExecutionGateway:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
+        if self._lineage is not None and not result.external_id:
+            self._mark_unknown(
+                request_id,
+                event_time,
+                "execução aceita sem external_id; confirmação externa não é confiável",
+            )
+            return GatewayResult(
+                GatewayStatus.EXECUTOR_ERROR,
+                "execução aceita sem external_id; estado marcado como UNKNOWN para reconciliação.",
+                result,
+            )
+
         if self._ledger is not None:
             try:
                 self._ledger.mark_accepted(request_id)
