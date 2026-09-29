@@ -84,26 +84,6 @@ class ExecutionGateway:
         event_time = timestamp or datetime.now(timezone.utc)
         audit_record = None
         lineage_record = None
-        if self._operation_context is not None and snapshot is not None:
-            try:
-                self._operation_context.put(request_id, snapshot)
-            except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"contexto operacional não pôde ser persistido: {exc}")
-        if self._lineage is not None and snapshot is not None:
-            if not snapshot.decision_id or not snapshot.cycle_id:
-                return GatewayResult(GatewayStatus.BLOCKED, "linhagem obrigatória: decision_id e cycle_id ausentes.")
-            if snapshot.request_id is not None and snapshot.request_id != request_id:
-                return GatewayResult(GatewayStatus.BLOCKED, "linhagem: request_id não corresponde ao gateway.")
-            try:
-                lineage_record = OperationLineage(
-                    decision_id=snapshot.decision_id,
-                    cycle_id=snapshot.cycle_id,
-                    request_id=request_id,
-                    updated_at=event_time,
-                )
-                self._lineage.put(lineage_record)
-            except (OSError, ValueError) as exc:
-                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"linhagem não pôde ser persistida: {exc}")
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
 
@@ -129,6 +109,28 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        lineage_record = None
+        if self._operation_context is not None and snapshot is not None:
+            try:
+                self._operation_context.put(request_id, snapshot)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"contexto operacional não pôde ser persistido: {exc}")
+        if self._lineage is not None and snapshot is not None:
+            if not snapshot.decision_id or not snapshot.cycle_id:
+                return GatewayResult(GatewayStatus.BLOCKED, "linhagem obrigatória: decision_id e cycle_id ausentes.")
+            if snapshot.request_id is not None and snapshot.request_id != request_id:
+                return GatewayResult(GatewayStatus.BLOCKED, "linhagem: request_id não corresponde ao gateway.")
+            try:
+                lineage_record = OperationLineage(
+                    decision_id=snapshot.decision_id,
+                    cycle_id=snapshot.cycle_id,
+                    request_id=request_id,
+                    updated_at=event_time,
+                )
+                self._lineage.put(lineage_record)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"linhagem não pôde ser persistida: {exc}")
 
         # Reserve the request durably before touching the broker. This closes the
         # cross-process race where two callers could both observe an unseen ID and
