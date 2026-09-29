@@ -222,7 +222,6 @@ def test_gateway_rejects_inconsistent_accepted_uncertain_result(tmp_path):
 
 
 def test_operational_gateway_treats_accepted_without_external_id_as_unknown(tmp_path):
-    from core.decision_snapshot import DecisionSnapshot
     from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
     from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
 
@@ -232,12 +231,6 @@ def test_operational_gateway_treats_accepted_without_external_id_as_unknown(tmp_
 
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
-    gateway = ExecutionGateway(
-        MissingExternalIdExecutor(),
-        KillSwitch(),
-        ledger=ledger,
-        lifecycle=lifecycle,
-    )
 
     # Legacy gateway without lineage remains compatible; the operational runtime
     # supplies lineage and therefore activates the stricter external-identity rule.
