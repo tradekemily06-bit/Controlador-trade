@@ -8,7 +8,7 @@ from core.operation_context_store import OperationContextStore
 from core.decision_snapshot import DecisionSnapshot
 from core.recovery_coordinator import RecoveryCoordinator, RecoveryState
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -257,3 +257,29 @@ def test_reconciled_not_executed_is_safe_to_resume(tmp_path):
 
     assert result.state is RecoveryState.SAFE_TO_RESUME
     assert result.can_resume is True
+
+
+@pytest.mark.parametrize(
+    "status",
+    (
+        ExecutionLedgerStatus.REJECTED,
+        ExecutionLedgerStatus.RECONCILED_EXECUTED,
+        ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+    ),
+)
+def test_orphan_terminal_ledger_state_requires_reconciliation(tmp_path, status):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-orphan")
+    if status is ExecutionLedgerStatus.REJECTED:
+        coordinator.execution_ledger.mark_rejected("req-orphan")
+    elif status is ExecutionLedgerStatus.RECONCILED_EXECUTED:
+        coordinator.execution_ledger.mark_unknown("req-orphan")
+        coordinator.execution_ledger.reconcile("req-orphan", executed=True)
+    else:
+        coordinator.execution_ledger.mark_unknown("req-orphan")
+        coordinator.execution_ledger.reconcile("req-orphan", executed=False)
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
