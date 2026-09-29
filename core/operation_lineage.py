@@ -115,22 +115,22 @@ class OperationLineageStore:
         with self._lock:
             self._load()
             current = self._records.get(record.request_id)
-        if current is not None:
-            if current.decision_id != record.decision_id or current.cycle_id != record.cycle_id:
-                raise ValueError("request_id não pode mudar de decisão/ciclo.")
-            if current.external_id is not None and record.external_id != current.external_id:
-                raise ValueError("external_id persistido não pode ser substituído.")
-            if current.external_container_id is not None and record.external_container_id != current.external_container_id:
-                raise ValueError("external_container_id persistido não pode ser substituído.")
-            if current.external_close_id is not None and record.external_close_id != current.external_close_id:
-                raise ValueError("external_close_id persistido não pode ser substituído.")
-            if current.external_result_ids:
-                current_ids = set(current.external_result_ids)
-                incoming_ids = set(record.external_result_ids)
-                if not current_ids.issubset(incoming_ids):
-                    raise ValueError("external_result_ids persistidos não podem desaparecer.")
-        self._records[record.request_id] = record
-        self._save()
+            if current is not None:
+                if current.decision_id != record.decision_id or current.cycle_id != record.cycle_id:
+                    raise ValueError("request_id não pode mudar de decisão/ciclo.")
+                if current.external_id is not None and record.external_id != current.external_id:
+                    raise ValueError("external_id persistido não pode ser substituído.")
+                if current.external_container_id is not None and record.external_container_id != current.external_container_id:
+                    raise ValueError("external_container_id persistido não pode ser substituído.")
+                if current.external_close_id is not None and record.external_close_id != current.external_close_id:
+                    raise ValueError("external_close_id persistido não pode ser substituído.")
+                if current.external_result_ids:
+                    current_ids = set(current.external_result_ids)
+                    incoming_ids = set(record.external_result_ids)
+                    if not current_ids.issubset(incoming_ids):
+                        raise ValueError("external_result_ids persistidos não podem desaparecer.")
+            self._records[record.request_id] = record
+            self._save()
 
     def attach_external_id(self, request_id: str, external_id: str, *, updated_at: datetime | None = None) -> OperationLineage:
         with self._lock:
