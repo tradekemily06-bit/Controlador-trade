@@ -354,7 +354,13 @@ class EcosystemService:
         for lineage in self.operational_runtime.lineage.records():
             if len(results) >= limit:
                 break
-            if not lineage.external_id or lineage.external_result_ids:
+            if not lineage.external_id:
+                continue
+            record = next(
+                (item for item in self.memory if item.decision_id == lineage.decision_id),
+                None,
+            )
+            if record is not None and record.outcome in {"WIN", "LOSS", "DRAW"}:
                 continue
             try:
                 observation = self.observe_closed_and_finalize(lineage.request_id)
