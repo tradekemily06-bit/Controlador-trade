@@ -709,12 +709,25 @@ class EcosystemService:
         }
 
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
+        """Record a manual study/replay outcome only.
+
+        Operational decisions are closed exclusively through external evidence
+        and record_verified_outcome(); a persisted lineage makes that boundary
+        explicit and prevents manual WIN/LOSS from changing operational truth.
+        """
+        runtime = self.operational_runtime
+        if runtime is not None:
+            for lineage in runtime.lineage.records():
+                if lineage.decision_id == decision_id:
+                    raise ValueError(
+                        "resultado operacional deve vir da reconciliação externa; "
+                        "use close_and_observe/reconcile_pending_outcomes"
+                    )
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
                 updated = record.with_outcome(outcome)
                 self.memory[index] = updated
                 self.store.save(updated)
-                runtime = self.operational_runtime
                 if runtime is not None:
                     try:
                         runtime.daily_journal.record_outcome(decision_id=decision_id, outcome=outcome)
