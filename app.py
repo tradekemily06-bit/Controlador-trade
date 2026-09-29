@@ -15,6 +15,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from integration.outcome_provider import build_demo_outcome_port
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.p122_broker_market_data import BrokerMarketDataBoundary
 from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
@@ -32,6 +33,9 @@ EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL
 MARKET_DATA_PROVIDER = os.environ.get("CONTROLADOR_MARKET_DATA_PROVIDER", "ic_markets_mt5_demo").strip().lower()
 MARKET_DATA = ICMarketsMT5DemoMarketDataAdapter() if MARKET_DATA_PROVIDER == "ic_markets_mt5_demo" else None
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
+OUTCOME_PORT = None
+if EXECUTION_PROVIDER.strip().lower() != "paper":
+    OUTCOME_PORT = build_demo_outcome_port(EXECUTION_PROVIDER, lineage=OPERATIONAL_RUNTIME.lineage)
 MARKET_DATA_RUNTIME: PersistentMarketDataRuntime | None = None
 
 def _select_mt5_analysis_symbols() -> tuple[str, ...]:
@@ -67,7 +71,7 @@ if MARKET_DATA is not None:
     )
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 DECISION_DB = os.environ.get("CONTROLADOR_DECISION_DB") or str(RUNTIME_DIR / "decisions.sqlite3")
-SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"))
+SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"), outcome_port=OUTCOME_PORT)
 ONBOARDING = EcosystemOnboarding()
 
 if MARKET_DATA_RUNTIME is not None:
