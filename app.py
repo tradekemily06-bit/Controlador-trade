@@ -71,7 +71,7 @@ if MARKET_DATA is not None:
     )
 NOTIFICATION_DB = os.environ.get("CONTROLADOR_NOTIFICATIONS_DB") or str(RUNTIME_DIR / "notifications.sqlite3")
 DECISION_DB = os.environ.get("CONTROLADOR_DECISION_DB") or str(RUNTIME_DIR / "decisions.sqlite3")
-SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"), outcome_port=OUTCOME_PORT)
+SERVICE = ConfiguredEcosystemService(decision_store=DecisionStore(DECISION_DB), operational_runtime=OPERATIONAL_RUNTIME, market_data_provider=MARKET_DATA, market_data_source=MARKET_DATA_PROVIDER, notification_database_path=NOTIFICATION_DB, preferences_path=str(RUNTIME_DIR / "preferences.sqlite3"), outcome_port=OUTCOME_PORT, learning_database_path=str(RUNTIME_DIR / "learning.sqlite3"))
 ONBOARDING = EcosystemOnboarding()
 
 if MARKET_DATA_RUNTIME is not None:
