@@ -126,10 +126,31 @@ class EcosystemService:
                 "dados de mercado ainda não estão validados para o símbolo/timeframe solicitado"
             )
         gated = self.evaluate_market_snapshot(snapshot)
-        record = DecisionRecord.from_analysis(gated, market_timestamp=snapshot.candles[-1].timestamp.isoformat())
-        self.memory.append(record)
-        self.store.save(record)
-        return record
+        record = self.record_market_analysis(
+            gated,
+            market_timestamp=snapshot.candles[-1].timestamp,
+        )
+        if record is not None:
+            return record
+
+        # The durable candle claim may already belong to another process.
+        # Reuse the persisted decision instead of creating a second operational
+        # decision; this keeps the UI and automatic runtime on one decision path.
+        for existing in self.memory:
+            if (
+                existing.symbol == requested_symbol
+                and existing.timeframe == requested_timeframe
+                and existing.market_timestamp == snapshot.candles[-1].timestamp.isoformat()
+            ):
+                return existing
+        for existing in self.store.load():
+            if (
+                existing.symbol == requested_symbol
+                and existing.timeframe == requested_timeframe
+                and existing.market_timestamp == snapshot.candles[-1].timestamp.isoformat()
+            ):
+                return existing
+        raise RuntimeError("candle já reservado, mas a decisão persistida não está disponível")
 
     def evaluate_market_snapshot(self, snapshot: BrokerMarketDataSnapshot):
         """Evaluate one validated snapshot without persisting a decision."""
