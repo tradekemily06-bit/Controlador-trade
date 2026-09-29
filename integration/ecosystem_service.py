@@ -189,15 +189,17 @@ class EcosystemService:
         timeframe = getattr(result, "timeframe", None)
         if self.operational_runtime is not None and symbol and timeframe:
             try:
-                if self.operational_runtime.daily_journal.has_market_decision(
+                if not self.operational_runtime.daily_journal.claim_market_decision(
+                    decision_id=str(getattr(result, "decision_id", "") or uuid4().hex),
                     symbol=symbol,
                     timeframe=timeframe,
                     market_timestamp=timestamp,
                 ):
                     return None
             except (OSError, ValueError, TypeError):
-                # A broken journal must not authorize a duplicate; memory/store dedupe remains active.
-                pass
+                # A durable dedupe failure must fail closed: automatic execution
+                # cannot safely proceed without a unique candle claim.
+                return None
         if any(
             item.symbol == symbol
             and item.timeframe == timeframe
