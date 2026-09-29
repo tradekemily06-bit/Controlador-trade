@@ -242,8 +242,24 @@ class EcosystemService:
         self._senior_cycles_by_decision.pop(pending_key, None)
         if senior_cycle is not None:
             self._senior_cycles_by_decision[record.decision_id] = senior_cycle
+        persisted = self.store.save(record)
+        if not persisted:
+            self._senior_cycles_by_decision.pop(record.decision_id, None)
+            if self.operational_runtime is not None and symbol and timeframe:
+                try:
+                    self.operational_runtime.daily_journal.release_market_decision(
+                        decision_id=record.decision_id,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        market_timestamp=timestamp,
+                    )
+                except (OSError, ValueError, TypeError):
+                    # If rollback itself is unavailable, fail closed: the
+                    # reservation remains visible for explicit recovery rather
+                    # than risking a duplicate operational decision.
+                    pass
+            return None
         self.memory.append(record)
-        self.store.save(record)
         return record
 
     def market_data_status(self) -> dict[str, object]:
