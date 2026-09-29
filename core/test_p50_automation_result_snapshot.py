@@ -34,7 +34,7 @@ def test_rejects_mixed_cycles():
 
 
 def test_rejects_terminal_state_mismatch():
-    closure, outcome, reconciliation = artifacts()
+    closure, outcome, reconciliation, observation = artifacts()
     mismatched = AutomationOutcome("cycle-50", AutomationLifecycleState.BLOCKED, outcome.observed_at, "UNKNOWN", None)
     with pytest.raises(ValueError):
         AutomationResultSnapshotBoundary().compose(closure, mismatched, reconciliation, observation)
