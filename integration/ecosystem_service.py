@@ -558,7 +558,7 @@ class EcosystemService:
                 "maintenance_required": not journal_recorded,
             }
         senior_cycle = self._senior_cycles_by_decision.get(decision.decision_id)
-        if senior_cycle is None:
+        if senior_cycle is None or not decision.cycle_id or senior_cycle.cycle_id != decision.cycle_id:
             return {
                 "request_id": rid,
                 "status": "BLOCKED",
@@ -602,7 +602,7 @@ class EcosystemService:
             symbol=decision.symbol,
             timeframe=decision.timeframe,
             decision_id=decision.decision_id,
-            cycle_id=decision.cycle_id,
+            cycle_id=senior_cycle.cycle_id,
             request_id=rid,
         )
         result = self.operational_runtime.market_data_execution_guard.execute(
