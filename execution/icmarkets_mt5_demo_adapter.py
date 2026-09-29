@@ -94,8 +94,8 @@ class ICMarketsMT5DemoAdapter:
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
 
     def read_operational_state(self):
+        """Read broker state without placing or modifying an order."""
         with mt5_session_lock():
-            """Read broker state without placing or modifying an order."""
             from core.operational_state import OperationalState
 
             mt5 = self._module()
