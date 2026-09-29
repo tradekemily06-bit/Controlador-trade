@@ -97,6 +97,11 @@ def test_terminal_operation_checkpoint_persists_identity_across_runtime_rebuild(
     assert checkpoint.last_decision_id == "decision-001"
     assert checkpoint.last_cycle_id == "cycle-001"
     assert checkpoint.session_id == runtime.session_id
+    runtime.execution_ledger.reserve("req-001")
+    runtime.execution_ledger.mark_accepted("req-001")
+    runtime.execution_lifecycle.put(
+        ExecutionLifecycleRecord("req-001", ExecutionLifecycleState.ACCEPTED, now)
+    )
 
     rebuilt = build_operational_runtime(tmp_path)
     assert rebuilt.recovery.assess().state.value == "SAFE_TO_RESUME"
