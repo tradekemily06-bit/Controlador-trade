@@ -213,3 +213,20 @@ def test_market_analysis_releases_exact_claim_when_decision_persistence_fails(tm
         market_timestamp=candles[-1].timestamp.isoformat(),
     ) is False
     assert not service._senior_cycles_by_decision
+
+
+def test_manual_study_outcome_does_not_enter_operational_journal(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+    service = EcosystemService(operational_runtime=runtime)
+    record = service.analyze({
+        "score": 85,
+        "confirmed": True,
+        "filters_ok": True,
+        "symbol": "EURUSD",
+        "timeframe": "5m",
+    })
+
+    service.record_outcome(record.decision_id, "WIN")
+
+    assert service.statistics()["wins"] == 1
+    assert runtime.daily_journal.entries() == ()
