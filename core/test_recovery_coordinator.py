@@ -186,3 +186,24 @@ def test_external_result_ids_append_new_evidence_without_reordering(tmp_path):
     store.attach_external_result_ids("req-1", ("deal-1",), updated_at=now)
     updated = store.attach_external_result_ids("req-1", ("deal-1", "deal-2"), updated_at=now)
     assert updated.external_result_ids == ("deal-1", "deal-2")
+
+
+def test_accepted_without_external_identity_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lineage_store.put(OperationLineage("decision-1", "cycle-1", "req-1", updated_at=now))
+    coordinator.operation_context_store.put("req-1", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="decision-1", cycle_id="cycle-1", request_id="req-1",
+    ))
+    coordinator.execution_ledger.record("req-1")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-1", ExecutionLifecycleState.ACCEPTED, now)
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
