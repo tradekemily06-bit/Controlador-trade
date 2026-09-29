@@ -463,9 +463,13 @@ class ThreadedWSGIServer(ThreadingMixIn, WSGIServer):
 
 def run(host: str = "0.0.0.0", port: int | None = None) -> None:
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application, server_class=ThreadedWSGIServer) as server:
-        print(f"Controlador Trading em http://{host}:{selected_port}")
-        server.serve_forever()
+    try:
+        with make_server(host, selected_port, application, server_class=ThreadedWSGIServer) as server:
+            print(f"Controlador Trading em http://{host}:{selected_port}")
+            server.serve_forever()
+    finally:
+        if MARKET_DATA_RUNTIME is not None:
+            MARKET_DATA_RUNTIME.stop()
 
 
 if __name__ == "__main__":
