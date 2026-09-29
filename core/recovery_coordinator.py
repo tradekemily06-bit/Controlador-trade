@@ -108,7 +108,15 @@ class RecoveryCoordinator:
         ]
         orphan_ledger = sorted(
             request_id for request_id in ledger_ids
-            if request_id not in lifecycle_by_id and request_id in (ledger_reserved | ledger_unknown | ledger_accepted)
+            if request_id not in lifecycle_by_id
+            and request_id in (
+                ledger_reserved
+                | ledger_unknown
+                | ledger_accepted
+                | ledger_rejected
+                | ledger_reconciled_executed
+                | ledger_reconciled_not_executed
+            )
         )
         identity_inconsistent: list[str] = []
         if self.lineage_store is not None:
