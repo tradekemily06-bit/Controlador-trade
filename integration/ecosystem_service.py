@@ -209,6 +209,10 @@ class EcosystemService:
                     timeframe=timeframe,
                     market_timestamp=timestamp,
                 ):
+                    # Another process already owns this candle. Do not retain
+                    # this process's transient senior cycle for a decision that
+                    # will never become operational.
+                    self._senior_cycles_by_decision.pop(pending_key, None)
                     return None
             except (OSError, ValueError, TypeError):
                 # A durable dedupe failure must fail closed: automatic execution
