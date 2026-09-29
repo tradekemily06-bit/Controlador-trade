@@ -23,7 +23,7 @@ def _inputs():
         reason="Ambiente favorável com evidência contextual.",
         direction=MarketDirection.ALTA,
     )
-    observation = ExternalOutcomeObservation("cycle-139", "WIN", 25.0)
+    observation = ExternalOutcomeObservation("cycle-139", "WIN", 25.0, external_container_id="position-139", external_result_ids=("deal-139-entry", "deal-139-exit"))
     return closure, analysis, context, observation
 
 
@@ -56,7 +56,7 @@ def test_mismatch_never_becomes_learning_eligible():
         observed_at=datetime(2026, 9, 14, 2, 1, tzinfo=timezone.utc),
         outcome="WIN",
         financial_result=25.0,
-        external_observation=ExternalOutcomeObservation("cycle-139", "LOSS", -25.0),
+        external_observation=ExternalOutcomeObservation("cycle-139", "LOSS", -25.0, external_container_id="position-139", external_result_ids=("deal-139-entry", "deal-139-exit")),
         analysis=analysis,
         market_context=context,
         note_id="note-139-mismatch",
