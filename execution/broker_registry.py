@@ -14,6 +14,7 @@ class BrokerRegistryError(ValueError):
 class BrokerAdapterInfo:
     name: str
     available: bool
+    identity: AdapterConnectionIdentity | None = None
 
 
 class BrokerRegistry:
