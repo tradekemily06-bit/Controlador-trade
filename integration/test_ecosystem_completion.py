@@ -174,3 +174,42 @@ def test_market_data_runtime_retries_selected_callback_after_failure():
     runtime._run_candidate_sweep()
     assert calls == ["EURUSD", "EURUSD"]
     assert runtime._last_processed_candle_key == ("EURUSD", "5m", candles[-1].timestamp.isoformat())
+
+def test_market_analysis_releases_exact_claim_when_decision_persistence_fails(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from core.p122_broker_market_data import BrokerMarketDataSnapshot
+    from data.models import Candle
+
+    runtime = build_operational_runtime(tmp_path)
+    service = EcosystemService(operational_runtime=runtime)
+    service.store.save = lambda record: False
+
+    base = datetime(2026, 9, 29, 4, 0, tzinfo=timezone.utc)
+    candles = tuple(
+        Candle(
+            timestamp=base + timedelta(minutes=5 * index),
+            open=100.0 + index,
+            high=101.0 + index,
+            low=99.0 + index,
+            close=100.5 + index,
+            volume=1000.0,
+        )
+        for index in range(20)
+    )
+    snapshot = BrokerMarketDataSnapshot(
+        symbol="EURUSD",
+        timeframe="5m",
+        candles=candles,
+        source="test",
+        received_at=base,
+    )
+    result = service.evaluate_market_snapshot(snapshot)
+    record = service.record_market_analysis(result, market_timestamp=candles[-1].timestamp)
+
+    assert record is None
+    assert runtime.daily_journal.has_market_decision(
+        symbol="EURUSD",
+        timeframe="5m",
+        market_timestamp=candles[-1].timestamp.isoformat(),
+    ) is False
+    assert not service._senior_cycles_by_decision
