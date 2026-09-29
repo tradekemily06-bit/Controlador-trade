@@ -39,7 +39,7 @@ class OperationContextStore:
             raise ValueError("snapshot.request_id não corresponde ao request_id.")
         if not snapshot.decision_id or not snapshot.cycle_id:
             raise ValueError("snapshot precisa de decision_id e cycle_id.")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
             payload = self._read()
             current = payload.get(request_id)
             if current is not None and current != snapshot.as_dict():
@@ -56,7 +56,7 @@ class OperationContextStore:
     def get(self, request_id: str) -> DecisionSnapshot | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id é obrigatório.")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
             raw = self._read().get(request_id)
         if raw is None:
             return None
