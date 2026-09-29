@@ -114,7 +114,7 @@ class OperationLineageStore:
     def put(self, record: OperationLineage) -> None:
         if not isinstance(record, OperationLineage):
             raise ValueError("linhagem inválida.")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
             self._load()
             current = self._records.get(record.request_id)
             if current is not None:
@@ -219,11 +219,11 @@ class OperationLineageStore:
     def get(self, request_id: str) -> OperationLineage | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id é obrigatório.")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
             self._load()
             return self._records.get(request_id)
 
     def records(self) -> tuple[OperationLineage, ...]:
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
             self._load()
             return tuple(self._records[key] for key in sorted(self._records))
