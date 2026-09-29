@@ -557,6 +557,7 @@ class EcosystemService:
                 "journal_recorded": journal_recorded,
                 "maintenance_required": not journal_recorded,
             }
+        current_state = self._current_operational_state()
         senior_cycle = self._senior_cycles_by_decision.get(decision.decision_id)
         if senior_cycle is None or not decision.cycle_id or senior_cycle.cycle_id != decision.cycle_id:
             return {
