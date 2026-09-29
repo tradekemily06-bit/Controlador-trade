@@ -246,6 +246,28 @@ class EcosystemService:
         self.store.save(record)
         return record
 
+    def handle_selected_market_analysis(
+        self,
+        snapshot: BrokerMarketDataSnapshot,
+        result: object,
+    ) -> DecisionRecord | None:
+        """Persist the selected candidate through the same operational decision path.
+
+        Candidate sweeps may evaluate several symbols. Only the selected snapshot
+        becomes an operational decision; transient senior contexts belonging to
+        non-selected candidates must not accumulate in memory.
+        """
+        if not isinstance(snapshot, BrokerMarketDataSnapshot):
+            raise TypeError("snapshot deve ser BrokerMarketDataSnapshot")
+        timestamp = snapshot.candles[-1].timestamp.isoformat() if snapshot.candles else None
+        if timestamp is None:
+            raise ValueError("snapshot sem candles")
+        selected_key = f"pending:{snapshot.symbol}:{snapshot.timeframe}:{timestamp}"
+        for key in tuple(self._senior_cycles_by_decision):
+            if key.startswith("pending:") and key != selected_key:
+                self._senior_cycles_by_decision.pop(key, None)
+        return self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
             return {"health": "NOT_CONNECTED", "safe_for_analysis": False, "message": "runtime operacional não conectado"}
