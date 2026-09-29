@@ -246,30 +246,6 @@ class EcosystemService:
         self.store.save(record)
         return record
 
-    def handle_selected_market_analysis(
-        self,
-        snapshot: BrokerMarketDataSnapshot,
-        result: object,
-    ) -> DecisionRecord | None:
-        """Persist the selected candidate through the same operational decision path.
-
-        Candidate sweeps may evaluate several symbols. Only the selected snapshot
-        becomes an operational decision; transient senior contexts belonging to
-        non-selected candidates must not accumulate in memory.
-        """
-        if not isinstance(snapshot, BrokerMarketDataSnapshot):
-            raise TypeError("snapshot deve ser BrokerMarketDataSnapshot")
-        timestamp = snapshot.candles[-1].timestamp.isoformat() if snapshot.candles else None
-        if timestamp is None:
-            raise ValueError("snapshot sem candles")
-        selected_key = f"pending:{snapshot.symbol}:{snapshot.timeframe}:{timestamp}"
-        self._senior_cycles_by_decision = {
-            key: value
-            for key, value in self._senior_cycles_by_decision.items()
-            if not key.startswith("pending:") or key == selected_key
-        }
-        return self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
-
     def market_data_status(self) -> dict[str, object]:
         if self.operational_runtime is None:
             return {"health": "NOT_CONNECTED", "safe_for_analysis": False, "message": "runtime operacional não conectado"}
@@ -725,10 +701,26 @@ class EcosystemService:
     def handle_selected_market_analysis(self, snapshot: BrokerMarketDataSnapshot, result) -> DecisionRecord | None:
         """Persist the selected closed-candle decision and optionally execute DEMO.
 
-        Automatic operation is opt-in through a dedicated durable authority, never
-        through presentation preferences. A duplicate candle is never executed.
+        Candidate sweeps may evaluate several symbols. Only the selected snapshot
+        becomes operational; transient senior contexts for non-selected candidates
+        are discarded before persistence. Automatic operation remains opt-in through
+        the durable DEMO autonomy authority and never comes from presentation state.
         """
-        record = self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
+        if not isinstance(snapshot, BrokerMarketDataSnapshot):
+            raise TypeError("snapshot deve ser BrokerMarketDataSnapshot")
+        if not snapshot.candles:
+            raise ValueError("snapshot sem candles")
+        timestamp = snapshot.candles[-1].timestamp.isoformat()
+        selected_key = f"pending:{snapshot.symbol}:{snapshot.timeframe}:{timestamp}"
+        self._senior_cycles_by_decision = {
+            key: value
+            for key, value in self._senior_cycles_by_decision.items()
+            if not key.startswith("pending:") or key == selected_key
+        }
+        record = self.record_market_analysis(
+            result,
+            market_timestamp=snapshot.candles[-1].timestamp,
+        )
         if record is None:
             return None
         authority = self.operational_runtime.demo_autonomy if self.operational_runtime is not None else None
@@ -748,7 +740,7 @@ class EcosystemService:
         broker_today = int(current_state.trades_today)
         # Use the more conservative count: broker-reported activity may include
         # operations outside this process, while the durable journal survives
-        # restarts where an in-memory paper executor would otherwise reset to 0.
+        # restarts where an in-memory executor would otherwise reset to 0.
         operations_today = max(broker_today, durable_today)
         if operations_today >= authority.state.max_operations_per_day:
             return record
