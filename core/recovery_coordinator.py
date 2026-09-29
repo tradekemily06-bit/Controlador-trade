@@ -140,7 +140,17 @@ class RecoveryCoordinator:
         if identity_inconsistent:
             identity_inconsistent = sorted(set(identity_inconsistent))
 
-        if unknown or pending or inconsistent or orphan_ledger or identity_inconsistent:
+        checkpoint_consistency: list[str] = []
+        if checkpoint is not None:
+            if checkpoint.last_request_id:
+                lifecycle_record = lifecycle_by_id.get(checkpoint.last_request_id)
+                ledger_status = self.execution_ledger.status(checkpoint.last_request_id)
+                if lifecycle_record is None or ledger_status is None:
+                    checkpoint_consistency.append(checkpoint.last_request_id)
+            if checkpoint.last_cycle < 0:
+                checkpoint_consistency.append(checkpoint.session_id)
+
+        if unknown or pending or inconsistent or orphan_ledger or identity_inconsistent or checkpoint_consistency:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -152,6 +162,8 @@ class RecoveryCoordinator:
                 details.append("estado do Ledger sem projeção de Lifecycle requer reconciliação")
             if identity_inconsistent:
                 details.append("linhagem/contexto/checkpoint divergentes requerem reconciliação")
+            if checkpoint_consistency:
+                details.append("checkpoint sem estado correspondente requer reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
