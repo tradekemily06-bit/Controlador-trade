@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
-from typing import Any
+from typing import Any\n\nfrom core.cross_process_file_lock import cross_process_file_lock
 
 
 @dataclass(frozen=True)
