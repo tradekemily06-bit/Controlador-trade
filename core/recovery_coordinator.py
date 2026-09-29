@@ -103,6 +103,8 @@ class RecoveryCoordinator:
                     context = self.operation_context_store.get(request_id)
                     if context is None or context.decision_id != lineage.decision_id or context.cycle_id != lineage.cycle_id:
                         identity_inconsistent.append(request_id)
+                if lifecycle_by_id[request_id].state is ExecutionLifecycleState.ACCEPTED and not lineage.external_id:
+                    identity_inconsistent.append(request_id)
             if checkpoint is not None and checkpoint.last_request_id:
                 lineage = self.lineage_store.get(checkpoint.last_request_id)
                 if lineage is None:
