@@ -57,7 +57,7 @@ class OperationalRuntime:
         self.kill_switch.activate(reason)
         self.safety_store.save_kill_switch_state(self.kill_switch)
 
-    def checkpoint_operation(self, request_id: str) -> bool:
+    def checkpoint_operation(self, request_id: str, *, decision_id: str | None = None, cycle_id: str | None = None) -> bool:
         """Persist the last terminal operation without authorizing or replaying it."""
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id inválido para checkpoint")
@@ -68,6 +68,8 @@ class OperationalRuntime:
                 session_id=self.session_id,
                 last_cycle=next_cycle,
                 last_request_id=request_id.strip(),
+                last_decision_id=decision_id,
+                last_cycle_id=cycle_id,
                 updated_at=datetime.now(timezone.utc),
             )
         )
