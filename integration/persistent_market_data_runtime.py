@@ -55,7 +55,7 @@ class PersistentMarketDataRuntime:
         self._selected_symbol: str | None = config.symbol
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._last_error: str | None = None
         self._last_success: datetime | None = None
         self._last_sweep_selected: str | None = None
