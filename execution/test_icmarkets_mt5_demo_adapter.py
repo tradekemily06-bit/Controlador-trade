@@ -129,7 +129,6 @@ def test_partial_fill_is_accepted_with_external_identity():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
 
-    original = mt5.order_send
     def partial(payload):
         mt5.calls.append(("order_send_partial", payload))
         return SimpleNamespace(retcode=mt5.TRADE_RETCODE_DONE_PARTIAL, order=123457, deal=654322)
