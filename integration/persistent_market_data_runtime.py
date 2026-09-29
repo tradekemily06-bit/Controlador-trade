@@ -183,14 +183,16 @@ class PersistentMarketDataRuntime:
                 else:
                     should_process = False
                     handler = None
-                if should_process and handler is not None:
-                    try:
-                        handler(snapshot, result.selected.result)
-                    except Exception as exc:
-                        with self._lock:
-                            self._last_error = f"falha ao registrar análise selecionada: {type(exc).__name__}: {exc}"
+                callback_payload = (snapshot, result.selected.result) if should_process and handler is not None else None
                 if errors and result.selected is None:
                     self._last_error = errors[-1]
+            if callback_payload is not None:
+                try:
+                    handler, payload = handler, callback_payload
+                    handler(payload[0], payload[1])
+                except Exception as exc:
+                    with self._lock:
+                        self._last_error = f"falha ao registrar análise selecionada: {type(exc).__name__}: {exc}"
         except Exception as exc:
             self._state.invalidate(source=self._boundary.source, symbol=self._selected_symbol or "AUTO", timeframe=self._config.timeframe, message=f"falha no sweep de oportunidades: {type(exc).__name__}: {exc}")
             with self._lock:
