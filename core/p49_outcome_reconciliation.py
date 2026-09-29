@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 
 from core.p48_automation_outcome import AutomationOutcome
@@ -14,9 +15,16 @@ class ReconciliationState(str, Enum):
 
 @dataclass(frozen=True)
 class ExternalOutcomeObservation:
+    """Broker-neutral factual observation produced by an external adapter."""
+
     cycle_id: str
     outcome: str
     financial_result: float | None
+    source: str | None = None
+    external_reference: str | None = None
+    external_container_id: str | None = None
+    external_result_ids: tuple[str, ...] = ()
+    observed_at: datetime | None = None
 
 
 @dataclass(frozen=True)
