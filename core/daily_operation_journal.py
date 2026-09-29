@@ -106,7 +106,8 @@ class DailyOperationJournal:
             market_timestamp=None if market_timestamp is None else str(market_timestamp),
             outcome=None if outcome is None else str(outcome),
         )
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
             if self._load_error is not None:
                 raise OSError("diário automático indisponível; histórico existente requer inspeção manual")
             self._entries.append(entry)
@@ -130,13 +131,15 @@ class DailyOperationJournal:
     def entries(self, limit: int = 100) -> tuple[DailyOperationJournalEntry, ...]:
         if limit < 1:
             raise ValueError("limit deve ser maior que zero")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
             return tuple(self._entries[-limit:][::-1])
 
     def today(self, *, now: datetime | None = None) -> tuple[DailyOperationJournalEntry, ...]:
         current = now or datetime.now(timezone.utc)
         day = current.date()
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
             return tuple(
                 entry for entry in reversed(self._entries)
                 if datetime.fromisoformat(entry.timestamp).date() == day
@@ -146,7 +149,8 @@ class DailyOperationJournal:
         """Return whether this closed candle was already processed across restarts."""
         if not isinstance(symbol, str) or not symbol.strip() or not isinstance(timeframe, str) or not timeframe.strip() or not isinstance(market_timestamp, str) or not market_timestamp.strip():
             raise ValueError("identidade de candle inválida")
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
             return any(
                 entry.decision_id is not None
                 and entry.symbol == symbol.strip()
@@ -160,7 +164,8 @@ class DailyOperationJournal:
         if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
             raise ValueError("outcome inválido")
         changed = 0
-        with self._lock:
+        with self._lock, cross_process_file_lock(self.path):
+            self._load()
             for index, entry in enumerate(self._entries):
                 if entry.decision_id == decision_id:
                     self._entries[index] = DailyOperationJournalEntry(
