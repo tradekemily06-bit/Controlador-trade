@@ -29,11 +29,33 @@ def test_fresh_session_is_safe(tmp_path):
     assert result.can_resume is True
 
 
-def test_checkpoint_allows_safe_resume(tmp_path):
+def test_checkpoint_without_identity_requires_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", datetime.now(timezone.utc)))
     result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert result.checkpoint.last_cycle == 3
+
+
+def test_checkpoint_with_matching_identity_allows_safe_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.lineage_store.put(OperationLineage("decision-3", "cycle-3", "req-3", updated_at=now))
+    coordinator.operation_context_store.put("req-3", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="decision-3", cycle_id="cycle-3", request_id="req-3",
+    ))
+    coordinator.checkpoint_store.save(RuntimeCheckpoint(
+        "s1", 3, "req-3", now, last_decision_id="decision-3", last_cycle_id="cycle-3"
+    ))
+    result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
     assert result.checkpoint.last_cycle == 3
 
 
