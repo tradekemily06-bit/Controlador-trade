@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from threading import Lock\n\nfrom core.cross_process_file_lock import cross_process_file_lock
+from threading import Lock
+
+from core.cross_process_file_lock import cross_process_file_lock
 
 from core.decision_snapshot import DecisionSnapshot
 
