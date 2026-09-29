@@ -1,7 +1,7 @@
 import pytest
 
 from execution.broker_registry import BrokerRegistry, BrokerRegistryError
-from execution.ports import ExecutionResult
+from execution.ports import AdapterConnectionIdentity, ExecutionResult
 
 
 class FakeAdapter:
@@ -68,3 +68,27 @@ def test_registry_info_is_read_only_snapshot():
     assert info[0].name == "paper"
     assert info[0].available is True
     assert isinstance(info, tuple)
+
+
+def test_registry_preserves_provider_neutral_connection_identity():
+    registry = BrokerRegistry()
+    identity = AdapterConnectionIdentity(
+        broker_id="broker-x",
+        platform_id="platform-y",
+        adapter_id="adapter-z",
+        transport_id="transport-q",
+    )
+    registry.register("broker-x", FakeAdapter(), identity=identity)
+
+    assert registry.identity("BROKER-X") == identity
+    assert registry.info()[0].identity == identity
+
+
+def test_connection_identity_requires_all_dimensions():
+    with pytest.raises(ValueError):
+        AdapterConnectionIdentity(
+            broker_id="broker-x",
+            platform_id="platform-y",
+            adapter_id="",
+            transport_id="transport-q",
+        )
