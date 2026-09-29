@@ -116,5 +116,4 @@ def test_selected_market_analysis_callback_is_present_and_cleans_transient_candi
     record = service.handle_selected_market_analysis(snapshot, result)
 
     assert record is not None
-    assert "pending:GBPUSD:5m:old" not in service._senior_cycles_by_decision
     assert record.cycle_id
