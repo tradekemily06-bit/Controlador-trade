@@ -263,9 +263,11 @@ class EcosystemService:
         if timestamp is None:
             raise ValueError("snapshot sem candles")
         selected_key = f"pending:{snapshot.symbol}:{snapshot.timeframe}:{timestamp}"
-        for key in tuple(self._senior_cycles_by_decision):
-            if key.startswith("pending:") and key != selected_key:
-                self._senior_cycles_by_decision.pop(key, None)
+        self._senior_cycles_by_decision = {
+            key: value
+            for key, value in self._senior_cycles_by_decision.items()
+            if not key.startswith("pending:") or key == selected_key
+        }
         return self.record_market_analysis(result, market_timestamp=snapshot.candles[-1].timestamp)
 
     def market_data_status(self) -> dict[str, object]:
