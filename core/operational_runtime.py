@@ -96,10 +96,14 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     session_id = uuid4().hex
     if previous_checkpoint is not None and session_id == previous_checkpoint.session_id:
         session_id = f"{session_id}-{datetime.now(timezone.utc).timestamp_ns()}"
+    lineage = OperationLineageStore(root / "operation-lineage.json")
+    operation_context = OperationContextStore(root / "operation-context.json")
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
         execution_ledger=ledger,
+        lineage_store=lineage,
+        operation_context_store=operation_context,
     )
     health = RuntimeHealthMonitor(
         ledger=ledger,
@@ -112,8 +116,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     daily_journal = DailyOperationJournal(root / "daily-operation-journal.json")
     provider = risk_state_provider or getattr(selected_executor, "read_operational_state", None)
     risk_manager = RiskManager()
-    lineage = OperationLineageStore(root / "operation-lineage.json")
-    operation_context = OperationContextStore(root / "operation-context.json")
     controlled_automation = ControlledAutomationRuntime(
         policy=AutomationPolicy(enabled=False, minimum_interval_seconds=0)
     )
