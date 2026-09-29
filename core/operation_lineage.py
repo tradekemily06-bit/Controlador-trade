@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
-from threading import RLock
+from threading import RLock\n\nfrom core.cross_process_file_lock import cross_process_file_lock
 
 
 @dataclass(frozen=True)
