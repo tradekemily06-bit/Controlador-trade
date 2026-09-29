@@ -119,3 +119,58 @@ def test_selected_market_analysis_callback_is_present_and_cleans_transient_candi
     assert record.cycle_id
     assert "pending:GBPUSD:5m:old" not in service._senior_cycles_by_decision
     assert record.decision_id in service._senior_cycles_by_decision
+
+
+def test_market_data_runtime_retries_selected_callback_after_failure():
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from core.market_data_runtime_state import MarketDataRuntimeState
+    from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
+    from core.p122_broker_market_data import BrokerMarketDataBoundary
+    from data.models import Candle
+    from integration.persistent_market_data_runtime import MarketDataRuntimeConfig, PersistentMarketDataRuntime
+
+    base = datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
+    candles = tuple(
+        Candle(
+            timestamp=base + timedelta(minutes=5 * index),
+            open=100.0 + index,
+            high=101.0 + index,
+            low=99.0 + index,
+            close=100.5 + index,
+            volume=1000.0,
+        )
+        for index in range(20)
+    )
+
+    class Provider:
+        def fetch_market_data(self, request):
+            return candles
+
+    boundary = BrokerMarketDataBoundary(Provider(), "test")
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    calls = []
+
+    def handler(snapshot, result):
+        calls.append(snapshot.symbol)
+        if len(calls) == 1:
+            raise RuntimeError("temporary callback failure")
+
+    runtime = PersistentMarketDataRuntime(
+        boundary,
+        state,
+        MarketDataRuntimeConfig(symbol="EURUSD", timeframe="5m", limit=20, poll_seconds=5),
+        candidate_selector=lambda: ("EURUSD",),
+        candidate_analyzer=lambda snapshot: SimpleNamespace(
+            signal=SimpleNamespace(value="COMPRA"), confirmed=True, score=90.0
+        ),
+        selected_result_handler=handler,
+    )
+
+    runtime._run_candidate_sweep()
+    assert calls == ["EURUSD"]
+    assert runtime._last_processed_candle_key is None
+
+    runtime._run_candidate_sweep()
+    assert calls == ["EURUSD", "EURUSD"]
+    assert runtime._last_processed_candle_key == ("EURUSD", "5m", candles[-1].timestamp.isoformat())
