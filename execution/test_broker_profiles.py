@@ -29,3 +29,12 @@ def test_supported_profiles_are_demo_only():
 def test_profile_rejects_empty_metadata():
     with pytest.raises(ValueError, match="server"):
         BrokerProfile(name="LHFX", platform="MT5", server=" ")
+
+
+def test_supported_demo_profiles_accepts_external_profiles():
+    extra = BrokerProfile(
+        name="Future Broker",
+        platform="Future Platform",
+        server="Future-Demo",
+    )
+    assert supported_demo_profiles((extra,))[-1] == extra
