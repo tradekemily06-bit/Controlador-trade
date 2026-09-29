@@ -66,7 +66,6 @@ class ICMarketsMT5DemoAdapter:
                     except Exception:
                         pass
 
-        @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
@@ -270,7 +269,6 @@ class ICMarketsMT5DemoAdapter:
             finally:
                 mt5.shutdown()
 
-        @staticmethod
     def _last_error(mt5: Any) -> str:
         try:
             return str(mt5.last_error())
