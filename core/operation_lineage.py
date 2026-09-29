@@ -166,11 +166,9 @@ class OperationLineageStore:
             raise ValueError("request_id sem linhagem persistida.")
         if not isinstance(external_close_id, str) or not external_close_id.strip():
             raise ValueError("external_close_id é obrigatório.")
-        if current.external_close_id is not None and current.external_close_id != external_close_id:
-            raise ValueError("external_close_id conflitante.")
         updated = OperationLineage(
             current.decision_id, current.cycle_id, current.request_id,
-            current.external_id, current.external_container_id, external_close_id,
+            current.external_id, current.external_container_id, current.external_close_id or external_close_id,
             tuple(dict.fromkeys((*current.external_close_ids, external_close_id))), current.external_result_ids, updated_at,
         )
         self.put(updated)
