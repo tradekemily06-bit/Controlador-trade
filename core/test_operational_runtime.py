@@ -136,3 +136,25 @@ def test_corrupt_persisted_safety_state_fails_closed(tmp_path):
     assert runtime.kill_switch.state.enabled is True
     assert "inválido" in (runtime.kill_switch.state.reason or "")
     assert runtime.gateway._kill_switch is runtime.kill_switch
+
+
+
+def test_daily_journal_claim_market_decision_is_atomic_across_instances(tmp_path):
+    from core.daily_operation_journal import DailyOperationJournal
+
+    first = DailyOperationJournal(tmp_path / "daily.json")
+    second = DailyOperationJournal(tmp_path / "daily.json")
+    timestamp = "2026-09-29T01:45:00+00:00"
+
+    assert first.claim_market_decision(
+        decision_id="d1",
+        symbol="EURUSD",
+        timeframe="5m",
+        market_timestamp=timestamp,
+    ) is True
+    assert second.claim_market_decision(
+        decision_id="d2",
+        symbol="EURUSD",
+        timeframe="5m",
+        market_timestamp=timestamp,
+    ) is False
