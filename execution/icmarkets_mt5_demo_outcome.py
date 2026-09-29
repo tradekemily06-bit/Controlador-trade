@@ -91,7 +91,7 @@ class ICMarketsMT5DemoOutcomeBridge:
         return self._mt5
 
     def close_and_observe(self, request_id: str, *, now: datetime | None = None) -> MT5CloseResult:
-        with self._close_lock, cross_process_file_lock(self.lineage.path):
+        with self._close_lock, cross_process_file_lock(self.lineage.path.with_name(self.lineage.path.name + '.close')):
             lineage = self.lineage.get(request_id)
             if lineage is None:
                 raise ValueError("request_id sem linhagem persistida.")
