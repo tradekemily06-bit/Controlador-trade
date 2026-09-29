@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
+from core.operation_lineage import OperationLineageStore
+from core.operation_context_store import OperationContextStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
@@ -38,6 +40,8 @@ class RecoveryCoordinator:
         lifecycle_store: ExecutionLifecycleStore,
         execution_ledger: ExecutionLedger,
         memory: object | None = None,
+        lineage_store: OperationLineageStore | None = None,
+        operation_context_store: OperationContextStore | None = None,
     ) -> None:
         if not isinstance(checkpoint_store, RuntimeCheckpointStore):
             raise ValueError("checkpoint_store inválido.")
@@ -50,6 +54,8 @@ class RecoveryCoordinator:
         self.execution_ledger = execution_ledger
         # Kept only as a backward-compatible constructor parameter for the historical P4 recorder; recovery is authoritative from checkpoint/lifecycle/ledger and does not depend on in-process memory.
         self.memory = memory
+        self.lineage_store = lineage_store
+        self.operation_context_store = operation_context_store
 
     def assess(self) -> RecoveryAssessment:
         try:
@@ -86,7 +92,27 @@ class RecoveryCoordinator:
             request_id for request_id in ledger_ids
             if request_id not in lifecycle_by_id and request_id in (ledger_reserved | ledger_unknown | ledger_accepted)
         )
-        if unknown or pending or inconsistent or orphan_ledger:
+        identity_inconsistent: list[str] = []
+        if self.lineage_store is not None:
+            for request_id in sorted(lifecycle_by_id):
+                lineage = self.lineage_store.get(request_id)
+                if lineage is None:
+                    identity_inconsistent.append(request_id)
+                    continue
+                if self.operation_context_store is not None:
+                    context = self.operation_context_store.get(request_id)
+                    if context is None or context.decision_id != lineage.decision_id or context.cycle_id != lineage.cycle_id:
+                        identity_inconsistent.append(request_id)
+            if checkpoint is not None and checkpoint.last_request_id:
+                lineage = self.lineage_store.get(checkpoint.last_request_id)
+                if lineage is None:
+                    identity_inconsistent.append(checkpoint.last_request_id)
+                elif checkpoint.last_decision_id not in (None, lineage.decision_id) or checkpoint.last_cycle_id not in (None, lineage.cycle_id):
+                    identity_inconsistent.append(checkpoint.last_request_id)
+        if identity_inconsistent:
+            identity_inconsistent = sorted(set(identity_inconsistent))
+
+        if unknown or pending or inconsistent or orphan_ledger or identity_inconsistent:
             details = []
             if unknown:
                 details.append("UNKNOWN requer reconciliação")
@@ -96,6 +122,8 @@ class RecoveryCoordinator:
                 details.append("Ledger/Lifecycle divergentes requerem reconciliação")
             if orphan_ledger:
                 details.append("estado do Ledger sem projeção de Lifecycle requer reconciliação")
+            if identity_inconsistent:
+                details.append("linhagem/contexto/checkpoint divergentes requerem reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
