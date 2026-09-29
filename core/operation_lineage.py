@@ -17,6 +17,7 @@ class OperationLineage:
     external_id: str | None = None
     external_container_id: str | None = None
     external_close_id: str | None = None
+    external_close_ids: tuple[str, ...] = ()
     external_result_ids: tuple[str, ...] = ()
     updated_at: datetime | None = None
 
@@ -29,6 +30,12 @@ class OperationLineage:
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 raise ValueError(f"{name} inválido.")
+        if not isinstance(self.external_close_ids, tuple) or any(not isinstance(value, str) or not value.strip() for value in self.external_close_ids):
+            raise ValueError("external_close_ids inválido.")
+        if len(set(self.external_close_ids)) != len(self.external_close_ids):
+            raise ValueError("external_close_ids não podem conter duplicados.")
+        if self.external_close_id is not None and self.external_close_id not in self.external_close_ids:
+            raise ValueError("external_close_id deve pertencer a external_close_ids.")
         if not isinstance(self.external_result_ids, tuple) or any(
             not isinstance(value, str) or not value.strip() for value in self.external_result_ids
         ):
@@ -70,6 +77,7 @@ class OperationLineageStore:
                     external_id=raw.get("external_id"),
                     external_container_id=raw.get("external_container_id"),
                     external_close_id=raw.get("external_close_id"),
+                    external_close_ids=tuple(str(value) for value in raw.get("external_close_ids", ([raw.get("external_close_id")] if raw.get("external_close_id") else []))),
                     external_result_ids=tuple(str(value) for value in raw_deals),
                     updated_at=datetime.fromisoformat(raw["updated_at"]) if raw.get("updated_at") else None,
                 )
@@ -90,6 +98,7 @@ class OperationLineageStore:
                 "external_id": record.external_id,
                 "external_container_id": record.external_container_id,
                 "external_close_id": record.external_close_id,
+                "external_close_ids": list(record.external_close_ids),
                 "external_result_ids": list(record.external_result_ids),
                 "updated_at": record.updated_at.isoformat() if record.updated_at else None,
             }
