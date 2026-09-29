@@ -2,6 +2,9 @@ from datetime import datetime, timezone
 
 from integration.ecosystem_service import EcosystemService
 from core.operational_runtime import build_operational_runtime
+from core.operation_lineage import OperationLineage
+from core.operation_context_store import OperationContextStore
+from core.decision_snapshot import DecisionSnapshot
 from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
 
 
@@ -73,14 +76,26 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "reason": "teste de segurança",
     }
 
-def test_terminal_operation_checkpoint_persists_across_runtime_rebuild(tmp_path):
+def test_terminal_operation_checkpoint_persists_identity_across_runtime_rebuild(tmp_path):
     runtime = build_operational_runtime(tmp_path)
-    assert runtime.checkpoint_operation("req-001") is True
+    now = datetime.now(timezone.utc)
+    runtime.lineage.put(OperationLineage("decision-001", "cycle-001", "req-001", updated_at=now))
+    runtime.operation_context.put("req-001", DecisionSnapshot(
+        signal="COMPRA", analysis_score=80, confirmed=True, quality_score=80,
+        quality_level="HIGH", actionable=True, decision="EXECUTAR",
+        decision_reason="test", market_context=None, market_direction=None,
+        market_score=None, operational_state_available=True, trades_today=0,
+        consecutive_losses=0, symbol="EURUSD", timeframe="5m",
+        decision_id="decision-001", cycle_id="cycle-001", request_id="req-001",
+    ))
+    assert runtime.checkpoint_operation("req-001", decision_id="decision-001", cycle_id="cycle-001") is True
 
     checkpoint = runtime.checkpoint_store.load()
     assert checkpoint is not None
     assert checkpoint.last_cycle == 1
     assert checkpoint.last_request_id == "req-001"
+    assert checkpoint.last_decision_id == "decision-001"
+    assert checkpoint.last_cycle_id == "cycle-001"
     assert checkpoint.session_id == runtime.session_id
 
     rebuilt = build_operational_runtime(tmp_path)
