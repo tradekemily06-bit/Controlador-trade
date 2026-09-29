@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
+from threading import RLock
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class OperationLineageStore:
             raise ValueError("path é obrigatório.")
         self.path = Path(path)
         self._records: dict[str, OperationLineage] = {}
+        self._lock = RLock()
         self._load()
 
     def _load(self) -> None:
@@ -110,7 +112,9 @@ class OperationLineageStore:
     def put(self, record: OperationLineage) -> None:
         if not isinstance(record, OperationLineage):
             raise ValueError("linhagem inválida.")
-        current = self._records.get(record.request_id)
+        with self._lock:
+            self._load()
+            current = self._records.get(record.request_id)
         if current is not None:
             if current.decision_id != record.decision_id or current.cycle_id != record.cycle_id:
                 raise ValueError("request_id não pode mudar de decisão/ciclo.")
@@ -209,9 +213,11 @@ class OperationLineageStore:
     def get(self, request_id: str) -> OperationLineage | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id é obrigatório.")
-        self._load()
-        return self._records.get(request_id)
+        with self._lock:
+            self._load()
+            return self._records.get(request_id)
 
     def records(self) -> tuple[OperationLineage, ...]:
-        self._load()
-        return tuple(self._records[key] for key in sorted(self._records))
+        with self._lock:
+            self._load()
+            return tuple(self._records[key] for key in sorted(self._records))
