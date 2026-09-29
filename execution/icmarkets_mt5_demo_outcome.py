@@ -10,6 +10,8 @@ from core.cross_process_file_lock import cross_process_file_lock
 from core.p49_outcome_reconciliation import ExternalOutcomeObservation
 
 
+from execution.mt5_runtime_lock import mt5_session_lock
+
 class MT5OutcomeBridgeError(RuntimeError):
     """Raised when MT5 cannot safely establish factual close/result evidence."""
 
@@ -92,160 +94,161 @@ class ICMarketsMT5DemoOutcomeBridge:
 
     def close_and_observe(self, request_id: str, *, now: datetime | None = None) -> MT5CloseResult:
         with self._close_lock, cross_process_file_lock(self.lineage.path.with_name(self.lineage.path.name + '.close')):
-            lineage = self.lineage.get(request_id)
-            if lineage is None:
-                raise ValueError("request_id sem linhagem persistida.")
-            event_time = now or datetime.now(timezone.utc)
-            if event_time.tzinfo is None or event_time.utcoffset() is None:
-                raise ValueError("now precisa ser timezone-aware.")
+        with mt5_session_lock():
+                lineage = self.lineage.get(request_id)
+                if lineage is None:
+                    raise ValueError("request_id sem linhagem persistida.")
+                event_time = now or datetime.now(timezone.utc)
+                if event_time.tzinfo is None or event_time.utcoffset() is None:
+                    raise ValueError("now precisa ser timezone-aware.")
 
-            mt5 = self._module()
-            if not mt5.initialize():
-                raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
+                mt5 = self._module()
+                if not mt5.initialize():
+                    raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
 
-            try:
-                self._require_demo(mt5)
-                external_container_id = lineage.external_container_id or self._resolve_external_container_id(mt5, lineage.external_id)
-                if not external_container_id:
-                    raise MT5OutcomeBridgeError(
-                        "não foi possível resolver external_container_id a partir do external_id; resultado permanece UNKNOWN."
-                    )
-                if lineage.external_container_id != external_container_id:
-                    lineage = self.lineage.attach_external_container_id(request_id, external_container_id, updated_at=event_time)
+                try:
+                    self._require_demo(mt5)
+                    external_container_id = lineage.external_container_id or self._resolve_external_container_id(mt5, lineage.external_id)
+                    if not external_container_id:
+                        raise MT5OutcomeBridgeError(
+                            "não foi possível resolver external_container_id a partir do external_id; resultado permanece UNKNOWN."
+                        )
+                    if lineage.external_container_id != external_container_id:
+                        lineage = self.lineage.attach_external_container_id(request_id, external_container_id, updated_at=event_time)
 
-                # Recover broker-side close evidence before considering another
-                # close request. This closes the crash window where MT5 accepted a
-                # close but the process died before external_close_id was persisted.
-                lineage = self._recover_external_close_history(mt5, lineage, event_time)
+                    # Recover broker-side close evidence before considering another
+                    # close request. This closes the crash window where MT5 accepted a
+                    # close but the process died before external_close_id was persisted.
+                    lineage = self._recover_external_close_history(mt5, lineage, event_time)
 
-                if lineage.external_close_id:
-                    position = self._get_single_position(mt5, external_container_id)
+                    if lineage.external_close_id:
+                        position = self._get_single_position(mt5, external_container_id)
+                        if position is None:
+                            evidence = self._observe_closed_position(mt5, lineage, event_time)
+                            if evidence is None:
+                                return MT5CloseResult(
+                                    request_id, external_container_id, lineage.external_close_id, False, None,
+                                    "fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+                                )
+                            return MT5CloseResult(
+                                request_id, external_container_id, lineage.external_close_id, True, evidence,
+                                "fechamento já registrado; resultado financeiro confirmado por reobservação.",
+                            )
+                        # A previous close was partial. A new explicit close request may
+                        # finish the remaining volume; every close identity is preserved.
+                    else:
+                        position = self._get_single_position(mt5, external_container_id)
                     if position is None:
                         evidence = self._observe_closed_position(mt5, lineage, event_time)
                         if evidence is None:
                             return MT5CloseResult(
                                 request_id, external_container_id, lineage.external_close_id, False, None,
-                                "fechamento já registrado; posição/deals finais ainda aguardam confirmação.",
+                                "posição já não está aberta, mas os deals de saída ainda não foram confirmados.",
                             )
                         return MT5CloseResult(
                             request_id, external_container_id, lineage.external_close_id, True, evidence,
-                            "fechamento já registrado; resultado financeiro confirmado por reobservação.",
+                            "posição já estava fechada; resultado financeiro confirmado por deals.",
                         )
-                    # A previous close was partial. A new explicit close request may
-                    # finish the remaining volume; every close identity is preserved.
-                else:
-                    position = self._get_single_position(mt5, external_container_id)
-                if position is None:
+
+                    if getattr(position, "magic", None) != self.magic:
+                        raise MT5OutcomeBridgeError(
+                            "posição não pertence ao magic do ControladorTrading DEMO; fechamento bloqueado."
+                        )
+
+                    symbol = getattr(position, "symbol", None)
+                    volume = getattr(position, "volume", None)
+                    position_type = getattr(position, "type", None)
+                    if not isinstance(symbol, str) or not symbol.strip():
+                        raise MT5OutcomeBridgeError("posição sem símbolo válido.")
+                    if not isinstance(volume, (int, float)) or volume <= 0:
+                        raise MT5OutcomeBridgeError("posição sem volume válido.")
+
+                    tick = mt5.symbol_info_tick(symbol)
+                    if tick is None:
+                        raise MT5OutcomeBridgeError(f"cotação indisponível para fechamento de {symbol}.")
+
+                    buy_type = getattr(mt5, "ORDER_TYPE_BUY", None)
+                    sell_type = getattr(mt5, "ORDER_TYPE_SELL", None)
+                    if position_type == buy_type:
+                        close_type = sell_type
+                        price = getattr(tick, "bid", None)
+                    elif position_type == sell_type:
+                        close_type = buy_type
+                        price = getattr(tick, "ask", None)
+                    else:
+                        raise MT5OutcomeBridgeError("tipo de posição MT5 não reconhecido.")
+
+                    if close_type is None or not isinstance(price, (int, float)) or price <= 0:
+                        raise MT5OutcomeBridgeError("lado/preço de fechamento inválido.")
+
+                    filling = getattr(mt5, "ORDER_FILLING_IOC", getattr(mt5, "ORDER_FILLING_RETURN", None))
+                    payload = {
+                        "action": mt5.TRADE_ACTION_DEAL,
+                        "symbol": symbol,
+                        "volume": float(volume),
+                        "type": close_type,
+                        "price": float(price),
+                        "deviation": self.deviation,
+                        "magic": self.magic,
+                        "comment": "ControladorTrading-DEMO-CLOSE",
+                        "position": int(external_container_id),
+                        "type_time": getattr(mt5, "ORDER_TIME_GTC", 0),
+                        "type_filling": filling,
+                    }
+
+                    check = mt5.order_check(payload)
+                    if check is None or getattr(check, "retcode", 0) != 0:
+                        raise MT5OutcomeBridgeError(f"order_check bloqueou o fechamento: {check}")
+
+                    result = mt5.order_send(payload)
+                    if result is None:
+                        raise MT5OutcomeBridgeError(
+                            f"order_send do fechamento sem confirmação: {self._last_error(mt5)}"
+                        )
+
+                    done_codes = {
+                        value for value in (
+                            getattr(mt5, "TRADE_RETCODE_DONE", None),
+                            getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None),
+                        ) if value is not None
+                    }
+                    if getattr(result, "retcode", None) not in done_codes:
+                        raise MT5OutcomeBridgeError(
+                            f"fechamento rejeitado pelo MT5: retcode={getattr(result, 'retcode', None)}"
+                        )
+
+                    external_close_id = getattr(result, "order", None) or getattr(result, "deal", None)
+                    if external_close_id is None:
+                        raise MT5OutcomeBridgeError(
+                            "fechamento aceito sem order/deal identificável; resultado permanece UNKNOWN."
+                        )
+                    lineage = self.lineage.attach_external_close_id(
+                        request_id, str(external_close_id), updated_at=event_time
+                    )
+
+                    remaining = self._get_single_position(mt5, external_container_id)
+                    if remaining is not None:
+                        return MT5CloseResult(
+                            request_id, external_container_id, str(external_close_id), False, None,
+                            "fechamento parcial/posição ainda aberta; resultado financeiro não foi fechado.",
+                        )
+
                     evidence = self._observe_closed_position(mt5, lineage, event_time)
                     if evidence is None:
                         return MT5CloseResult(
-                            request_id, external_container_id, lineage.external_close_id, False, None,
-                            "posição já não está aberta, mas os deals de saída ainda não foram confirmados.",
+                            request_id, external_container_id, str(external_close_id), True, None,
+                            "posição fechada, mas deals de saída ainda não foram confirmados; resultado permanece UNKNOWN.",
                         )
+
                     return MT5CloseResult(
-                        request_id, external_container_id, lineage.external_close_id, True, evidence,
-                        "posição já estava fechada; resultado financeiro confirmado por deals.",
+                        request_id, external_container_id, str(external_close_id), True, evidence,
+                        "posição fechada e resultado financeiro confirmado por deals MT5.",
                     )
-
-                if getattr(position, "magic", None) != self.magic:
-                    raise MT5OutcomeBridgeError(
-                        "posição não pertence ao magic do ControladorTrading DEMO; fechamento bloqueado."
-                    )
-
-                symbol = getattr(position, "symbol", None)
-                volume = getattr(position, "volume", None)
-                position_type = getattr(position, "type", None)
-                if not isinstance(symbol, str) or not symbol.strip():
-                    raise MT5OutcomeBridgeError("posição sem símbolo válido.")
-                if not isinstance(volume, (int, float)) or volume <= 0:
-                    raise MT5OutcomeBridgeError("posição sem volume válido.")
-
-                tick = mt5.symbol_info_tick(symbol)
-                if tick is None:
-                    raise MT5OutcomeBridgeError(f"cotação indisponível para fechamento de {symbol}.")
-
-                buy_type = getattr(mt5, "ORDER_TYPE_BUY", None)
-                sell_type = getattr(mt5, "ORDER_TYPE_SELL", None)
-                if position_type == buy_type:
-                    close_type = sell_type
-                    price = getattr(tick, "bid", None)
-                elif position_type == sell_type:
-                    close_type = buy_type
-                    price = getattr(tick, "ask", None)
-                else:
-                    raise MT5OutcomeBridgeError("tipo de posição MT5 não reconhecido.")
-
-                if close_type is None or not isinstance(price, (int, float)) or price <= 0:
-                    raise MT5OutcomeBridgeError("lado/preço de fechamento inválido.")
-
-                filling = getattr(mt5, "ORDER_FILLING_IOC", getattr(mt5, "ORDER_FILLING_RETURN", None))
-                payload = {
-                    "action": mt5.TRADE_ACTION_DEAL,
-                    "symbol": symbol,
-                    "volume": float(volume),
-                    "type": close_type,
-                    "price": float(price),
-                    "deviation": self.deviation,
-                    "magic": self.magic,
-                    "comment": "ControladorTrading-DEMO-CLOSE",
-                    "position": int(external_container_id),
-                    "type_time": getattr(mt5, "ORDER_TIME_GTC", 0),
-                    "type_filling": filling,
-                }
-
-                check = mt5.order_check(payload)
-                if check is None or getattr(check, "retcode", 0) != 0:
-                    raise MT5OutcomeBridgeError(f"order_check bloqueou o fechamento: {check}")
-
-                result = mt5.order_send(payload)
-                if result is None:
-                    raise MT5OutcomeBridgeError(
-                        f"order_send do fechamento sem confirmação: {self._last_error(mt5)}"
-                    )
-
-                done_codes = {
-                    value for value in (
-                        getattr(mt5, "TRADE_RETCODE_DONE", None),
-                        getattr(mt5, "TRADE_RETCODE_DONE_PARTIAL", None),
-                    ) if value is not None
-                }
-                if getattr(result, "retcode", None) not in done_codes:
-                    raise MT5OutcomeBridgeError(
-                        f"fechamento rejeitado pelo MT5: retcode={getattr(result, 'retcode', None)}"
-                    )
-
-                external_close_id = getattr(result, "order", None) or getattr(result, "deal", None)
-                if external_close_id is None:
-                    raise MT5OutcomeBridgeError(
-                        "fechamento aceito sem order/deal identificável; resultado permanece UNKNOWN."
-                    )
-                lineage = self.lineage.attach_external_close_id(
-                    request_id, str(external_close_id), updated_at=event_time
-                )
-
-                remaining = self._get_single_position(mt5, external_container_id)
-                if remaining is not None:
-                    return MT5CloseResult(
-                        request_id, external_container_id, str(external_close_id), False, None,
-                        "fechamento parcial/posição ainda aberta; resultado financeiro não foi fechado.",
-                    )
-
-                evidence = self._observe_closed_position(mt5, lineage, event_time)
-                if evidence is None:
-                    return MT5CloseResult(
-                        request_id, external_container_id, str(external_close_id), True, None,
-                        "posição fechada, mas deals de saída ainda não foram confirmados; resultado permanece UNKNOWN.",
-                    )
-
-                return MT5CloseResult(
-                    request_id, external_container_id, str(external_close_id), True, evidence,
-                    "posição fechada e resultado financeiro confirmado por deals MT5.",
-                )
-            finally:
-                try:
-                    mt5.shutdown()
-                except Exception:
-                    pass
+                finally:
+                    try:
+                        mt5.shutdown()
+                    except Exception:
+                        pass
 
     def observe_closed_position(self, request_id: str, *, now: datetime | None = None) -> MT5OutcomeEvidence | None:
         lineage = self.lineage.get(request_id)
@@ -254,22 +257,23 @@ class ICMarketsMT5DemoOutcomeBridge:
         event_time = now or datetime.now(timezone.utc)
         mt5 = self._module()
         if not mt5.initialize():
-            raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
-        try:
-            self._require_demo(mt5)
-            if not lineage.external_container_id:
-                resolved = self._resolve_external_container_id(mt5, lineage.external_id)
-                if not resolved:
-                    raise ValueError("external_container_id ainda não foi resolvido.")
-                lineage = self.lineage.attach_external_container_id(request_id, resolved, updated_at=event_time)
-            if self._get_single_position(mt5, lineage.external_container_id) is not None:
-                return None
-            return self._observe_closed_position(mt5, lineage, event_time)
-        finally:
+        with mt5_session_lock():
+                raise MT5OutcomeBridgeError(f"MT5 indisponível: {self._last_error(mt5)}")
             try:
-                mt5.shutdown()
-            except Exception:
-                pass
+                self._require_demo(mt5)
+                if not lineage.external_container_id:
+                    resolved = self._resolve_external_container_id(mt5, lineage.external_id)
+                    if not resolved:
+                        raise ValueError("external_container_id ainda não foi resolvido.")
+                    lineage = self.lineage.attach_external_container_id(request_id, resolved, updated_at=event_time)
+                if self._get_single_position(mt5, lineage.external_container_id) is not None:
+                    return None
+                return self._observe_closed_position(mt5, lineage, event_time)
+            finally:
+                try:
+                    mt5.shutdown()
+                except Exception:
+                    pass
 
     def _recover_external_close_history(
         self,
