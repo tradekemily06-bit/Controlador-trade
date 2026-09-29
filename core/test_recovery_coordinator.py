@@ -283,3 +283,23 @@ def test_orphan_terminal_ledger_state_requires_reconciliation(tmp_path, status):
 
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
     assert result.can_resume is False
+
+
+def test_checkpoint_without_persisted_request_state_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(
+        RuntimeCheckpoint(
+            session_id="s1",
+            last_cycle=1,
+            last_request_id="missing-request",
+            last_decision_id="d1",
+            last_cycle_id="c1",
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "checkpoint" in result.message
