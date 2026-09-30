@@ -219,7 +219,17 @@ class TradingRuntime:
                         automation_lifecycle,
                         AutomationLifecycleState.BLOCKED,
                     )
-                    plan = None
+                    cycles.append(RuntimeCycle(
+                        orchestration=orchestration,
+                        plan=None,
+                        execution=None,
+                        automation_lifecycle=automation_lifecycle,
+                    ))
+                    stopped = True
+                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
+                    break
+
+            plan = None
             execution_result = None
             request_id = None
             if orchestration.executable:
