@@ -11,6 +11,12 @@ from core.senior_context_cycle import SeniorContextCycle
 from core.market_context import MarketContextResult
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
+from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecycleBoundary, AutomationLifecycleState
+from core.p47_automation_closure import AutomationClosureBoundary
+from core.p48_automation_outcome import AutomationOutcomeBoundary
+from core.p49_outcome_reconciliation import OutcomeReconciliationBoundary
+from core.p50_automation_result_snapshot import AutomationResultSnapshot, AutomationResultSnapshotBoundary
+from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,53 @@ class TradingRuntime:
             raise ValueError("coordinator é obrigatório.")
         self.orchestrator = orchestrator
         self.coordinator = coordinator
+
+    @staticmethod
+    def reconcile_external_cycle(
+        *,
+        cycle_id: str,
+        external_id: str,
+        query_port: ExternalOrderQueryPort,
+        observed_at: datetime | None = None,
+    ) -> AutomationResultSnapshot | None:
+        """Close factual automation state from an external order observation.
+
+        Broker order status is never converted into WIN/LOSS. Financial outcome
+        remains UNKNOWN until an explicit financial observation exists.
+        """
+        if not isinstance(cycle_id, str) or not cycle_id.strip():
+            raise ValueError("cycle_id é obrigatório")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id é obrigatório")
+        if not callable(getattr(query_port, "query_order", None)):
+            raise ValueError("query_port inválido")
+        observed_at = observed_at or datetime.now(timezone.utc)
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            raise ValueError("observed_at deve ser timezone-aware")
+
+        observation = query_port.query_order(external_id)
+        reconciled = ExternalOrderReconciliationBoundary().reconcile(external_id, observation)
+        if reconciled.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
+            return None
+
+        terminal = (
+            AutomationLifecycleState.COMPLETED
+            if reconciled.status is ExternalOrderStatus.EXECUTED
+            else AutomationLifecycleState.BLOCKED
+        )
+        lifecycle = AutomationLifecycle(cycle_id, AutomationLifecycleState.DISPATCHED)
+        lifecycle = AutomationLifecycleBoundary().transition(lifecycle, terminal)
+        closure = __import__("core.p47_automation_closure", fromlist=["AutomationClosureBoundary"]).AutomationClosureBoundary().close(
+            lifecycle, closed_at=observed_at
+        )
+        outcome = AutomationOutcomeBoundary().record(
+            closure,
+            observed_at=observed_at,
+            outcome="UNKNOWN",
+            financial_result=None,
+        )
+        reconciliation = OutcomeReconciliationBoundary().reconcile(outcome, None)
+        return AutomationResultSnapshotBoundary().compose(closure, outcome, reconciliation)
 
     def run(
         self,
