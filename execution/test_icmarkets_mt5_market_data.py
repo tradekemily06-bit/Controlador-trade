@@ -114,3 +114,18 @@ def test_invalid_request_type_is_rejected():
 
     with pytest.raises(TypeError, match="BrokerMarketDataRequest"):
         adapter.fetch_market_data("BTCUSD")
+
+
+def test_adapter_implements_generic_market_data_feed_contract(rates):
+    from data.feed import MarketDataFeed, MarketDataRequest
+
+    mt5 = FakeMT5(rates=rates)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    feed = MarketDataFeed(adapter, source="IC Markets MT5 DEMO")
+
+    result = feed.fetch(MarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2))
+
+    assert len(result.candles) == 2
+    assert result.source == "IC Markets MT5 DEMO"
+    assert result.candles[-1].close == 104.0
+    assert mt5.shutdown_called is True
