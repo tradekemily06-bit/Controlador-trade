@@ -35,6 +35,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         for marker in (
             "Controlador Trading",
             "CONTROLADOR TRADING • ECOSSISTEMA",
+            "CONTROLADOR TRADING • ECOSSISTEMA",
             'id="painel"',
             'id="analise"',
             'id="laboratorio"',
