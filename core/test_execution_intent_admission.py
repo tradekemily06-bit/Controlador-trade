@@ -113,3 +113,24 @@ def test_kill_switch_blocks_before_executor():
     result = ExecutionIntentAdmission(gateway).admit(make_intent(), senior_context=make_senior_context())
     assert result.status is GatewayStatus.BLOCKED
     assert executor.calls == 0
+
+
+def test_cycle_lineage_mismatch_fails_closed_before_gateway():
+    executor = RecordingExecutor()
+    gateway = ExecutionGateway(executor, KillSwitch())
+    mismatched = ExecutionIntent(
+        request_id="req-cycle-mismatch",
+        symbol="EURUSD",
+        signal=Signal.COMPRA,
+        amount=10.0,
+        duration_seconds=60,
+        mode=ExecutionMode.DEMO,
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        cycle_id="different-cycle",
+    )
+    with pytest.raises(ValueError, match="cycle_id"):
+        ExecutionIntentAdmission(gateway).admit(
+            mismatched,
+            senior_context=make_senior_context(),
+        )
+    assert executor.calls == 0
