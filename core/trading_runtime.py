@@ -154,6 +154,68 @@ class TradingRuntime:
         stop_reason = None
 
         for index in range(1, max_cycles + 1):
+            automation_lifecycle = None
+            automation_audit = None
+            automation_request = None
+
+            if automation_policy is not None:
+                now = datetime.now(timezone.utc)
+                cycle = AutomationCycle(
+                    cycle_id=request_id_factory(index),
+                    requested_at=now,
+                )
+                automation_decision = ControlledAutomationGate().evaluate(
+                    automation_policy,
+                    cycle,
+                    last_cycle_at=automation_last_cycle_at,
+                )
+                cycle_result = AutomationCycleOrchestrator().request_cycle(
+                    automation_decision,
+                    requested_at=now,
+                )
+                automation_request = cycle_result.request
+                admission = AutomationAdmission().admit(
+                    automation_request,
+                    readiness=automation_readiness,
+                    risk_budget=automation_risk_budget,
+                ) if cycle_result.authorized else AutomationAdmissionResult(
+                    False, None, (cycle_result.reason,)
+                )
+                automation_lifecycle = AutomationLifecycle(
+                    cycle.cycle_id,
+                    AutomationLifecycleState.CREATED,
+                )
+                if not admission.admitted:
+                    automation_lifecycle = AutomationLifecycleBoundary().transition(
+                        automation_lifecycle,
+                        AutomationLifecycleState.BLOCKED,
+                    )
+                    orchestration = self.orchestrator.evaluate(
+                        request,
+                        operational_state=operational_state,
+                        market_context=market_context,
+                        senior_context=senior_context,
+                        confirmed=confirmed,
+                        filters_ok=filters_ok,
+                        daily_result=daily_result,
+                        operations_count=operations_count,
+                        consecutive_losses=consecutive_losses,
+                    )
+                    cycles.append(RuntimeCycle(
+                        orchestration=orchestration,
+                        plan=None,
+                        execution=None,
+                        automation_lifecycle=automation_lifecycle,
+                    ))
+                    stopped = True
+                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
+                    break
+                automation_lifecycle = AutomationLifecycleBoundary().transition(
+                    automation_lifecycle,
+                    AutomationLifecycleState.ADMITTED,
+                )
+                automation_last_cycle_at = now
+
             orchestration = self.orchestrator.evaluate(
                 request,
                 operational_state=operational_state,
@@ -188,12 +250,50 @@ class TradingRuntime:
                     amount=amount,
                     duration_seconds=duration_seconds,
                 )
+                if automation_policy is not None:
+                    intent = self.coordinator.build_intent(
+                        plan,
+                        orchestration=orchestration,
+                    )
+                    handoff = AutomationIntentHandoffBoundary().handoff(
+                        AutomationAdmissionResult(
+                            True,
+                            automation_request,
+                            (),
+                        ),
+                        intent=intent,
+                    )
+                    if not handoff.handed_off:
+                        raise RuntimeError("handoff de automação controlada recusado.")
+                    automation_audit = AutomationAuditBoundary().record(handoff)
+                    automation_lifecycle = AutomationLifecycleBoundary().transition(
+                        automation_lifecycle,
+                        AutomationLifecycleState.DISPATCHED,
+                    )
                 execution_result = self.coordinator.execute_plan(
                     plan,
                     orchestration=orchestration,
                     entry_conditions=entry_conditions,
                 )
-            cycles.append(RuntimeCycle(orchestration=orchestration, plan=plan, execution=execution_result))
+                if automation_policy is not None:
+                    automation_lifecycle = AutomationLifecycleBoundary().transition(
+                        automation_lifecycle,
+                        AutomationLifecycleState.COMPLETED
+                        if execution_result.accepted
+                        else AutomationLifecycleState.BLOCKED,
+                    )
+            elif automation_policy is not None:
+                automation_lifecycle = AutomationLifecycleBoundary().transition(
+                    automation_lifecycle,
+                    AutomationLifecycleState.BLOCKED,
+                )
+            cycles.append(RuntimeCycle(
+                orchestration=orchestration,
+                plan=plan,
+                execution=execution_result,
+                automation_lifecycle=automation_lifecycle,
+                automation_audit=automation_audit,
+            ))
 
             if checkpoint_store is not None:
                 checkpoint_store.save(
