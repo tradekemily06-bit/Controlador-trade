@@ -8,6 +8,7 @@ from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.senior_context_cycle import SeniorContextCycle
+from core.market_context import MarketContextResult
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
 
@@ -50,7 +51,7 @@ class TradingRuntime:
         request: MarketDataRequest,
         *,
         operational_state,
-        market_context,
+        market_context: MarketContextResult | None = None,
         senior_context: SeniorContextCycle | None = None,
         amount: float,
         duration_seconds: int,
