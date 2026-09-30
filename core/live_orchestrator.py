@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Callable
 
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine, DecisionResult, FinalDecision
@@ -46,12 +47,14 @@ class TradingOrchestrator:
         decision_engine: DecisionEngine,
         quality_evaluator,
         market_context_engine: MarketContextEngine | None = None,
+        senior_context_builder: Callable[[list, OperationalState | None], SeniorContextCycle | None] | None = None,
     ) -> None:
         self.feed = feed
         self.pipeline = pipeline
         self.decision_engine = decision_engine
         self.quality_evaluator = quality_evaluator
         self.market_context_engine = market_context_engine or MarketContextEngine()
+        self.senior_context_builder = senior_context_builder
 
     def evaluate(
         self,
@@ -80,6 +83,8 @@ class TradingOrchestrator:
             timeframe=request.timeframe,
         )
         quality = self.quality_evaluator.evaluate(analysis)
+        if senior_context is None and self.senior_context_builder is not None:
+            senior_context = self.senior_context_builder(list(market_data.candles), operational_state)
         decision = self.decision_engine.evaluate(
             analysis=analysis,
             market_context=market_context,
