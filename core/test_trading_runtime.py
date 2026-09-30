@@ -10,6 +10,7 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 
 
 @dataclass
@@ -124,3 +125,46 @@ def test_checkpoint_requires_session_id(tmp_path) -> None:
             request(), operational_state=None, market_context=None, amount=1, duration_seconds=60,
             checkpoint_store=RuntimeCheckpointStore(tmp_path / "checkpoint.json"),
         )
+
+
+class FakeOrderQuery:
+    def __init__(self, status):
+        self.status = status
+
+    def query_order(self, external_id):
+        return ExternalOrderObservation(external_id, self.status, "observed")
+
+
+def test_runtime_reconciles_executed_order_without_inventing_financial_outcome():
+    snapshot = TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000001",
+        external_id="123",
+        query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+    )
+    assert snapshot is not None
+    assert snapshot.terminal_state == "COMPLETED"
+    assert snapshot.outcome == "UNKNOWN"
+    assert snapshot.financial_result is None
+    assert snapshot.reconciliation_state.value == "UNVERIFIED"
+
+
+def test_runtime_reconciles_not_executed_order_as_blocked_without_financial_inference():
+    snapshot = TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000002",
+        external_id="456",
+        query_port=FakeOrderQuery(ExternalOrderStatus.NOT_EXECUTED),
+    )
+    assert snapshot is not None
+    assert snapshot.terminal_state == "BLOCKED"
+    assert snapshot.outcome == "UNKNOWN"
+    assert snapshot.financial_result is None
+    assert snapshot.reconciliation_state.value == "UNVERIFIED"
+
+
+def test_runtime_keeps_pending_external_order_open():
+    snapshot = TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000003",
+        external_id="789",
+        query_port=FakeOrderQuery(ExternalOrderStatus.PENDING),
+    )
+    assert snapshot is None
