@@ -60,6 +60,24 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
         return demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode
 
+    def fetch(self, request) -> tuple[Candle, ...]:
+        """Adapt the generic core feed request to the broker-aware contract.
+
+        This keeps one MT5 data source while allowing ``MarketDataFeed`` and
+        ``TradingOrchestrator`` to consume it without introducing another
+        market-data interface.
+        """
+        from data.feed import MarketDataRequest
+
+        if not isinstance(request, MarketDataRequest):
+            raise TypeError("request deve ser MarketDataRequest")
+        broker_request = BrokerMarketDataRequest(
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            limit=request.limit,
+        )
+        return self.fetch_market_data(broker_request)
+
     def fetch_market_data(self, request: BrokerMarketDataRequest) -> tuple[Candle, ...]:
         if not isinstance(request, BrokerMarketDataRequest):
             raise TypeError("request deve ser BrokerMarketDataRequest")
