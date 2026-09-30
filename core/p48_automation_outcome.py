@@ -31,6 +31,8 @@ class AutomationOutcomeBoundary:
             raise ValueError("invalid automation closure")
         if not isinstance(observed_at, datetime) or observed_at.tzinfo is None or observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
+        if observed_at < closure.closed_at:
+            raise ValueError("observed_at cannot precede automation closure")
         if not isinstance(closure.cycle_id, str) or not closure.cycle_id.strip():
             raise ValueError("cycle_id is required")
         if outcome not in {"WIN", "LOSS", "DRAW", "UNKNOWN"}:
