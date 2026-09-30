@@ -85,6 +85,7 @@ class ExecutionCoordinator:
             duration_seconds=plan.request.duration_seconds,
             mode=plan.request.mode,
             created_at=orchestration.timestamp,
+            cycle_id=orchestration.senior_context.cycle_id,
         )
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
