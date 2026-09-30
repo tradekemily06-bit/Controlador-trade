@@ -43,3 +43,18 @@ def test_preferences_cannot_enable_real_or_autonomy():
         pass
     else:
         raise AssertionError("autonomy must remain outside preferences")
+
+
+def test_mt5_senior_context_uses_only_observed_risk_domains():
+    from core.operational_state import OperationalState
+    from data.models import Candle
+    from datetime import datetime, timezone
+
+    service = ConfiguredEcosystemService()
+    candles = (Candle(datetime(2026, 1, 1, tzinfo=timezone.utc), 100, 101, 99, 100, 10),)
+    state = OperationalState(balance=1000, equity=1005, open_positions=1, net_position=0.01, exposure=100, trades_today=2, consecutive_losses=0)
+    context = service._build_mt5_senior_context(candles, state)
+    assert context.quality.value == "COMPLETE"
+    assert context.execution_authorized is False
+    assert context.risk_assessment.execution_authorized is False
+    assert {item.domain.value for item in context.risk_assessment.observations} == {"CAPITAL", "POSITION", "DATA_QUALITY"}
