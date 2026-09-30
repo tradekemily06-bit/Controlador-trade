@@ -17,6 +17,8 @@ from core.p48_automation_outcome import AutomationOutcomeBoundary
 from core.p49_outcome_reconciliation import OutcomeReconciliationBoundary
 from core.p50_automation_result_snapshot import AutomationResultSnapshot, AutomationResultSnapshotBoundary
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
+from core.market_data_runtime_state import MarketDataRuntimeState
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
 
 
 @dataclass(frozen=True)
@@ -44,13 +46,14 @@ class RuntimeResult:
 class TradingRuntime:
     """Executa ciclos controlados do ecossistema sem conhecer corretoras."""
 
-    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator) -> None:
+    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator, market_data_state: MarketDataRuntimeState | None = None) -> None:
         if orchestrator is None:
             raise ValueError("orchestrator é obrigatório.")
         if coordinator is None:
             raise ValueError("coordinator é obrigatório.")
         self.orchestrator = orchestrator
         self.coordinator = coordinator
+        self.market_data_state = market_data_state
 
     @staticmethod
     def reconcile_external_cycle(
@@ -142,6 +145,18 @@ class TradingRuntime:
                 operations_count=operations_count,
                 consecutive_losses=consecutive_losses,
             )
+            if self.market_data_state is not None:
+                self.market_data_state.update(
+                    BrokerMarketDataSnapshot(
+                        symbol=orchestration.market_data.request.symbol,
+                        timeframe=orchestration.market_data.request.timeframe,
+                        candles=tuple(orchestration.market_data.candles),
+                        source=orchestration.market_data.source,
+                        received_at=orchestration.timestamp,
+                    ),
+                    now=orchestration.timestamp,
+                )
+
             plan = None
             execution_result = None
             request_id = None
