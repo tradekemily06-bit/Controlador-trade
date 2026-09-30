@@ -141,6 +141,34 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/runtime/cycle" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.run_mt5_cycle(
+                symbol=str(data.get("symbol", "")),
+                timeframe=str(data.get("timeframe", "5m")),
+                limit=int(data.get("limit", 100)),
+                amount=float(data.get("amount", 0.01)),
+                duration_seconds=int(data.get("duration_seconds", 60)),
+                confirmed=bool(data.get("confirmed", False)),
+                filters_ok=bool(data.get("filters_ok", True)),
+                entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
+            )
+            cycle = result.cycles[-1]
+            execution = cycle.execution
+            payload = {
+                "stopped": result.stopped,
+                "stop_reason": result.stop_reason,
+                "decision": cycle.orchestration.decision.decision,
+                "signal": cycle.orchestration.analysis.signal.value,
+                "score": cycle.orchestration.analysis.score,
+                "reason": cycle.orchestration.decision.reason,
+                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
+                "market_data_source": cycle.orchestration.market_data.source,
+                "candles": len(cycle.orchestration.market_data.candles),
+                "request_id": cycle.plan.request_id if cycle.plan else None,
+                "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
+            }
+            return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
