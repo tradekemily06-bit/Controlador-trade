@@ -40,10 +40,12 @@ class FakeMT5:
         self.calls.append(("history_deals_get", args, kwargs))
         if kwargs.get("ticket") == 123:
             return (SimpleNamespace(ticket=123, profit=4.0),)
+        if kwargs.get("ticket") == 456:
+            return ()
         return (
-            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
-            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
         )
 
     def history_orders_get(self, *args, **kwargs):
