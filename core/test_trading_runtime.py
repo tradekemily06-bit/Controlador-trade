@@ -260,3 +260,71 @@ def test_runtime_integrates_controlled_automation_gates_without_second_executor(
     assert cycle.automation_lifecycle is not None
     assert cycle.automation_lifecycle.state is AutomationLifecycleState.BLOCKED
     assert cycle.execution is None
+
+
+def test_runtime_factory_inputs_are_resolved_before_automation_admission():
+    from core.execution_intent import ExecutionIntent
+    from core.models import Signal
+    from execution.ports import ExecutionMode
+    from core.p46_automation_lifecycle import AutomationLifecycleState
+
+    class ExecutableOrchestrator(FakeOrchestrator):
+        def evaluate(self, request, **kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                executable=True,
+                senior_context=None,
+                timestamp=datetime.now(timezone.utc),
+                market_data=SimpleNamespace(candles=(), source="test"),
+            )
+
+    class Coordinator(FakeCoordinator):
+        def build_plan(self, orchestration, **kwargs):
+            return SimpleNamespace(
+                request_id=kwargs["request_id"],
+                request=SimpleNamespace(
+                    symbol="TEST",
+                    amount=0.01,
+                    duration_seconds=60,
+                    signal=Signal.COMPRA,
+                    mode=ExecutionMode.DEMO,
+                ),
+            )
+
+        def build_intent(self, plan, *, orchestration):
+            return ExecutionIntent(
+                request_id=plan.request_id,
+                symbol="TEST",
+                signal=Signal.COMPRA,
+                amount=0.01,
+                duration_seconds=60,
+                mode=ExecutionMode.DEMO,
+                created_at=datetime.now(timezone.utc),
+                cycle_id="runtime-000001",
+            )
+
+        def execute_plan(self, plan, **kwargs):
+            return GatewayResult(GatewayStatus.ACCEPTED, "ok")
+
+    calls = []
+    result = TradingRuntime(
+        orchestrator=ExecutableOrchestrator(executable=True),
+        coordinator=Coordinator(),
+    ).run(
+        request(),
+        operational_state=None,
+        amount=0.01,
+        duration_seconds=60,
+        automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
+        automation_readiness_factory=lambda intent, orchestration: (
+            calls.append(("readiness", intent.request_id)) or DemoReadinessReport(True, ())
+        ),
+        automation_risk_budget_factory=lambda state, intent, orchestration: (
+            calls.append(("risk", intent.request_id)) or RiskBudgetAssessment(
+                BudgetDecision.APPROVED, 0.0, 1, "approved"
+            )
+        ),
+    )
+    assert calls == [("readiness", "runtime-000001"), ("risk", "runtime-000001")]
+    assert result.cycles[0].automation_lifecycle.state is AutomationLifecycleState.DISPATCHED
+    assert result.cycles[0].execution.accepted is True
