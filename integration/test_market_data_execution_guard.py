@@ -38,14 +38,14 @@ def _state(*, health: MarketDataHealth, symbol: str = "EURUSD") -> MarketDataRun
 
 def test_guard_blocks_when_no_market_snapshot_exists():
     state = MarketDataRuntimeState(integrity=object())
-    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch(), market_data=state))
     result = guard.execute("missing-data", _request())
     assert result.status is GatewayStatus.BLOCKED
 
 
 def test_guard_blocks_unhealthy_market_data_before_executor():
     state = _state(health=MarketDataHealth.STALE)
-    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch(), market_data=state))
     result = guard.execute("stale-data", _request())
     assert result.status is GatewayStatus.BLOCKED
     assert "HEALTHY" in result.message
