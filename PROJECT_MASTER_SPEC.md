@@ -524,9 +524,10 @@ Se houver conflito, investigar e corrigir o documento em vez de mascarar a diver
 - Repositório: `tradekemily06-bit/Controlador-trade`
 - Branch principal: `main`
 - Proteção da `main`: ativa.
-- P23–P53: confirmados como sequência atual do roadmap.
-- P53: último marco confirmado.
-- P54+: ainda não devem ser inventados.
+- P23–P149: há artefatos, testes, planos/addenda e histórico de commits correspondentes no repositório; o estado de cada marco deve ser distinguido entre implementado no `main`, existente em branch/PR e apenas documentado.
+- P54–P79: extensões posteriores possuem addenda/planos versionados no `main`.
+- P128–P149: há implementação e histórico de commits posteriores no `main`, incluindo as integrações de aprendizado, análise sênior, risco operacional, notificações, onboarding, compilação CI e proteção de publicação interna.
+- P150+: não são assumidos nem inventados sem evidência versionada.
 - Execução REAL: bloqueada na arquitetura atual.
 - Diretriz central: segurança, auditabilidade, separação de responsabilidades, aprendizado controlado e arquitetura broker-agnostic.
 
