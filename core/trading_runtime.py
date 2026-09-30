@@ -8,6 +8,7 @@ from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
 from core.live_orchestrator import OrchestrationResult, TradingOrchestrator
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.senior_context_cycle import SeniorContextCycle
+from core.execution_intent import ExecutionIntent
 from core.market_context import MarketContextResult
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
@@ -132,8 +133,8 @@ class TradingRuntime:
         automation_last_cycle_at: datetime | None = None,
         automation_readiness: DemoReadinessReport | None = None,
         automation_risk_budget: RiskBudgetAssessment | None = None,
-        automation_readiness_factory: Callable[[ExecutionPlan, OrchestrationResult], DemoReadinessReport] | None = None,
-        automation_risk_budget_factory: Callable[[object, ExecutionPlan, OrchestrationResult], RiskBudgetAssessment] | None = None,
+        automation_readiness_factory: Callable[[ExecutionIntent, OrchestrationResult], DemoReadinessReport] | None = None,
+        automation_risk_budget_factory: Callable[[object, ExecutionIntent, OrchestrationResult], RiskBudgetAssessment] | None = None,
     ) -> RuntimeResult:
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
@@ -217,12 +218,12 @@ class TradingRuntime:
 
                 intent = self.coordinator.build_intent(plan, orchestration=orchestration)
                 effective_readiness = (
-                    automation_readiness_factory(plan, orchestration)
+                    automation_readiness_factory(intent, orchestration)
                     if automation_readiness_factory is not None
                     else automation_readiness
                 )
                 effective_risk_budget = (
-                    automation_risk_budget_factory(operational_state, plan, orchestration)
+                    automation_risk_budget_factory(operational_state, intent, orchestration)
                     if automation_risk_budget_factory is not None
                     else automation_risk_budget
                 )
