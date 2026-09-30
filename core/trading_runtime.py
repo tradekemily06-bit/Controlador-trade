@@ -148,8 +148,8 @@ class TradingRuntime:
             if self.market_data_state is not None:
                 self.market_data_state.update(
                     BrokerMarketDataSnapshot(
-                        symbol=orchestration.market_data.request.symbol,
-                        timeframe=orchestration.market_data.request.timeframe,
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
                         candles=tuple(orchestration.market_data.candles),
                         source=orchestration.market_data.source,
                         received_at=orchestration.timestamp,
