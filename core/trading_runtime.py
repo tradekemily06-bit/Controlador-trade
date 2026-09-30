@@ -11,6 +11,11 @@ from core.senior_context_cycle import SeniorContextCycle
 from core.market_context import MarketContextResult
 from execution.gateway import GatewayResult
 from data.feed import MarketDataRequest
+from core.p41_controlled_automation import AutomationCycle, AutomationPolicy, ControlledAutomationGate
+from core.p42_automation_cycle import AutomationCycleOrchestrator, AutomationCycleRequest
+from core.p43_automation_admission import AutomationAdmission, AutomationAdmissionResult
+from core.p44_automation_intent_handoff import AutomationIntentHandoffBoundary
+from core.p45_automation_audit import AutomationAuditBoundary, AutomationAuditRecord
 from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecycleBoundary, AutomationLifecycleState
 from core.p47_automation_closure import AutomationClosureBoundary
 from core.p48_automation_outcome import AutomationOutcomeBoundary
@@ -18,6 +23,8 @@ from core.p49_outcome_reconciliation import OutcomeReconciliationBoundary
 from core.p50_automation_result_snapshot import AutomationResultSnapshot, AutomationResultSnapshotBoundary
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.market_data_runtime_state import MarketDataRuntimeState
+from core.demo_readiness import DemoReadinessReport
+from core.p40_risk_budget import RiskBudgetAssessment
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 
 
@@ -28,6 +35,8 @@ class RuntimeCycle:
     orchestration: OrchestrationResult
     plan: ExecutionPlan | None
     execution: GatewayResult | None
+    automation_lifecycle: AutomationLifecycle | None = None
+    automation_audit: AutomationAuditRecord | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +128,10 @@ class TradingRuntime:
         entry_conditions: tuple[str, ...] = (),
         checkpoint_store: RuntimeCheckpointStore | None = None,
         session_id: str | None = None,
+        automation_policy: AutomationPolicy | None = None,
+        automation_last_cycle_at: datetime | None = None,
+        automation_readiness: DemoReadinessReport | None = None,
+        automation_risk_budget: RiskBudgetAssessment | None = None,
     ) -> RuntimeResult:
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
@@ -128,6 +141,13 @@ class TradingRuntime:
             raise ValueError("session_id é obrigatório quando checkpoint_store é usado.")
         if request_id_factory is None:
             request_id_factory = lambda index: f"runtime-{index:06d}"
+        if automation_policy is not None:
+            if not isinstance(automation_policy, AutomationPolicy):
+                raise ValueError("automation_policy inválida.")
+            if not isinstance(automation_readiness, DemoReadinessReport):
+                raise ValueError("automation_readiness é obrigatória.")
+            if not isinstance(automation_risk_budget, RiskBudgetAssessment):
+                raise ValueError("automation_risk_budget é obrigatório.")
 
         cycles: list[RuntimeCycle] = []
         stopped = False
