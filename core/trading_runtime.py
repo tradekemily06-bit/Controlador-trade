@@ -147,10 +147,10 @@ class TradingRuntime:
         if automation_policy is not None:
             if not isinstance(automation_policy, AutomationPolicy):
                 raise ValueError("automation_policy inválida.")
-            if not isinstance(automation_readiness, DemoReadinessReport):
-                raise ValueError("automation_readiness é obrigatória.")
-            if not isinstance(automation_risk_budget, RiskBudgetAssessment):
-                raise ValueError("automation_risk_budget é obrigatório.")
+            if automation_readiness_factory is None and not isinstance(automation_readiness, DemoReadinessReport):
+                raise ValueError("automation_readiness ou automation_readiness_factory é obrigatório.")
+            if automation_risk_budget_factory is None and not isinstance(automation_risk_budget, RiskBudgetAssessment):
+                raise ValueError("automation_risk_budget ou automation_risk_budget_factory é obrigatório.")
 
         cycles: list[RuntimeCycle] = []
         stopped = False
