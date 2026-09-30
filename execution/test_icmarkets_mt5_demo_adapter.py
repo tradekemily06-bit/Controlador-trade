@@ -13,6 +13,9 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    DEAL_ENTRY_OUT = 1
+    DEAL_ENTRY_OUT_BY = 2
+    POSITION_TYPE_BUY = 0
 
     def __init__(self, check_code=0, send_result=True):
         self.check_code = check_code
@@ -28,7 +31,19 @@ class FakeMT5:
 
     def account_info(self):
         self.calls.append("account_info")
-        return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO)
+        return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, balance=1000.0, equity=1015.0, profit=15.0)
+
+    def history_deals_get(self, start, end):
+        self.calls.append("history_deals_get")
+        return (
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
+        )
+
+    def positions_get(self):
+        self.calls.append("positions_get")
+        return (SimpleNamespace(type=self.POSITION_TYPE_BUY, volume=0.10, price_current=100.0),)
 
     def symbol_select(self, symbol, enabled):
         self.calls.append(("symbol_select", symbol, enabled))
@@ -111,3 +126,21 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_read_operational_state_uses_mt5_observations():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    state = adapter.read_operational_state()
+
+    assert state.balance == 1000.0
+    assert state.equity == 1015.0
+    assert state.realized_pnl == 0.0
+    assert state.trades_today == 3
+    assert state.consecutive_losses == 2
+    assert state.open_positions == 1
+    assert state.net_position == 0.10
+    assert state.exposure == 10.0
+    assert "history_deals_get" in mt5.calls
+    assert "positions_get" in mt5.calls
