@@ -2,9 +2,22 @@
 
 ## Estado atual
 
+O `main` contém a sequência histórica e técnica até P149; o estado de cada marco deve ser distinguido entre implementado no `main`, existente apenas em branch/PR e somente documentado. O mapa macro não usa o número de P como porcentagem de conclusão: integração, testes e runtime são avaliados por evidência.
+
+
 O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
 
 A validação operacional DEMO foi executada com sucesso em ambiente compatível com MetaTrader 5: preflight, `order_check()`, primeira ordem controlada, confirmação do identificador externo, fechamento explícito e reconciliação foram concluídos sem habilitar REAL.
+
+## Integração macro consolidada
+
+- P41–P46 possuem composição explícita em `ControlledAutomationService`, preservando as fronteiras individuais e sem conceder autoridade de execução.
+- P44 exige `cycle_id` consistente entre ciclo de automação e `ExecutionIntent`.
+- P48 impede observações de resultado anteriores ao fechamento do ciclo.
+- P47–P53 permanecem ligados à cadeia factual de fechamento, reconciliação e aprendizado; P51/P52 só promovem registros reconciliados/VERIFIED a evidência.
+- P120–P127 mantêm as fronteiras broker-agnostic de resultado, reconciliação, dados de mercado, ordem, sessão, Sandbox/DEMO e segurança pré-REAL.
+- P127 mantém MT5 DEMO como integração operacional concreta; cTrader permanece isolado como alternativa futura.
+- P128–P149 estão presentes no `main` como sequência posterior de integração/validação; não devem ser interpretados como 100% concluídos apenas pelo número: cada capacidade deve ser verificada por seus testes e runtime.
 
 ## Concluído
 
@@ -65,6 +78,10 @@ A memória continua funcionando sem configuração externa. Quando `CONTROLADOR_
 ## Validação de dispositivo
 
 A interface de software está implementada e coberta por testes de contrato. A abertura no navegador de um dispositivo real continua sendo validação de uso visual; ela não é uma pendência de arquitetura, lógica de decisão ou execução DEMO.
+
+## Interface e identidade visual
+
+A marca d'água sutil `CONTROLADOR TRADING • ECOSSISTEMA` foi preparada em PR separado para a interface e não altera qualquer boundary operacional. Ela só deve ser considerada concluída após merge e validação do CI.
 
 ## REAL
 
