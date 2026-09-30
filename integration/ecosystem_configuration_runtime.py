@@ -16,6 +16,8 @@ from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapte
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
+from core.senior_context_orchestrator import SeniorContextInput
+from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
@@ -39,6 +41,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     pipeline=StrategyPipeline(),
                     decision_engine=DecisionEngine(self.risk),
                     quality_evaluator=SignalQualityEvaluator(),
+                    senior_context_builder=self._build_mt5_senior_context,
                 ),
                 coordinator=ExecutionCoordinator(self.operational_runtime.gateway),
                 market_data_state=self.operational_runtime.market_data,
@@ -83,6 +86,55 @@ class ConfiguredEcosystemService(EcosystemService):
         self.memory.append(record)
         self.store.save(record)
         return record
+
+    def _build_mt5_senior_context(self, candles, operational_state):
+        """Build senior context from the exact candles already fetched for this cycle."""
+        observations = []
+        available_domains = []
+        if operational_state is not None:
+            if operational_state.balance is not None and operational_state.equity is not None:
+                available_domains.append(RiskDomain.CAPITAL)
+                observations.append(RiskObservation(
+                    RiskDomain.CAPITAL,
+                    f"Capital observado no snapshot DEMO: balance={operational_state.balance}, equity={operational_state.equity}.",
+                    True,
+                    ("mt5.account_info",),
+                ))
+            if (
+                operational_state.open_positions is not None
+                and operational_state.net_position is not None
+                and operational_state.exposure is not None
+            ):
+                available_domains.append(RiskDomain.POSITION)
+                observations.append(RiskObservation(
+                    RiskDomain.POSITION,
+                    f"Posição observada no snapshot DEMO: abertas={operational_state.open_positions}, net={operational_state.net_position}, exposição={operational_state.exposure}.",
+                    True,
+                    ("mt5.positions_get",),
+                ))
+        if candles:
+            available_domains.append(RiskDomain.DATA_QUALITY)
+            observations.append(RiskObservation(
+                RiskDomain.DATA_QUALITY,
+                f"Dados de mercado normalizados e observados no ciclo: {len(candles)} candles concluídos.",
+                True,
+                ("mt5.copy_rates_from_pos:start_pos=1",),
+            ))
+        context_id = f"mt5:{candles[-1].timestamp.isoformat()}" if candles else "mt5:empty"
+        nodes = ("market_data", "price_history", "operational_state") if operational_state is not None else ("market_data", "price_history")
+        relationships = ("market_data-price_history", "price_history-temporal_context")
+        if operational_state is not None:
+            relationships += ("market_data-operational_state",)
+        return self.senior_context.assess(SeniorContextInput(
+            context_id=context_id,
+            candles=tuple(candles),
+            available_nodes=nodes,
+            observed_nodes=nodes,
+            gaps={},
+            relationships_reviewed=relationships,
+            risk_observations=tuple(observations),
+            available_risk_domains=tuple(available_domains),
+        ))
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
