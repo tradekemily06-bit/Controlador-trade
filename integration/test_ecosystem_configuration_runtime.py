@@ -73,6 +73,8 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
 
     service = ConfiguredEcosystemService()
     fake = FakeRuntime()
+    from types import SimpleNamespace
+    service.operational_runtime = SimpleNamespace(checkpoint_store=object())
     service.trading_runtime = fake
     service.mt5_operational_adapter.read_operational_state = lambda: OperationalState(
         realized_pnl=0.0,
