@@ -111,7 +111,7 @@ def test_orchestrator_builds_senior_context_from_same_fetched_candles():
     captured = []
 
     def builder(observed_candles, operational_state):
-        captured.append((observed_candles, operational_state))
+        captured.append((tuple(observed_candles), operational_state))
         return None
 
     orchestrator = TradingOrchestrator(
