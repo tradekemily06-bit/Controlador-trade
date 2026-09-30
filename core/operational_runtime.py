@@ -51,13 +51,14 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         checkpoint_store=checkpoint,
         recovery=recovery,
     )
+    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     gateway = ExecutionGateway(
         executor or PaperExecutor(),
         kill_switch,
         ledger=ledger,
         lifecycle=lifecycle,
+        market_data=market_data,
     )
-    market_data = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     return OperationalRuntime(
         kill_switch=kill_switch,
         execution_ledger=ledger,
