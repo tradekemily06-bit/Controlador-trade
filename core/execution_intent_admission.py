@@ -42,6 +42,8 @@ class ExecutionIntentAdmission:
             raise ValueError("avaliação sênior de risco não pode conceder autoridade de execução.")
         if senior_context.risk_assessment.status is not RiskKnowledgeStatus.ASSESSED:
             raise ValueError("risco sênior incompleto; admissão bloqueada.")
+        if intent.cycle_id is not None and intent.cycle_id != senior_context.cycle_id:
+            raise ValueError("cycle_id da intenção não corresponde ao contexto sênior.")
 
         return self.gateway.execute(
             intent.request_id,
