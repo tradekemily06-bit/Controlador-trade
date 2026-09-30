@@ -7,6 +7,7 @@ from typing import Any
 
 from core.models import Signal
 from core.operational_state import OperationalState
+from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -142,6 +143,40 @@ class ICMarketsMT5DemoAdapter:
                 exposure=exposure,
                 last_processed_candle=now,
             )
+        finally:
+            mt5.shutdown()
+
+    def query_order(self, external_id: str) -> ExternalOrderObservation:
+        """Read external DEMO order/deal status for P121; never resubmits."""
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido")
+        mt5 = self._module()
+        if not mt5.initialize():
+            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5AdapterError("conta MT5 não confirmada como DEMO; reconciliação bloqueada.")
+            try:
+                ticket = int(external_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            if callable(deal_fn):
+                deals = deal_fn(ticket=ticket)
+                if deals:
+                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal externo encontrado no histórico MT5")
+            order_fn = getattr(mt5, "history_orders_get", None)
+            if callable(order_fn):
+                orders = order_fn(ticket=ticket)
+                if orders:
+                    order = tuple(orders)[-1]
+                    state = getattr(order, "state", None)
+                    canceled = {getattr(mt5, "ORDER_STATE_CANCELED", object()), getattr(mt5, "ORDER_STATE_REJECTED", object()), getattr(mt5, "ORDER_STATE_EXPIRED", object())}
+                    if state in canceled:
+                        return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
+                    return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
+            return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
         finally:
             mt5.shutdown()
 
