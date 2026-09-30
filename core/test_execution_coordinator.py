@@ -86,6 +86,7 @@ def test_build_plan_only_allows_executable_decision():
     assert isinstance(plan, ExecutionPlan)
     assert plan.request.signal is Signal.COMPRA
     assert plan.request.mode is ExecutionMode.DEMO
+    assert plan.request.request_id == "req-1"
 
 
 def test_build_plan_rejects_non_executable_decision():
@@ -119,6 +120,7 @@ def test_coordinator_forwards_plan_only_after_senior_admission():
     assert fake.calls[0][0][0] == "req-3"
     assert fake.calls[0][1]["snapshot"] is orchestration.snapshot
     assert fake.calls[0][1]["entry_conditions"] == ("teste",)
+    assert orchestration.senior_context.cycle_id == "execution-coordinator-test"
 
 
 def test_coordinator_blocks_missing_senior_context():
