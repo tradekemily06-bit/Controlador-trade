@@ -10,7 +10,7 @@ from core.live_orchestrator import TradingOrchestrator
 from core.signal_quality import SignalQualityEvaluator
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataFeed, MarketDataRequest
-from execution.execution_coordinator import ExecutionCoordinator
+from core.execution_coordinator import ExecutionCoordinator
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
