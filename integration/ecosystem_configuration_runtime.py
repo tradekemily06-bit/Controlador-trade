@@ -41,6 +41,7 @@ class ConfiguredEcosystemService(EcosystemService):
                     quality_evaluator=SignalQualityEvaluator(),
                 ),
                 coordinator=ExecutionCoordinator(self.operational_runtime.gateway),
+                market_data_state=self.operational_runtime.market_data,
             )
         else:
             self.trading_runtime = None
