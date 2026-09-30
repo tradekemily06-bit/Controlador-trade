@@ -174,6 +174,55 @@ def test_runtime_keeps_pending_external_order_open():
 
 
 
+def test_runtime_reuses_senior_cycle_id_for_automation_handoff():
+    from core.p46_automation_lifecycle import AutomationLifecycleState
+    from core.senior_context_cycle import SeniorContextQuality
+    from core.senior_risk_reasoning import RiskKnowledgeStatus
+
+    class FakeSeniorContext:
+        cycle_id = "senior-cycle-001"
+        quality = SeniorContextQuality.COMPLETE
+        execution_authorized = False
+        class Risk:
+            execution_authorized = False
+            status = RiskKnowledgeStatus.ASSESSED
+        risk_assessment = Risk()
+
+    class ExecutableOrchestrator(FakeOrchestrator):
+        def evaluate(self, request, **kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                executable=True,
+                senior_context=FakeSeniorContext(),
+            )
+
+    class LineageCoordinator(FakeCoordinator):
+        def build_plan(self, orchestration, **kwargs):
+            self.build_calls.append((orchestration, kwargs))
+            return SimpleNamespace(request_id=kwargs["request_id"])
+
+        def execute_plan(self, plan, **kwargs):
+            self.execute_calls.append((plan, kwargs))
+            assert kwargs["orchestration"].senior_context.cycle_id == "senior-cycle-001"
+            return GatewayResult(GatewayStatus.ACCEPTED, "ok")
+
+    result = TradingRuntime(
+        orchestrator=ExecutableOrchestrator(executable=True),
+        coordinator=LineageCoordinator(),
+    ).run(
+        request(),
+        operational_state=None,
+        amount=0.01,
+        duration_seconds=60,
+        automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
+        automation_readiness=DemoReadinessReport(True, ()),
+        automation_risk_budget=RiskBudgetAssessment(
+            BudgetDecision.APPROVED, 0.0, 1, "approved"
+        ),
+    )
+    assert result.cycles[0].automation_lifecycle is not None
+    assert result.cycles[0].automation_lifecycle.state is AutomationLifecycleState.DISPATCHED
+
 def test_runtime_integrates_controlled_automation_gates_without_second_executor():
     from core.p46_automation_lifecycle import AutomationLifecycleState
 
