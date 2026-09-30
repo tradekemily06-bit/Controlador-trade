@@ -97,6 +97,16 @@ class ConfiguredEcosystemService(EcosystemService):
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
         )
+    def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
+        """Reconcile one DEMO external order and close only its factual lifecycle."""
+        if self.trading_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        return self.trading_runtime.reconcile_external_cycle(
+            cycle_id=cycle_id,
+            external_id=external_id,
+            query_port=self.mt5_operational_adapter,
+        )
+
     def get_preferences(self) -> dict[str, Any]:
         value = self.preferences.preferences
         result = asdict(value)
