@@ -53,13 +53,13 @@ def test_guard_blocks_unhealthy_market_data_before_executor():
 
 def test_guard_blocks_symbol_mismatch():
     state = _state(health=MarketDataHealth.HEALTHY, symbol="GBPUSD")
-    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch(), market_data=state))
     result = guard.execute("symbol-mismatch", _request("EURUSD"))
     assert result.status is GatewayStatus.BLOCKED
 
 
 def test_guard_allows_healthy_matching_data_to_reach_gateway():
     state = _state(health=MarketDataHealth.HEALTHY)
-    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch()))
+    guard = MarketDataExecutionGuard(state, ExecutionGateway(PaperExecutor(), KillSwitch(), market_data=state))
     result = guard.execute("healthy-data", _request())
     assert result.status is GatewayStatus.ACCEPTED
