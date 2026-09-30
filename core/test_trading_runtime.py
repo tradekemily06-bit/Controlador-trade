@@ -209,7 +209,7 @@ def test_runtime_reuses_senior_cycle_id_for_automation_handoff():
             return ExecutionIntent(
                 request_id=plan.request_id,
                 symbol="TEST",
-                signal=Signal.COMPRAR,
+                signal=Signal.COMPRA,
                 amount=0.01,
                 duration_seconds=60,
                 mode=ExecutionMode.DEMO,
