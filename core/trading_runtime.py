@@ -24,7 +24,7 @@ from core.p50_automation_result_snapshot import AutomationResultSnapshot, Automa
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.demo_readiness import DemoReadinessReport
-from core.p40_risk_budget import RiskBudgetAssessment
+from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 
 
@@ -230,7 +230,7 @@ class TradingRuntime:
                     effective_readiness = DemoReadinessReport(False, ("prontidão DEMO não configurada.",))
                 if not isinstance(effective_risk_budget, RiskBudgetAssessment):
                     effective_risk_budget = RiskBudgetAssessment(
-                        decision=__import__("core.p40_risk_budget", fromlist=["BudgetDecision"]).BudgetDecision.BLOCKED,
+                        decision=BudgetDecision.BLOCKED,
                         projected_loss=0.0,
                         projected_operations=0,
                         reason="orçamento de risco da automação não configurado.",
@@ -278,7 +278,6 @@ class TradingRuntime:
                 automation_lifecycle = AutomationLifecycleBoundary().transition(
                     automation_lifecycle, AutomationLifecycleState.ADMITTED,
                 )
-                intent = self.coordinator.build_intent(plan, orchestration=orchestration)
                 handoff = AutomationIntentHandoffBoundary().handoff(
                     admission, intent=intent,
                 )
