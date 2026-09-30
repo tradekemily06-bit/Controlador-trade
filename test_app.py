@@ -107,3 +107,10 @@ def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     assert observed == {"cycle_id": "senior-cycle-001", "external_id": "external-123"}
     assert data["runtime_reconciliation"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime_reconciliation"]["reconciliation_state"] == "UNVERIFIED"
+
+
+def test_application_uses_mt5_demo_as_canonical_default_executor():
+    import app
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+
+    assert isinstance(app.EXECUTOR, ICMarketsMT5DemoAdapter)

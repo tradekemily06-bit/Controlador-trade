@@ -10,8 +10,8 @@ from integration.execution_provider import (
 )
 
 
-def test_paper_is_safe_default():
-    executor = build_demo_execution_port()
+def test_paper_remains_available_as_explicit_safe_provider():
+    executor = build_demo_execution_port("paper")
     assert isinstance(executor, PaperExecutor)
 
 
