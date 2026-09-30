@@ -132,6 +132,8 @@ class TradingRuntime:
         automation_last_cycle_at: datetime | None = None,
         automation_readiness: DemoReadinessReport | None = None,
         automation_risk_budget: RiskBudgetAssessment | None = None,
+        automation_readiness_factory: Callable[[ExecutionPlan, OrchestrationResult], DemoReadinessReport] | None = None,
+        automation_risk_budget_factory: Callable[[object, ExecutionPlan, OrchestrationResult], RiskBudgetAssessment] | None = None,
     ) -> RuntimeResult:
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
@@ -181,60 +183,6 @@ class TradingRuntime:
                     now=orchestration.timestamp,
                 )
 
-            if automation_policy is not None:
-                now = getattr(orchestration, "timestamp", datetime.now(timezone.utc))
-                effective_senior_context = getattr(orchestration, "senior_context", None)
-                automation_cycle_id = (
-                    effective_senior_context.cycle_id
-                    if effective_senior_context is not None
-                    else request_id_factory(index)
-                )
-                cycle = AutomationCycle(
-                    cycle_id=automation_cycle_id,
-                    requested_at=now,
-                )
-                automation_decision = ControlledAutomationGate().evaluate(
-                    automation_policy,
-                    cycle,
-                    last_cycle_at=automation_last_cycle_at,
-                )
-                cycle_result = AutomationCycleOrchestrator().request_cycle(
-                    automation_decision,
-                    requested_at=now,
-                )
-                automation_request = cycle_result.request
-                admission = AutomationAdmission().admit(
-                    automation_request,
-                    readiness=automation_readiness,
-                    risk_budget=automation_risk_budget,
-                ) if cycle_result.authorized else AutomationAdmissionResult(
-                    False, None, (cycle_result.reason,)
-                )
-                automation_lifecycle = AutomationLifecycle(
-                    cycle.cycle_id,
-                    AutomationLifecycleState.CREATED,
-                )
-                if not admission.admitted:
-                    automation_lifecycle = AutomationLifecycleBoundary().transition(
-                        automation_lifecycle,
-                        AutomationLifecycleState.BLOCKED,
-                    )
-                    cycles.append(RuntimeCycle(
-                        orchestration=orchestration,
-                        plan=None,
-                        execution=None,
-                        automation_lifecycle=automation_lifecycle,
-                    ))
-                    stopped = True
-                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
-                    break
-
-            if automation_policy is not None and admission.admitted:
-                automation_lifecycle = AutomationLifecycleBoundary().transition(
-                    automation_lifecycle,
-                    AutomationLifecycleState.ADMITTED,
-                )
-
             plan = None
             execution_result = None
             request_id = None
@@ -246,26 +194,113 @@ class TradingRuntime:
                     amount=amount,
                     duration_seconds=duration_seconds,
                 )
-                if automation_policy is not None:
-                    intent = self.coordinator.build_intent(
-                        plan,
-                        orchestration=orchestration,
+
+            if automation_policy is not None:
+                if plan is None:
+                    automation_lifecycle = AutomationLifecycle(
+                        getattr(getattr(orchestration, "senior_context", None), "cycle_id", request_id_factory(index)),
+                        AutomationLifecycleState.CREATED,
                     )
-                    handoff = AutomationIntentHandoffBoundary().handoff(
-                        AutomationAdmissionResult(
-                            True,
-                            automation_request,
-                            (),
-                        ),
-                        intent=intent,
-                    )
-                    if not handoff.handed_off:
-                        raise RuntimeError("handoff de automação controlada recusado.")
-                    automation_audit = AutomationAuditBoundary().record(handoff)
                     automation_lifecycle = AutomationLifecycleBoundary().transition(
                         automation_lifecycle,
-                        AutomationLifecycleState.DISPATCHED,
+                        AutomationLifecycleState.BLOCKED,
                     )
+                    cycles.append(RuntimeCycle(
+                        orchestration=orchestration,
+                        plan=None,
+                        execution=None,
+                        automation_lifecycle=automation_lifecycle,
+                    ))
+                    stopped = True
+                    stop_reason = "automação controlada exige decisão EXECUTAR."
+                    break
+
+                intent = self.coordinator.build_intent(plan, orchestration=orchestration)
+                effective_readiness = (
+                    automation_readiness_factory(plan, orchestration)
+                    if automation_readiness_factory is not None
+                    else automation_readiness
+                )
+                effective_risk_budget = (
+                    automation_risk_budget_factory(operational_state, plan, orchestration)
+                    if automation_risk_budget_factory is not None
+                    else automation_risk_budget
+                )
+                if not isinstance(effective_readiness, DemoReadinessReport):
+                    effective_readiness = DemoReadinessReport(False, ("prontidão DEMO não configurada.",))
+                if not isinstance(effective_risk_budget, RiskBudgetAssessment):
+                    effective_risk_budget = RiskBudgetAssessment(
+                        decision=__import__("core.p40_risk_budget", fromlist=["BudgetDecision"]).BudgetDecision.BLOCKED,
+                        projected_loss=0.0,
+                        projected_operations=0,
+                        reason="orçamento de risco da automação não configurado.",
+                    )
+
+                now = getattr(orchestration, "timestamp", datetime.now(timezone.utc))
+                effective_senior_context = getattr(orchestration, "senior_context", None)
+                automation_cycle_id = (
+                    effective_senior_context.cycle_id
+                    if effective_senior_context is not None
+                    else request_id
+                )
+                cycle = AutomationCycle(cycle_id=automation_cycle_id, requested_at=now)
+                automation_decision = ControlledAutomationGate().evaluate(
+                    automation_policy, cycle, last_cycle_at=automation_last_cycle_at,
+                )
+                cycle_result = AutomationCycleOrchestrator().request_cycle(
+                    automation_decision, requested_at=now,
+                )
+                automation_request = cycle_result.request
+                admission = AutomationAdmission().admit(
+                    automation_request,
+                    readiness=effective_readiness,
+                    risk_budget=effective_risk_budget,
+                ) if cycle_result.authorized else AutomationAdmissionResult(
+                    False, None, (cycle_result.reason,)
+                )
+                automation_lifecycle = AutomationLifecycle(
+                    cycle.cycle_id, AutomationLifecycleState.CREATED,
+                )
+                if not admission.admitted:
+                    automation_lifecycle = AutomationLifecycleBoundary().transition(
+                        automation_lifecycle, AutomationLifecycleState.BLOCKED,
+                    )
+                    cycles.append(RuntimeCycle(
+                        orchestration=orchestration,
+                        plan=plan,
+                        execution=None,
+                        automation_lifecycle=automation_lifecycle,
+                    ))
+                    stopped = True
+                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
+                    break
+
+                automation_lifecycle = AutomationLifecycleBoundary().transition(
+                    automation_lifecycle, AutomationLifecycleState.ADMITTED,
+                )
+                intent = self.coordinator.build_intent(plan, orchestration=orchestration)
+                handoff = AutomationIntentHandoffBoundary().handoff(
+                    admission, intent=intent,
+                )
+                if not handoff.handed_off:
+                    automation_lifecycle = AutomationLifecycleBoundary().transition(
+                        automation_lifecycle, AutomationLifecycleState.BLOCKED,
+                    )
+                    cycles.append(RuntimeCycle(
+                        orchestration=orchestration,
+                        plan=plan,
+                        execution=None,
+                        automation_lifecycle=automation_lifecycle,
+                    ))
+                    stopped = True
+                    stop_reason = "; ".join(handoff.reasons) or "handoff de automação controlada recusado."
+                    break
+                automation_audit = AutomationAuditBoundary().record(handoff)
+                automation_lifecycle = AutomationLifecycleBoundary().transition(
+                    automation_lifecycle, AutomationLifecycleState.DISPATCHED,
+                )
+
+            if orchestration.executable:
                 execution_result = self.coordinator.execute_plan(
                     plan,
                     orchestration=orchestration,
