@@ -171,7 +171,7 @@ class ConfiguredEcosystemService(EcosystemService):
             intent=intent,
         )
 
-    def _build_mt5_automation_risk_budget(self, operational_state, plan: ExecutionPlan, orchestration) -> RiskBudgetAssessment:
+    def _build_mt5_automation_risk_budget(self, operational_state, intent, orchestration) -> RiskBudgetAssessment:
         """Evaluate P40 only from observed operational counters; unknown stays blocked."""
         limits = RiskBudgetLimits(
             max_daily_loss=self.risk.daily_loss_limit,
