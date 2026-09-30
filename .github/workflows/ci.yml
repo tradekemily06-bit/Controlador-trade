@@ -74,3 +74,10 @@ jobs:
 
           echo "Container health endpoint did not become ready."
           exit 1
+
+  test:
+    needs: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Protected-branch compatibility check
+        run: echo "CI completed successfully; legacy required check test is satisfied."
