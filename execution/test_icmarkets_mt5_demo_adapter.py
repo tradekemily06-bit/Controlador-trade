@@ -155,7 +155,7 @@ def test_read_operational_state_uses_mt5_observations():
     assert state.open_positions == 1
     assert state.net_position == 0.10
     assert state.exposure == 10.0
-    assert "history_deals_get" in mt5.calls
+    assert any(call == "history_deals_get" or (isinstance(call, tuple) and call[0] == "history_deals_get") for call in mt5.calls)
     assert "positions_get" in mt5.calls
 
 
