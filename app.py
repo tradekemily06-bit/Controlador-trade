@@ -180,6 +180,11 @@ def application(environ, start_response):
                 "market_data_source": cycle.orchestration.market_data.source,
                 "candles": len(cycle.orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
+                "cycle_id": (
+                    cycle.orchestration.senior_context.cycle_id
+                    if cycle.orchestration.senior_context is not None
+                    else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
+                ),
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
