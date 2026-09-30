@@ -201,6 +201,22 @@ def test_runtime_reuses_senior_cycle_id_for_automation_handoff():
             self.build_calls.append((orchestration, kwargs))
             return SimpleNamespace(request_id=kwargs["request_id"])
 
+        def build_intent(self, plan, *, orchestration):
+            from datetime import datetime, timezone
+            from core.execution_intent import ExecutionIntent
+            from core.models import Signal
+            from execution.ports import ExecutionMode
+            return ExecutionIntent(
+                request_id=plan.request_id,
+                symbol="TEST",
+                signal=Signal.COMPRAR,
+                amount=0.01,
+                duration_seconds=60,
+                mode=ExecutionMode.DEMO,
+                created_at=datetime.now(timezone.utc),
+                cycle_id=orchestration.senior_context.cycle_id,
+            )
+
         def execute_plan(self, plan, **kwargs):
             self.execute_calls.append((plan, kwargs))
             assert kwargs["orchestration"].senior_context.cycle_id == "senior-cycle-001"
