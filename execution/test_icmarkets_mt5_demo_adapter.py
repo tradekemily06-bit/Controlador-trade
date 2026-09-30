@@ -15,6 +15,9 @@ class FakeMT5:
     TRADE_RETCODE_DONE = 10009
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
+    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_REJECTED = 5
+    ORDER_STATE_EXPIRED = 6
     POSITION_TYPE_BUY = 0
 
     def __init__(self, check_code=0, send_result=True):
@@ -40,6 +43,18 @@ class FakeMT5:
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
         )
+
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(ticket=123, profit=4.0),)
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 456:
+            return (SimpleNamespace(ticket=456, state=self.ORDER_STATE_CANCELED),)
+        return ()
 
     def positions_get(self):
         self.calls.append("positions_get")
@@ -144,3 +159,17 @@ def test_read_operational_state_uses_mt5_observations():
     assert state.exposure == 10.0
     assert "history_deals_get" in mt5.calls
     assert "positions_get" in mt5.calls
+
+
+def test_query_order_reconciles_external_deal_as_executed():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    observation = adapter.query_order("123")
+    assert observation.status.value == "EXECUTED"
+
+
+def test_query_order_reconciles_canceled_external_order_as_not_executed():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    observation = adapter.query_order("456")
+    assert observation.status.value == "NOT_EXECUTED"
