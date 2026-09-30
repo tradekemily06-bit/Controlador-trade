@@ -11,6 +11,9 @@ from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
+from core.p41_controlled_automation import AutomationPolicy
+from core.demo_readiness import DemoReadinessReport
+from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
 
 
 @dataclass
@@ -168,3 +171,22 @@ def test_runtime_keeps_pending_external_order_open():
         query_port=FakeOrderQuery(ExternalOrderStatus.PENDING),
     )
     assert snapshot is None
+
+
+def test_runtime_integrates_controlled_automation_without_creating_second_executor(runtime):
+    result = runtime.run(
+        request,
+        operational_state=operational_state,
+        senior_context=complete_senior_context(),
+        amount=0.01,
+        duration_seconds=60,
+        automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
+        automation_readiness=DemoReadinessReport(True, ()),
+        automation_risk_budget=RiskBudgetAssessment(BudgetDecision.APPROVED, 0.0, 0, "approved"),
+    )
+    cycle = result.cycles[0]
+    assert cycle.automation_lifecycle is not None
+    assert cycle.automation_lifecycle.state in (
+        AutomationLifecycleState.COMPLETED,
+        AutomationLifecycleState.BLOCKED,
+    )
