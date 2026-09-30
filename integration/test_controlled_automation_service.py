@@ -6,7 +6,8 @@ from core.demo_readiness import DemoReadinessReport
 from core.execution_intent import ExecutionIntent
 from core.models import Signal
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
-from core.p41_controlled_automation import AutomationCycle, AutomationPolicy, AutomationLifecycleState
+from core.p41_controlled_automation import AutomationCycle, AutomationPolicy
+from core.p46_automation_lifecycle import AutomationLifecycleState
 from execution.ports import ExecutionMode
 from integration.controlled_automation_service import ControlledAutomationService
 
@@ -21,6 +22,8 @@ def readiness(ready=True):
 def budget(approved=True):
     return RiskBudgetAssessment(
         decision=BudgetDecision.APPROVED if approved else BudgetDecision.BLOCKED,
+        projected_loss=0.0,
+        projected_operations=1,
         reason="approved" if approved else "budget blocked",
     )
 
