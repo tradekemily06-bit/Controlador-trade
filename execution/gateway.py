@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
+from core.market_data_runtime_state import MarketDataRuntimeState
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
@@ -44,6 +46,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        market_data: MarketDataRuntimeState | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +57,7 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._market_data = market_data
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -73,6 +77,15 @@ class ExecutionGateway:
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
+
+        if self._market_data is not None:
+            report = self._market_data.report
+            if report is None:
+                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: nenhum snapshot de mercado validado está disponível.")
+            if not report.safe_for_analysis:
+                return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada: dados de mercado não estão HEALTHY ({report.health.value}).")
+            if report.symbol != request.symbol:
+                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.")
 
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
