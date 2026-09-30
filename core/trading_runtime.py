@@ -158,11 +158,35 @@ class TradingRuntime:
             automation_audit = None
             automation_request = None
 
+            orchestration = self.orchestrator.evaluate(
+                request,
+                operational_state=operational_state,
+                market_context=market_context,
+                senior_context=senior_context,
+                confirmed=confirmed,
+                filters_ok=filters_ok,
+                daily_result=daily_result,
+                operations_count=operations_count,
+                consecutive_losses=consecutive_losses,
+            )
+            if self.market_data_state is not None:
+                self.market_data_state.update(
+                    BrokerMarketDataSnapshot(
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
+                        candles=tuple(orchestration.market_data.candles),
+                        source=orchestration.market_data.source,
+                        received_at=orchestration.timestamp,
+                    ),
+                    now=orchestration.timestamp,
+                )
+
             if automation_policy is not None:
-                now = datetime.now(timezone.utc)
+                now = orchestration.timestamp
+                effective_senior_context = orchestration.senior_context
                 automation_cycle_id = (
-                    senior_context.cycle_id
-                    if senior_context is not None
+                    effective_senior_context.cycle_id
+                    if effective_senior_context is not None
                     else request_id_factory(index)
                 )
                 cycle = AutomationCycle(
@@ -195,56 +219,7 @@ class TradingRuntime:
                         automation_lifecycle,
                         AutomationLifecycleState.BLOCKED,
                     )
-                    orchestration = self.orchestrator.evaluate(
-                        request,
-                        operational_state=operational_state,
-                        market_context=market_context,
-                        senior_context=senior_context,
-                        confirmed=confirmed,
-                        filters_ok=filters_ok,
-                        daily_result=daily_result,
-                        operations_count=operations_count,
-                        consecutive_losses=consecutive_losses,
-                    )
-                    cycles.append(RuntimeCycle(
-                        orchestration=orchestration,
-                        plan=None,
-                        execution=None,
-                        automation_lifecycle=automation_lifecycle,
-                    ))
-                    stopped = True
-                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
-                    break
-                automation_lifecycle = AutomationLifecycleBoundary().transition(
-                    automation_lifecycle,
-                    AutomationLifecycleState.ADMITTED,
-                )
-                automation_last_cycle_at = now
-
-            orchestration = self.orchestrator.evaluate(
-                request,
-                operational_state=operational_state,
-                market_context=market_context,
-                senior_context=senior_context,
-                confirmed=confirmed,
-                filters_ok=filters_ok,
-                daily_result=daily_result,
-                operations_count=operations_count,
-                consecutive_losses=consecutive_losses,
-            )
-            if self.market_data_state is not None:
-                self.market_data_state.update(
-                    BrokerMarketDataSnapshot(
-                        symbol=request.symbol,
-                        timeframe=request.timeframe,
-                        candles=tuple(orchestration.market_data.candles),
-                        source=orchestration.market_data.source,
-                        received_at=orchestration.timestamp,
-                    ),
-                    now=orchestration.timestamp,
-                )
-
-            plan = None
+                    plan = None
             execution_result = None
             request_id = None
             if orchestration.executable:
