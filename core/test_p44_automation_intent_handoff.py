@@ -19,6 +19,7 @@ def make_intent() -> ExecutionIntent:
         duration_seconds=60,
         mode=ExecutionMode.DEMO,
         created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+        cycle_id="cycle-44",
     )
 
 
@@ -40,6 +41,19 @@ def test_approved_admission_and_demo_intent_create_handoff() -> None:
     assert result.handoff is not None
     assert result.handoff.cycle_id == "cycle-44"
     assert result.handoff.intent.request_id == "req-44"
+
+
+def test_cycle_identity_mismatch_fails_closed() -> None:
+    result = AutomationIntentHandoffBoundary().handoff(
+        make_admission(), intent=ExecutionIntent(
+            request_id="req-44-mismatch", symbol="EURUSD", signal=Signal.COMPRA,
+            amount=10.0, duration_seconds=60, mode=ExecutionMode.DEMO,
+            created_at=datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc),
+            cycle_id="different-cycle",
+        )
+    )
+    assert result.handed_off is False
+    assert "execution intent cycle_id does not match automation cycle" in result.reasons
 
 
 def test_blocked_admission_fails_closed() -> None:
