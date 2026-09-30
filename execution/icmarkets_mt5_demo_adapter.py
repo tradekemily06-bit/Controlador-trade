@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, time, timezone
 import math
 from typing import Any
 
 from core.models import Signal
+from core.operational_state import OperationalState
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -88,6 +90,60 @@ class ICMarketsMT5DemoAdapter:
 
         steps = (amount - minimum) / step
         return math.isclose(steps, round(steps), rel_tol=0.0, abs_tol=1e-9)
+
+    def read_operational_state(self) -> OperationalState:
+        """Read a fail-closed DEMO operational snapshot from MT5."""
+        mt5 = self._module()
+        if not mt5.initialize():
+            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5AdapterError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
+            now = datetime.now(timezone.utc)
+            start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+            realized_pnl = trades_today = consecutive_losses = None
+            history_fn = getattr(mt5, "history_deals_get", None)
+            if callable(history_fn):
+                deals = history_fn(start, now)
+                if deals is not None:
+                    out = getattr(mt5, "DEAL_ENTRY_OUT", None)
+                    out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
+                    closed = [d for d in deals if out is None or getattr(d, "entry", None) in (out, out_by)]
+                    realized_pnl = float(sum(float(getattr(d, "profit", 0.0)) for d in closed))
+                    trades_today = len(closed)
+                    losses = 0
+                    for deal in reversed(closed):
+                        profit = float(getattr(deal, "profit", 0.0))
+                        if profit < 0: losses += 1
+                        elif profit > 0: break
+                    consecutive_losses = losses
+            positions_fn = getattr(mt5, "positions_get", None)
+            positions = positions_fn() if callable(positions_fn) else None
+            open_positions = net_position = exposure = None
+            if positions is not None:
+                positions = tuple(positions)
+                open_positions = len(positions)
+                buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
+                net_position = float(sum((1.0 if getattr(p, "type", 0) == buy_type else -1.0) * float(getattr(p, "volume", 0.0)) for p in positions))
+                exposure = float(sum(abs(float(getattr(p, "volume", 0.0)) * float(getattr(p, "price_current", 0.0))) for p in positions))
+            balance = getattr(account, "balance", None)
+            equity = getattr(account, "equity", None)
+            unrealized = getattr(account, "profit", None)
+            return OperationalState(
+                balance=float(balance) if balance is not None else None,
+                equity=float(equity) if equity is not None else None,
+                realized_pnl=realized_pnl,
+                unrealized_pnl=float(unrealized) if unrealized is not None else None,
+                trades_today=trades_today,
+                consecutive_losses=consecutive_losses,
+                open_positions=open_positions,
+                net_position=net_position,
+                exposure=exposure,
+                last_processed_candle=now,
+            )
+        finally:
+            mt5.shutdown()
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.DEMO:
