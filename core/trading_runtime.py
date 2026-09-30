@@ -183,7 +183,7 @@ class TradingRuntime:
 
             if automation_policy is not None:
                 now = getattr(orchestration, "timestamp", datetime.now(timezone.utc))
-                effective_senior_context = orchestration.senior_context
+                effective_senior_context = getattr(orchestration, "senior_context", None)
                 automation_cycle_id = (
                     effective_senior_context.cycle_id
                     if effective_senior_context is not None
@@ -228,6 +228,12 @@ class TradingRuntime:
                     stopped = True
                     stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
                     break
+
+            if automation_policy is not None and admission.admitted:
+                automation_lifecycle = AutomationLifecycleBoundary().transition(
+                    automation_lifecycle,
+                    AutomationLifecycleState.ADMITTED,
+                )
 
             plan = None
             execution_result = None
