@@ -104,3 +104,28 @@ def test_orchestrator_derives_market_context_from_same_feed():
     )
     assert result.market_data.candles
     assert result.snapshot.market_context is not None
+
+
+def test_orchestrator_builds_senior_context_from_same_fetched_candles():
+    candles = make_candles()
+    captured = []
+
+    def builder(observed_candles, operational_state):
+        captured.append((observed_candles, operational_state))
+        return None
+
+    orchestrator = TradingOrchestrator(
+        feed=MarketDataFeed(Provider(candles), source="test"),
+        pipeline=StrategyPipeline(),
+        decision_engine=DecisionEngine(RiskManager()),
+        quality_evaluator=SignalQualityEvaluator(),
+        senior_context_builder=builder,
+    )
+    result = orchestrator.evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+    )
+    assert len(captured) == 1
+    assert captured[0][0] == result.market_data.candles
+    assert captured[0][1] == state()
