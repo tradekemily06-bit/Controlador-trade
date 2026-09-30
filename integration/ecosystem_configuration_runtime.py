@@ -10,7 +10,13 @@ from core.live_orchestrator import TradingOrchestrator
 from core.signal_quality import SignalQualityEvaluator
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataFeed, MarketDataRequest
-from core.execution_coordinator import ExecutionCoordinator
+from core.execution_coordinator import ExecutionCoordinator, ExecutionPlan
+from core.demo_readiness import DemoReadiness, DemoReadinessReport
+from core.unified_safety_gate import UnifiedSafetyGate
+from core.runtime_config import RuntimeConfig
+from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
+from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment, RiskBudgetEvaluator, RiskBudgetLimits, RiskBudgetState
+from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
@@ -136,6 +142,59 @@ class ConfiguredEcosystemService(EcosystemService):
             available_risk_domains=tuple(available_domains),
         ))
 
+    def _build_mt5_automation_readiness(self, plan: ExecutionPlan, orchestration) -> DemoReadinessReport:
+        """Evaluate the existing DEMO safety stack from this exact market cycle."""
+        if self.operational_runtime is None:
+            return DemoReadinessReport(False, ("runtime operacional não conectado.",))
+        report = MarketDataRuntimeIntegrity().assess(
+            __import__("core.p122_broker_market_data", fromlist=["BrokerMarketDataSnapshot"]).BrokerMarketDataSnapshot(
+                symbol=orchestration.market_data.symbol,
+                timeframe=orchestration.market_data.timeframe,
+                candles=tuple(orchestration.market_data.candles),
+                source=orchestration.market_data.source,
+                received_at=orchestration.timestamp,
+            ),
+            now=orchestration.timestamp,
+        )
+        from core.p23_market_data_integrity import MarketDataIntegrity
+        integrity = MarketDataIntegrity().assess(
+            tuple(orchestration.market_data.candles),
+            now=orchestration.timestamp,
+            expected_interval_seconds={"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}.get(orchestration.market_data.timeframe.lower()),
+        )
+        recovery = self.operational_runtime.recovery.assess()
+        config = RuntimeConfig(
+            symbol=orchestration.market_data.symbol,
+            timeframe=orchestration.market_data.timeframe,
+            amount=plan.request.amount,
+            duration_seconds=plan.request.duration_seconds,
+        )
+        return DemoReadiness(UnifiedSafetyGate(kill_switch=self.operational_runtime.kill_switch)).evaluate(
+            config=config,
+            market_data=integrity,
+            recovery=recovery,
+            intent=self.trading_runtime.coordinator.build_intent(plan, orchestration=orchestration),
+        )
+
+    def _build_mt5_automation_risk_budget(self, operational_state, plan: ExecutionPlan, orchestration) -> RiskBudgetAssessment:
+        """Evaluate P40 only from observed operational counters; unknown stays blocked."""
+        limits = RiskBudgetLimits(
+            max_daily_loss=self.risk.daily_loss_limit,
+            max_operations=self.risk.max_operations,
+        )
+        if operational_state is None or operational_state.realized_pnl is None or operational_state.trades_today is None:
+            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "estado de risco DEMO incompleto.")
+        if limits.max_daily_loss <= 0 or limits.max_operations <= 0:
+            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "orçamento P40 não está configurado com limites positivos.")
+        return RiskBudgetEvaluator().evaluate(
+            RiskBudgetState(
+                accumulated_loss=max(0.0, -float(operational_state.realized_pnl)),
+                operations_count=operational_state.trades_today,
+            ),
+            limits,
+            0.0,
+        )
+
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
         if self.trading_runtime is None or self.operational_runtime is None:
@@ -148,6 +207,9 @@ class ConfiguredEcosystemService(EcosystemService):
             confirmed=confirmed, filters_ok=filters_ok, entry_conditions=entry_conditions,
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
+            automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
+            automation_readiness_factory=self._build_mt5_automation_readiness,
+            automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
         )
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
