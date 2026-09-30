@@ -36,19 +36,15 @@ class FakeMT5:
         self.calls.append("account_info")
         return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, balance=1000.0, equity=1015.0, profit=15.0)
 
-    def history_deals_get(self, start, end):
-        self.calls.append("history_deals_get")
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(ticket=123, profit=4.0),)
         return (
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
             SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
         )
-
-    def history_deals_get(self, *args, **kwargs):
-        self.calls.append(("history_deals_get", args, kwargs))
-        if kwargs.get("ticket") == 123:
-            return (SimpleNamespace(ticket=123, profit=4.0),)
-        return ()
 
     def history_orders_get(self, *args, **kwargs):
         self.calls.append(("history_orders_get", args, kwargs))
