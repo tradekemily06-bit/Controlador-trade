@@ -15,6 +15,7 @@ from core.demo_readiness import DemoReadiness, DemoReadinessReport
 from core.unified_safety_gate import UnifiedSafetyGate
 from core.runtime_config import RuntimeConfig
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
+from core.p23_market_data_integrity import MarketDataIntegrity
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment, RiskBudgetEvaluator, RiskBudgetLimits, RiskBudgetState
 from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
@@ -142,38 +143,32 @@ class ConfiguredEcosystemService(EcosystemService):
             available_risk_domains=tuple(available_domains),
         ))
 
-    def _build_mt5_automation_readiness(self, plan: ExecutionPlan, orchestration) -> DemoReadinessReport:
+    def _build_mt5_automation_readiness(self, intent, orchestration) -> DemoReadinessReport:
         """Evaluate the existing DEMO safety stack from this exact market cycle."""
         if self.operational_runtime is None:
             return DemoReadinessReport(False, ("runtime operacional não conectado.",))
-        report = MarketDataRuntimeIntegrity().assess(
-            __import__("core.p122_broker_market_data", fromlist=["BrokerMarketDataSnapshot"]).BrokerMarketDataSnapshot(
-                symbol=orchestration.market_data.symbol,
-                timeframe=orchestration.market_data.timeframe,
-                candles=tuple(orchestration.market_data.candles),
-                source=orchestration.market_data.source,
-                received_at=orchestration.timestamp,
-            ),
-            now=orchestration.timestamp,
-        )
-        from core.p23_market_data_integrity import MarketDataIntegrity
         integrity = MarketDataIntegrity().assess(
             tuple(orchestration.market_data.candles),
             now=orchestration.timestamp,
-            expected_interval_seconds={"1m": 60, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}.get(orchestration.market_data.timeframe.lower()),
+            expected_interval_seconds={
+                "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+                "1h": 3600, "4h": 14400, "1d": 86400,
+            }.get(orchestration.market_data.timeframe.lower()),
         )
         recovery = self.operational_runtime.recovery.assess()
         config = RuntimeConfig(
             symbol=orchestration.market_data.symbol,
             timeframe=orchestration.market_data.timeframe,
-            amount=plan.request.amount,
-            duration_seconds=plan.request.duration_seconds,
+            amount=intent.amount,
+            duration_seconds=intent.duration_seconds,
         )
-        return DemoReadiness(UnifiedSafetyGate(kill_switch=self.operational_runtime.kill_switch)).evaluate(
+        return DemoReadiness(
+            UnifiedSafetyGate(kill_switch=self.operational_runtime.kill_switch)
+        ).evaluate(
             config=config,
             market_data=integrity,
             recovery=recovery,
-            intent=self.trading_runtime.coordinator.build_intent(plan, orchestration=orchestration),
+            intent=intent,
         )
 
     def _build_mt5_automation_risk_budget(self, operational_state, plan: ExecutionPlan, orchestration) -> RiskBudgetAssessment:
