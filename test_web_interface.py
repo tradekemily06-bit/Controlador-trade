@@ -34,6 +34,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         html = body.decode("utf-8")
         for marker in (
             "Controlador Trading",
+            "CONTROLADOR TRADING • ECOSSISTEMA",
             'id="painel"',
             'id="analise"',
             'id="laboratorio"',
