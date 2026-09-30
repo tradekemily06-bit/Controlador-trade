@@ -62,6 +62,32 @@ class ExecutionCoordinator:
             ),
         )
 
+    @staticmethod
+    def build_intent(
+        plan: ExecutionPlan,
+        *,
+        orchestration: OrchestrationResult,
+    ) -> ExecutionIntent:
+        """Create the single execution-intent representation used by handoff and admission."""
+        if not isinstance(plan, ExecutionPlan):
+            raise ValueError("plano de execução inválido.")
+        if not isinstance(orchestration, OrchestrationResult):
+            raise ValueError("resultado de orquestração inválido.")
+        if orchestration.decision.decision is not FinalDecision.EXECUTAR:
+            raise ValueError("somente decisões EXECUTAR podem gerar intenção.")
+        if orchestration.senior_context is None:
+            raise ValueError("contexto sênior obrigatório antes de criar intenção.")
+        return ExecutionIntent(
+            request_id=plan.request_id,
+            symbol=plan.request.symbol,
+            signal=plan.request.signal,
+            amount=plan.request.amount,
+            duration_seconds=plan.request.duration_seconds,
+            mode=plan.request.mode,
+            created_at=orchestration.timestamp,
+            cycle_id=orchestration.senior_context.cycle_id,
+        )
+
     def execute_plan(
         self,
         plan: ExecutionPlan,
@@ -77,16 +103,7 @@ class ExecutionCoordinator:
             return GatewayResult(GatewayStatus.BLOCKED, "somente decisões EXECUTAR podem alcançar o gateway.")
         if orchestration.senior_context is None:
             return GatewayResult(GatewayStatus.BLOCKED, "contexto sênior obrigatório antes da admissão da execução.")
-        intent = ExecutionIntent(
-            request_id=plan.request_id,
-            symbol=plan.request.symbol,
-            signal=plan.request.signal,
-            amount=plan.request.amount,
-            duration_seconds=plan.request.duration_seconds,
-            mode=plan.request.mode,
-            created_at=orchestration.timestamp,
-            cycle_id=orchestration.senior_context.cycle_id,
-        )
+        intent = self.build_intent(plan, orchestration=orchestration)
         return ExecutionIntentAdmission(self.gateway).admit(
             intent,
             senior_context=orchestration.senior_context,
