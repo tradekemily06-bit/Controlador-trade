@@ -173,20 +173,25 @@ def test_runtime_keeps_pending_external_order_open():
     assert snapshot is None
 
 
-def test_runtime_integrates_controlled_automation_without_creating_second_executor(runtime):
-    result = runtime.run(
-        request,
-        operational_state=operational_state,
-        senior_context=complete_senior_context(),
+
+def test_runtime_integrates_controlled_automation_gates_without_second_executor():
+    from core.p46_automation_lifecycle import AutomationLifecycleState
+
+    result = TradingRuntime(
+        orchestrator=FakeOrchestrator(executable=False),
+        coordinator=FakeCoordinator(),
+    ).run(
+        request(),
+        operational_state=None,
         amount=0.01,
         duration_seconds=60,
         automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
         automation_readiness=DemoReadinessReport(True, ()),
-        automation_risk_budget=RiskBudgetAssessment(BudgetDecision.APPROVED, 0.0, 0, "approved"),
+        automation_risk_budget=RiskBudgetAssessment(
+            BudgetDecision.APPROVED, 0.0, 0, "approved"
+        ),
     )
     cycle = result.cycles[0]
     assert cycle.automation_lifecycle is not None
-    assert cycle.automation_lifecycle.state in (
-        AutomationLifecycleState.COMPLETED,
-        AutomationLifecycleState.BLOCKED,
-    )
+    assert cycle.automation_lifecycle.state is AutomationLifecycleState.BLOCKED
+    assert cycle.execution is None
