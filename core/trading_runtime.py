@@ -276,12 +276,13 @@ class TradingRuntime:
                     entry_conditions=entry_conditions,
                 )
                 if automation_policy is not None:
-                    automation_lifecycle = AutomationLifecycleBoundary().transition(
-                        automation_lifecycle,
-                        AutomationLifecycleState.COMPLETED
-                        if execution_result.accepted
-                        else AutomationLifecycleState.BLOCKED,
-                    )
+                    if not execution_result.accepted:
+                        automation_lifecycle = AutomationLifecycleBoundary().transition(
+                            automation_lifecycle,
+                            AutomationLifecycleState.BLOCKED,
+                        )
+                    # An accepted dispatch is not yet a completed operation.
+                    # P47/P48/P49 close it only after external reconciliation.
             elif automation_policy is not None:
                 automation_lifecycle = AutomationLifecycleBoundary().transition(
                     automation_lifecycle,
