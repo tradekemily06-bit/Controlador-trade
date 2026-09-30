@@ -4,6 +4,15 @@ from dataclasses import asdict
 from typing import Any
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
+from analysis.pipeline import StrategyPipeline
+from core.decision_engine import DecisionEngine
+from core.live_orchestrator import TradingOrchestrator
+from core.signal_quality import SignalQualityEvaluator
+from core.trading_runtime import TradingRuntime
+from data.feed import MarketDataFeed, MarketDataRequest
+from execution.execution_coordinator import ExecutionCoordinator
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
@@ -21,6 +30,20 @@ class ConfiguredEcosystemService(EcosystemService):
         self.notifications = EcosystemNotificationCenter()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
+        self.mt5_market_adapter = ICMarketsMT5DemoMarketDataAdapter()
+        self.mt5_operational_adapter = ICMarketsMT5DemoAdapter()
+        if self.operational_runtime is not None:
+            self.trading_runtime = TradingRuntime(
+                orchestrator=TradingOrchestrator(
+                    feed=MarketDataFeed(self.mt5_market_adapter, source="IC Markets MT5 DEMO"),
+                    pipeline=StrategyPipeline(),
+                    decision_engine=DecisionEngine(self.risk),
+                    quality_evaluator=SignalQualityEvaluator(),
+                ),
+                coordinator=ExecutionCoordinator(self.operational_runtime.gateway),
+            )
+        else:
+            self.trading_runtime = None
 
     def analyze(self, payload: dict[str, Any]):
         """Require senior context and operational risk for actionable analysis."""
@@ -60,6 +83,19 @@ class ConfiguredEcosystemService(EcosystemService):
         self.store.save(record)
         return record
 
+    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
+        """Run one unified DEMO runtime cycle from live MT5 observations."""
+        if self.trading_runtime is None or self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        state = self.mt5_operational_adapter.read_operational_state()
+        return self.trading_runtime.run(
+            request, operational_state=state, market_context=None, senior_context=senior_context,
+            amount=amount, duration_seconds=duration_seconds, max_cycles=1,
+            confirmed=confirmed, filters_ok=filters_ok, entry_conditions=entry_conditions,
+            checkpoint_store=self.operational_runtime.checkpoint_store,
+            session_id=f"mt5-{symbol}-{timeframe}",
+        )
     def get_preferences(self) -> dict[str, Any]:
         value = self.preferences.preferences
         result = asdict(value)
