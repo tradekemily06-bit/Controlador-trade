@@ -182,7 +182,7 @@ class TradingRuntime:
                 )
 
             if automation_policy is not None:
-                now = orchestration.timestamp
+                now = getattr(orchestration, "timestamp", datetime.now(timezone.utc))
                 effective_senior_context = orchestration.senior_context
                 automation_cycle_id = (
                     effective_senior_context.cycle_id
