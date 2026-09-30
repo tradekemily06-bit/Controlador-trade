@@ -12,7 +12,7 @@ from core.p43_automation_admission import AutomationAdmission, AutomationAdmissi
 from core.p44_automation_intent_handoff import AutomationIntentHandoff, AutomationIntentHandoffBoundary, AutomationIntentHandoffResult
 from core.p45_automation_audit import AutomationAuditRecord, AutomationAuditBoundary
 from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecycleBoundary, AutomationLifecycleState
-from core.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
+from integration.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
 
 
 @dataclass(frozen=True)
