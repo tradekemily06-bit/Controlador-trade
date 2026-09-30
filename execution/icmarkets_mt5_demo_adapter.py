@@ -141,7 +141,7 @@ class ICMarketsMT5DemoAdapter:
                 open_positions=open_positions,
                 net_position=net_position,
                 exposure=exposure,
-                last_processed_candle=now,
+                last_processed_candle=None,
             )
         finally:
             mt5.shutdown()
