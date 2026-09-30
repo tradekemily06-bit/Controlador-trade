@@ -87,9 +87,7 @@ class TradingRuntime:
         )
         lifecycle = AutomationLifecycle(cycle_id, AutomationLifecycleState.DISPATCHED)
         lifecycle = AutomationLifecycleBoundary().transition(lifecycle, terminal)
-        closure = __import__("core.p47_automation_closure", fromlist=["AutomationClosureBoundary"]).AutomationClosureBoundary().close(
-            lifecycle, closed_at=observed_at
-        )
+        closure = AutomationClosureBoundary().close(lifecycle, closed_at=observed_at)
         outcome = AutomationOutcomeBoundary().record(
             closure,
             observed_at=observed_at,
