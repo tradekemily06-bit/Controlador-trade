@@ -160,8 +160,13 @@ class TradingRuntime:
 
             if automation_policy is not None:
                 now = datetime.now(timezone.utc)
+                automation_cycle_id = (
+                    senior_context.cycle_id
+                    if senior_context is not None
+                    else request_id_factory(index)
+                )
                 cycle = AutomationCycle(
-                    cycle_id=request_id_factory(index),
+                    cycle_id=automation_cycle_id,
                     requested_at=now,
                 )
                 automation_decision = ControlledAutomationGate().evaluate(
