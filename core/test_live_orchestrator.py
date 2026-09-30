@@ -93,3 +93,14 @@ def test_orchestrator_uses_feed_limit_after_validation():
         market_context=favorable(),
     )
     assert len(result.market_data.candles) == 2
+
+
+def test_orchestrator_derives_market_context_from_same_feed():
+    result = make_orchestrator(make_candles()).evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=None,
+        confirmed=True,
+    )
+    assert result.market_data.candles
+    assert result.snapshot.market_context is not None
