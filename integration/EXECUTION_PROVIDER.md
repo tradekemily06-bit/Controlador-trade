@@ -1,8 +1,6 @@
-# DEMO execution provider selection
+The application uses IC Markets MT5 DEMO as its canonical default executor.
 
-The application remains PAPER by default.
-
-To explicitly select the IC Markets MT5 DEMO adapter, set:
+The provider factory still accepts `paper` as an explicit isolated/test provider. To explicitly select IC Markets MT5 DEMO, set:
 
 `CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_demo`
 
