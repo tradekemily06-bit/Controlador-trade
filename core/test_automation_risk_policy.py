@@ -25,3 +25,14 @@ def test_invalid_environment_does_not_fallback_to_a_default(monkeypatch):
     policy = AutomationRiskPolicy.from_environment()
     assert policy.configured is False
     assert policy.limits() is None
+
+
+def test_environment_reads_explicit_max_loss_per_operation(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", "12.5")
+    policy = AutomationRiskPolicy.from_environment()
+    assert policy.max_loss_per_operation == 12.5
+
+
+def test_missing_max_loss_per_operation_stays_unknown(monkeypatch):
+    monkeypatch.delenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", raising=False)
+    assert AutomationRiskPolicy.from_environment().max_loss_per_operation is None
