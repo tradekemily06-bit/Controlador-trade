@@ -27,6 +27,8 @@ from core.market_data_runtime_state import MarketDataRuntimeState
 from core.demo_readiness import DemoReadinessReport
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
 
 
 @dataclass(frozen=True)
@@ -71,33 +73,76 @@ class TradingRuntime:
         cycle_id: str,
         external_id: str,
         query_port: ExternalOrderQueryPort,
+        ledger: ExecutionLedger,
+        execution_lifecycle: ExecutionLifecycleStore,
         observed_at: datetime | None = None,
     ) -> AutomationResultSnapshot | None:
-        """Close factual automation state from an external order observation.
-
-        Broker order status is never converted into WIN/LOSS. Financial outcome
-        remains UNKNOWN until an explicit financial observation exists.
-        """
+        """Reconcile only an execution identity already created by this runtime."""
         if not isinstance(cycle_id, str) or not cycle_id.strip():
             raise ValueError("cycle_id é obrigatório")
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id é obrigatório")
+        if not isinstance(ledger, ExecutionLedger):
+            raise ValueError("ledger é obrigatório")
+        if not isinstance(execution_lifecycle, ExecutionLifecycleStore):
+            raise ValueError("execution_lifecycle é obrigatório")
         if not callable(getattr(query_port, "query_order", None)):
             raise ValueError("query_port inválido")
         observed_at = observed_at or datetime.now(timezone.utc)
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:
             raise ValueError("observed_at deve ser timezone-aware")
 
+        matches = ledger.find_by_cycle_id(cycle_id)
+        if len(matches) != 1:
+            raise ValueError("cycle_id não possui uma identidade de execução única neste runtime.")
+        request_id, identity = matches[0]
+        if identity.external_id != external_id.strip():
+            raise ValueError("external_id não pertence ao cycle_id informado.")
+        if identity.status not in (
+            ExecutionLedgerStatus.ACCEPTED,
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            raise ValueError("cycle_id não está em estado de execução reconciliável.")
+
+        execution_record = execution_lifecycle.get(request_id)
+        if execution_record is None:
+            raise ValueError("request_id não possui ciclo de execução persistido.")
+        if execution_record.state not in (
+            ExecutionLifecycleState.ACCEPTED,
+        ):
+            raise ValueError("request_id não está confirmado como execução aceita pelo runtime.")
+
         observation = query_port.query_order(external_id)
         reconciled = ExternalOrderReconciliationBoundary().reconcile(external_id, observation)
         if reconciled.status in (ExternalOrderStatus.PENDING, ExternalOrderStatus.UNKNOWN):
             return None
 
-        terminal = (
-            AutomationLifecycleState.COMPLETED
-            if reconciled.status is ExternalOrderStatus.EXECUTED
-            else AutomationLifecycleState.BLOCKED
-        )
+        executed = reconciled.status is ExternalOrderStatus.EXECUTED
+        if identity.status not in (
+            ExecutionLedgerStatus.RECONCILED_EXECUTED,
+            ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+        ):
+            ledger.reconcile(request_id, executed=executed)
+
+        if executed:
+            if execution_record.state is not ExecutionLifecycleState.ACCEPTED:
+                execution_lifecycle.reconcile(
+                    request_id,
+                    ExecutionLifecycleState.ACCEPTED,
+                    updated_at=observed_at,
+                    message=reconciled.message,
+                )
+            terminal = AutomationLifecycleState.COMPLETED
+        else:
+            execution_lifecycle.reconcile(
+                request_id,
+                ExecutionLifecycleState.REJECTED,
+                updated_at=observed_at,
+                message=reconciled.message,
+            )
+            terminal = AutomationLifecycleState.BLOCKED
+
         lifecycle = AutomationLifecycle(cycle_id, AutomationLifecycleState.DISPATCHED)
         lifecycle = AutomationLifecycleBoundary().transition(lifecycle, terminal)
         closure = AutomationClosureBoundary().close(lifecycle, closed_at=observed_at)
