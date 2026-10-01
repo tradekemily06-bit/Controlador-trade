@@ -1,27 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import secrets
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
+from core.real_manual_confirmation_contract import RealManualConfirmation
 from core.p114_real_safety_gate import RealSafetyReport
 from core.p117_real_admission import RealAdmission
-from execution.execution_ledger import ExecutionLedger
 from execution.ports import ExecutionRequest
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
-
-
-@dataclass(frozen=True)
-class ManualRealConfirmation:
-    """One-shot human confirmation bound to the exact REAL request."""
-
-    confirmation_id: str
-    request_id: str
-    request_fingerprint: str
-    created_at: datetime
-    expires_at: datetime
 
 
 class RealManualConfirmationGate:
@@ -56,7 +44,7 @@ class RealManualConfirmationGate:
         )
         return sha256(canonical.encode("utf-8")).hexdigest()
 
-    def prepare(self, *, request: ExecutionRequest, now: datetime | None = None) -> ManualRealConfirmation:
+    def prepare(self, *, request: ExecutionRequest, now: datetime | None = None) -> RealManualConfirmation:
         if request.mode.value != "REAL":
             raise ValueError("confirmação manual REAL exige request REAL.")
         if not request.request_id or not request.request_id.strip():
@@ -64,7 +52,7 @@ class RealManualConfirmationGate:
         current = now or datetime.now(timezone.utc)
         if current.tzinfo is None:
             raise ValueError("now deve conter timezone.")
-        confirmation = ManualRealConfirmation(
+        confirmation = RealManualConfirmation(
             confirmation_id=secrets.token_urlsafe(24),
             request_id=request.request_id.strip(),
             request_fingerprint=self.fingerprint(request),
