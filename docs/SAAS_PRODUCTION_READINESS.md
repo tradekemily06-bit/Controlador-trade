@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Este documento define a fronteira entre o ecossistema tecnicamente preparado para implantação e uma implantação SaaS de produção realmente autorizada. Ele não habilita execução REAL de operações financeiras.
+Este documento define a fronteira entre o ecossistema tecnicamente preparado para implantação e uma implantação SaaS de produção realmente autorizada. Ele não habilita nem autoriza execução REAL de operações financeiras; o fluxo REAL controlado pertence a uma fronteira operacional separada.
 
 ## Estado atual
 
@@ -63,6 +63,6 @@ O núcleo mantém uma postura **fail-closed**. A implantação SaaS de produçã
 
 ## Critério de liberação
 
-A implantação SaaS só pode ser considerada **READY** quando os seis pré-requisitos obrigatórios estiverem comprovados no ambiente de produção e o estado de execução REAL continuar explicitamente desabilitado até existir uma revisão separada para isso.
+A implantação SaaS só pode ser considerada **READY** quando os seis pré-requisitos obrigatórios estiverem comprovados no ambiente de produção e a infraestrutura SaaS não conceder autoridade REAL por conta própria. A autorização REAL, quando necessária, continua dependendo da fronteira operacional explícita e de confirmação humana.
 
 O código já possui uma barreira provider-neutral para representar esses pré-requisitos. Este documento descreve como a infraestrutura deve satisfazê-los; ele não finge que recursos de produção existem antes de serem provisionados e verificados.

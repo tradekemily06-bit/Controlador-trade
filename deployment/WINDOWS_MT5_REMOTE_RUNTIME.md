@@ -44,7 +44,7 @@ A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o 
 O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet.
 
 ## Regras de segurança
-- REAL permanece desabilitado.
+- REAL não é habilitado por padrão; quando necessário, usa o fluxo REAL controlado e separado, com autorização, auditoria, admission, safety gate e confirmação humana.
 - O Controlador não deve escutar em endereço público.
 - Não colocar senha da corretora, token Cloudflare ou segredo de atualização no Git.
 - Não confiar em REMOTE_ADDR para autenticação quando houver proxy local.
@@ -54,7 +54,7 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 
 ## Critério de pronto
 - /api/health responder pelo hostname HTTPS.
-- /api/status confirmar DEMO e REAL desabilitado.
+- /api/status e `/api/runtime/real/status` devem refletir o estado real do runtime; ausência de pré-requisitos mantém REAL bloqueado.
 - login/identidade do Access validado.
 - GET funcionar no celular e notebook.
 - uma preferência alterada em um dispositivo aparecer no outro.

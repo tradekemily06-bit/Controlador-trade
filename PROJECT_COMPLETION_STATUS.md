@@ -4,9 +4,9 @@
 
 O estado de cada marco deve ser distinguido entre implementado no código, validado por testes/CI e validado fisicamente em runtime externo. O mapa macro não usa o número de P como porcentagem de conclusão: integração, testes e runtime são avaliados por evidência.
 
-O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
+O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação física continua sendo **IC Markets MT5 DEMO**; o caminho REAL controlado também está implementado no código, mas ainda não possui validação física de uma conta REAL.
 
-**Estado desta versão:** o caminho DEMO foi preparado, testado e **validado fisicamente em 2026-10-01** com terminal MetaTrader 5 compatível e conta IC Markets DEMO conectada. A evidência inclui preflight, `order_check()`, `order_send()`, identificadores de abertura/fechamento, fechamento e confirmação de zero posições Controlador remanescentes. REAL permanece desabilitado.
+**Estado desta versão:** o caminho DEMO foi preparado, testado e **validado fisicamente em 2026-10-01** com terminal MetaTrader 5 compatível e conta IC Markets DEMO conectada. A evidência inclui preflight, `order_check()`, `order_send()`, identificadores de abertura/fechamento, fechamento e confirmação de zero posições Controlador remanescentes. O caminho REAL possui gateway, autorização, admission, safety gate, confirmação humana e interface controlada. **Nenhuma operação REAL foi validada fisicamente neste ambiente.**
 
 ## Integração macro consolidada
 
@@ -58,11 +58,11 @@ Evidência externa obtida no terminal Windows + MT5 IC Markets DEMO conectado: `
 
 ## REAL — estado verdadeiro
 
-**EXECUÇÃO REAL: DESABILITADA.**
+**EXECUÇÃO REAL: CONTROLADA E NÃO AUTORIZADA POR PADRÃO.**
 
-A arquitetura possui contratos e testes da fronteira pré-REAL, mas isso não equivale a autorização para operar dinheiro real.
+A arquitetura possui contratos, testes e a superfície operacional da fronteira REAL. Isso não equivale a uma operação REAL já validada nem a uma autorização automática para operar dinheiro real.
 
-Para uma futura liberação REAL ainda serão necessárias as condições de produção/identidade/segurança previstas pelo projeto, incluindo identidade confiável, isolamento durável por tenant/usuário, transporte seguro, gestão de segredos, auditoria durável, rate limiting centralizado e autorização REAL explícita.
+Para uma liberação REAL em ambiente produtivo ainda serão necessárias as condições de produção/identidade/segurança previstas pelo projeto, incluindo identidade confiável, isolamento durável por tenant/usuário, transporte seguro, gestão de segredos, auditoria durável, rate limiting centralizado e autorização REAL explícita.
 
 Nenhuma interface, memória, replay, notícia, aprendizado ou análise pode habilitar REAL por conta própria.
 
