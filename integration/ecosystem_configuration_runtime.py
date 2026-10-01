@@ -188,7 +188,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 operations_count=operational_state.trades_today,
             ),
             limits,
-            0.0,
+            None,
         )
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
