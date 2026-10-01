@@ -15,7 +15,7 @@ from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
-from security_audit import AUDIT
+from security_audit import SecurityAudit
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -27,6 +27,7 @@ OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 DECISION_STORE = DecisionStore(RUNTIME_DIR / "decision-memory.sqlite")
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, decision_store=DECISION_STORE)
 ONBOARDING = EcosystemOnboarding()
+AUDIT = SecurityAudit(RUNTIME_DIR / "security-audit.sqlite")
 
 
 def _audit(environ, request_id: str, status: int) -> None:
