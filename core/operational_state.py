@@ -46,6 +46,7 @@ class OperationalState:
     open_positions: Optional[int] = None
 
     net_position: Optional[float] = None
+    gross_position_volume: Optional[float] = None
     exposure: Optional[float] = None
 
     market_open: Optional[bool] = None
@@ -58,6 +59,7 @@ class OperationalState:
             "realized_pnl",
             "unrealized_pnl",
             "net_position",
+            "gross_position_volume",
             "exposure",
         ):
             value = getattr(self, name)
