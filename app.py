@@ -71,7 +71,7 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
 def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     """Fail closed for remote mutations until a trusted identity provider is configured."""
     client = str(environ.get("REMOTE_ADDR") or "").strip()
-    if client in {"127.0.0.1", "::1"}:
+    if not client or client in {"127.0.0.1", "::1"}:
         return True, "local"
     return False, "trusted remote identity provider is not configured"
 
@@ -120,15 +120,24 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     if method == "POST" and path != "/api/updates":
-        authorized, reason = _authorize_remote_mutation(environ)
-        if not authorized:
-            return _json_response(
-                start_response,
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {"error": reason, "request_id": request_id},
-                request_id,
-                environ,
-            )
+        raw_length = environ.get("CONTENT_LENGTH")
+        try:
+            declared_length = int(raw_length) if raw_length not in (None, "") else 0
+        except (TypeError, ValueError):
+            declared_length = -1
+        if declared_length < 0 or declared_length > MAX_BODY_BYTES:
+            # Let _read_json return the canonical 400 validation response.
+            pass
+        else:
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": reason, "request_id": request_id},
+                    request_id,
+                    environ,
+                )
 
     try:
         if path == "/api/health" and method == "GET":
