@@ -40,6 +40,7 @@ def test_operational_state_is_immutable():
         "balance",
         "equity",
         "realized_pnl",
+        "realized_loss_today",
         "unrealized_pnl",
         "net_position",
         "gross_position_volume",
