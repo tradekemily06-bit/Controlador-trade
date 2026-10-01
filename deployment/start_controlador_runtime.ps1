@@ -14,7 +14,29 @@ New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $logPath = Join-Path $RuntimeDir 'controlador-startup.log'
 $statusPath = Join-Path $RuntimeDir 'controlador-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'controlador.supervisor.stop'
+$restartHistoryPath = Join-Path $RuntimeDir 'supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
+
+function Load-RestartHistory {
+    if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
+    try {
+        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        foreach ($item in @($items)) {
+            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+        }
+    } catch {
+        $restartTimes.Clear()
+    }
+}
+
+function Save-RestartHistory {
+    $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
+    $tmp = "$restartHistoryPath.tmp"
+    $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
+    Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+}
+
+Load-RestartHistory
 
 function Write-StartupLog([string]$Message) {
     Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
@@ -95,6 +117,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     }
 
     $restartTimes.Add($now)
+    Save-RestartHistory
     Write-SupervisorStatus 'RECOVERING' "Controlador terminou com código $appExitCode; nova tentativa após backoff."
     Start-Sleep -Seconds $RestartDelaySeconds
 }
