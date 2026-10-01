@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import math
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
@@ -9,6 +10,7 @@ from core.p114_real_safety_gate import RealSafetyReport
 from core.real_manual_confirmation_contract import RealManualConfirmation, request_fingerprint
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
@@ -29,13 +31,14 @@ class RealGatewayResult:
 class RealExecutionGateway:
     """The only REAL dispatch boundary. Broker details stay behind BrokerAdapterGateway."""
 
-    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger) -> None:
+    def __init__(self, adapter_gateway: BrokerAdapterGateway, ledger: ExecutionLedger, lifecycle: ExecutionLifecycleStore | None = None) -> None:
         if not isinstance(adapter_gateway, BrokerAdapterGateway):
             raise ValueError("adapter_gateway inválido.")
         if not isinstance(ledger, ExecutionLedger):
             raise ValueError("ledger é obrigatório para execução REAL.")
         self._gateway = adapter_gateway
         self._ledger = ledger
+        self._lifecycle = lifecycle
         self._processed_request_ids: set[str] = set(ledger.records())
 
     @staticmethod
@@ -90,6 +93,15 @@ class RealExecutionGateway:
 
         try:
             self._ledger.reserve(request_id)
+            if self._lifecycle is not None:
+                self._lifecycle.put(
+                    ExecutionLifecycleRecord(
+                        request_id,
+                        ExecutionLifecycleState.PENDING,
+                        datetime.now(timezone.utc),
+                        "REAL dispatch iniciado",
+                    )
+                )
             self._processed_request_ids.add(request_id)
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, f"não foi possível reservar request_id com segurança: {exc}")
@@ -99,6 +111,8 @@ class RealExecutionGateway:
         except Exception as exc:
             try:
                 self._ledger.mark_unknown(request_id)
+                if self._lifecycle is not None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), f"resultado REAL incerto: {exc}"))
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"resultado REAL incerto: {type(exc).__name__}: {exc}")
@@ -106,6 +120,8 @@ class RealExecutionGateway:
         if result.execution is None:
             try:
                 self._ledger.mark_unknown(request_id)
+                if self._lifecycle is not None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), result.message))
             except (OSError, ValueError):
                 pass
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, result.message)
@@ -113,6 +129,8 @@ class RealExecutionGateway:
         if not result.execution.accepted:
             try:
                 self._ledger.mark_rejected(request_id)
+                if self._lifecycle is not None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, datetime.now(timezone.utc), result.execution.message))
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem rejeitada, mas persistência do estado falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.REJECTED, result.execution.message, result.execution)
@@ -122,6 +140,8 @@ class RealExecutionGateway:
         if not isinstance(result.execution.external_id, str) or not result.execution.external_id.strip():
             try:
                 self._ledger.mark_unknown(request_id)
+                if self._lifecycle is not None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), "aceite REAL sem external_id"))
             except (OSError, ValueError) as exc:
                 return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"aceite REAL sem external_id e persistência falhou: {exc}", result.execution)
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, "aceite REAL sem external_id; reconciliação explícita necessária.", result.execution)
@@ -129,6 +149,8 @@ class RealExecutionGateway:
         try:
             self._ledger.bind_external_id(request_id, result.execution.external_id)
             self._ledger.mark_accepted(request_id)
+            if self._lifecycle is not None:
+                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), result.execution.message))
         except (OSError, ValueError) as exc:
             return RealGatewayResult(RealGatewayStatus.UNKNOWN, f"ordem REAL aceita, mas identidade/persistência falhou: {exc}", result.execution)
         return RealGatewayResult(RealGatewayStatus.ADMITTED, result.execution.message, result.execution)
@@ -141,3 +163,13 @@ class RealExecutionGateway:
         ):
             raise ValueError("request_id não está em estado incerto reconciliável.")
         self._ledger.reconcile(request_id, executed=executed)
+        if self._lifecycle is not None:
+            state = ExecutionLifecycleState.RECONCILED_EXECUTED if executed else ExecutionLifecycleState.RECONCILED_NOT_EXECUTED
+            self._lifecycle.put(
+                ExecutionLifecycleRecord(
+                    request_id,
+                    state,
+                    datetime.now(timezone.utc),
+                    "REAL reconciliação explícita",
+                )
+            )
