@@ -17,6 +17,7 @@ def call_app(path, method="GET", payload=None):
         "PATH_INFO": path,
         "REQUEST_METHOD": method,
         "CONTENT_LENGTH": str(len(body)),
+        "REMOTE_ADDR": "127.0.0.1",
         "wsgi.input": io.BytesIO(body),
     }
     result = b"".join(application(environ, start_response))
@@ -114,3 +115,22 @@ def test_application_uses_mt5_demo_as_canonical_default_executor():
     from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 
     assert isinstance(app.EXECUTOR, ICMarketsMT5DemoAdapter)
+
+
+def test_remote_mutation_is_blocked_without_trusted_identity():
+    body = json.dumps({"symbol": "EURUSD", "timeframe": "5m"}).encode()
+    captured = {}
+
+    def start_response(status, headers):
+        captured["status"] = status
+
+    environ = {
+        "PATH_INFO": "/api/preferences",
+        "REQUEST_METHOD": "POST",
+        "CONTENT_LENGTH": str(len(body)),
+        "REMOTE_ADDR": "10.0.0.25",
+        "wsgi.input": io.BytesIO(body),
+    }
+    result = b"".join(application(environ, start_response))
+    assert captured["status"].startswith("503")
+    assert json.loads(result)["error"] == "trusted remote identity provider is not configured"
