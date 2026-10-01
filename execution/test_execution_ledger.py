@@ -85,3 +85,40 @@ def test_empty_request_id_is_rejected(tmp_path: Path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="request_id não pode ser vazio"):
         ledger.contains(" ")
+
+
+def test_cycle_and_external_identity_survive_restart(tmp_path):
+    path = tmp_path / "ledger.json"
+    first = ExecutionLedger(path)
+    first.reserve("req-id", cycle_id="cycle-id")
+    first.bind_external_id("req-id", "123")
+    first.mark_accepted("req-id")
+
+    restored = ExecutionLedger(path)
+    record = restored.record_for("req-id")
+    assert record is not None
+    assert record.status is ExecutionLedgerStatus.ACCEPTED
+    assert record.cycle_id == "cycle-id"
+    assert record.external_id == "123"
+
+
+def test_external_id_cannot_be_bound_to_two_requests(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1", cycle_id="cycle-1")
+    ledger.reserve("req-2", cycle_id="cycle-2")
+    ledger.bind_external_id("req-1", "123")
+    with pytest.raises(ValueError, match="outro request_id"):
+        ledger.bind_external_id("req-2", "123")
+
+
+def test_find_by_cycle_id_is_durable_identity_lookup(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1", cycle_id="cycle-1")
+    ledger.bind_external_id("req-1", "123")
+    assert ledger.find_by_cycle_id("cycle-1")[0][0] == "req-1"
+
+
+def test_cycle_id_is_required_for_canonical_reservation_when_supplied():
+    ledger = ExecutionLedger("/tmp/controlador-ledger-test.json")
+    with pytest.raises(ValueError, match="cycle_id"):
+        ledger.reserve("req-1", cycle_id="")
