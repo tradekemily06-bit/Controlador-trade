@@ -13,6 +13,7 @@ class AutomationRiskPolicy:
 
     max_order_volume: float | None = None
     max_total_volume: float | None = None
+    max_loss_per_operation: float | None = None
 
     @property
     def configured(self) -> bool:
@@ -31,6 +32,7 @@ class AutomationRiskPolicy:
         return cls(
             max_order_volume=cls._read_positive("CONTROLADOR_RISK_MAX_ORDER_VOLUME"),
             max_total_volume=cls._read_positive("CONTROLADOR_RISK_MAX_TOTAL_VOLUME"),
+            max_loss_per_operation=cls._read_positive("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION"),
         )
 
     @staticmethod
