@@ -113,7 +113,7 @@ class EcosystemService:
     def record_outcome(self, decision_id: str, outcome: str) -> DecisionRecord:
         for index, record in enumerate(self.memory):
             if record.decision_id == decision_id:
-                updated = record.with_outcome(outcome)
+                updated = record.with_outcome(outcome, source="MANUAL_STUDY")
                 self.memory[index] = updated
                 self.store.save(updated)
                 return updated
