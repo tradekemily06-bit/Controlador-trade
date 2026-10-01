@@ -197,8 +197,12 @@ class ConfiguredEcosystemService(EcosystemService):
             max_daily_loss=self.automation_risk_policy.max_daily_loss or 0.0,
             max_operations=self.automation_risk_policy.max_operations or 0,
         )
-        if operational_state is None or operational_state.realized_pnl is None or operational_state.trades_today is None:
-            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "estado de risco DEMO incompleto.")
+        if (
+            operational_state is None
+            or operational_state.realized_loss_today is None
+            or operational_state.trades_today is None
+        ):
+            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "perda realizada diária DEMO indisponível.")
         if limits.max_daily_loss <= 0 or limits.max_operations <= 0:
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "orçamento P40 não está configurado com limites positivos.")
         proposed_loss = self.automation_risk_policy.max_loss_per_operation
@@ -206,7 +210,7 @@ class ConfiguredEcosystemService(EcosystemService):
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "perda máxima por operação não está configurada.")
         return RiskBudgetEvaluator().evaluate(
             RiskBudgetState(
-                accumulated_loss=max(0.0, -float(operational_state.realized_pnl)),
+                accumulated_loss=float(operational_state.realized_loss_today),
                 operations_count=operational_state.trades_today,
             ),
             limits,
