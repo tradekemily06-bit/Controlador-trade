@@ -20,6 +20,19 @@ def test_preferences_survive_restart(tmp_path: Path):
     assert restored.preferences.autonomous_operation_enabled is False
 
 
+def test_selected_mode_survives_restart_without_granting_real_authority(tmp_path: Path):
+    db = tmp_path / "state.sqlite"
+    first = EcosystemStateStore(db)
+    preferences = EcosystemPreferencesStore()
+    preferences.update(selected_mode="REAL")
+    first.save_preferences(preferences.preferences)
+
+    second = EcosystemStateStore(db)
+    restored = EcosystemPreferencesStore.from_dict(second.load_preferences())
+    assert restored.preferences.selected_mode == "REAL"
+    assert restored.preferences.real_execution_enabled is False
+
+
 def test_notifications_survive_restart(tmp_path: Path):
     db = tmp_path / "state.sqlite"
     first = EcosystemStateStore(db)
