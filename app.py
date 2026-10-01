@@ -187,6 +187,7 @@ def application(environ, start_response):
             data = _read_json(environ)
             external_id = str(data.get("external_id", ""))
             cycle_id = str(data.get("cycle_id", ""))
+            SERVICE.validate_mt5_cycle_identity(cycle_id=cycle_id, external_id=external_id)
             close_result = SERVICE.close_mt5_position(external_id=external_id)
             reconciliation = None
             if close_result.accepted:
