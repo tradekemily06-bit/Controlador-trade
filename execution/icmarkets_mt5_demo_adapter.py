@@ -370,3 +370,32 @@ class ICMarketsMT5DemoAdapter:
             return str(mt5.last_error())
         except Exception:
             return "erro desconhecido"
+
+
+class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
+    """IC Markets MT5 REAL boundary used only behind the REAL gateway.
+
+    The inherited MT5 mechanics are deliberately reused so DEMO and REAL do
+    not diverge in order construction, position identity, or reconciliation.
+    This adapter accepts only REAL requests and only a MT5 account explicitly
+    classified as REAL. It never handles broker credentials.
+    """
+
+    @staticmethod
+    def _is_demo_account(account: Any, mt5: Any) -> bool:
+        real_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", None)
+        return real_mode is not None and getattr(account, "trade_mode", None) == real_mode
+
+    def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        if request.mode is not ExecutionMode.REAL:
+            return ExecutionResult(False, "IC Markets MT5 REAL adapter aceita somente REAL.")
+        # Reuse the proven MT5 execution mechanics while keeping the request
+        # boundary explicit. The inherited implementation performs the same
+        # account, symbol, volume, quote, order_check and order_send checks;
+        # the subclass account predicate above makes those checks REAL-only.
+        from dataclasses import replace
+        demo_shaped_request = replace(request, mode=ExecutionMode.DEMO)
+        result = super().execute(demo_shaped_request)
+        if result.accepted:
+            return ExecutionResult(True, "ordem REAL enviada e confirmada pelo MT5.", result.external_id)
+        return result

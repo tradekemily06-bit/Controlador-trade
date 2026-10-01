@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter
 from execution.paper import PaperExecutor
 from integration.execution_provider import (
     ExecutionProviderConfigurationError,
@@ -24,3 +24,9 @@ def test_ic_markets_mt5_demo_requires_explicit_provider():
 def test_unknown_provider_fails_closed():
     with pytest.raises(ExecutionProviderConfigurationError):
         build_demo_execution_port("unknown-provider")
+
+
+def test_ic_markets_mt5_real_requires_explicit_provider():
+    executor = build_demo_execution_port("ic_markets_mt5_real", symbol="EURUSD")
+    assert isinstance(executor, ICMarketsMT5RealAdapter)
+    assert executor.config.symbol == "EURUSD"
