@@ -288,7 +288,7 @@ class ICMarketsMT5DemoAdapter:
             matches = tuple(
                 p for p in positions
                 if int(getattr(p, "ticket", -1)) == target_ticket
-                and int(getattr(p, "magic", self.config.magic)) == self.config.magic
+                and int(getattr(p, "magic", -1)) == self.config.magic
             )
             if len(matches) != 1:
                 return ExecutionResult(False, "posição DEMO do Controlador não encontrada de forma única; fechamento bloqueado.")
