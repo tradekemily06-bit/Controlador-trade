@@ -144,3 +144,8 @@ def test_valid_state_can_be_approved():
     )
 
     assert decision.allowed is True
+
+
+def test_realized_loss_today_cannot_be_negative():
+    with pytest.raises(OperationalStateValidationError, match="realized_loss_today"):
+        valid_state(realized_loss_today=-0.01)
