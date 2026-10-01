@@ -125,6 +125,7 @@ class ControlledAutomationService:
         current = self._current(cycle_id)
         updated = self._lifecycle.transition(current, AutomationLifecycleState.COMPLETED)
         self._cycles[cycle_id] = updated
+        self._persist(updated)
         return updated
 
     def block(self, cycle_id: str) -> AutomationLifecycle:
@@ -133,6 +134,7 @@ class ControlledAutomationService:
             raise ValueError("terminal automation lifecycle cannot be reused")
         updated = self._lifecycle.transition(current, AutomationLifecycleState.BLOCKED)
         self._cycles[cycle_id] = updated
+        self._persist(updated)
         return updated
 
     def lifecycle(self, cycle_id: str) -> AutomationLifecycle:
