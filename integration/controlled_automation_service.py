@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from core.demo_readiness import DemoReadinessReport
+from core.p39_pretrade_risk import RiskAssessment
 from core.execution_intent import ExecutionIntent
 from core.p40_risk_budget import RiskBudgetAssessment
 from core.p41_controlled_automation import AutomationCycle, AutomationDecision, AutomationPolicy, ControlledAutomationGate
@@ -52,6 +53,7 @@ class ControlledAutomationService:
         readiness: DemoReadinessReport,
         risk_budget: RiskBudgetAssessment,
         intent: ExecutionIntent,
+        pretrade_risk: RiskAssessment | None = None,
         last_cycle_at: datetime | None = None,
     ) -> ControlledAutomationAdmission:
         decision = self._gate.evaluate(policy, cycle, last_cycle_at=last_cycle_at)
@@ -65,6 +67,7 @@ class ControlledAutomationService:
             request,
             readiness=readiness,
             risk_budget=risk_budget,
+            pretrade_risk=pretrade_risk,
         )
 
         if not request_result.authorized or not admission.admitted:

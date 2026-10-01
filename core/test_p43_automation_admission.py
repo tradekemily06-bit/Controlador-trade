@@ -3,6 +3,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from core.demo_readiness import DemoReadinessReport
+from core.p39_pretrade_risk import RiskAssessment, RiskDecision
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
 from core.p42_automation_cycle import AutomationCycleRequest
 from core.p43_automation_admission import AutomationAdmission
@@ -61,3 +62,14 @@ def test_result_is_immutable():
     result = AutomationAdmission().admit(request(), readiness=approved_readiness(), risk_budget=approved_budget())
     with pytest.raises(FrozenInstanceError):
         result.admitted = False
+
+
+def test_blocks_when_pretrade_risk_blocks():
+    result = AutomationAdmission().admit(
+        request(),
+        readiness=approved_readiness(),
+        risk_budget=approved_budget(),
+        pretrade_risk=RiskAssessment(RiskDecision.BLOCKED, 2.0, "volume limit"),
+    )
+    assert result.admitted is False
+    assert "volume limit" in result.reasons

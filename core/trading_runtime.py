@@ -23,6 +23,7 @@ from core.p50_automation_result_snapshot import AutomationResultSnapshot, Automa
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.demo_readiness import DemoReadinessReport
+from core.p39_pretrade_risk import RiskAssessment
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -192,6 +193,7 @@ class TradingRuntime:
         automation_risk_budget: RiskBudgetAssessment | None = None,
         automation_readiness_factory: Callable[[ExecutionIntent, OrchestrationResult], DemoReadinessReport] | None = None,
         automation_risk_budget_factory: Callable[[object, ExecutionIntent, OrchestrationResult], RiskBudgetAssessment] | None = None,
+        automation_pretrade_risk_factory: Callable[[object, ExecutionIntent, OrchestrationResult], RiskAssessment] | None = None,
     ) -> RuntimeResult:
         if not isinstance(max_cycles, int) or isinstance(max_cycles, bool) or max_cycles <= 0:
             raise ValueError("max_cycles deve ser um inteiro positivo.")
@@ -281,6 +283,11 @@ class TradingRuntime:
                     if automation_risk_budget_factory is not None
                     else automation_risk_budget
                 )
+                effective_pretrade_risk = (
+                    automation_pretrade_risk_factory(operational_state, intent, orchestration)
+                    if automation_pretrade_risk_factory is not None
+                    else None
+                )
                 if not isinstance(effective_readiness, DemoReadinessReport):
                     effective_readiness = DemoReadinessReport(False, ("prontidão DEMO não configurada.",))
                 if not isinstance(effective_risk_budget, RiskBudgetAssessment):
@@ -299,6 +306,7 @@ class TradingRuntime:
                     cycle=AutomationCycle(cycle_id=automation_cycle_id, requested_at=now),
                     readiness=effective_readiness,
                     risk_budget=effective_risk_budget,
+                    pretrade_risk=effective_pretrade_risk,
                     intent=intent,
                     last_cycle_at=automation_last_cycle_at,
                 )
