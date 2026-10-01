@@ -1,10 +1,10 @@
-$ErrorActionPreference = 'Stop'
-
 param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = 'C:\Controlador-trade\.runtime'
-)
+ )
+
+$ErrorActionPreference = 'Stop'
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 
