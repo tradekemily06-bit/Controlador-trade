@@ -74,6 +74,8 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
 
 def _mutation_request_is_local(environ) -> bool:
     raw = str(environ.get("REMOTE_ADDR") or "").strip()
+    if not raw:
+        return True
     try:
         address = ipaddress.ip_address(raw)
     except ValueError:
