@@ -7,7 +7,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate, RealSafetyState
 from core.p115_shadow_validation import ShadowValidationBoundary
 from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditStatus
-from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
+from core.p117_real_admission import RealAdmission, RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
 from core.real_manual_confirmation import RealManualConfirmationGate
@@ -48,7 +48,7 @@ class UnknownAdapter:
 
 
 def _authorization():
-    return RealExecutionAuthorization("auth", "a111", "fake", "fake-adapter", True, True)
+    return RealExecutionAuthorization("auth", "a116", "fake", "fake-adapter", True, True)
 
 
 def _admission(auth):
@@ -136,6 +136,59 @@ def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_read
     assert result.status is RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
 
+
+def test_real_gateway_blocks_cross_bound_admission(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    safety = _safety(auth)
+    mismatched = RealAdmission(
+        admission_id="adm",
+        audit_id="different-audit",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="different-broker",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="cross-bound",
+        request=_request("cross-bound"),
+        authorization=auth,
+        admission=mismatched,
+        safety=safety,
+        confirmation=_confirmation(_request("cross-bound")),
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_blocks_admission_with_different_audit(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    safety = _safety(auth)
+    mismatched = RealAdmission(
+        admission_id="adm",
+        audit_id="different-audit",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="fake",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="cross-audit",
+        request=_request("cross-audit"),
+        authorization=auth,
+        admission=mismatched,
+        safety=safety,
+        confirmation=_confirmation(_request("cross-audit")),
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
 
 def test_real_authorization_is_explicit():
     try:
