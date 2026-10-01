@@ -122,3 +122,10 @@ def test_cycle_id_is_required_for_canonical_reservation_when_supplied(tmp_path):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="cycle_id"):
         ledger.reserve("req-1", cycle_id="")
+
+
+def test_cycle_id_cannot_be_reserved_twice(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    ledger.reserve("req-1", cycle_id="cycle-1")
+    with pytest.raises(ValueError, match="cycle_id já possui"):
+        ledger.reserve("req-2", cycle_id="cycle-1")
