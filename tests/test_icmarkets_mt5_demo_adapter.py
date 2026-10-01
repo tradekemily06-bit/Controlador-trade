@@ -48,6 +48,8 @@ class FakeMT5:
 
     def order_send(self, payload):
         self.sent.append(payload)
+        if "position" in payload and self.send_ok:
+            self.positions = [p for p in self.positions if int(getattr(p, "ticket", -1)) != int(payload["position"])]
         return SimpleNamespace(
             retcode=self.TRADE_RETCODE_DONE if self.send_ok else 10006,
             order=123456 if self.external_id else None,
