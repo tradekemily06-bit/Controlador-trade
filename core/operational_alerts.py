@@ -40,6 +40,7 @@ def build_operational_incidents(observability: Mapping[str, Any]) -> list[Operat
     kill_switch = observability.get("kill_switch")
     runtime_health = observability.get("runtime_health")
     market_data = observability.get("market_data")
+    supervision = observability.get("supervision", {})
 
     if not all(isinstance(section, Mapping) for section in (execution, recovery, reconciliation, kill_switch, runtime_health, market_data)):
         return [
