@@ -6,6 +6,7 @@ from pathlib import Path
 import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
+from core.operational_alerts import build_operational_incidents
 from analysis.pipeline import StrategyPipeline
 from core.decision_engine import DecisionEngine
 from core.live_orchestrator import TradingOrchestrator
@@ -337,16 +338,48 @@ class ConfiguredEcosystemService(EcosystemService):
         events = self.notifications.visible(include_info=include_info)
         return tuple(item for item in events if self._notification_visible(item))
 
+    def _operational_notifications(self) -> list[dict[str, Any]]:
+        """Expose current runtime incidents through the notification channel."""
+        kind_by_source = {
+            "execution": NotificationKind.EXECUTION,
+            "recovery": NotificationKind.RECOVERY,
+            "reconciliation": NotificationKind.RECOVERY,
+            "market_data": NotificationKind.MARKET,
+            "runtime_health": NotificationKind.SYSTEM_UPDATE,
+            "kill_switch": NotificationKind.RISK,
+        }
+        severity_by_incident = {
+            "CRITICAL": NotificationSeverity.CRITICAL,
+            "WARNING": NotificationSeverity.IMPORTANT,
+        }
+        items: list[dict[str, Any]] = []
+        for incident in build_operational_incidents(self.operational_observability()):
+            severity = severity_by_incident.get(incident.severity.upper(), NotificationSeverity.IMPORTANT)
+            items.append(
+                {
+                    "notification_id": f"operational-{incident.code}",
+                    "kind": kind_by_source.get(incident.source, NotificationKind.SYSTEM_UPDATE).value,
+                    "severity": severity.value,
+                    "title": incident.code,
+                    "message": incident.message,
+                    "requires_attention": severity is NotificationSeverity.CRITICAL,
+                    "blocking": severity is NotificationSeverity.CRITICAL,
+                }
+            )
+        return items
+
     def notification_summary(self) -> dict[str, Any]:
-        visible = self._visible_notifications(include_info=False)
+        persisted = [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self._visible_notifications(include_info=False)]
+        items = persisted + self._operational_notifications()
         return {
-            "count": len(visible),
-            "critical_count": len(self.notifications.critical()),
-            "items": [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in visible],
+            "count": len(items),
+            "critical_count": sum(1 for item in items if item["severity"] == NotificationSeverity.CRITICAL.value),
+            "items": items,
         }
 
     def all_notifications(self) -> list[dict[str, Any]]:
-        return [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
+        persisted = [asdict(item) | {"kind": item.kind.value, "severity": item.severity.value} for item in self.notifications.all()]
+        return persisted + self._operational_notifications()
 
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
         notification_id = f"update-{len(self.notifications.all()) + 1}"
