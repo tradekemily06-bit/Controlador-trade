@@ -92,3 +92,9 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     assert fake.kwargs["automation_policy"].enabled is True
     assert callable(fake.kwargs["automation_readiness_factory"])
     assert callable(fake.kwargs["automation_risk_budget_factory"])
+
+
+def test_mt5_runtime_uses_the_single_controlled_automation_service():
+    service = ConfiguredEcosystemService()
+    assert service.trading_runtime is not None
+    assert service.trading_runtime.automation_service is service.automation
