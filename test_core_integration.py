@@ -20,9 +20,10 @@ def candles_alta():
     ]
 
 
-def state(*, realized_pnl=0, trades_today=0, consecutive_losses=0):
+def state(*, realized_pnl=0, realized_loss_today=0, trades_today=0, consecutive_losses=0):
     return OperationalState(
         realized_pnl=realized_pnl,
+        realized_loss_today=realized_loss_today,
         trades_today=trades_today,
         consecutive_losses=consecutive_losses,
     )
@@ -108,7 +109,7 @@ def test_risk_blocks_execution():
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
         market_context=context,
-        operational_state=state(realized_pnl=-100),
+        operational_state=state(realized_pnl=-100, realized_loss_today=100),
     )
     assert result.decision == FinalDecision.BLOQUEAR
 
