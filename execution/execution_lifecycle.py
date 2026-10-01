@@ -125,8 +125,7 @@ class ExecutionLifecycleStore:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+", encoding="utf-8") as lock_file:
             if msvcrt is not None:
-                lock_file.seek(0)
-                if lock_file.tell() == 0:
+                if os.fstat(lock_file.fileno()).st_size == 0:
                     lock_file.write("0")
                     lock_file.flush()
                 lock_file.seek(0)
