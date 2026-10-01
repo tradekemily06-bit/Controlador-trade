@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $logPath = Join-Path $RuntimeDir 'mt5-supervisor.log'
 $statusPath = Join-Path $RuntimeDir 'mt5-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'mt5.supervisor.stop'
-$restartHistoryPath = Join-Path $RuntimeDir 'supervisor-restart-history.json'
+$restartHistoryPath = Join-Path $RuntimeDir 'mt5-supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
 
 function Load-RestartHistory {
@@ -77,13 +77,16 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         }
         if ($restartTimes.Count -ge $MaxRestartsPerHour) {
             Write-SupervisorLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). MT5 permanece parado."
-            Write-SupervisorStatus 'FAILED' 'RESTART_LIMIT_EXCEEDED'
+            $finalState = 'FAILED'
+            $finalReason = 'RESTART_LIMIT_EXCEEDED'
+            Write-SupervisorStatus $finalState $finalReason
             break
         }
 
         Write-SupervisorLog 'MT5 não está em execução; iniciando/reiniciando.'
         Start-Process -FilePath $Mt5TerminalPath
         $restartTimes.Add($now)
+        Save-RestartHistory
         Write-SupervisorStatus 'STARTING' 'MT5 iniciado pelo supervisor.'
         Start-Sleep -Seconds $RestartDelaySeconds
     }
