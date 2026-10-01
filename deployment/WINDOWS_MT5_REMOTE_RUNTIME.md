@@ -85,3 +85,23 @@ A ponte REAL usa o mesmo terminal MT5 Windows, mas não transforma o runtime em 
 - confirmação humana única, curta e vinculada exatamente ao request.
 
 Essas variáveis são configuração de ambiente/segredo operacional e não devem ser gravadas no GitHub. Ausência de qualquer pré-requisito mantém o REAL bloqueado. A preparação (/api/runtime/real/prepare) não envia ordem; somente /api/runtime/real/confirm, após a confirmação humana válida, pode alcançar o RealExecutionGateway. Um resultado externo incerto não é reenviado automaticamente: exige reconciliação explícita.
+
+## Continuidade e migração do runtime
+
+O diretório `CONTROLADOR_RUNTIME_DIR` é o estado portátil do ecossistema. A partir desta versão, a memória de decisões usa por padrão `decision-memory.sqlite` dentro desse diretório, portanto não depende de configuração manual de um caminho externo.
+
+Os artefatos de estado portáveis são:
+- `operation-memory.json`
+- `operational-safety.json`
+- `execution-ledger.json`
+- `execution-lifecycle.json`
+- `runtime-checkpoint.json`
+- `ecosystem-state.sqlite`
+- `decision-memory.sqlite`
+- `security-audit.sqlite`
+
+`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
+
+Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
+
+A escolha DEMO/REAL continua sendo uma decisão operacional separada da portabilidade. O painel pode apresentar o fluxo REAL controlado, mas a seleção ou preparação nunca substitui as barreiras de autorização, segurança, risco, recovery e confirmação humana.

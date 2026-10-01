@@ -36,7 +36,7 @@ O boundary HTTP possui rate limiting, limite de payload, request IDs, security h
 
 ## Memória de decisões
 
-A memória de decisões funciona em memória por padrão. Para uma instalação que precise sobreviver a reinícios, `CONTROLADOR_DECISION_DB` habilita persistência opcional em SQLite. As decisões e suas atualizações de resultado são restauradas na inicialização e falhas de armazenamento são tratadas de forma fail-soft. A persistência não autoriza execução REAL e não substitui o futuro isolamento de dados por usuário/tenant.
+A memória de decisões usa por padrão `decision-memory.sqlite` dentro de `CONTROLADOR_RUNTIME_DIR`, sobrevivendo a reinícios. `CONTROLADOR_DECISION_DB` continua disponível para uma instalação que precise escolher explicitamente outro caminho. As decisões e suas atualizações de resultado são restauradas na inicialização e falhas de armazenamento são tratadas de forma fail-soft. A persistência não autoriza execução REAL e não substitui o futuro isolamento de dados por usuário/tenant.
 
 ## Integração DEMO
 
@@ -63,7 +63,7 @@ A interface web responsiva integra os módulos:
 - Conexões, auditoria e segurança;
 - navegação mobile-first para celular e notebook.
 
-A interface continua em SIMULAÇÃO/DEMO e não possui caminho visual para habilitar REAL. As preferências operacionais salvas pela interface são persistidas no estado compartilhado do runtime e não alteram a autorização de execução.
+A interface mantém DEMO como ciclo operacional padrão e expõe a superfície REAL controlada, com estado, preparação e confirmação humana. A preparação/seleção nunca substitui as barreiras do backend nem autoriza REAL por si só. As preferências operacionais são persistidas no estado compartilhado do runtime.
 
 O manifest web é servido pelo próprio aplicativo e os endpoints possuem contratos automatizados.
 
@@ -73,6 +73,6 @@ Para validação local, execute `python app.py` em um ambiente Python compatíve
 
 ## Estado do projeto
 
-O software necessário para o núcleo, as fronteiras de execução DEMO, a integração IC Markets MT5 DEMO e a interface atual do ecossistema está implementado e coberto pela suíte de testes/CI. REAL permanece bloqueado.
+O software necessário para o núcleo, as fronteiras de execução DEMO, a integração IC Markets MT5 DEMO e a interface atual do ecossistema está implementado e coberto pela suíte de testes/CI. REAL permanece separado e condicionado às barreiras explícitas de produção e à confirmação humana.
 
 Novos trabalhos devem ser motivados por uma necessidade concreta, defeito encontrado na validação ou expansão funcional real; não devem criar P-steps artificiais apenas para prolongar o projeto.

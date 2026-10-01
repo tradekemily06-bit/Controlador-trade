@@ -10,6 +10,7 @@ from wsgiref.simple_server import make_server
 
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
+from analysis.decision_store import DecisionStore
 from core.operational_runtime import build_operational_runtime
 from core.real_runtime_controller import RealRuntimeController
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
@@ -22,9 +23,14 @@ WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
+DECISION_DB = Path(os.environ.get("CONTROLADOR_DECISION_DB", str(RUNTIME_DIR / "decision-memory.sqlite")))
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, execution_provider=EXECUTION_PROVIDER)
+SERVICE = ConfiguredEcosystemService(
+    operational_runtime=OPERATIONAL_RUNTIME,
+    execution_provider=EXECUTION_PROVIDER,
+    decision_store=DecisionStore(str(DECISION_DB)),
+)
 REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
 ONBOARDING = EcosystemOnboarding()
 
