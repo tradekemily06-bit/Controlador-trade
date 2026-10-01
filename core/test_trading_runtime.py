@@ -210,6 +210,27 @@ def test_runtime_rejects_external_id_belonging_to_another_cycle(tmp_path):
         )
 
 
+def test_runtime_recovers_unknown_execution_with_explicit_external_id(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve("req-unknown", cycle_id="runtime-000007")
+    ledger.mark_unknown("req-unknown")
+    lifecycle.put(ExecutionLifecycleRecord(
+        "req-unknown", ExecutionLifecycleState.UNKNOWN, datetime.now(timezone.utc), "uncertain"
+    ))
+    snapshot = TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000007",
+        external_id="777",
+        query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
+    )
+    assert snapshot is not None
+    assert ledger.record_for("req-unknown").external_id == "777"
+    assert ledger.status("req-unknown") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+    assert lifecycle.get("req-unknown").state is ExecutionLifecycleState.ACCEPTED
+
+
 def test_runtime_rejects_contradictory_terminal_reconciliation(tmp_path):
     ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000006", "req-6", "666")
     TradingRuntime.reconcile_external_cycle(
