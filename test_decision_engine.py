@@ -185,7 +185,7 @@ def test_contexto_senior_completo_nao_substitui_risco_operacional():
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
         market_context=favorable_context(MarketDirection.ALTA),
-        operational_state=operational_state(realized_pnl=-100),
+        operational_state=operational_state(realized_pnl=-100, realized_loss_today=100),
         senior_context=senior_context(),
     )
     assert result.decision == FinalDecision.BLOQUEAR
