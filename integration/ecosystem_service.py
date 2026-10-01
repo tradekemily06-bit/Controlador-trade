@@ -48,7 +48,9 @@ class EcosystemService:
         self.learning_activities: dict[str, LearningActivity] = {}
         self.learning_attempts: list[LearningAttempt] = []
         self.senior_context = SeniorContextOrchestrator()
-        self.automation = ControlledAutomationService()
+        self.automation = ControlledAutomationService(
+            lifecycle_store=(operational_runtime.automation_lifecycle if operational_runtime is not None else None)
+        )
 
     def require_production_context(self, *, subject_id: str | None, tenant_id: str | None) -> ProductionRequestContext:
         return require_production_context(subject_id=subject_id, tenant_id=tenant_id)
