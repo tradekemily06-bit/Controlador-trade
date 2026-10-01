@@ -8,6 +8,8 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
+from core.operational_alerts import build_operational_incidents
+from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
 from core.operational_runtime import OperationalRuntime
@@ -246,3 +248,45 @@ class EcosystemService:
 
     def health_alerts(self) -> list[dict[str, Any]]:
         return [asdict(item) for item in build_health_alerts(self.operational_observability())]
+
+    def _operational_notifications(self) -> list[dict[str, Any]]:
+        """Expose current runtime incidents through the notification channel.
+
+        Incidents are derived from read-only observability at request time;
+        this does not mutate runtime state or grant execution authority.
+        """
+        kind_by_source = {
+            "execution": NotificationKind.EXECUTION,
+            "recovery": NotificationKind.RECOVERY,
+            "reconciliation": NotificationKind.RECOVERY,
+            "market_data": NotificationKind.MARKET,
+            "runtime_health": NotificationKind.SYSTEM_UPDATE,
+            "kill_switch": NotificationKind.RISK,
+        }
+        severity_by_incident = {
+            "CRITICAL": NotificationSeverity.CRITICAL,
+            "WARNING": NotificationSeverity.IMPORTANT,
+        }
+        items: list[dict[str, Any]] = []
+        for incident in build_operational_incidents(self.operational_observability()):
+            items.append(
+                {
+                    "notification_id": f"operational-{incident.code}",
+                    "kind": kind_by_source.get(incident.source, NotificationKind.SYSTEM_UPDATE).value,
+                    "severity": severity_by_incident.get(incident.severity.upper(), NotificationSeverity.IMPORTANT).value,
+                    "title": incident.code,
+                    "message": incident.message,
+                    "requires_attention": incident.severity.upper() == "CRITICAL",
+                    "blocking": incident.severity.upper() == "CRITICAL",
+                }
+            )
+        return items
+
+    def notification_items(self, *, include_info: bool = False) -> list[dict[str, Any]]:
+        """Return persisted notifications plus current operational incidents."""
+        persisted = [
+            asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
+            for item in self.notifications.visible(include_info=include_info)
+            if self._notification_visible(item)
+        ]
+        return persisted + self._operational_notifications()
