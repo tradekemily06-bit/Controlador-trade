@@ -217,3 +217,4 @@ class ExecutionLedger:
                 raise ValueError(f"transição inválida de {current.status.value} para {status.value}.")
             self._records[request_id] = ExecutionLedgerRecord(status, current.cycle_id, current.external_id)
         self._mutate_locked(mutation)
+
