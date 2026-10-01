@@ -69,11 +69,25 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
 
 
 def _authorize_remote_mutation(environ) -> tuple[bool, str]:
-    """Fail closed for remote mutations until a trusted identity provider is configured."""
+    """Authorize remote mutations through the deployment's trusted identity boundary."""
+    remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
     client = str(environ.get("REMOTE_ADDR") or "").strip()
-    if not client or client in {"127.0.0.1", "::1"}:
+
+    if not remote_access_required and (not client or client in {"127.0.0.1", "::1"}):
         return True, "local"
-    return False, "trusted remote identity provider is not configured"
+
+    if not remote_access_required:
+        return False, "trusted remote identity provider is not configured"
+
+    if not identity_header:
+        return False, "trusted identity header is not configured"
+
+    identity = str(environ.get("HTTP_" + identity_header.upper().replace("-", "_")) or "").strip()
+    if not identity:
+        return False, "trusted identity is required"
+
+    return True, "trusted"
 
 
 def _authorize_internal_update(environ) -> tuple[bool, str]:
