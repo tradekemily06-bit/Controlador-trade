@@ -117,6 +117,32 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert p119.state is RealReleaseState.RELEASED
 
 
+def test_real_gateway_persists_lifecycle_and_reconciles_unknown(tmp_path: Path):
+    registry = BrokerRegistry()
+    registry.register("fake", UnknownAdapter())
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    from execution.execution_lifecycle import ExecutionLifecycleStore, ExecutionLifecycleState
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger, lifecycle)
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    request = _request("lifecycle-1")
+    result = gateway.execute(
+        broker="fake",
+        request_id="lifecycle-1",
+        request=request,
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+        confirmation=_confirmation(request),
+    )
+    assert result.status is RealGatewayStatus.UNKNOWN
+    assert lifecycle.get("lifecycle-1").state is ExecutionLifecycleState.UNKNOWN
+    gateway.reconcile_unknown("lifecycle-1", executed=True)
+    assert lifecycle.get("lifecycle-1").state is ExecutionLifecycleState.RECONCILED_EXECUTED
+
+
 def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_ready(tmp_path: Path):
     registry = BrokerRegistry()
     adapter = FakeAdapter()
