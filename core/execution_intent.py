@@ -36,8 +36,6 @@ class ExecutionIntent:
             raise ValueError("duration_seconds deve ser um inteiro positivo.")
         if not isinstance(self.mode, ExecutionMode):
             raise ValueError("modo de execução inválido.")
-        if self.mode is ExecutionMode.REAL:
-            raise ValueError("execução REAL permanece bloqueada nesta etapa.")
         if not isinstance(self.created_at, datetime):
             raise ValueError("created_at inválido.")
         if self.cycle_id is not None and (
@@ -46,7 +44,11 @@ class ExecutionIntent:
             raise ValueError("cycle_id, quando informado, deve ser uma string não vazia.")
 
     def as_execution_request(self) -> ExecutionRequest:
-        """Build the existing port DTO without invoking any execution adapter."""
+        """Build the port DTO without invoking any execution adapter.
+
+        REAL intents are valid data objects, but they have no execution
+        authority. REAL dispatch remains exclusive to RealExecutionGateway.
+        """
         return ExecutionRequest(
             symbol=self.symbol,
             signal=self.signal,
