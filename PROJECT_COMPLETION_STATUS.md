@@ -52,7 +52,9 @@ O preflight físico é somente leitura e confirma:
 
 A camada seguinte do adapter DEMO exige conta DEMO, símbolo/cotação válidos, volume compatível, `order_check()` aprovado, `order_send()` confirmado e identificador externo. A reconciliação consulta o histórico do MT5 e não reenviará uma ordem em caso de estado incerto.
 
-**Validação física da primeira ordem: PENDENTE até existir evidência externa verificável.**
+**Validação física da primeira ordem: CONCLUÍDA em 2026-10-01.**
+
+Evidência externa obtida no terminal Windows + MT5 IC Markets DEMO conectado: `EURUSD`, volume `0.01`, `order_check` da abertura com `retcode=0`, `order_send` da abertura com `retcode=10009` e deal confirmado, posição identificada pelo ticket `1978110662`, `order_check` do fechamento com `retcode=0`, `order_send` do fechamento com `retcode=10009` e deal confirmado, e `REMAINING_CONTROLADOR_POSITIONS=0`. O validador encerrou com `VALIDATION=PASSED`, `DEMO_ONLY=True` e `REAL=False`. Esta evidência comprova o round-trip físico DEMO; não autoriza REAL. 
 
 ## REAL — estado verdadeiro
 
