@@ -214,6 +214,8 @@ class ConfiguredEcosystemService(EcosystemService):
             cycle_id=cycle_id,
             external_id=external_id,
             query_port=self.mt5_operational_adapter,
+            ledger=self.operational_runtime.execution_ledger,
+            execution_lifecycle=self.operational_runtime.execution_lifecycle,
         )
 
     def get_preferences(self) -> dict[str, Any]:
