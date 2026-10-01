@@ -91,7 +91,6 @@ def main() -> int:
             "price": ask,
             "deviation": 20,
             "magic": MAGIC,
-            "comment": "ControladorTrading-DEMO-PHYSICAL-OPEN",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -99,7 +98,7 @@ def main() -> int:
         check = mt5.order_check(open_request)
         print(f"OPEN_ORDER_CHECK={check}")
         if check is None or getattr(check, "retcode", 0) != 0:
-            fail("order_check da abertura não aprovado.")
+            fail(f"order_check da abertura não aprovado: {mt5.last_error()}")
             return 9
 
         result = mt5.order_send(open_request)
@@ -144,7 +143,6 @@ def main() -> int:
             "price": close_price,
             "deviation": 20,
             "magic": MAGIC,
-            "comment": "ControladorTrading-DEMO-PHYSICAL-CLOSE",
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -152,7 +150,7 @@ def main() -> int:
         close_check = mt5.order_check(close_request)
         print(f"CLOSE_ORDER_CHECK={close_check}")
         if close_check is None or getattr(close_check, "retcode", 0) != 0:
-            fail("order_check do fechamento não aprovado.")
+            fail(f"order_check do fechamento não aprovado: {mt5.last_error()}")
             return 13
 
         close_result = mt5.order_send(close_request)
@@ -167,6 +165,16 @@ def main() -> int:
         )
         finished_at = datetime.now(timezone.utc).isoformat()
 
+        # Check the final invariant before emitting any success marker. A
+        # successful close response alone is not enough: the terminal must
+        # also report zero remaining Controlador positions.
+        if remaining:
+            fail("posição Controlador ainda permanece aberta após fechamento.")
+            print(f"REMAINING_CONTROLADOR_POSITIONS={len(remaining)}")
+            print(f"STARTED_AT={started_at}")
+            print(f"FINISHED_AT={finished_at}")
+            return 15
+
         print("VALIDATION=PASSED")
         print("DEMO_ONLY=True")
         print("REAL=False")
@@ -177,13 +185,9 @@ def main() -> int:
         print(f"OPEN_DEAL={getattr(result, 'deal', None)}")
         print(f"CLOSE_ORDER={getattr(close_result, 'order', None)}")
         print(f"CLOSE_DEAL={getattr(close_result, 'deal', None)}")
-        print(f"REMAINING_CONTROLADOR_POSITIONS={len(remaining)}")
+        print("REMAINING_CONTROLADOR_POSITIONS=0")
         print(f"STARTED_AT={started_at}")
         print(f"FINISHED_AT={finished_at}")
-
-        if remaining:
-            fail("posição Controlador ainda permanece aberta após fechamento.")
-            return 15
 
         return 0
     finally:
