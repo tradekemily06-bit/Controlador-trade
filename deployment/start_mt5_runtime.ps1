@@ -61,7 +61,9 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
 
 $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
 if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
-    Write-SupervisorStatus 'FAILED' 'MT5 terminal não encontrado.'
+    $finalState = 'FAILED'
+    $finalReason = 'MT5 terminal não encontrado.'
+    Write-SupervisorStatus $finalState $finalReason
     throw "MT5 terminal não encontrado: $Mt5TerminalPath"
 }
 
