@@ -12,12 +12,10 @@ from core.execution_intent import ExecutionIntent
 from core.market_context import MarketContextResult
 from execution.gateway import GatewayResult, GatewayStatus
 from data.feed import MarketDataRequest
-from core.p41_controlled_automation import AutomationCycle, AutomationPolicy, ControlledAutomationGate
-from core.p42_automation_cycle import AutomationCycleOrchestrator, AutomationCycleRequest
-from core.p43_automation_admission import AutomationAdmission, AutomationAdmissionResult
-from core.p44_automation_intent_handoff import AutomationIntentHandoffBoundary
-from core.p45_automation_audit import AutomationAuditBoundary, AutomationAuditRecord
+from core.p41_controlled_automation import AutomationCycle, AutomationPolicy
+from core.p45_automation_audit import AutomationAuditRecord
 from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecycleBoundary, AutomationLifecycleState
+from integration.controlled_automation_service import ControlledAutomationService
 from core.p47_automation_closure import AutomationClosureBoundary
 from core.p48_automation_outcome import AutomationOutcomeBoundary
 from core.p49_outcome_reconciliation import OutcomeReconciliationBoundary
@@ -58,7 +56,7 @@ class RuntimeResult:
 class TradingRuntime:
     """Executa ciclos controlados do ecossistema sem conhecer corretoras."""
 
-    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator, market_data_state: MarketDataRuntimeState | None = None) -> None:
+    def __init__(self, *, orchestrator: TradingOrchestrator, coordinator: ExecutionCoordinator, market_data_state: MarketDataRuntimeState | None = None, automation_service: ControlledAutomationService | None = None) -> None:
         if orchestrator is None:
             raise ValueError("orchestrator é obrigatório.")
         if coordinator is None:
@@ -66,6 +64,7 @@ class TradingRuntime:
         self.orchestrator = orchestrator
         self.coordinator = coordinator
         self.market_data_state = market_data_state
+        self.automation_service = automation_service or ControlledAutomationService()
 
     @staticmethod
     def reconcile_external_cycle(
@@ -256,13 +255,10 @@ class TradingRuntime:
 
             if automation_policy is not None:
                 if plan is None:
-                    automation_lifecycle = AutomationLifecycle(
-                        getattr(getattr(orchestration, "senior_context", None), "cycle_id", request_id_factory(index)),
-                        AutomationLifecycleState.CREATED,
-                    )
+                    cycle_id = getattr(getattr(orchestration, "senior_context", None), "cycle_id", request_id_factory(index))
+                    automation_lifecycle = AutomationLifecycle(cycle_id, AutomationLifecycleState.CREATED)
                     automation_lifecycle = AutomationLifecycleBoundary().transition(
-                        automation_lifecycle,
-                        AutomationLifecycleState.BLOCKED,
+                        automation_lifecycle, AutomationLifecycleState.BLOCKED,
                     )
                     cycles.append(RuntimeCycle(
                         orchestration=orchestration,
@@ -297,66 +293,32 @@ class TradingRuntime:
 
                 now = getattr(orchestration, "timestamp", datetime.now(timezone.utc))
                 effective_senior_context = getattr(orchestration, "senior_context", None)
-                automation_cycle_id = (
-                    effective_senior_context.cycle_id
-                    if effective_senior_context is not None
-                    else request_id
-                )
-                cycle = AutomationCycle(cycle_id=automation_cycle_id, requested_at=now)
-                automation_decision = ControlledAutomationGate().evaluate(
-                    automation_policy, cycle, last_cycle_at=automation_last_cycle_at,
-                )
-                cycle_result = AutomationCycleOrchestrator().request_cycle(
-                    automation_decision, requested_at=now,
-                )
-                automation_request = cycle_result.request
-                admission = AutomationAdmission().admit(
-                    automation_request,
+                automation_cycle_id = effective_senior_context.cycle_id if effective_senior_context is not None else request_id
+                automation_result = self.automation_service.admit(
+                    policy=automation_policy,
+                    cycle=AutomationCycle(cycle_id=automation_cycle_id, requested_at=now),
                     readiness=effective_readiness,
                     risk_budget=effective_risk_budget,
-                ) if cycle_result.authorized else AutomationAdmissionResult(
-                    False, None, (cycle_result.reason,)
+                    intent=intent,
+                    last_cycle_at=automation_last_cycle_at,
                 )
-                automation_lifecycle = AutomationLifecycle(
-                    cycle.cycle_id, AutomationLifecycleState.CREATED,
-                )
-                if not admission.admitted:
-                    automation_lifecycle = AutomationLifecycleBoundary().transition(
-                        automation_lifecycle, AutomationLifecycleState.BLOCKED,
-                    )
+                automation_request = automation_result.request
+                automation_lifecycle = automation_result.lifecycle
+                automation_audit = automation_result.audit
+                if not automation_result.admission.admitted or automation_result.handoff is None or not automation_result.handoff.handed_off:
+                    stopped = True
+                    stop_reason = "; ".join(automation_result.admission.reasons) or "; ".join(
+                        automation_result.handoff.reasons if automation_result.handoff is not None else ()
+                    ) or "automação controlada bloqueada."
                     cycles.append(RuntimeCycle(
                         orchestration=orchestration,
                         plan=plan,
                         execution=None,
                         automation_lifecycle=automation_lifecycle,
+                        automation_audit=automation_audit,
                     ))
-                    stopped = True
-                    stop_reason = "; ".join(admission.reasons) or "automação controlada bloqueada."
                     break
-
-                automation_lifecycle = AutomationLifecycleBoundary().transition(
-                    automation_lifecycle, AutomationLifecycleState.ADMITTED,
-                )
-                handoff = AutomationIntentHandoffBoundary().handoff(
-                    admission, intent=intent,
-                )
-                if not handoff.handed_off:
-                    automation_lifecycle = AutomationLifecycleBoundary().transition(
-                        automation_lifecycle, AutomationLifecycleState.BLOCKED,
-                    )
-                    cycles.append(RuntimeCycle(
-                        orchestration=orchestration,
-                        plan=plan,
-                        execution=None,
-                        automation_lifecycle=automation_lifecycle,
-                    ))
-                    stopped = True
-                    stop_reason = "; ".join(handoff.reasons) or "handoff de automação controlada recusado."
-                    break
-                automation_audit = AutomationAuditBoundary().record(handoff)
-                automation_lifecycle = AutomationLifecycleBoundary().transition(
-                    automation_lifecycle, AutomationLifecycleState.DISPATCHED,
-                )
+                automation_lifecycle = self.automation_service.mark_dispatched(automation_cycle_id)
 
             if orchestration.executable:
                 execution_result = self.coordinator.execute_plan(
@@ -366,10 +328,7 @@ class TradingRuntime:
                 )
                 if automation_policy is not None:
                     if execution_result.status is GatewayStatus.EXECUTION_REJECTED:
-                        automation_lifecycle = AutomationLifecycleBoundary().transition(
-                            automation_lifecycle,
-                            AutomationLifecycleState.BLOCKED,
-                        )
+                        automation_lifecycle = self.automation_service.block(automation_lifecycle.cycle_id)
                     elif execution_result.status is GatewayStatus.EXECUTOR_ERROR:
                         # External outcome may be uncertain; keep the automation
                         # lifecycle DISPATCHED until explicit reconciliation.
