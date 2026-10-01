@@ -6,6 +6,7 @@ import math
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p117_real_admission import RealAdmission
 from core.p114_real_safety_gate import RealSafetyReport
+from core.real_manual_confirmation_contract import RealManualConfirmation, request_fingerprint
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
@@ -53,9 +54,13 @@ class RealExecutionGateway:
 
     def execute(self, *, broker: str, request_id: str, request: ExecutionRequest,
                 authorization: RealExecutionAuthorization, admission: RealAdmission,
-                safety: RealSafetyReport) -> RealGatewayResult:
+                safety: RealSafetyReport, confirmation: RealManualConfirmation | None = None) -> RealGatewayResult:
         if not isinstance(request_id, str) or not request_id.strip():
             return RealGatewayResult(RealGatewayStatus.REJECTED, "request_id inválido.")
+        if confirmation is None:
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "confirmação humana REAL obrigatória.")
+        if confirmation.request_id != request_id or confirmation.request_fingerprint != request_fingerprint(request):
+            return RealGatewayResult(RealGatewayStatus.BLOCKED, "confirmação humana não corresponde à ordem REAL.")
         if not authorization.active:
             return RealGatewayResult(RealGatewayStatus.BLOCKED, "autorização REAL inativa.")
         if not admission.admitted:
