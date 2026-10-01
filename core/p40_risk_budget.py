@@ -66,6 +66,6 @@ class RiskBudgetEvaluator:
 def evaluate_risk_budget(
     state: RiskBudgetState,
     limits: RiskBudgetLimits,
-    proposed_loss: float,
+    proposed_loss: float | None,
 ) -> RiskBudgetAssessment:
     return RiskBudgetEvaluator().evaluate(state, limits, proposed_loss)
