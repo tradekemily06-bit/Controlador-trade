@@ -46,21 +46,48 @@ def _safe_member(name:str)->str:
     return candidate.name
 def verify_backup(backup_file:str|Path)->dict[str,Any]:
     with zipfile.ZipFile(backup_file,"r") as archive:
-        manifest=json.loads(archive.read("manifest.json"))
-        if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION: raise ValueError("unsupported backup format or version")
-        expected={item["path"]:item["sha256"] for item in manifest.get("files",[])}
-        for member in archive.namelist():
-            if member=="manifest.json": continue
-            _safe_member(member)
-            if member not in expected or hashlib.sha256(archive.read(member)).hexdigest()!=expected[member]: raise ValueError(f"backup integrity failure: {member}")
+        try:
+            manifest=json.loads(archive.read("manifest.json"))
+        except (KeyError, json.JSONDecodeError) as exc:
+            raise ValueError("backup manifest is invalid") from exc
+        if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION:
+            raise ValueError("unsupported backup format or version")
+        entries=manifest.get("files")
+        if not isinstance(entries,list):
+            raise ValueError("backup manifest files are invalid")
+        expected={}
+        for item in entries:
+            if not isinstance(item,dict) or set(item) != {"path","sha256","size"}:
+                raise ValueError("backup manifest entry is invalid")
+            name=_safe_member(item["path"])
+            digest=item["sha256"]
+            size=item["size"]
+            if name in expected or not isinstance(digest,str) or len(digest)!=64 or not isinstance(size,int) or size < 0:
+                raise ValueError("backup manifest entry is invalid")
+            expected[name]=(digest,size)
+        members={name for name in archive.namelist() if name!="manifest.json"}
+        if members != set(expected):
+            raise ValueError("backup contents do not match manifest")
+        for member,(digest,size) in expected.items():
+            data=archive.read(member)
+            if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
+                raise ValueError(f"backup integrity failure: {member}")
     return manifest
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
     manifest=verify_backup(backup_file); runtime=Path(runtime_dir).resolve(); runtime.mkdir(parents=True,exist_ok=True)
-    with zipfile.ZipFile(backup_file,"r") as archive:
-        for item in manifest.get("files",[]):
-            name=_safe_member(item["path"]); destination=runtime/name
-            if destination.exists() and not replace: raise FileExistsError(f"restore would overwrite existing state: {name}")
+    entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
+    if not replace:
+        conflicts=[name for name in entries if (runtime/name).exists()]
+        if conflicts:
+            raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
+    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix="controlador-restore-") as tmp:
+        staged={}
+        for name in entries:
+            staged[name]=Path(tmp)/name
+            staged[name].write_bytes(archive.read(name))
+        for name in entries:
+            destination=runtime/name
             temporary=destination.with_name(f".{destination.name}.restore.tmp")
-            with temporary.open("wb") as handle: handle.write(archive.read(name))
+            os.replace(staged[name],temporary)
             os.replace(temporary,destination)
-    return {"restored":True,"runtime_dir":str(runtime),"files":[x["path"] for x in manifest.get("files",[])],"machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
+    return {"restored":True,"runtime_dir":str(runtime),"files":entries,"machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}

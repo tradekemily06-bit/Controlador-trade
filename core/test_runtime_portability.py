@@ -21,3 +21,45 @@ def test_backup_rejects_unsafe_member(tmp_path:Path):
     with zipfile.ZipFile(bad,"w") as z:
         z.writestr("manifest.json",'{"format":"controlador-runtime-portable","version":1,"files":[{"path":"operation-memory.json","sha256":"x"}]}'); z.writestr("../evil","x")
     with pytest.raises(ValueError): verify_backup(bad)
+
+
+def test_backup_rejects_manifest_missing_archive_member(tmp_path: Path):
+    bad = tmp_path / "missing.zip"
+    with zipfile.ZipFile(bad, "w") as z:
+        z.writestr(
+            "manifest.json",
+            '{"format":"controlador-runtime-portable","version":1,"files":[{"path":"operation-memory.json","sha256":"' + "0" * 64 + '","size":1}]}',
+        )
+    with pytest.raises(ValueError, match="contents do not match manifest"):
+        verify_backup(bad)
+
+
+def test_backup_rejects_unlisted_archive_member(tmp_path: Path):
+    bad = tmp_path / "extra.zip"
+    with zipfile.ZipFile(bad, "w") as z:
+        z.writestr(
+            "manifest.json",
+            '{"format":"controlador-runtime-portable","version":1,"files":[]}',
+        )
+        z.writestr("operation-memory.json", "x")
+    with pytest.raises(ValueError, match="contents do not match manifest"):
+        verify_backup(bad)
+
+
+def test_restore_checks_all_conflicts_before_replacing_anything(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("new", encoding="utf-8")
+    (source / "operational-safety.json").write_text("new-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "operational-safety.json").write_text("existing", encoding="utf-8")
+
+    with pytest.raises(FileExistsError):
+        restore_backup(backup, target)
+
+    assert not (target / "operation-memory.json").exists()
+    assert (target / "operational-safety.json").read_text(encoding="utf-8") == "existing"
