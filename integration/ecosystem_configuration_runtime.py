@@ -194,8 +194,8 @@ class ConfiguredEcosystemService(EcosystemService):
     def _build_mt5_automation_risk_budget(self, operational_state, intent, orchestration) -> RiskBudgetAssessment:
         """Evaluate P40 only from observed operational counters; unknown stays blocked."""
         limits = RiskBudgetLimits(
-            max_daily_loss=self.risk.daily_loss_limit,
-            max_operations=self.risk.max_operations,
+            max_daily_loss=self.automation_risk_policy.max_daily_loss or 0.0,
+            max_operations=self.automation_risk_policy.max_operations or 0,
         )
         if operational_state is None or operational_state.realized_pnl is None or operational_state.trades_today is None:
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "estado de risco DEMO incompleto.")
