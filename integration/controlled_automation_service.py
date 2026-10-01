@@ -14,6 +14,7 @@ from core.p44_automation_intent_handoff import AutomationIntentHandoff, Automati
 from core.p45_automation_audit import AutomationAuditRecord, AutomationAuditBoundary
 from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecycleBoundary, AutomationLifecycleState
 from integration.p139_post_demo_learning import PostDemoLearningBoundary, PostDemoLearningResult
+from core.automation_lifecycle_store import AutomationLifecycleStore
 
 
 @dataclass(frozen=True)
@@ -36,14 +37,17 @@ class ControlledAutomationService:
     execution gateway and is never called here.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, lifecycle_store: AutomationLifecycleStore | None = None) -> None:
         self._gate = ControlledAutomationGate()
+        self._lifecycle_store = lifecycle_store
         self._cycle_orchestrator = AutomationCycleOrchestrator()
         self._admission = AutomationAdmission()
         self._handoff = AutomationIntentHandoffBoundary()
         self._audit = AutomationAuditBoundary()
         self._lifecycle = AutomationLifecycleBoundary()
         self._cycles: dict[str, AutomationLifecycle] = {}
+        if self._lifecycle_store is not None:
+            self._cycles.update(self._lifecycle_store.load())
 
     def admit(
         self,
@@ -73,6 +77,7 @@ class ControlledAutomationService:
         if not request_result.authorized or not admission.admitted:
             lifecycle = self._lifecycle.transition(lifecycle, AutomationLifecycleState.BLOCKED)
             self._cycles[cycle.cycle_id] = lifecycle
+            self._persist(lifecycle)
             return ControlledAutomationAdmission(
                 decision=decision,
                 request=request,
@@ -87,6 +92,7 @@ class ControlledAutomationService:
         if not handoff.handed_off:
             lifecycle = self._lifecycle.transition(lifecycle, AutomationLifecycleState.BLOCKED)
             self._cycles[cycle.cycle_id] = lifecycle
+            self._persist(lifecycle)
             return ControlledAutomationAdmission(
                 decision=decision,
                 request=request,
@@ -98,6 +104,7 @@ class ControlledAutomationService:
 
         audit = self._audit.record(handoff)
         self._cycles[cycle.cycle_id] = lifecycle
+        self._persist(lifecycle)
         return ControlledAutomationAdmission(
             decision=decision,
             request=request,
@@ -111,12 +118,14 @@ class ControlledAutomationService:
         current = self._current(cycle_id)
         updated = self._lifecycle.transition(current, AutomationLifecycleState.DISPATCHED)
         self._cycles[cycle_id] = updated
+        self._persist(updated)
         return updated
 
     def complete(self, cycle_id: str) -> AutomationLifecycle:
         current = self._current(cycle_id)
         updated = self._lifecycle.transition(current, AutomationLifecycleState.COMPLETED)
         self._cycles[cycle_id] = updated
+        self._persist(updated)
         return updated
 
     def block(self, cycle_id: str) -> AutomationLifecycle:
@@ -125,10 +134,15 @@ class ControlledAutomationService:
             raise ValueError("terminal automation lifecycle cannot be reused")
         updated = self._lifecycle.transition(current, AutomationLifecycleState.BLOCKED)
         self._cycles[cycle_id] = updated
+        self._persist(updated)
         return updated
 
     def lifecycle(self, cycle_id: str) -> AutomationLifecycle:
         return self._current(cycle_id)
+
+    def _persist(self, lifecycle: AutomationLifecycle) -> None:
+        if self._lifecycle_store is not None:
+            self._lifecycle_store.save(lifecycle)
 
     def post_demo_learning(self, **kwargs) -> PostDemoLearningResult:
         """Continue a terminal cycle through the existing P47-P128 learning boundary."""

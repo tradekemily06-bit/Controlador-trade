@@ -10,6 +10,7 @@ from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
+from core.automation_lifecycle_store import AutomationLifecycleStore
 from execution.execution_ledger import ExecutionLedger
 from execution.execution_lifecycle import ExecutionLifecycleStore
 from execution.gateway import ExecutionGateway
@@ -30,6 +31,7 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    automation_lifecycle: AutomationLifecycleStore
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
@@ -44,6 +46,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
+    automation_lifecycle = AutomationLifecycleStore(root / "automation-lifecycle.json")
     memory = operational_recorder.memory
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
@@ -76,4 +79,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        automation_lifecycle=automation_lifecycle,
     )
