@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import os
 from http import HTTPStatus
@@ -71,6 +72,15 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _mutation_request_is_local(environ) -> bool:
+    raw = str(environ.get("REMOTE_ADDR") or "").strip()
+    try:
+        address = ipaddress.ip_address(raw)
+    except ValueError:
+        return False
+    return address.is_loopback
+
+
 def _authorize_internal_update(environ) -> tuple[bool, str]:
     expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
     if not expected:
@@ -113,6 +123,9 @@ def application(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET").upper()
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
+
+    if method == "POST" and path.startswith("/api/") and path != "/api/updates" and not _mutation_request_is_local(environ):
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "mutação remota exige uma fronteira de identidade confiável", "request_id": request_id}, request_id, environ)
 
     try:
         if path == "/api/health" and method == "GET":
