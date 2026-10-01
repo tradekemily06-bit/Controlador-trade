@@ -269,6 +269,73 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    def close_position(self, external_id: str) -> ExecutionResult:
+        """Close only the confirmed DEMO position identified by this adapter's order ticket."""
+        if not isinstance(external_id, str) or not external_id.strip():
+            return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
+        mt5 = self._module()
+        if not mt5.initialize():
+            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                return ExecutionResult(False, "conta MT5 não confirmada como DEMO; fechamento bloqueado.")
+            try:
+                target_ticket = int(external_id)
+            except (TypeError, ValueError):
+                return ExecutionResult(False, "external_id deve ser um ticket MT5 numérico.")
+            positions = tuple(mt5.positions_get() or ())
+            matches = tuple(
+                p for p in positions
+                if int(getattr(p, "ticket", -1)) == target_ticket
+                and int(getattr(p, "magic", -1)) == self.config.magic
+            )
+            if len(matches) != 1:
+                return ExecutionResult(False, "posição DEMO do Controlador não encontrada de forma única; fechamento bloqueado.")
+            position = matches[0]
+            symbol = str(getattr(position, "symbol", "")).strip()
+            volume = float(getattr(position, "volume", 0.0))
+            position_type = getattr(position, "type", None)
+            buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
+            close_type = mt5.ORDER_TYPE_SELL if position_type == buy_type else mt5.ORDER_TYPE_BUY
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is None:
+                return ExecutionResult(False, f"cotação indisponível para fechamento de {symbol}.")
+            price = float(tick.bid if position_type == buy_type else tick.ask)
+            if not math.isfinite(price) or price <= 0 or not math.isfinite(volume) or volume <= 0:
+                return ExecutionResult(False, "preço/volume inválido para fechamento; ordem bloqueada.")
+            payload = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "symbol": symbol,
+                "volume": volume,
+                "type": close_type,
+                "position": int(position.ticket),
+                "price": price,
+                "deviation": self.config.deviation,
+                "magic": self.config.magic,
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            check = mt5.order_check(payload)
+            if check is None or getattr(check, "retcode", 0) != 0:
+                return ExecutionResult(False, f"order_check do fechamento bloqueou a ordem: {check}; mt5_last_error={self._last_error(mt5)}")
+            result = mt5.order_send(payload)
+            if result is None or getattr(result, "retcode", None) != getattr(mt5, "TRADE_RETCODE_DONE", None):
+                return ExecutionResult(False, f"fechamento rejeitado pelo MT5: {result}; mt5_last_error={self._last_error(mt5)}")
+            close_external_id = getattr(result, "order", None) or getattr(result, "deal", None)
+            if close_external_id is None:
+                return ExecutionResult(False, "MT5 confirmou fechamento sem identificador externo.")
+            remaining = tuple(
+                p for p in (mt5.positions_get() or ())
+                if int(getattr(p, "magic", -1)) == self.config.magic
+                and str(getattr(p, "symbol", "")).strip() == symbol
+            )
+            if any(int(getattr(p, "ticket", -1)) == int(position.ticket) for p in remaining):
+                return ExecutionResult(False, "MT5 confirmou o fechamento, mas a posição Controlador ainda permanece aberta.")
+            return ExecutionResult(True, "posição DEMO fechada e confirmada pelo MT5.", str(close_external_id))
+        finally:
+            mt5.shutdown()
+
     @staticmethod
     def _last_error(mt5: Any) -> str:
         try:

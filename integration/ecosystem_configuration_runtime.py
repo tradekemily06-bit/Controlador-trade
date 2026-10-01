@@ -247,6 +247,10 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
+    def close_mt5_position(self, *, external_id: str) -> Any:
+        """Close only the identified DEMO position through the existing MT5 safety boundary."""
+        return self.mt5_operational_adapter.close_position(external_id)
+
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
         if self.trading_runtime is None:
