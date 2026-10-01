@@ -28,7 +28,7 @@ OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 DECISION_STORE = DecisionStore(RUNTIME_DIR / "decision-memory.sqlite")
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, decision_store=DECISION_STORE, runtime_dir=RUNTIME_DIR)
 ONBOARDING = EcosystemOnboarding()
-AUDIT = SecurityAudit(RUNTIME_DIR / "security-audit.sqlite")
+AUDIT = SecurityAudit(database_path=RUNTIME_DIR / "security-audit.sqlite")
 
 
 def _audit(environ, request_id: str, status: int) -> None:
