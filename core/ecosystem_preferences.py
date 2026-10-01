@@ -100,6 +100,43 @@ class EcosystemPreferencesStore:
         self._preferences = candidate
         return candidate
 
+
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> "EcosystemPreferencesStore":
+        """Restore persisted presentation/preferences state without restoring authority."""
+        if not isinstance(payload, dict):
+            return cls()
+        candle_data = payload.get("candle") if isinstance(payload.get("candle"), dict) else {}
+        notification_data = payload.get("notifications") if isinstance(payload.get("notifications"), dict) else {}
+        defaults = NotificationPreferences()
+        candle = CandleAppearance(
+            style=CandleStyle(str(candle_data.get("style", CandleStyle.CANDLESTICK.value))),
+            color_mode=CandleColorMode(str(candle_data.get("color_mode", CandleColorMode.DEFAULT.value))),
+            bullish_color=str(candle_data.get("bullish_color", CandleAppearance.bullish_color)),
+            bearish_color=str(candle_data.get("bearish_color", CandleAppearance.bearish_color)),
+            wick_color=str(candle_data.get("wick_color", CandleAppearance.wick_color)),
+            border_enabled=bool(candle_data.get("border_enabled", True)),
+            show_wicks=bool(candle_data.get("show_wicks", True)),
+            show_bodies=bool(candle_data.get("show_bodies", True)),
+        )
+        notifications = NotificationPreferences(
+            **{field: bool(notification_data.get(field, getattr(defaults, field))) for field in NotificationPreferences.__dataclass_fields__}
+        )
+        preferences = EcosystemPreferences(
+            default_symbol=str(payload.get("default_symbol", "EURUSD")),
+            default_timeframe=str(payload.get("default_timeframe", "5m")),
+            require_closed_candle=bool(payload.get("require_closed_candle", True)),
+            require_filters=bool(payload.get("require_filters", True)),
+            chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
+            candle=candle,
+            notifications=notifications,
+            show_technical_details_by_default=bool(payload.get("show_technical_details_by_default", False)),
+            autonomous_operation_enabled=False,
+            real_execution_enabled=False,
+        )
+        return cls(preferences)
+
     @staticmethod
     def _validate(value: EcosystemPreferences) -> None:
         if not value.default_symbol.strip():
