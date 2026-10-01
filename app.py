@@ -224,6 +224,18 @@ def application(environ, start_response):
             data = _read_json(environ)
             REAL_RUNTIME.reconcile(request_id=str(data.get("request_id", "")), executed=bool(data.get("executed", False)))
             return _json_response(start_response, HTTPStatus.OK, {"reconciled": True}, request_id, environ)
+        if path == "/api/runtime/real/close" and method == "POST":
+            data = _read_json(environ)
+            close = REAL_RUNTIME.close_and_reconcile(
+                request_id=str(data.get("request_id", "")),
+                external_id=str(data.get("external_id", "")),
+            )
+            return _json_response(start_response, HTTPStatus.OK, {
+                "closed": bool(close.accepted),
+                "message": close.message,
+                "close_external_id": close.external_id,
+                "reconciled": bool(close.accepted),
+            }, request_id, environ)
         if path == "/api/runtime/close" and method == "POST":
             data = _read_json(environ)
             external_id = str(data.get("external_id", ""))
