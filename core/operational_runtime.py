@@ -7,6 +7,7 @@ from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
 from core.operation_memory import OperationMemory
+from core.operational_safety_store import OperationalSafetyStore
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -29,12 +30,27 @@ class OperationalRuntime:
     health: RuntimeHealthMonitor
     gateway: ExecutionGateway
     market_data: MarketDataRuntimeState
+    safety_store: OperationalSafetyStore
+
+    def activate_kill_switch(self, reason: str):
+        state = self.kill_switch.activate(reason)
+        self.safety_store.save_kill_switch(self.kill_switch)
+        return state
+
+    def deactivate_kill_switch(self):
+        state = self.kill_switch.deactivate()
+        self.safety_store.save_kill_switch(self.kill_switch)
+        return state
 
 
 def build_operational_runtime(root: str | Path, executor: ExecutionPort | None = None) -> OperationalRuntime:
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
+    safety_store = OperationalSafetyStore(root / "operational-safety.json")
+    _, persisted_kill_switch = safety_store.load()
     kill_switch = KillSwitch()
+    if persisted_kill_switch.state.enabled:
+        kill_switch.activate(persisted_kill_switch.state.reason or "estado persistido")
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
@@ -58,6 +74,7 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         ledger=ledger,
         lifecycle=lifecycle,
         market_data=market_data,
+        safety_store=safety_store,
     )
     return OperationalRuntime(
         kill_switch=kill_switch,
