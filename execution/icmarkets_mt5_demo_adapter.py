@@ -241,14 +241,13 @@ class ICMarketsMT5DemoAdapter:
                 "price": price,
                 "deviation": self.config.deviation,
                 "magic": self.config.magic,
-                "comment": "ControladorTrading-DEMO",
                 "type_time": mt5.ORDER_TIME_GTC,
                 "type_filling": mt5.ORDER_FILLING_IOC,
             }
 
             check = mt5.order_check(payload)
             if check is None or getattr(check, "retcode", 0) != 0:
-                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}")
+                return ExecutionResult(False, f"order_check bloqueou a ordem: {check}; mt5_last_error={self._last_error(mt5)}")
 
             result = mt5.order_send(payload)
             if result is None:
