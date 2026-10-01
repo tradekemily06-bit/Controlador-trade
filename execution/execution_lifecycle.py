@@ -116,7 +116,7 @@ class ExecutionLifecycleStore:
         temporary.write_text(
             json.dumps([
                 {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
+                for r in tuple(self._records[key] for key in sorted(self._records))
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
