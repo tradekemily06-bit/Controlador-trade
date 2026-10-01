@@ -100,9 +100,20 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        # Durable reservation happens before the external side effect. If the
+        # process dies after dispatch, restart sees RESERVED and cannot replay.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.DUPLICATE, f"request_id não pôde ser reservado com segurança: {exc}")
+
+        if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
+                self._mark_rejected(request_id, event_time, f"não foi possível persistir o início da execução: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
         try:
@@ -116,16 +127,17 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
-            if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+            self._mark_rejected(request_id, event_time, result.message)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
+                # RESERVED remains durable, so a restart cannot replay the order.
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi confirmado: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
+
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
@@ -140,17 +152,35 @@ class ExecutionGateway:
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
+    def _mark_rejected(self, request_id: str, timestamp: datetime, message: str) -> None:
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None or current.state is not ExecutionLifecycleState.REJECTED:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+            except (OSError, ValueError):
+                pass
+
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
-        if self._lifecycle is None:
-            return
-        try:
-            current = self._lifecycle.get(request_id)
-            if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-            elif current.state is not ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-        except (OSError, ValueError):
-            pass
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                elif current.state is not ExecutionLifecycleState.UNKNOWN:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+            except (OSError, ValueError):
+                pass
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
