@@ -77,3 +77,42 @@ def test_p40_runtime_uses_configured_operation_loss(monkeypatch):
     assert result.decision is BudgetDecision.APPROVED
     assert result.projected_loss == 12.5
     assert result.projected_operations == 3
+
+
+def test_p40_runtime_requires_explicit_daily_loss_and_operation_limits(monkeypatch):
+    from types import SimpleNamespace
+    from core.p40_risk_budget import BudgetDecision
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", "12.5")
+    monkeypatch.delenv("CONTROLADOR_RISK_MAX_DAILY_LOSS", raising=False)
+    monkeypatch.delenv("CONTROLADOR_RISK_MAX_OPERATIONS", raising=False)
+    service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
+    result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
+        service,
+        SimpleNamespace(realized_pnl=0.0, trades_today=0),
+        SimpleNamespace(amount=0.01),
+        SimpleNamespace(),
+    )
+    assert result.decision is BudgetDecision.BLOCKED
+    assert "orçamento P40" in result.reason
+
+
+def test_p40_runtime_reads_explicit_daily_loss_and_operation_limits(monkeypatch):
+    from types import SimpleNamespace
+    from core.p40_risk_budget import BudgetDecision
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", "12.5")
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_DAILY_LOSS", "100")
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_OPERATIONS", "10")
+    service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
+    result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
+        service,
+        SimpleNamespace(realized_pnl=0.0, trades_today=2),
+        SimpleNamespace(amount=0.01),
+        SimpleNamespace(),
+    )
+    assert result.decision is BudgetDecision.APPROVED
+    assert result.projected_loss == 12.5
+    assert result.projected_operations == 3
