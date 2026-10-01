@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from execution.ports import ExecutionPort
 from execution.paper import PaperExecutor
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
@@ -19,7 +20,10 @@ def build_demo_execution_port(provider: str = "paper", *, symbol: str | None = N
     if normalized == "paper":
         return PaperExecutor()
     if normalized == "ic_markets_mt5_demo":
-        return ICMarketsMT5DemoAdapter(ICMarketsMT5DemoConfig(symbol=symbol))
+        risk_day_timezone = os.environ.get("CONTROLADOR_RISK_DAY_TIMEZONE", "UTC").strip() or "UTC"
+        return ICMarketsMT5DemoAdapter(
+            ICMarketsMT5DemoConfig(symbol=symbol, risk_day_timezone=risk_day_timezone)
+        )
     raise ExecutionProviderConfigurationError(
         f"provedor de execução DEMO não suportado: {provider!r}"
     )
