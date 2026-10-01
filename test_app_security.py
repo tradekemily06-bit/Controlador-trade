@@ -59,6 +59,39 @@ class AppSecurityTests(unittest.TestCase):
             SECURITY.limit = old_limit
             SECURITY._buckets.clear()
 
+    def test_explicit_local_notebook_mutation_requires_local_host(self):
+        from app import _authorize_remote_mutation
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "true"
+            os.environ["CONTROLADOR_LOCAL_MUTATION_HOSTS"] = "localhost,127.0.0.1"
+            local_allowed, _ = _authorize_remote_mutation(
+                {"REMOTE_ADDR": "127.0.0.1", "HTTP_HOST": "localhost:8000"}
+            )
+            public_host_denied, _ = _authorize_remote_mutation(
+                {"REMOTE_ADDR": "127.0.0.1", "HTTP_HOST": "controlador.example.com"}
+            )
+            remote_denied, _ = _authorize_remote_mutation(
+                {"REMOTE_ADDR": "10.0.0.25", "HTTP_HOST": "controlador.example.com"}
+            )
+            self.assertTrue(local_allowed)
+            self.assertFalse(public_host_denied)
+            self.assertFalse(remote_denied)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_remote_access_requires_trusted_identity_when_enabled(self):
         from app import _authorize_remote_mutation
         old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")

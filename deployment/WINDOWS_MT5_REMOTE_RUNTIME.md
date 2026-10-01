@@ -17,6 +17,8 @@ CONTROLADOR_BIND_HOST=127.0.0.1
 PORT=8000
 CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_demo
 CONTROLADOR_REMOTE_ACCESS_REQUIRED=true
+CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true
+CONTROLADOR_LOCAL_MUTATION_HOSTS=localhost,127.0.0.1,[::1]
 CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
@@ -41,7 +43,7 @@ O instalador exige uma execução única como Administrador e pede apenas o cami
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
 
-O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet.
+O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet. O uso direto no notebook é permitido para mutações somente quando a origem é loopback e o Host é um dos Hosts locais configurados; acessos pelo hostname público continuam exigindo a identidade confiável do Cloudflare Access.
 
 ## Regras de segurança
 - REAL não é habilitado por padrão; quando necessário, usa o fluxo REAL controlado e separado, com autorização, auditoria, admission, safety gate e confirmação humana.

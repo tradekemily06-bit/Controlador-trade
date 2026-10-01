@@ -22,6 +22,10 @@ $machineSettings = @{
     PORT = '8000'
     CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
     CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
+    # Direct notebook access is allowed only from loopback with an explicitly local Host.
+    # Remote/tunnel requests still require the trusted identity header.
+    CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'
+    CONTROLADOR_LOCAL_MUTATION_HOSTS = 'localhost,127.0.0.1,[::1]'
     CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'
     CONTROLADOR_RUNTIME_DIR = $RuntimeDir
     CONTROLADOR_SECURITY_AUDIT_DB = (Join-Path $RuntimeDir 'security-audit.sqlite')
