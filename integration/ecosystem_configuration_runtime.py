@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
+from pathlib import Path
+import tempfile
 
 from core.ecosystem_notifications import EcosystemNotification, EcosystemNotificationCenter, NotificationKind, NotificationSeverity, UpdateKind
 from analysis.pipeline import StrategyPipeline
@@ -38,7 +40,12 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        state_path = self.operational_runtime.checkpoint_store.path.parent / "ecosystem-state.sqlite" if self.operational_runtime is not None else ".runtime/ecosystem-state.sqlite"
+        if self.operational_runtime is not None:
+            state_path = self.operational_runtime.checkpoint_store.path.parent / "ecosystem-state.sqlite"
+        else:
+            # Isolated fallback for unit/test instances; the shared durable store
+            # belongs to the real operational runtime and is only used there.
+            state_path = Path(tempfile.mkdtemp(prefix="controlador-ecosystem-state-")) / "ecosystem-state.sqlite"
         self.state_store = EcosystemStateStore(state_path)
         persisted_preferences = self.state_store.load_preferences()
         self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
