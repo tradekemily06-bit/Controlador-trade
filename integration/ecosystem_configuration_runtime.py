@@ -23,6 +23,7 @@ from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
 from core.ecosystem_preferences import ChartTheme, EcosystemPreferencesStore
+from core.ecosystem_state_store import EcosystemStateStore
 from core.models import AnalysisResult, Signal
 from core.senior_analysis_gate import SeniorAnalysisGate
 from core.senior_context_orchestrator import SeniorContextInput
@@ -37,8 +38,13 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.preferences = EcosystemPreferencesStore()
+        state_path = self.operational_runtime.checkpoint_store.path.parent / "ecosystem-state.sqlite" if self.operational_runtime is not None else ".runtime/ecosystem-state.sqlite"
+        self.state_store = EcosystemStateStore(state_path)
+        persisted_preferences = self.state_store.load_preferences()
+        self.preferences = EcosystemPreferencesStore.from_dict(persisted_preferences) if persisted_preferences else EcosystemPreferencesStore()
         self.notifications = EcosystemNotificationCenter()
+        self.notifications.restore(self.state_store.load_notifications())
+        self.state_store.save_preferences(self.preferences.preferences)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
         self.automation_risk_policy = AutomationRiskPolicy.from_environment()
@@ -259,6 +265,7 @@ class ConfiguredEcosystemService(EcosystemService):
         if "chart_theme" in changes and isinstance(changes["chart_theme"], str):
             changes["chart_theme"] = ChartTheme(changes["chart_theme"].upper())
         self.preferences.update(**changes)
+        self.state_store.save_preferences(self.preferences.preferences)
         return self.get_preferences()
 
     def update_candle_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -269,10 +276,12 @@ class ConfiguredEcosystemService(EcosystemService):
         if "color_mode" in changes and isinstance(changes["color_mode"], str):
             changes["color_mode"] = CandleColorMode(changes["color_mode"].upper())
         self.preferences.update_candle(**changes)
+        self.state_store.save_preferences(self.preferences.preferences)
         return self.get_preferences()
 
     def update_notification_preferences(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.preferences.update_notifications(**dict(payload))
+        self.state_store.save_preferences(self.preferences.preferences)
         return self.get_preferences()
 
     def _notification_visible(self, item: EcosystemNotification) -> bool:
@@ -313,6 +322,7 @@ class ConfiguredEcosystemService(EcosystemService):
     def publish_ecosystem_update(self, title: str, message: str, *, update_kind: UpdateKind = UpdateKind.ECOSYSTEM) -> dict[str, Any]:
         notification_id = f"update-{len(self.notifications.all()) + 1}"
         item = self.notifications.publish_update(notification_id, title, message, important=True, update_kind=update_kind)
+        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
 
     def publish_material_event(self, kind: str, title: str, message: str, *, critical: bool = False, blocking: bool = False) -> dict[str, Any]:
@@ -321,4 +331,5 @@ class ConfiguredEcosystemService(EcosystemService):
         severity = NotificationSeverity.CRITICAL if critical else NotificationSeverity.IMPORTANT
         notification_id = f"event-{len(self.notifications.all()) + 1}"
         item = self.notifications.publish(EcosystemNotification(notification_id, notification_kind, severity, title, message, requires_attention=critical or blocking, blocking=blocking))
+        self.state_store.save_notifications([asdict(notification) | {"kind": notification.kind.value, "severity": notification.severity.value} for notification in self.notifications.all()])
         return asdict(item) | {"kind": item.kind.value, "severity": item.severity.value}
