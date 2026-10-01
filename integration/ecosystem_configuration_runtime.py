@@ -16,7 +16,9 @@ from core.unified_safety_gate import UnifiedSafetyGate
 from core.runtime_config import RuntimeConfig
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.p23_market_data_integrity import MarketDataIntegrity
+from core.p39_pretrade_risk import PreTradeRiskEvaluator, RiskAssessment, RiskDecision, RiskProposal
 from core.p40_risk_budget import BudgetDecision, RiskBudgetAssessment, RiskBudgetEvaluator, RiskBudgetLimits, RiskBudgetState
+from core.automation_risk_policy import AutomationRiskPolicy
 from core.p41_controlled_automation import AutomationPolicy
 from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
 from execution.icmarkets_mt5_market_data import ICMarketsMT5DemoMarketDataAdapter
@@ -39,6 +41,7 @@ class ConfiguredEcosystemService(EcosystemService):
         self.notifications = EcosystemNotificationCenter()
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
+        self.automation_risk_policy = AutomationRiskPolicy.from_environment()
         self.mt5_market_adapter = ICMarketsMT5DemoMarketDataAdapter()
         self.mt5_operational_adapter = ICMarketsMT5DemoAdapter()
         if self.operational_runtime is not None:
@@ -172,6 +175,22 @@ class ConfiguredEcosystemService(EcosystemService):
             intent=intent,
         )
 
+    def _build_mt5_pretrade_risk(self, operational_state, intent, orchestration) -> RiskAssessment:
+        """Evaluate P39 in MT5 volume units; missing policy/state blocks."""
+        limits = self.automation_risk_policy.limits()
+        gross_volume = getattr(operational_state, "gross_position_volume", None)
+        if limits is None:
+            return RiskAssessment(RiskDecision.BLOCKED, 0.0, "limites P39 de volume não configurados.")
+        if gross_volume is None:
+            return RiskAssessment(RiskDecision.BLOCKED, 0.0, "volume bruto das posições DEMO indisponível.")
+        return PreTradeRiskEvaluator().evaluate(
+            RiskProposal(
+                order_amount=float(intent.amount),
+                current_exposure=float(gross_volume),
+            ),
+            limits,
+        )
+
     def _build_mt5_automation_risk_budget(self, operational_state, intent, orchestration) -> RiskBudgetAssessment:
         """Evaluate P40 only from observed operational counters; unknown stays blocked."""
         limits = RiskBudgetLimits(
@@ -206,6 +225,7 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
             automation_readiness_factory=self._build_mt5_automation_readiness,
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
+            automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
     def reconcile_mt5_cycle(self, *, cycle_id: str, external_id: str) -> Any:
         """Reconcile one DEMO external order and close only its factual lifecycle."""
