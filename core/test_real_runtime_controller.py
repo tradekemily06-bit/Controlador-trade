@@ -17,6 +17,8 @@ class FakeRecovery:
 class FakeRuntime:
     def __init__(self, tmp_path):
         from execution.execution_ledger import ExecutionLedger
+        from execution.execution_lifecycle import ExecutionLifecycleStore
+        self.execution_lifecycle = ExecutionLifecycleStore(Path(tmp_path) / "lifecycle.json")
         self.kill_switch = FakeKillSwitch()
         self.market_data = type("MarketData", (), {"report": type("Report", (), {"safe_for_analysis": True})()})()
         self.recovery = FakeRecovery()
