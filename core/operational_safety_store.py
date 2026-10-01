@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+import os
 
 from .decision_audit import DecisionAudit, DecisionAuditRecord
 from .decision_snapshot import DecisionSnapshot
@@ -101,7 +102,9 @@ class OperationalSafetyStore:
             "execution_audit": execution_audit,
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.path)
 
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
@@ -114,7 +117,9 @@ class OperationalSafetyStore:
             raise ValueError("estado de segurança inválido.")
         payload = {"audit": audit, "kill_switch": kill_switch, "execution_audit": normalized}
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.path)
 
     def load_execution_audit(self) -> tuple[dict[str, object], ...]:
         payload = self._read_payload()
