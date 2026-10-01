@@ -24,13 +24,19 @@ CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sq
 CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint interno de atualizações for usado.
 
 ## Ordem de inicialização
-1. Windows inicia.
-2. MT5 inicia e permanece conectado à conta DEMO.
-3. O Controlador inicia localmente em 127.0.0.1:8000.
-4. O Cloudflare Tunnel inicia como serviço.
-5. Cloudflare Access autentica o usuário antes de encaminhar o tráfego.
-6. O Controlador exige a identidade confiável para mutações remotas.
-7. O mesmo hostname é usado no celular e notebook.
+1. Windows inicia e entra na sessão dedicada do runtime.
+2. O agendador inicia o MT5.
+3. O launcher do Controlador faz preflight somente leitura e aguarda o MT5 DEMO por uma janela limitada.
+4. O Controlador inicia localmente em 127.0.0.1:8000; se o MT5 ainda estiver indisponível, ele continua bloqueado para execução até o runtime ficar válido.
+5. O Cloudflare Tunnel inicia como serviço.
+6. Cloudflare Access autentica o usuário antes de encaminhar o tráfego.
+7. O Controlador exige a identidade confiável para mutações remotas.
+8. O mesmo hostname é usado no celular e notebook.
+
+## Inicialização automática no Windows
+Os scripts `deployment/install_windows_autostart.ps1`, `deployment/start_mt5_runtime.ps1` e `deployment/start_controlador_runtime.ps1` configuram o início automático no logon da sessão Windows usada pelo runtime. Essa configuração é feita uma vez; durante o uso diário não há necessidade de executar Git ou Python manualmente.
+
+O instalador exige uma execução única como Administrador e pede apenas o caminho do executável do MT5. Nenhum segredo é gravado. O Controlador espera o preflight DEMO, mas não transforma uma falha de MT5 em autorização: sem DEMO válido, a execução continua bloqueada.
 
 ## Regras de segurança
 - REAL permanece desabilitado.
