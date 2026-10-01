@@ -113,3 +113,38 @@ def test_mt5_runtime_uses_the_single_controlled_automation_service(tmp_path):
     service = ConfiguredEcosystemService(operational_runtime=build_operational_runtime(tmp_path))
     assert service.trading_runtime is not None
     assert service.trading_runtime.automation_service is service.automation
+
+
+def test_operational_incident_is_exposed_through_notification_channel():
+    service = ConfiguredEcosystemService()
+    service.operational_observability = lambda: {
+        "execution": {"state": "BLOCKED"},
+        "recovery": {"state": "SAFE_TO_RESUME"},
+        "reconciliation": {"pending_request_ids": [], "unknown_request_ids": []},
+        "kill_switch": {"enabled": False},
+        "runtime_health": {"state": "OK"},
+        "market_data": {"health": "HEALTHY"},
+    }
+
+    summary = service.notification_summary()
+
+    assert summary["count"] == 1
+    assert summary["critical_count"] == 1
+    assert summary["items"][0]["notification_id"] == "operational-EXECUTION_BLOCKED"
+    assert summary["items"][0]["kind"] == "EXECUTION"
+    assert summary["items"][0]["severity"] == "CRITICAL"
+    assert summary["items"][0]["blocking"] is True
+
+
+def test_healthy_operational_observability_does_not_create_incident_notifications():
+    service = ConfiguredEcosystemService()
+    service.operational_observability = lambda: {
+        "execution": {"state": "READY_DEMO"},
+        "recovery": {"state": "SAFE_TO_RESUME"},
+        "reconciliation": {"pending_request_ids": [], "unknown_request_ids": []},
+        "kill_switch": {"enabled": False},
+        "runtime_health": {"state": "OK"},
+        "market_data": {"health": "HEALTHY"},
+    }
+
+    assert service.notification_summary()["count"] == 0
