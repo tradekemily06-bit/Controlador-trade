@@ -72,3 +72,18 @@ def test_kill_switch_is_shared_and_blocks_operation(tmp_path):
         "enabled": True,
         "reason": "teste de segurança",
     }
+
+
+def test_shared_runtime_uses_persistent_operational_recorder(tmp_path):
+    runtime = build_operational_runtime(tmp_path)
+
+    assert runtime.operational_recorder is runtime.gateway._recorder
+    assert runtime.operational_recorder.store.path == tmp_path / "operation-memory.json"
+    assert runtime.operational_recorder.safety_store.path == tmp_path / "operational-safety.json"
+
+    restored = runtime.operational_recorder.__class__.from_path(
+        tmp_path / "operation-memory.json",
+        kill_switch=runtime.kill_switch,
+        safety_path=tmp_path / "operational-safety.json",
+    )
+    assert restored.memory.records() == ()
