@@ -106,6 +106,26 @@ class OperationalSafetyStore:
         temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
         os.replace(temporary, self.path)
 
+    def save_kill_switch(self, kill_switch: KillSwitch) -> None:
+        """Persist only the kill-switch state without rewriting other safety records."""
+        if not isinstance(kill_switch, KillSwitch):
+            raise TypeError("kill_switch deve ser KillSwitch.")
+        payload = self._read_payload()
+        audit = payload.get("audit", [])
+        execution_audit = payload.get("execution_audit", [])
+        if not isinstance(audit, list) or not isinstance(execution_audit, list):
+            raise ValueError("estado de segurança inválido.")
+        state = kill_switch.state
+        payload = {
+            "audit": audit,
+            "kill_switch": {"enabled": state.enabled, "reason": state.reason},
+            "execution_audit": execution_audit,
+        }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+        os.replace(temporary, self.path)
+
     def save_execution_audit(self, events: tuple[dict[str, object], ...]) -> None:
         if not isinstance(events, tuple):
             raise TypeError("events deve ser tuple.")
