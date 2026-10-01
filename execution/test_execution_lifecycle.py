@@ -60,3 +60,13 @@ def test_stale_lifecycle_instances_preserve_each_other_updates(tmp_path):
     restored = ExecutionLifecycleStore(path)
     assert restored.get("req-1") is not None
     assert restored.get("req-2") is not None
+
+
+def test_stale_lifecycle_instance_refreshes_reads(tmp_path):
+    path = tmp_path / "lifecycle.json"
+    now = datetime.now(timezone.utc)
+    first = ExecutionLifecycleStore(path)
+    second = ExecutionLifecycleStore(path)
+    first.put(ExecutionLifecycleRecord("req-refresh", ExecutionLifecycleState.PENDING, now, "written elsewhere"))
+    assert second.get("req-refresh") is not None
+    assert any(record.request_id == "req-refresh" for record in second.records())
