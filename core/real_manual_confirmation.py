@@ -24,10 +24,9 @@ class RealManualConfirmationGate:
         if not isinstance(ttl_seconds, int) or isinstance(ttl_seconds, bool) or not 1 <= ttl_seconds <= 300:
             raise ValueError("ttl_seconds deve estar entre 1 e 300 segundos.")
         self._ttl = timedelta(seconds=ttl_seconds)
-        self._pending: dict[str, ManualRealConfirmation] = {}
+        self._pending: dict[str, RealManualConfirmation] = {}
         self._consumed: set[str] = set()
 
-    @staticmethod
     fingerprint = staticmethod(request_fingerprint)
 
     def prepare(self, *, request: ExecutionRequest, now: datetime | None = None) -> RealManualConfirmation:
