@@ -84,3 +84,51 @@ def test_dependencies_are_required(tmp_path):
             execution_ledger=ExecutionLedger(tmp_path / "ledger.json"),
             memory=OperationMemory(),
         )
+
+
+def test_accepted_ledger_without_lifecycle_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-accepted")
+    coordinator.execution_ledger.bind_external_id("req-accepted", "external-1")
+    coordinator.execution_ledger.mark_accepted("req-accepted")
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_lifecycle_accepted_with_ledger_unknown_requires_reconciliation(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-mismatch")
+    coordinator.execution_ledger.mark_unknown("req-mismatch")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-mismatch", ExecutionLifecycleState.ACCEPTED, now, "mismatch")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_pending_lifecycle_requires_reserved_ledger(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-pending")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-pending", ExecutionLifecycleState.PENDING, now, "pending")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+
+
+def test_accepted_pair_is_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-ok")
+    coordinator.execution_ledger.bind_external_id("req-ok", "external-ok")
+    coordinator.execution_ledger.mark_accepted("req-ok")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-ok", ExecutionLifecycleState.ACCEPTED, now, "accepted")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.can_resume is True
