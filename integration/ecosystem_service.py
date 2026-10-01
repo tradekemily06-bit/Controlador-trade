@@ -234,7 +234,24 @@ class EcosystemService:
         market_health = str(market_data.get("health"))
         market_blocked = market_health in {"INVALID", "STALE", "GAP", "NOT_CONNECTED"}
         blocked = (not recovery.can_resume) or kill.enabled or health.state.value == "BLOCKED" or market_blocked
-        return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data}
+
+        # Supervisor state is read-only telemetry. It never grants execution
+        # authority and is absent until the deployment supervisor has reported.
+        import json
+        from pathlib import Path
+        supervision: dict[str, Any] = {}
+        runtime_dir = Path(runtime.checkpoint_store.path).parent
+        for component, filename in (("controller", "controlador-supervisor-status.json"), ("mt5", "mt5-supervisor-status.json")):
+            status_path = runtime_dir / filename
+            try:
+                if status_path.is_file():
+                    payload = json.loads(status_path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        supervision[component] = payload
+            except (OSError, ValueError, TypeError):
+                supervision[component] = {"state": "UNKNOWN", "reason": "status de supervisão inválido"}
+
+        return {"execution": {"allowed": False, "mode": "DEMO", "state": "BLOCKED" if blocked else "READY_DEMO", "real": "DISABLED"}, "reconciliation": {"state": "REQUIRED" if recovery.state.value == "REQUIRES_RECONCILIATION" else "NOT_REQUIRED", "pending_request_ids": list(recovery.pending_request_ids), "unknown_request_ids": list(recovery.unknown_request_ids)}, "recovery": {"state": recovery.state.value, "can_resume": recovery.can_resume, "message": recovery.message}, "kill_switch": {"state": "ACTIVE" if kill.enabled else "CLEAR", "enabled": kill.enabled, "reason": kill.reason}, "runtime_health": {"state": health.state.value, "ledger_entries": health.ledger_entries, "pending_executions": health.pending_executions, "unknown_executions": health.unknown_executions, "recovery_state": health.recovery_state.value, "message": health.message}, "market_data": market_data, "supervision": supervision}
 
     def system_status(self) -> dict[str, Any]:
         production_storage = self.production_storage.status()
