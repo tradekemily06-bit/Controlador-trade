@@ -6,7 +6,7 @@ O estado de cada marco deve ser distinguido entre implementado no código, valid
 
 O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
 
-**Estado desta versão:** o repositório contém o caminho DEMO preparado e testado, mas a execução física de uma ordem DEMO não deve ser considerada comprovada apenas por documentação, testes com mocks ou CI. A confirmação física exige um terminal MetaTrader 5 compatível, conta DEMO conectada e evidência do preflight, `order_check()`, `order_send()`, identificador externo, fechamento e reconciliação.
+**Estado desta versão:** o caminho DEMO foi preparado, testado e **validado fisicamente em 2026-10-01** com terminal MetaTrader 5 compatível e conta IC Markets DEMO conectada. A evidência inclui preflight, `order_check()`, `order_send()`, identificadores de abertura/fechamento, fechamento e confirmação de zero posições Controlador remanescentes. REAL permanece desabilitado.
 
 ## Integração macro consolidada
 
