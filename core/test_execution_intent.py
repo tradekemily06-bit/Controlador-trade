@@ -37,9 +37,11 @@ def test_aguardar_cannot_become_execution_intent():
         make_intent(signal=Signal.AGUARDAR)
 
 
-def test_real_is_rejected_closed():
-    with pytest.raises(ValueError, match="REAL"):
-        make_intent(mode=ExecutionMode.REAL)
+def test_real_intent_is_valid_but_has_no_execution_authority():
+    intent = make_intent(mode=ExecutionMode.REAL)
+    request = intent.as_execution_request()
+    assert intent.mode is ExecutionMode.REAL
+    assert request.mode is ExecutionMode.REAL
 
 
 @pytest.mark.parametrize(

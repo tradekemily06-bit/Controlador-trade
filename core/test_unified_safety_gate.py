@@ -46,9 +46,16 @@ def test_recovery_reconciliation_blocks():
     assert report.state is SafetyGateState.NOT_READY
 
 
-def test_real_config_cannot_be_created():
+def test_real_config_requires_explicit_enablement():
     try:
         RuntimeConfig("EURUSD", "1m", 10.0, 60, mode=ExecutionMode.REAL)
     except ValueError:
         return
-    raise AssertionError("REAL deveria permanecer bloqueado")
+    raise AssertionError("REAL sem real_enabled deve ser bloqueado")
+
+
+def test_real_safety_gate_recognizes_explicit_real_configuration():
+    config = RuntimeConfig("EURUSD", "1m", 10.0, 60, mode=ExecutionMode.REAL, real_enabled=True)
+    report = UnifiedSafetyGate(kill_switch=KillSwitch()).evaluate(config=config, market_data=market(), recovery=recovery())
+    assert report.state is SafetyGateState.READY_REAL
+    assert report.ready is True

@@ -25,7 +25,7 @@ class ReadinessReport:
 
 
 class ProductionReadiness:
-    """Safety gate for deployment readiness; never enables REAL execution."""
+    """Deployment readiness signal; it never authorizes or dispatches REAL."""
 
     def __init__(self, *, kill_switch: KillSwitch, execution_ledger: ExecutionLedger) -> None:
         if not isinstance(kill_switch, KillSwitch):
@@ -35,20 +35,24 @@ class ProductionReadiness:
         self.kill_switch = kill_switch
         self.execution_ledger = execution_ledger
 
-    def evaluate(self, *, mode: ExecutionMode = ExecutionMode.DEMO) -> ReadinessReport:
+    def evaluate(self, *, mode: ExecutionMode = ExecutionMode.DEMO, real_enabled: bool = False) -> ReadinessReport:
         if not isinstance(mode, ExecutionMode):
             raise ValueError("modo de execução inválido.")
-        if mode is ExecutionMode.REAL:
-            return ReadinessReport(
-                ReadinessState.NOT_READY,
-                ("execução REAL permanece bloqueada nesta etapa",),
-            )
+        if not isinstance(real_enabled, bool):
+            raise ValueError("real_enabled deve ser booleano.")
         if not self.kill_switch.allows_execution():
+            return ReadinessReport(ReadinessState.NOT_READY, ("kill switch ativo",))
+        if mode is ExecutionMode.REAL:
+            if not real_enabled:
+                return ReadinessReport(
+                    ReadinessState.NOT_READY,
+                    ("REAL exige habilitação explícita de configuração; nenhuma autorização foi concedida.",),
+                )
             return ReadinessReport(
-                ReadinessState.NOT_READY,
-                ("kill switch ativo",),
+                ReadinessState.READY_REAL,
+                ("configuração REAL explicitamente habilitada; autorização/admissão/confirmacão ainda são obrigatórias.",),
             )
         return ReadinessReport(
             ReadinessState.READY_DEMO,
-            ("somente execução DEMO está habilitada nesta etapa",),
+            ("execução DEMO pronta.",),
         )

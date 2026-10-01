@@ -11,6 +11,7 @@ from wsgiref.simple_server import make_server
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
+from core.real_runtime_controller import RealRuntimeController
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
@@ -24,6 +25,7 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, execution_provider=EXECUTION_PROVIDER)
+REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
 ONBOARDING = EcosystemOnboarding()
 
 
@@ -155,9 +157,13 @@ def application(environ, start_response):
 
     try:
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
+            status = SERVICE.system_status()
+            status["real_runtime"] = REAL_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **status}, request_id, environ)
         if path == "/api/status" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
+            status = SERVICE.system_status()
+            status["real_runtime"] = REAL_RUNTIME.status()
+            return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
@@ -183,6 +189,53 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/runtime/real/status" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, REAL_RUNTIME.status(), request_id, environ)
+        if path == "/api/runtime/real/prepare" and method == "POST":
+            data = _read_json(environ)
+            prepared = REAL_RUNTIME.prepare(
+                request_id=str(data.get("request_id", "")),
+                symbol=str(data.get("symbol", "")),
+                signal=str(data.get("signal", "")),
+                amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)),
+            )
+            return _json_response(start_response, HTTPStatus.OK, {"real_confirmation": prepared}, request_id, environ)
+        if path == "/api/runtime/real/confirm" and method == "POST":
+            data = _read_json(environ)
+            result = REAL_RUNTIME.confirm(
+                confirmation_id=str(data.get("confirmation_id", "")),
+                request_id=str(data.get("request_id", "")),
+                symbol=str(data.get("symbol", "")),
+                signal=str(data.get("signal", "")),
+                amount=float(data.get("amount", 0)),
+                duration_seconds=int(data.get("duration_seconds", 0)),
+            )
+            execution = result.execution
+            return _json_response(start_response, HTTPStatus.OK, {
+                "real_execution": {
+                    "status": result.status,
+                    "message": result.message,
+                    "accepted": bool(execution and execution.accepted),
+                    "external_id": execution.external_id if execution else None,
+                }
+            }, request_id, environ)
+        if path == "/api/runtime/real/reconcile" and method == "POST":
+            data = _read_json(environ)
+            REAL_RUNTIME.reconcile(request_id=str(data.get("request_id", "")), executed=bool(data.get("executed", False)))
+            return _json_response(start_response, HTTPStatus.OK, {"reconciled": True}, request_id, environ)
+        if path == "/api/runtime/real/close" and method == "POST":
+            data = _read_json(environ)
+            close = REAL_RUNTIME.close_and_reconcile(
+                request_id=str(data.get("request_id", "")),
+                external_id=str(data.get("external_id", "")),
+            )
+            return _json_response(start_response, HTTPStatus.OK, {
+                "closed": bool(close.accepted),
+                "message": close.message,
+                "close_external_id": close.external_id,
+                "reconciled": bool(close.accepted),
+            }, request_id, environ)
         if path == "/api/runtime/close" and method == "POST":
             data = _read_json(environ)
             external_id = str(data.get("external_id", ""))
@@ -318,6 +371,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+    except PermissionError as exc:
+        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
         return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "Entrada inválida", "request_id": request_id}, request_id, environ)
 

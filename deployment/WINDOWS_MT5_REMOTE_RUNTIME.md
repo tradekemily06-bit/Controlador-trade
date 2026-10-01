@@ -67,3 +67,19 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 
 ## Importante
 A configuração de Cloudflare exige conta/domínio e um servidor Windows real. Essas partes externas não podem ser declaradas como concluídas pelo repositório sozinho.
+## REAL — ativação explícita e controlada
+
+A ponte REAL usa o mesmo terminal MT5 Windows, mas não transforma o runtime em REAL apenas por selecionar um provider. O envio REAL exige, simultaneamente:
+
+- CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_real apenas no ambiente de produção;
+- CONTROLADOR_REAL_AUTHORIZATION_ID e CONTROLADOR_REAL_AUDIT_ID definidos;
+- CONTROLADOR_REAL_ADMISSION_ID definido;
+- CONTROLADOR_REAL_EXPLICITLY_ENABLED=true;
+- CONTROLADOR_REAL_EXECUTION_ALLOWED=true;
+- CONTROLADOR_REAL_AUDIT_VERIFIED=true;
+- CONTROLADOR_REAL_RISK_APPROVED=true;
+- terminal MT5 classificado pelo próprio MetaTrader5 como conta REAL;
+- mercado saudável, recovery seguro, kill switch liberado e adapter disponível;
+- confirmação humana única, curta e vinculada exatamente ao request.
+
+Essas variáveis são configuração de ambiente/segredo operacional e não devem ser gravadas no GitHub. Ausência de qualquer pré-requisito mantém o REAL bloqueado. A preparação (/api/runtime/real/prepare) não envia ordem; somente /api/runtime/real/confirm, após a confirmação humana válida, pode alcançar o RealExecutionGateway. Um resultado externo incerto não é reenviado automaticamente: exige reconciliação explícita.
