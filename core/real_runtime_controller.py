@@ -59,13 +59,17 @@ class RealRuntimeController:
         return parsed
 
     def _authorization(self) -> RealExecutionAuthorization:
+        authorization_id = os.environ.get("CONTROLADOR_REAL_AUTHORIZATION_ID", "").strip()
+        audit_id = os.environ.get("CONTROLADOR_REAL_AUDIT_ID", "").strip()
+        explicitly_enabled = self._env_bool("CONTROLADOR_REAL_EXPLICITLY_ENABLED") and bool(authorization_id)
+        real_execution_allowed = self._env_bool("CONTROLADOR_REAL_EXECUTION_ALLOWED") and bool(audit_id)
         return RealExecutionAuthorization(
-            authorization_id=os.environ.get("CONTROLADOR_REAL_AUTHORIZATION_ID", "").strip(),
-            audit_id=os.environ.get("CONTROLADOR_REAL_AUDIT_ID", "").strip(),
+            authorization_id=authorization_id or "real-disabled",
+            audit_id=audit_id or "real-disabled",
             broker_id=self.broker_id,
             adapter_id="ic_markets_mt5_real",
-            explicitly_enabled=self._env_bool("CONTROLADOR_REAL_EXPLICITLY_ENABLED"),
-            real_execution_allowed=self._env_bool("CONTROLADOR_REAL_EXECUTION_ALLOWED"),
+            explicitly_enabled=explicitly_enabled,
+            real_execution_allowed=real_execution_allowed,
         )
 
     def _broker_available(self) -> bool:
@@ -102,10 +106,16 @@ class RealRuntimeController:
             risk_approved=self._risk_approved(),
             broker_available=broker_available,
         )
+        admission_id = os.environ.get("CONTROLADOR_REAL_ADMISSION_ID", "").strip()
+        audit_verified = (
+            self._env_bool("CONTROLADOR_REAL_AUDIT_VERIFIED")
+            and bool(admission_id)
+            and authorization.audit_id != "real-disabled"
+        )
         admission = RealAdmissionBoundary().admit(
-            admission_id=os.environ.get("CONTROLADOR_REAL_ADMISSION_ID", "").strip(),
+            admission_id=admission_id or "real-disabled",
             audit_id=authorization.audit_id,
-            audit_verified=self._env_bool("CONTROLADOR_REAL_AUDIT_VERIFIED"),
+            audit_verified=audit_verified,
             authorization_active=authorization.active,
             safety_ready=safety.ready,
             broker_available=broker_available,
