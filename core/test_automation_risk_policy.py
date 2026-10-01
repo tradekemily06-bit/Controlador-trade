@@ -64,10 +64,9 @@ def test_p40_runtime_uses_configured_operation_loss(monkeypatch):
     from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 
     monkeypatch.setenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", "12.5")
-    service = SimpleNamespace(
-        risk=SimpleNamespace(daily_loss_limit=100.0, max_operations=10),
-        automation_risk_policy=AutomationRiskPolicy.from_environment(),
-    )
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_DAILY_LOSS", "100")
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_OPERATIONS", "10")
+    service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
         SimpleNamespace(realized_pnl=0.0, trades_today=2),
