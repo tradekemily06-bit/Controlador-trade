@@ -137,6 +137,59 @@ def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_read
     assert adapter.calls == 0
 
 
+def test_real_gateway_blocks_cross_bound_admission(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    safety = _safety(auth)
+    mismatched = RealAdmission(
+        admission_id="adm",
+        audit_id="different-audit",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="different-broker",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="cross-bound",
+        request=_request("cross-bound"),
+        authorization=auth,
+        admission=mismatched,
+        safety=safety,
+        confirmation=_confirmation(_request("cross-bound")),
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
+def test_real_gateway_blocks_admission_with_different_audit(tmp_path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    safety = _safety(auth)
+    mismatched = RealAdmission(
+        admission_id="adm",
+        audit_id="different-audit",
+        status=RealAdmissionStatus.ADMITTED,
+        broker_id="fake",
+        reasons=(),
+    )
+    result = gateway.execute(
+        broker="fake",
+        request_id="cross-audit",
+        request=_request("cross-audit"),
+        authorization=auth,
+        admission=mismatched,
+        safety=safety,
+        confirmation=_confirmation(_request("cross-audit")),
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
 def test_real_authorization_is_explicit():
     try:
         RealExecutionAuthorization("a", "audit", "broker", "adapter", False, True)
