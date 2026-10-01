@@ -5,7 +5,7 @@ from enum import Enum
 
 from core.operation_memory import OperationMemory
 from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.execution_lifecycle import ExecutionLifecycleState, ExecutionLifecycleStore
 
 
@@ -58,17 +58,36 @@ class RecoveryCoordinator:
             checkpoint = self.checkpoint_store.load()
             lifecycle = self.lifecycle_store.records()
             ledger_ids = set(self.execution_ledger.records())
+            ledger_states = {
+                request_id: self.execution_ledger.status(request_id)
+                for request_id in ledger_ids
+            }
         except ValueError as exc:
             return RecoveryAssessment(RecoveryState.INVALID, None, (), (), f"estado persistido inválido: {exc}")
 
         pending = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.PENDING))
-        unknown = tuple(sorted(r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.UNKNOWN))
+        unknown = tuple(sorted(
+            {
+                r.request_id
+                for r in lifecycle
+                if r.state is ExecutionLifecycleState.UNKNOWN
+            }
+            | {
+                request_id
+                for request_id, state in ledger_states.items()
+                if state in (ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED)
+            }
+        ))
 
-        inconsistent = [r.request_id for r in lifecycle if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids]
+        inconsistent = [
+            r.request_id
+            for r in lifecycle
+            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
+        ]
         if unknown or pending or inconsistent:
             details = []
             if unknown:
-                details.append("UNKNOWN requer reconciliação")
+                details.append("UNKNOWN/RESERVED requer reconciliação")
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
