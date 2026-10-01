@@ -5,7 +5,10 @@ convenience. They never grant execution, risk override, autonomy or security
 permission.
 """
 from __future__ import annotations
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
+import json
+import os
+from pathlib import Path
 from enum import Enum
 
 
@@ -72,9 +75,58 @@ class EcosystemPreferences:
 class EcosystemPreferencesStore:
     """Validated preferences; security-critical permissions are immutable here."""
 
-    def __init__(self, preferences: EcosystemPreferences | None = None) -> None:
-        self._preferences = preferences or EcosystemPreferences()
+    def __init__(self, preferences: EcosystemPreferences | None = None, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path is not None else None
+        self._preferences = self._load(path) if preferences is None and path is not None else (preferences or EcosystemPreferences())
         self._validate(self._preferences)
+
+    @classmethod
+    def _load(cls, path: str | Path) -> EcosystemPreferences:
+        file = Path(path)
+        if not file.exists():
+            return EcosystemPreferences()
+        try:
+            raw = json.loads(file.read_text(encoding="utf-8"))
+            candle = raw.get("candle", {})
+            notifications = raw.get("notifications", {})
+            defaults = NotificationPreferences()
+            return EcosystemPreferences(
+                default_symbol=str(raw["default_symbol"]),
+                default_timeframe=str(raw["default_timeframe"]),
+                require_closed_candle=bool(raw["require_closed_candle"]),
+                require_filters=bool(raw["require_filters"]),
+                chart_theme=ChartTheme(str(raw["chart_theme"])),
+                candle=CandleAppearance(
+                    style=CandleStyle(str(candle["style"])),
+                    color_mode=CandleColorMode(str(candle["color_mode"])),
+                    bullish_color=str(candle["bullish_color"]),
+                    bearish_color=str(candle["bearish_color"]),
+                    wick_color=str(candle["wick_color"]),
+                    border_enabled=bool(candle["border_enabled"]),
+                    show_wicks=bool(candle["show_wicks"]),
+                    show_bodies=bool(candle["show_bodies"]),
+                ),
+                notifications=NotificationPreferences(**{
+                    name: bool(notifications.get(name, getattr(defaults, name)))
+                    for name in NotificationPreferences.__dataclass_fields__
+                }),
+                show_technical_details_by_default=bool(raw["show_technical_details_by_default"]),
+                autonomous_operation_enabled=False,
+                real_execution_enabled=False,
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            raise ValueError("preferências persistidas inválidas") from exc
+
+    def _persist(self) -> None:
+        if self.path is None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
+            json.dumps(asdict(self._preferences), default=lambda value: value.value, ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
 
     @property
     def preferences(self) -> EcosystemPreferences:
@@ -84,6 +136,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, **changes)
         self._validate(candidate)
         self._preferences = candidate
+        self._persist()
         return candidate
 
     def update_candle(self, **changes) -> EcosystemPreferences:
@@ -91,6 +144,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, candle=candle)
         self._validate(candidate)
         self._preferences = candidate
+        self._persist()
         return candidate
 
     def update_notifications(self, **changes) -> EcosystemPreferences:
