@@ -38,8 +38,10 @@ from integration.p137_operational_risk_bridge import OperationalRiskBridge
 class ConfiguredEcosystemService(EcosystemService):
     """Ecosystem service with preferences, notifications and senior analysis wired in."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, execution_provider: str = "paper", **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        normalized_provider = execution_provider.strip().lower() if isinstance(execution_provider, str) else ""
+        self.execution_provider = normalized_provider or "paper"
         if self.operational_runtime is not None:
             state_path = self.operational_runtime.checkpoint_store.path.parent / "ecosystem-state.sqlite"
         else:
@@ -234,6 +236,11 @@ class ConfiguredEcosystemService(EcosystemService):
         """Run one unified DEMO runtime cycle from live MT5 observations."""
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError(
+                "ciclo MT5 DEMO exige CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_demo; "
+                f"provider atual: {self.execution_provider!r}"
+            )
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         state = self.mt5_operational_adapter.read_operational_state()
         return self.trading_runtime.run(
