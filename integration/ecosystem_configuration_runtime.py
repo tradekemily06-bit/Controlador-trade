@@ -339,7 +339,9 @@ class ConfiguredEcosystemService(EcosystemService):
         return tuple(item for item in events if self._notification_visible(item))
 
     def _operational_notifications(self) -> list[dict[str, Any]]:
-        """Expose current runtime incidents through the notification channel."""
+        """Expose incidents only when a real operational runtime is attached."""
+        if self.operational_runtime is None:
+            return []
         kind_by_source = {
             "execution": NotificationKind.EXECUTION,
             "recovery": NotificationKind.RECOVERY,
