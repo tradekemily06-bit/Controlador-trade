@@ -55,3 +55,25 @@ def test_invalid_input_fails_closed():
     assert len(incidents) == 1
     assert incidents[0].code == "OPERATIONAL_INPUT_INVALID"
     assert incidents[0].severity == "CRITICAL"
+
+
+def test_supervisor_failure_is_critical():
+    data = _healthy_observability()
+    data["supervision"] = {"controller": {"state": "FAILED", "reason": "RESTART_LIMIT_EXCEEDED"}}
+
+    incidents = build_operational_incidents(data)
+
+    assert [(item.code, item.severity) for item in incidents] == [
+        ("SUPERVISOR_CONTROLLER_FAILED", "CRITICAL")
+    ]
+
+
+def test_supervisor_recovery_is_warning():
+    data = _healthy_observability()
+    data["supervision"] = {"mt5": {"state": "RECOVERING"}}
+
+    incidents = build_operational_incidents(data)
+
+    assert [(item.code, item.severity) for item in incidents] == [
+        ("SUPERVISOR_MT5_RECOVERING", "WARNING")
+    ]

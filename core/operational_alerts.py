@@ -40,6 +40,7 @@ def build_operational_incidents(observability: Mapping[str, Any]) -> list[Operat
     kill_switch = observability.get("kill_switch")
     runtime_health = observability.get("runtime_health")
     market_data = observability.get("market_data")
+    supervision = observability.get("supervision", {})
 
     if not all(isinstance(section, Mapping) for section in (execution, recovery, reconciliation, kill_switch, runtime_health, market_data)):
         return [
@@ -128,6 +129,36 @@ def build_operational_incidents(observability: Mapping[str, Any]) -> list[Operat
                 message="monitoramento do runtime requer atenção",
             )
         )
+
+    if isinstance(supervision, Mapping):
+        for component, state_payload in supervision.items():
+            if not isinstance(state_payload, Mapping):
+                continue
+            state = str(state_payload.get("state", "")).upper()
+            if state == "FAILED":
+                incidents.append(OperationalIncident(
+                    code=f"SUPERVISOR_{str(component).upper()}_FAILED",
+                    severity="CRITICAL",
+                    status=state,
+                    source="runtime_health",
+                    message=f"supervisor de {component} está em falha: {state_payload.get('reason', 'sem motivo informado')}",
+                ))
+            elif state == "RECOVERING":
+                incidents.append(OperationalIncident(
+                    code=f"SUPERVISOR_{str(component).upper()}_RECOVERING",
+                    severity="WARNING",
+                    status=state,
+                    source="runtime_health",
+                    message=f"supervisor de {component} está recuperando o processo.",
+                ))
+            elif state == "UNKNOWN":
+                incidents.append(OperationalIncident(
+                    code=f"SUPERVISOR_{str(component).upper()}_UNKNOWN",
+                    severity="CRITICAL",
+                    status=state,
+                    source="runtime_health",
+                    message=f"estado do supervisor de {component} é inválido ou indisponível.",
+                ))
 
     market_state = str(market_data.get("health", "NOT_CONNECTED")).upper()
     if market_state in {"INVALID", "NOT_CONNECTED", "UNKNOWN"}:
