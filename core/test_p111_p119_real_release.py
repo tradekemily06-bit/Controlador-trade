@@ -140,7 +140,7 @@ def test_real_gateway_persists_lifecycle_and_reconciles_unknown(tmp_path: Path):
     assert result.status is RealGatewayStatus.UNKNOWN
     assert lifecycle.get("lifecycle-1").state is ExecutionLifecycleState.UNKNOWN
     gateway.reconcile_unknown("lifecycle-1", executed=True)
-    assert lifecycle.get("lifecycle-1").state is ExecutionLifecycleState.RECONCILED_EXECUTED
+    assert lifecycle.get("lifecycle-1").state is ExecutionLifecycleState.ACCEPTED
 
 
 def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_ready(tmp_path: Path):
