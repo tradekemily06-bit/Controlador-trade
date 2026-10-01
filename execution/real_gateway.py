@@ -164,7 +164,7 @@ class RealExecutionGateway:
             raise ValueError("request_id não está em estado incerto reconciliável.")
         self._ledger.reconcile(request_id, executed=executed)
         if self._lifecycle is not None:
-            state = ExecutionLifecycleState.RECONCILED_EXECUTED if executed else ExecutionLifecycleState.RECONCILED_NOT_EXECUTED
+            state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
             self._lifecycle.put(
                 ExecutionLifecycleRecord(
                     request_id,
