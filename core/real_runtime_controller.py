@@ -236,7 +236,7 @@ class RealRuntimeController:
         self.runtime.execution_lifecycle.put(
             ExecutionLifecycleRecord(
                 request_id,
-                ExecutionLifecycleState.RECONCILED_EXECUTED,
+                ExecutionLifecycleState.ACCEPTED,
                 datetime.now(timezone.utc),
                 close.message,
             )
