@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import unittest
 
 from app import application
@@ -7,7 +8,7 @@ from security_guard import MAX_BODY_BYTES
 
 
 class AppSecurityTests(unittest.TestCase):
-    def request(self, path, method="GET", payload=None, remote="test-client"):
+    def request(self, path, method="GET", payload=None, remote="test-client", headers=None):
         body = b"" if payload is None else json.dumps(payload).encode("utf-8")
         captured = {}
 
@@ -24,6 +25,8 @@ class AppSecurityTests(unittest.TestCase):
             "REMOTE_ADDR": remote,
             "wsgi.input": io.BytesIO(body),
         }
+        for key, value in (headers or {}).items():
+            environ[key] = value
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
 
@@ -55,6 +58,27 @@ class AppSecurityTests(unittest.TestCase):
         finally:
             SECURITY.limit = old_limit
             SECURITY._buckets.clear()
+
+    def test_remote_access_requires_trusted_identity_when_enabled(self):
+        from app import _authorize_remote_mutation
+        old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
+        old_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER")
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            allowed, _ = _authorize_remote_mutation({"REMOTE_ADDR": "127.0.0.1", "HTTP_X_AUTHENTICATED_USER": "user@example.com"})
+            denied, _ = _authorize_remote_mutation({"REMOTE_ADDR": "127.0.0.1"})
+            self.assertTrue(allowed)
+            self.assertFalse(denied)
+        finally:
+            if old_required is None:
+                os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
+            else:
+                os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
+            if old_header is None:
+                os.environ.pop("CONTROLADOR_TRUSTED_IDENTITY_HEADER", None)
+            else:
+                os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = old_header
 
 
 if __name__ == "__main__":
