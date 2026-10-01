@@ -5,9 +5,10 @@ from typing import Any
 from core.kill_switch import KillSwitch
 from execution.broker_registry import BrokerRegistry
 from execution.gateway import ExecutionGateway
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5DemoConfig, ICMarketsMT5RealAdapter
 
 IC_MARKETS_MT5_DEMO = "ic_markets_mt5_demo"
+IC_MARKETS_MT5_REAL = "ic_markets_mt5_real"
 
 
 def build_demo_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
@@ -43,3 +44,16 @@ def build_ic_markets_mt5_demo_gateway(
     registry = build_demo_registry(mt5_module=mt5_module, symbol=symbol)
     adapter = registry.get(IC_MARKETS_MT5_DEMO)
     return ExecutionGateway(adapter, kill_switch or KillSwitch())
+
+
+def build_real_registry(*, mt5_module: Any = None, symbol: str | None = None) -> BrokerRegistry:
+    """Build the explicit MT5 REAL broker registry for RealExecutionGateway."""
+    registry = BrokerRegistry()
+    registry.register(
+        IC_MARKETS_MT5_REAL,
+        ICMarketsMT5RealAdapter(
+            ICMarketsMT5DemoConfig(symbol=symbol),
+            mt5_module=mt5_module,
+        ),
+    )
+    return registry
