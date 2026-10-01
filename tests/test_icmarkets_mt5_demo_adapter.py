@@ -56,6 +56,18 @@ class FakeMT5:
             deal=654321 if self.external_id else None,
         )
 
+    def history_deals_get(self, *args, **kwargs):
+        ticket = kwargs.get("ticket")
+        if ticket == 123456:
+            return (SimpleNamespace(ticket=654321, position_id=987654),)
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        ticket = kwargs.get("ticket")
+        if ticket == 223344:
+            return (SimpleNamespace(ticket=223344, position_id=987654),)
+        return ()
+
     def positions_get(self, symbol=None):
         if symbol is None:
             return tuple(self.positions)
@@ -154,14 +166,29 @@ def test_missing_external_id_is_not_confirmed():
     assert result.external_id is None
     assert len(fake.sent) == 1
 
-def test_close_position_requires_exact_controlador_demo_position():
+def test_close_position_resolves_order_ticket_to_exact_owned_position():
     fake = FakeMT5()
-    fake.positions = [SimpleNamespace(ticket=123456, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_BUY, magic=2609001)]
+    fake.positions = [SimpleNamespace(ticket=987654, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_BUY, magic=2609001)]
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("123456")
     assert result.accepted is True
-    assert fake.sent[-1]["position"] == 123456
+    assert fake.sent[-1]["position"] == 987654
     assert fake.sent[-1]["type"] == fake.ORDER_TYPE_SELL
     assert fake.shutdown_calls == 1
+
+def test_close_position_falls_back_to_order_history_position_id():
+    fake = FakeMT5()
+    fake.positions = [SimpleNamespace(ticket=987654, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_SELL, magic=2609001)]
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("223344")
+    assert result.accepted is True
+    assert fake.sent[-1]["position"] == 987654
+    assert fake.sent[-1]["type"] == fake.ORDER_TYPE_BUY
+
+def test_close_position_blocks_when_external_identity_cannot_be_resolved():
+    fake = FakeMT5()
+    fake.positions = [SimpleNamespace(ticket=987654, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_BUY, magic=2609001)]
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("999999")
+    assert result.accepted is False
+    assert fake.sent == []
 
 
 def test_close_position_blocks_when_position_is_not_owned_by_controlador():
