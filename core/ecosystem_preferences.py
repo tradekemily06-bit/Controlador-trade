@@ -152,6 +152,7 @@ class EcosystemPreferencesStore:
         candidate = replace(self._preferences, notifications=notifications)
         self._validate(candidate)
         self._preferences = candidate
+        self._persist()
         return candidate
 
     @staticmethod
