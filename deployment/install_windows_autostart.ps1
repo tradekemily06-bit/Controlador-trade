@@ -26,7 +26,7 @@ foreach ($path in @($mt5Script, $controllerScript)) {
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 
-$principalTask = New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType InteractiveToken -RunLevel Highest
+$principalTask = New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType Interactive -RunLevel Highest
 $mt5Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $mt5Script + '" -Mt5TerminalPath "' + $Mt5TerminalPath + '"'
 $controllerArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $controllerScript + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '" -RuntimeDir "' + $RuntimeDir + '"'
 
