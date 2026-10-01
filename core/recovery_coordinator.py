@@ -110,13 +110,26 @@ class RecoveryCoordinator:
             if ledger_state not in allowed_pairs[lifecycle_state]:
                 inconsistent.append(request_id)
                 continue
-            if ledger_state in (
-                ExecutionLedgerStatus.ACCEPTED,
-                ExecutionLedgerStatus.RECONCILED_EXECUTED,
-                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
-            ):
+            # ACCEPTED means the external dispatch was accepted, but it is
+            # not yet factually reconciled/closed. A restart must not treat
+            # that state as safe to resume, otherwise an outstanding external
+            # operation could be left behind while a new cycle starts.
+            if ledger_state is ExecutionLedgerStatus.ACCEPTED:
+                inconsistent.append(request_id)
+                continue
+
+            # A terminal reconciliation is safe to resume only when its
+            # lifecycle agrees with the factual terminal result. Executed
+            # reconciliation requires the durable external identity; a
+            # not-executed reconciliation is terminal without requiring an
+            # external identity in the ledger.
+            if ledger_state is ExecutionLedgerStatus.RECONCILED_EXECUTED:
                 identity = self.execution_ledger.record_for(request_id)
                 if identity is None or identity.external_id is None:
+                    inconsistent.append(request_id)
+                    continue
+            if ledger_state is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED:
+                if lifecycle_state is not ExecutionLifecycleState.REJECTED:
                     inconsistent.append(request_id)
 
         if unknown or pending or inconsistent:
