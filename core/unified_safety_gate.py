@@ -13,6 +13,7 @@ from execution.ports import ExecutionMode
 class SafetyGateState(str, Enum):
     NOT_READY = "NOT_READY"
     READY_DEMO = "READY_DEMO"
+    READY_REAL = "READY_REAL"
 
 
 @dataclass(frozen=True)
@@ -22,11 +23,11 @@ class SafetyGateReport:
 
     @property
     def ready(self) -> bool:
-        return self.state is SafetyGateState.READY_DEMO
+        return self.state in (SafetyGateState.READY_DEMO, SafetyGateState.READY_REAL)
 
 
 class UnifiedSafetyGate:
-    """Read-only composition of configuration, market data and recovery safety checks."""
+    """Read-only composition of configuration, market data and recovery checks."""
 
     def __init__(self, *, kill_switch: KillSwitch) -> None:
         if not isinstance(kill_switch, KillSwitch):
@@ -47,8 +48,8 @@ class UnifiedSafetyGate:
             return SafetyGateReport(SafetyGateState.NOT_READY, ("integridade de dados inválida",))
         if not isinstance(recovery, RecoveryAssessment):
             return SafetyGateReport(SafetyGateState.NOT_READY, ("avaliação de recovery inválida",))
-        if config.mode is ExecutionMode.REAL:
-            reasons.append("execução REAL permanece bloqueada")
+        if config.mode is ExecutionMode.REAL and not config.real_enabled:
+            reasons.append("REAL não está explicitamente habilitado na configuração")
         if not self.kill_switch.allows_execution():
             reasons.append("kill switch ativo")
         if market_data.health is not MarketDataHealth.HEALTHY:
@@ -59,4 +60,9 @@ class UnifiedSafetyGate:
             reasons.append(f"recovery não está seguro: {recovery.state.value}")
         if reasons:
             return SafetyGateReport(SafetyGateState.NOT_READY, tuple(reasons))
+        if config.mode is ExecutionMode.REAL:
+            return SafetyGateReport(
+                SafetyGateState.READY_REAL,
+                ("segurança estrutural REAL pronta; autorização, admissão, risco e confirmação humana continuam obrigatórios.",),
+            )
         return SafetyGateReport(SafetyGateState.READY_DEMO, ("todas as condições de segurança DEMO estão satisfeitas",))
