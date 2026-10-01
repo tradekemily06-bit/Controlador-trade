@@ -44,16 +44,8 @@ def valid_dependencies():
         real_execution_allowed=True,
     )
     admission = RealAdmission("admission-1", "audit-1", RealAdmissionStatus.ADMITTED, "broker-1", ())
-    safety = RealSafetyReport(
-        ready=True,
-        reasons=(),
-        authorization_active=True,
-        kill_switch_clear=True,
-        market_healthy=True,
-        recovery_safe=True,
-        risk_approved=True,
-        broker_available=True,
-    )
+    from core.p114_real_safety_gate import RealSafetyState
+    safety = RealSafetyReport(RealSafetyState.READY, ())
     return authorization, admission, safety
 
 
