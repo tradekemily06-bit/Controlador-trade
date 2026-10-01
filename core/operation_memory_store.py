@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from datetime import datetime
+import os
 
 from core.models import Signal
 from core.operation_memory import OperationMemory, OperationMemoryRecord
@@ -61,10 +62,14 @@ class OperationMemoryStore:
             raise TypeError("memory deve ser OperationMemory.")
         payload = [self._serialize(record) for record in memory.records()]
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        # Replace atomically so a process interruption cannot leave a
+        # partially-written operational memory file behind.
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        os.replace(temporary, self.path)
 
     def load(self) -> OperationMemory:
         memory = OperationMemory()
