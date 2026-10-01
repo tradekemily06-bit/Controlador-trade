@@ -10,7 +10,7 @@ from core.runtime_checkpoint import RuntimeCheckpoint, RuntimeCheckpointStore
 from core.senior_context_cycle import SeniorContextCycle
 from core.execution_intent import ExecutionIntent
 from core.market_context import MarketContextResult
-from execution.gateway import GatewayResult
+from execution.gateway import GatewayResult, GatewayStatus
 from data.feed import MarketDataRequest
 from core.p41_controlled_automation import AutomationCycle, AutomationPolicy, ControlledAutomationGate
 from core.p42_automation_cycle import AutomationCycleOrchestrator, AutomationCycleRequest
