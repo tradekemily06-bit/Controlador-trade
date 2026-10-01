@@ -6,6 +6,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+$currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Execute o bootstrap uma única vez em um PowerShell como Administrador.'
+}
+
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 
 # Persist only non-secret runtime configuration at machine scope so the
