@@ -172,3 +172,25 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
     observation = adapter.query_order("456")
     assert observation.status.value == "NOT_EXECUTED"
+
+
+def test_risk_day_timezone_is_explicit_and_converted_to_utc():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(
+            risk_day_timezone="America/Sao_Paulo"
+        ),
+        mt5_module=mt5,
+    )
+    adapter.read_operational_state()
+    history_calls = [call for call in mt5.calls if isinstance(call, tuple) and call[0] == "history_deals_get"]
+    assert history_calls
+    start, end = history_calls[0][1]
+    assert start.tzinfo is not None and end.tzinfo is not None
+    assert start.utcoffset().total_seconds() == 0
+    assert end.utcoffset().total_seconds() == 0
+
+
+def test_invalid_risk_day_timezone_is_rejected():
+    with __import__("pytest").raises(ValueError, match="timezone IANA"):
+        ICMarketsMT5DemoAdapter(config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(risk_day_timezone="Not/AZone"), mt5_module=FakeMT5())
