@@ -31,6 +31,13 @@ def test_health_is_simulation_only():
     assert data["execution"] == "bloqueada_por_padrao"
 
 
+def test_preferences_api_persists_selected_mode_without_real_authority():
+    status, data = call_app("/api/preferences", "POST", {"selected_mode": "REAL"})
+    assert status.startswith("200")
+    assert data["preferences"]["selected_mode"] == "REAL"
+    assert data["preferences"]["real_execution_enabled"] is False
+
+
 def test_analyze_uses_core_engine():
     status, data = call_app(
         "/api/analyze",
