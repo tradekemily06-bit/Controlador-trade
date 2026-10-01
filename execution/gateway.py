@@ -37,7 +37,7 @@ class GatewayResult:
 
 
 class ExecutionGateway:
-    """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
+    """Broker-agnostic safety gateway. P5 permits only DEMO execution."""
 
     def __init__(
         self,
@@ -159,7 +159,7 @@ class ExecutionGateway:
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
         if request.mode is not ExecutionMode.DEMO:
-            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
+            return "P5 aceita somente execução DEMO nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
         if not request.symbol.strip():
