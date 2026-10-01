@@ -53,6 +53,28 @@ class EcosystemNotificationCenter:
     def __init__(self) -> None:
         self._notifications: list[EcosystemNotification] = []
 
+
+
+    def restore(self, items: list[dict]) -> None:
+        """Restore persisted notifications; invalid records are ignored safely."""
+        restored: list[EcosystemNotification] = []
+        for item in items:
+            try:
+                notification = EcosystemNotification(
+                    notification_id=str(item["notification_id"]),
+                    kind=NotificationKind(str(item["kind"])),
+                    severity=NotificationSeverity(str(item["severity"])),
+                    title=str(item["title"]),
+                    message=str(item["message"]),
+                    requires_attention=bool(item.get("requires_attention", False)),
+                    blocking=bool(item.get("blocking", False)),
+                )
+                if notification.title.strip() and notification.message.strip():
+                    restored.append(notification)
+            except (KeyError, TypeError, ValueError):
+                continue
+        self._notifications = restored
+
     def publish(self, notification: EcosystemNotification) -> EcosystemNotification:
         if not isinstance(notification, EcosystemNotification):
             raise ValueError("notification is required")
