@@ -117,6 +117,26 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     assert p119.state is RealReleaseState.RELEASED
 
 
+def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_ready(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake",
+        request_id="direct-without-confirmation",
+        request=_request("direct-without-confirmation"),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
+
+
 def test_real_authorization_is_explicit():
     try:
         RealExecutionAuthorization("a", "audit", "broker", "adapter", False, True)
