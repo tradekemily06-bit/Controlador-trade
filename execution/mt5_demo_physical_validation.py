@@ -167,6 +167,16 @@ def main() -> int:
         )
         finished_at = datetime.now(timezone.utc).isoformat()
 
+        # Check the final invariant before emitting any success marker. A
+        # successful close response alone is not enough: the terminal must
+        # also report zero remaining Controlador positions.
+        if remaining:
+            fail("posição Controlador ainda permanece aberta após fechamento.")
+            print(f"REMAINING_CONTROLADOR_POSITIONS={len(remaining)}")
+            print(f"STARTED_AT={started_at}")
+            print(f"FINISHED_AT={finished_at}")
+            return 15
+
         print("VALIDATION=PASSED")
         print("DEMO_ONLY=True")
         print("REAL=False")
@@ -177,13 +187,9 @@ def main() -> int:
         print(f"OPEN_DEAL={getattr(result, 'deal', None)}")
         print(f"CLOSE_ORDER={getattr(close_result, 'order', None)}")
         print(f"CLOSE_DEAL={getattr(close_result, 'deal', None)}")
-        print(f"REMAINING_CONTROLADOR_POSITIONS={len(remaining)}")
+        print("REMAINING_CONTROLADOR_POSITIONS=0")
         print(f"STARTED_AT={started_at}")
         print(f"FINISHED_AT={finished_at}")
-
-        if remaining:
-            fail("posição Controlador ainda permanece aberta após fechamento.")
-            return 15
 
         return 0
     finally:
