@@ -13,6 +13,8 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    POSITION_TYPE_BUY = 0
+    POSITION_TYPE_SELL = 1
 
     def __init__(self, *, demo=True, order_ok=True, send_ok=True, external_id=True):
         self.demo = demo
@@ -21,6 +23,7 @@ class FakeMT5:
         self.external_id = external_id
         self.shutdown_calls = 0
         self.sent = []
+        self.positions = []
 
     def initialize(self):
         return True
@@ -50,6 +53,11 @@ class FakeMT5:
             order=123456 if self.external_id else None,
             deal=654321 if self.external_id else None,
         )
+
+    def positions_get(self, symbol=None):
+        if symbol is None:
+            return tuple(self.positions)
+        return tuple(p for p in self.positions if p.symbol == symbol)
 
     def last_error(self):
         return (0, "ok")
@@ -143,3 +151,20 @@ def test_missing_external_id_is_not_confirmed():
     assert result.accepted is False
     assert result.external_id is None
     assert len(fake.sent) == 1
+
+def test_close_position_requires_exact_controlador_demo_position():
+    fake = FakeMT5()
+    fake.positions = [SimpleNamespace(ticket=123456, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_BUY, magic=2609001)]
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("123456")
+    assert result.accepted is True
+    assert fake.sent[-1]["position"] == 123456
+    assert fake.sent[-1]["type"] == fake.ORDER_TYPE_SELL
+    assert fake.shutdown_calls == 1
+
+
+def test_close_position_blocks_when_position_is_not_owned_by_controlador():
+    fake = FakeMT5()
+    fake.positions = [SimpleNamespace(ticket=123456, symbol="EURUSD", volume=0.01, type=fake.POSITION_TYPE_BUY, magic=999)]
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("123456")
+    assert result.accepted is False
+    assert fake.sent == []
