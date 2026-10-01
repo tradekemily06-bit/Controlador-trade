@@ -242,7 +242,7 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL, request_id="bad")
     result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(malformed))
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
