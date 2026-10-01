@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import json
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import Any, Iterable
 
@@ -30,7 +33,7 @@ from storage.production_boundary import ProductionStoragePolicy
 class EcosystemService:
     """Application orchestration; broker execution remains outside this layer."""
 
-    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None) -> None:
+    def __init__(self, engine: SignalEngine | None = None, decision_store: DecisionStore | None = None, production_storage: ProductionStoragePolicy | None = None, operational_runtime: OperationalRuntime | None = None, runtime_dir: str | Path | None = None) -> None:
         self.engine = engine or SignalEngine()
         self.store = decision_store or DecisionStore()
         self.memory: list[DecisionRecord] = self.store.load()
@@ -47,6 +50,7 @@ class EcosystemService:
         self.learning_observations: list[LearningObservation] = []
         self.learning_activities: dict[str, LearningActivity] = {}
         self.learning_attempts: list[LearningAttempt] = []
+        self.learning_state_path = (Path(runtime_dir) / "learning-state.json") if runtime_dir is not None else None
         self.senior_context = SeniorContextOrchestrator()
         self.automation = ControlledAutomationService()
 
