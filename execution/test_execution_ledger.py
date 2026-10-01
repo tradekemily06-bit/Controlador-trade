@@ -4,10 +4,10 @@ import pytest
 
 from core.kill_switch import KillSwitch
 from core.models import Signal
-from execution.execution_ledger import ExecutionLedger
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
 from execution.gateway import ExecutionGateway, GatewayStatus
 from execution.paper import PaperExecutor
-from execution.ports import ExecutionMode, ExecutionRequest
+from execution.ports import ExecutionMode, ExecutionRequest, ExecutionResult
 
 
 def request() -> ExecutionRequest:
@@ -54,6 +54,24 @@ def test_rejected_execution_is_not_recorded(tmp_path: Path):
     result = gateway.execute("req-001", invalid)
     assert result.status is GatewayStatus.INVALID_REQUEST
     assert ExecutionLedger(path).records() == ()
+
+
+class RaisingExecutor:
+    def execute(self, request: ExecutionRequest) -> ExecutionResult:
+        raise RuntimeError("simulated post-admission failure")
+
+
+def test_executor_failure_becomes_durable_unknown_and_blocks_restart_replay(tmp_path: Path):
+    path = tmp_path / "ledger.json"
+    first = ExecutionGateway(RaisingExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    result = first.execute("req-crash", request())
+
+    assert result.status is GatewayStatus.EXECUTOR_ERROR
+    assert ExecutionLedger(path).status("req-crash") is ExecutionLedgerStatus.UNKNOWN
+
+    restored = ExecutionGateway(PaperExecutor(), KillSwitch(), ledger=ExecutionLedger(path))
+    duplicate = restored.execute("req-crash", request())
+    assert duplicate.status is GatewayStatus.DUPLICATE
 
 
 def test_invalid_ledger_fails_closed(tmp_path: Path):
