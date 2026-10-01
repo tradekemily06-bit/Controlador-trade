@@ -58,7 +58,46 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         Write-StartupLog 'MT5 DEMO não confirmado; Controlador será iniciado, mas execução deve permanecer bloqueada pelo safety gate.'
     }
 
+    # If Windows restarted the supervisor task while an older app instance
+    # survived, do not create a second application process.
+    $existingController = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(python|python3)(\.exe)?
+    $appExitCode = $LASTEXITCODE
+    Write-StartupLog "Controlador finalizado com código de saída $appExitCode."
+
+    if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+
+    $now = Get-Date
+    while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
+        $restartTimes.RemoveAt(0)
+    }
+    if ($restartTimes.Count -ge $MaxRestartsPerHour) {
+        Write-StartupLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). Controlador permanece parado."
+        Write-SupervisorStatus 'FAILED' 'RESTART_LIMIT_EXCEEDED'
+        break
+    }
+
+    $restartTimes.Add($now)
+    Write-SupervisorStatus 'RECOVERING' "Controlador terminou com código $appExitCode; nova tentativa após backoff."
+    Start-Sleep -Seconds $RestartDelaySeconds
+}
+
+if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
+    Write-StartupLog 'Parada controlada solicitada pelo marcador do runtime.'
+    Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+}
+Write-SupervisorStatus 'STOPPED' 'Supervisor finalizado.' -and $_.CommandLine -like "*$ProjectRoot*app.py*" } |
+        Select-Object -First 1
+
+    if ($null -ne $existingController) {
+        Write-StartupLog 'Controlador já está em execução; supervisor não criará segunda instância.'
+        Write-SupervisorStatus 'HEALTHY' 'Instância existente detectada.'
+        Start-Sleep -Seconds 10
+        continue
+    }
+
     Write-StartupLog 'Iniciando app.py sob supervisão.'
+    Write-SupervisorStatus 'HEALTHY' 'Controlador iniciado pelo supervisor.'
     & $PythonExe -u (Join-Path $ProjectRoot 'app.py') >> $logPath 2>&1
     $appExitCode = $LASTEXITCODE
     Write-StartupLog "Controlador finalizado com código de saída $appExitCode."
