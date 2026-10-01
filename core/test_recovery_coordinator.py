@@ -130,5 +130,5 @@ def test_accepted_pair_is_safe_to_resume(tmp_path):
         ExecutionLifecycleRecord("req-ok", ExecutionLifecycleState.ACCEPTED, now, "accepted")
     )
     result = coordinator.assess()
-    assert result.state is RecoveryState.SAFE_TO_RESUME
+    assert result.state is RecoveryState.FRESH
     assert result.can_resume is True
