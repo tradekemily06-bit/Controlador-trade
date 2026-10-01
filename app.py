@@ -183,6 +183,25 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/runtime/close" and method == "POST":
+            data = _read_json(environ)
+            external_id = str(data.get("external_id", ""))
+            cycle_id = str(data.get("cycle_id", ""))
+            close_result = SERVICE.close_mt5_position(external_id=external_id)
+            reconciliation = None
+            if close_result.accepted:
+                snapshot = SERVICE.reconcile_mt5_cycle(cycle_id=cycle_id, external_id=external_id)
+                reconciliation = None if snapshot is None else {
+                    "cycle_id": snapshot.cycle_id,
+                    "terminal_state": snapshot.terminal_state,
+                    "reconciliation_state": snapshot.reconciliation_state.value,
+                }
+            return _json_response(start_response, HTTPStatus.OK, {
+                "closed": close_result.accepted,
+                "message": close_result.message,
+                "close_external_id": close_result.external_id,
+                "reconciliation": reconciliation,
+            }, request_id, environ)
         if path == "/api/runtime/reconcile" and method == "POST":
             data = _read_json(environ)
             snapshot = SERVICE.reconcile_mt5_cycle(
