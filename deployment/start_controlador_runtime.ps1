@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $logPath = Join-Path $RuntimeDir 'controlador-startup.log'
 $statusPath = Join-Path $RuntimeDir 'controlador-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'controlador.supervisor.stop'
-$restartHistoryPath = Join-Path $RuntimeDir 'supervisor-restart-history.json'
+$restartHistoryPath = Join-Path $RuntimeDir 'controlador-supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
 
 function Load-RestartHistory {
