@@ -41,11 +41,13 @@ class OperationalRiskBridge:
             "balance": raw.get("balance"),
             "equity": raw.get("equity"),
             "realized_pnl": raw.get("realized_pnl"),
+            "realized_loss_today": raw.get("realized_loss_today"),
             "unrealized_pnl": raw.get("unrealized_pnl"),
             "trades_today": raw.get("trades_today"),
             "consecutive_losses": raw.get("consecutive_losses"),
             "open_positions": raw.get("open_positions"),
             "net_position": raw.get("net_position"),
+            "gross_position_volume": raw.get("gross_position_volume"),
             "exposure": raw.get("exposure"),
             "market_open": raw.get("market_open"),
         }

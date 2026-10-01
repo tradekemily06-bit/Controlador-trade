@@ -11,3 +11,9 @@ def test_selected_mt5_demo_provider_can_be_injected_without_core_importing_mt5(t
     executor = build_demo_execution_port("ic_markets_mt5_demo", symbol="EURUSD")
     runtime = build_operational_runtime(tmp_path, executor=executor)
     assert isinstance(runtime.gateway._executor, ICMarketsMT5DemoAdapter)
+
+
+def test_mt5_demo_provider_uses_explicit_risk_day_timezone(monkeypatch):
+    monkeypatch.setenv("CONTROLADOR_RISK_DAY_TIMEZONE", "America/Sao_Paulo")
+    executor = build_demo_execution_port("ic_markets_mt5_demo", symbol="EURUSD")
+    assert executor.config.risk_day_timezone == "America/Sao_Paulo"

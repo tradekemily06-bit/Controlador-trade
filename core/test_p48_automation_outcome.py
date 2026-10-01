@@ -20,6 +20,13 @@ def test_records_explicit_outcome_without_derivation():
     assert result.financial_result == 12.5
 
 
+def test_outcome_clock_cannot_precede_closure():
+    with pytest.raises(ValueError, match="observed_at cannot precede automation closure"):
+        AutomationOutcomeBoundary().record(
+            closure(), observed_at=datetime(2026, 9, 9, 11, 59, tzinfo=timezone.utc), outcome="WIN", financial_result=1
+        )
+
+
 def test_unknown_has_no_financial_result():
     result = AutomationOutcomeBoundary().record(
         closure(), observed_at=datetime(2026, 9, 9, 12, 1, tzinfo=timezone.utc), outcome="UNKNOWN"

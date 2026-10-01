@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 from core.decision_snapshot import DecisionSnapshot
+from core.market_data_runtime_state import MarketDataRuntimeState
+from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.kill_switch import KillSwitch
 from core.models import Signal
 from core.p4_operational_recorder import P4OperationalRecorder, RecordedOperation
@@ -35,7 +37,7 @@ class GatewayResult:
 
 
 class ExecutionGateway:
-    """Broker-agnostic safety gateway. P5 permits only DEMO/PAPER execution."""
+    """Broker-agnostic safety gateway. P5 permits only DEMO execution."""
 
     def __init__(
         self,
@@ -44,6 +46,7 @@ class ExecutionGateway:
         recorder: P4OperationalRecorder | None = None,
         ledger: ExecutionLedger | None = None,
         lifecycle: ExecutionLifecycleStore | None = None,
+        market_data: MarketDataRuntimeState | None = None,
     ) -> None:
         if executor is None:
             raise ValueError("executor é obrigatório.")
@@ -54,6 +57,7 @@ class ExecutionGateway:
         self._recorder = recorder
         self._ledger = ledger
         self._lifecycle = lifecycle
+        self._market_data = market_data
         self._processed_request_ids: set[str] = set(ledger.records()) if ledger else set()
 
     def execute(
@@ -64,6 +68,7 @@ class ExecutionGateway:
         snapshot: DecisionSnapshot | None = None,
         timestamp: datetime | None = None,
         entry_conditions: tuple[str, ...] = (),
+        cycle_id: str | None = None,
     ) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
@@ -73,6 +78,15 @@ class ExecutionGateway:
         audit_record = None
         if snapshot is not None and self._recorder is not None:
             audit_record = self._recorder.record_decision(snapshot, timestamp=event_time)
+
+        if self._market_data is not None:
+            report = self._market_data.report
+            if report is None:
+                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: nenhum snapshot de mercado validado está disponível.")
+            if not report.safe_for_analysis:
+                return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada: dados de mercado não estão HEALTHY ({report.health.value}).")
+            if report.symbol != request.symbol:
+                return GatewayResult(GatewayStatus.BLOCKED, "execução bloqueada: símbolo da requisição não corresponde ao snapshot validado.")
 
         if not self._kill_switch.allows_execution():
             return GatewayResult(GatewayStatus.BLOCKED, f"execução bloqueada pelo kill switch: {self._kill_switch.state.reason}")
@@ -87,9 +101,20 @@ class ExecutionGateway:
                     return GatewayResult(GatewayStatus.BLOCKED, "execução UNKNOWN requer reconciliação explícita; replay automático bloqueado.")
                 if existing.state in (ExecutionLifecycleState.PENDING, ExecutionLifecycleState.ACCEPTED):
                     return GatewayResult(GatewayStatus.DUPLICATE, "request_id já possui ciclo de execução; replay recusado.")
+
+        # Durable reservation happens before the external side effect. If the
+        # process dies after dispatch, restart sees RESERVED and cannot replay.
+        if self._ledger is not None:
+            try:
+                self._ledger.reserve(request_id, cycle_id=cycle_id)
+            except (OSError, ValueError) as exc:
+                return GatewayResult(GatewayStatus.DUPLICATE, f"request_id não pôde ser reservado com segurança: {exc}")
+
+        if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.PENDING, event_time, "execução iniciada"))
             except (OSError, ValueError) as exc:
+                self._mark_rejected(request_id, event_time, f"não foi possível persistir o início da execução: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"não foi possível persistir o início da execução: {exc}")
 
         try:
@@ -103,16 +128,18 @@ class ExecutionGateway:
             return GatewayResult(GatewayStatus.EXECUTOR_ERROR, "executor retornou resultado inválido; execução marcada como UNKNOWN.")
 
         if not result.accepted:
-            if self._lifecycle is not None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, event_time, result.message))
+            self._mark_rejected(request_id, event_time, result.message)
             return GatewayResult(GatewayStatus.EXECUTION_REJECTED, result.message, result)
 
         if self._ledger is not None:
             try:
-                self._ledger.record(request_id)
+                self._ledger.bind_external_id(request_id, result.external_id or "")
+                self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
-                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi persistido: {exc}")
+                # RESERVED remains durable, so a restart cannot replay the order.
+                self._mark_unknown(request_id, event_time, f"execução aceita, mas ledger não foi confirmado: {exc}")
                 return GatewayResult(GatewayStatus.EXECUTOR_ERROR, f"execução aceita, mas persistência falhou; estado UNKNOWN: {exc}", result)
+
         if self._lifecycle is not None:
             try:
                 self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.ACCEPTED, event_time, result.message))
@@ -127,17 +154,35 @@ class ExecutionGateway:
 
         return GatewayResult(GatewayStatus.ACCEPTED, result.message, result, recorded_operation)
 
+    def _mark_rejected(self, request_id: str, timestamp: datetime, message: str) -> None:
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_rejected(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None or current.state is not ExecutionLifecycleState.REJECTED:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.REJECTED, timestamp, message))
+            except (OSError, ValueError):
+                pass
+
     def _mark_unknown(self, request_id: str, timestamp: datetime, message: str) -> None:
-        if self._lifecycle is None:
-            return
-        try:
-            current = self._lifecycle.get(request_id)
-            if current is None:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-            elif current.state is not ExecutionLifecycleState.UNKNOWN:
-                self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
-        except (OSError, ValueError):
-            pass
+        if self._ledger is not None:
+            try:
+                self._ledger.mark_unknown(request_id)
+            except (OSError, ValueError):
+                pass
+        if self._lifecycle is not None:
+            try:
+                current = self._lifecycle.get(request_id)
+                if current is None:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+                elif current.state is not ExecutionLifecycleState.UNKNOWN:
+                    self._lifecycle.put(ExecutionLifecycleRecord(request_id, ExecutionLifecycleState.UNKNOWN, timestamp, message))
+            except (OSError, ValueError):
+                pass
 
     @staticmethod
     def _validate(request_id: str, request: ExecutionRequest) -> str | None:
@@ -146,7 +191,7 @@ class ExecutionGateway:
         if not isinstance(request, ExecutionRequest):
             return "requisição de execução inválida."
         if request.mode is not ExecutionMode.DEMO:
-            return "P5 aceita somente execução DEMO/PAPER nesta etapa."
+            return "P5 aceita somente execução DEMO nesta etapa."
         if request.signal not in (Signal.COMPRA, Signal.VENDA):
             return "sinal AGUARDAR não pode ser executado."
         if not request.symbol.strip():

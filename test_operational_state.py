@@ -15,6 +15,7 @@ def valid_state(**overrides):
         balance=1000.0,
         equity=1000.0,
         realized_pnl=0.0,
+        realized_loss_today=0.0,
         unrealized_pnl=0.0,
         trades_today=0,
         consecutive_losses=0,
@@ -39,8 +40,10 @@ def test_operational_state_is_immutable():
         "balance",
         "equity",
         "realized_pnl",
+        "realized_loss_today",
         "unrealized_pnl",
         "net_position",
+        "gross_position_volume",
         "exposure",
     ],
 )
@@ -108,12 +111,20 @@ def test_daily_loss_limit_blocks():
     manager = RiskManager(daily_loss_limit=100)
 
     assert not manager.evaluate(
-        state=valid_state(realized_pnl=-100)
+        state=valid_state(realized_pnl=-100, realized_loss_today=100)
     ).allowed
 
     assert manager.evaluate(
-        state=valid_state(realized_pnl=-99.99)
+        state=valid_state(realized_pnl=-99.99, realized_loss_today=99.99)
     ).allowed
+
+
+def test_daily_loss_uses_cumulative_losses_not_net_pnl():
+    manager = RiskManager(daily_loss_limit=100)
+    decision = manager.evaluate(
+        state=valid_state(realized_pnl=20, realized_loss_today=120)
+    )
+    assert decision.allowed is False
 
 
 def test_valid_state_can_be_approved():
@@ -126,9 +137,15 @@ def test_valid_state_can_be_approved():
     decision = manager.evaluate(
         state=valid_state(
             realized_pnl=-50,
+            realized_loss_today=50,
             trades_today=2,
             consecutive_losses=1,
         )
     )
 
     assert decision.allowed is True
+
+
+def test_realized_loss_today_cannot_be_negative():
+    with pytest.raises(OperationalStateValidationError, match="realized_loss_today"):
+        valid_state(realized_loss_today=-0.01)

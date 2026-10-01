@@ -100,8 +100,8 @@ class RiskManager:
                 "Informações obrigatórias de risco indisponíveis.",
             )
 
-        if self.daily_loss_limit != 0 and state.realized_pnl is None:
-            return RiskDecision(False, "Resultado diário indisponível.")
+        if self.daily_loss_limit != 0 and state.realized_loss_today is None:
+            return RiskDecision(False, "Perda realizada diária indisponível.")
 
         if self.max_operations != 0 and state.trades_today >= self.max_operations:
             return RiskDecision(False, "Limite de operações atingido.")
@@ -114,7 +114,7 @@ class RiskManager:
 
         if (
             self.daily_loss_limit != 0
-            and state.realized_pnl <= -abs(self.daily_loss_limit)
+            and state.realized_loss_today >= abs(self.daily_loss_limit)
         ):
             return RiskDecision(False, "Limite de perda diária atingido.")
 

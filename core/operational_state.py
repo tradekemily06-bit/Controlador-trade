@@ -39,6 +39,7 @@ class OperationalState:
     balance: Optional[float] = None
     equity: Optional[float] = None
     realized_pnl: Optional[float] = None
+    realized_loss_today: Optional[float] = None
     unrealized_pnl: Optional[float] = None
 
     trades_today: Optional[int] = None
@@ -46,6 +47,7 @@ class OperationalState:
     open_positions: Optional[int] = None
 
     net_position: Optional[float] = None
+    gross_position_volume: Optional[float] = None
     exposure: Optional[float] = None
 
     market_open: Optional[bool] = None
@@ -56,13 +58,20 @@ class OperationalState:
             "balance",
             "equity",
             "realized_pnl",
+            "realized_loss_today",
             "unrealized_pnl",
             "net_position",
+            "gross_position_volume",
             "exposure",
         ):
             value = getattr(self, name)
             if value is not None:
                 _finite_number(value, name)
+
+        if self.realized_loss_today is not None and self.realized_loss_today < 0:
+            raise OperationalStateValidationError(
+                "realized_loss_today must be non-negative"
+            )
 
         for name in (
             "trades_today",

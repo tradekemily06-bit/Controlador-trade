@@ -13,6 +13,12 @@ class FakeMT5:
     ORDER_TIME_GTC = 0
     ORDER_FILLING_IOC = 1
     TRADE_RETCODE_DONE = 10009
+    DEAL_ENTRY_OUT = 1
+    DEAL_ENTRY_OUT_BY = 2
+    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_REJECTED = 5
+    ORDER_STATE_EXPIRED = 6
+    POSITION_TYPE_BUY = 0
 
     def __init__(self, check_code=0, send_result=True):
         self.check_code = check_code
@@ -28,7 +34,29 @@ class FakeMT5:
 
     def account_info(self):
         self.calls.append("account_info")
-        return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO)
+        return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, balance=1000.0, equity=1015.0, profit=15.0)
+
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(ticket=123, profit=4.0),)
+        if kwargs.get("ticket") == 456:
+            return ()
+        return (
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=8.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-3.0),
+            SimpleNamespace(entry=self.DEAL_ENTRY_OUT, profit=-5.0),
+        )
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 456:
+            return (SimpleNamespace(ticket=456, state=self.ORDER_STATE_CANCELED),)
+        return ()
+
+    def positions_get(self):
+        self.calls.append("positions_get")
+        return (SimpleNamespace(type=self.POSITION_TYPE_BUY, volume=0.10, price_current=100.0),)
 
     def symbol_select(self, symbol, enabled):
         self.calls.append(("symbol_select", symbol, enabled))
@@ -111,3 +139,58 @@ def test_order_check_failure_blocks_send():
     assert not any(
         isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
     )
+
+
+def test_read_operational_state_uses_mt5_observations():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+
+    state = adapter.read_operational_state()
+
+    assert state.balance == 1000.0
+    assert state.equity == 1015.0
+    assert state.realized_pnl == 0.0
+    assert state.realized_loss_today == 8.0
+    assert state.trades_today == 3
+    assert state.consecutive_losses == 2
+    assert state.open_positions == 1
+    assert state.net_position == 0.10
+    assert state.exposure == 10.0
+    assert any(call == "history_deals_get" or (isinstance(call, tuple) and call[0] == "history_deals_get") for call in mt5.calls)
+    assert "positions_get" in mt5.calls
+
+
+def test_query_order_reconciles_external_deal_as_executed():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    observation = adapter.query_order("123")
+    assert observation.status.value == "EXECUTED"
+
+
+def test_query_order_reconciles_canceled_external_order_as_not_executed():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
+    observation = adapter.query_order("456")
+    assert observation.status.value == "NOT_EXECUTED"
+
+
+def test_risk_day_timezone_is_explicit_and_converted_to_utc():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5DemoAdapter(
+        config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(
+            risk_day_timezone="America/Sao_Paulo"
+        ),
+        mt5_module=mt5,
+    )
+    adapter.read_operational_state()
+    history_calls = [call for call in mt5.calls if isinstance(call, tuple) and call[0] == "history_deals_get"]
+    assert history_calls
+    start, end = history_calls[0][1]
+    assert start.tzinfo is not None and end.tzinfo is not None
+    assert start.utcoffset().total_seconds() == 0
+    assert end.utcoffset().total_seconds() == 0
+
+
+def test_invalid_risk_day_timezone_is_rejected():
+    with __import__("pytest").raises(ValueError, match="timezone IANA"):
+        ICMarketsMT5DemoAdapter(config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(risk_day_timezone="Not/AZone"), mt5_module=FakeMT5())

@@ -93,3 +93,39 @@ def test_orchestrator_uses_feed_limit_after_validation():
         market_context=favorable(),
     )
     assert len(result.market_data.candles) == 2
+
+
+def test_orchestrator_derives_market_context_from_same_feed():
+    result = make_orchestrator(make_candles()).evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=None,
+        confirmed=True,
+    )
+    assert result.market_data.candles
+    assert result.snapshot.market_context is not None
+
+
+def test_orchestrator_builds_senior_context_from_same_fetched_candles():
+    candles = make_candles()
+    captured = []
+
+    def builder(observed_candles, operational_state):
+        captured.append((tuple(observed_candles), operational_state))
+        return None
+
+    orchestrator = TradingOrchestrator(
+        feed=MarketDataFeed(Provider(candles), source="test"),
+        pipeline=StrategyPipeline(),
+        decision_engine=DecisionEngine(RiskManager()),
+        quality_evaluator=SignalQualityEvaluator(),
+        senior_context_builder=builder,
+    )
+    result = orchestrator.evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+    )
+    assert len(captured) == 1
+    assert captured[0][0] == result.market_data.candles
+    assert captured[0][1] == state()

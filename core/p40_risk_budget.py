@@ -38,10 +38,12 @@ class RiskBudgetEvaluator:
         self,
         state: RiskBudgetState,
         limits: RiskBudgetLimits,
-        proposed_loss: float,
+        proposed_loss: float | None,
     ) -> RiskBudgetAssessment:
         if not isinstance(state, RiskBudgetState) or not isinstance(limits, RiskBudgetLimits):
             raise ValueError("risk budget input is invalid")
+        if proposed_loss is None:
+            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "proposed loss is unknown; explicit operation risk is required")
         values = (state.accumulated_loss, limits.max_daily_loss, proposed_loss)
         if any(not isinstance(v, (int, float)) or isinstance(v, bool) or not isfinite(v) for v in values):
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "non-finite or invalid loss value")
@@ -64,6 +66,6 @@ class RiskBudgetEvaluator:
 def evaluate_risk_budget(
     state: RiskBudgetState,
     limits: RiskBudgetLimits,
-    proposed_loss: float,
+    proposed_loss: float | None,
 ) -> RiskBudgetAssessment:
     return RiskBudgetEvaluator().evaluate(state, limits, proposed_loss)

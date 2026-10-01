@@ -2,11 +2,23 @@
 
 ## Estado atual
 
+O estado de cada marco deve ser distinguido entre implementado no código, validado por testes/CI e validado fisicamente em runtime externo. O mapa macro não usa o número de P como porcentagem de conclusão: integração, testes e runtime são avaliados por evidência.
+
 O núcleo técnico, as fronteiras de execução, a interface e a primeira camada de proteção SaaS do ecossistema estão implementados. A integração escolhida para a primeira validação operacional é **IC Markets MT5 DEMO**.
 
-A validação operacional DEMO foi executada com sucesso em ambiente compatível com MetaTrader 5: preflight, `order_check()`, primeira ordem controlada, confirmação do identificador externo, fechamento explícito e reconciliação foram concluídos sem habilitar REAL.
+**Estado desta versão:** o caminho DEMO foi preparado, testado e **validado fisicamente em 2026-10-01** com terminal MetaTrader 5 compatível e conta IC Markets DEMO conectada. A evidência inclui preflight, `order_check()`, `order_send()`, identificadores de abertura/fechamento, fechamento e confirmação de zero posições Controlador remanescentes. REAL permanece desabilitado.
 
-## Concluído
+## Integração macro consolidada
+
+- P41–P46 possuem composição explícita em `ControlledAutomationService`, preservando as fronteiras individuais e sem conceder autoridade de execução.
+- P44 exige `cycle_id` consistente entre ciclo de automação e `ExecutionIntent`.
+- P48 impede observações de resultado anteriores ao fechamento do ciclo.
+- P47–P53 permanecem ligados à cadeia factual de fechamento, reconciliação e aprendizado; P51/P52 só promovem registros reconciliados/VERIFIED a evidência.
+- P120–P127 mantêm as fronteiras broker-agnostic de resultado, reconciliação, dados de mercado, ordem, sessão, Sandbox/DEMO e segurança pré-REAL.
+- P127 mantém MT5 DEMO como integração operacional concreta; cTrader permanece isolado como alternativa futura.
+- P128–P149 estão presentes no código como sequência posterior de integração/validação; não devem ser interpretados como 100% concluídos apenas pelo número: cada capacidade deve ser verificada por seus testes e runtime.
+
+## Concluído no código/testes
 
 - Núcleo de decisão independente de corretora/plataforma.
 - Fluxo dados → análise → score/filtros → decisão → risco → execução → auditoria.
@@ -15,69 +27,53 @@ A validação operacional DEMO foi executada com sucesso em ambiente compatível
 - Persistência/controle de estados de execução e tratamento explícito de `UNKNOWN`.
 - Reconciliação externa.
 - Validações de segurança antes de qualquer uso REAL.
-- Boundary cTrader DEMO/OAuth preservada como integração futura, sem bloquear o projeto.
+- Boundary cTrader DEMO/OAuth preservada como integração futura.
 - Adapter IC Markets MT5 DEMO.
 - Preflight somente leitura para confirmar disponibilidade e conta DEMO.
 - Testes de segurança do adapter e do preflight.
 - Runbook para a primeira conexão MT5 DEMO.
-- Primeira ordem DEMO controlada em EURUSD, 0,01 lote, COMPRA, confirmada e depois fechada de forma controlada.
 - Interface web responsiva para celular e notebook.
-- Painel operacional.
-- Módulo Operação e estado fail-closed.
-- Módulo Análise com score, ativo, timeframe, confirmação e filtros.
-- Catálogo visual dos conceitos de leitura e estudo definidos para o ecossistema.
-- Laboratório & Replay.
-- Área de treinamento visual e análise de material fornecido.
-- Memória, estatísticas e feedback WIN/LOSS/DRAW/OPEN/VOID.
-- Persistência opcional da memória de decisões em SQLite, com restauração na inicialização e atualização persistente de outcomes.
 - Risk Gate e proteções visíveis.
-- Notícias & Contexto com boundary seguro e sem dados inventados.
-- Configurações locais de preferência.
-- Conexões, auditoria e segurança.
-- Navegação mobile-first.
-- APIs de status, análise, replay, memória, estatísticas, risco, notícias/contexto e conexões.
-- Manifest web servido pelo aplicativo.
-- Contratos automatizados para a interface e APIs.
-- CI configurada para executar a suíte de testes, auditoria de dependências e compilação do projeto.
-- Rate limiting por cliente no boundary HTTP.
-- Limite de payload JSON de 256 KiB.
-- Request ID para rastreabilidade.
-- Security headers e CSP básica.
-- Erros HTTP sem exposição de detalhes internos.
-- Dependabot para dependências Python e GitHub Actions.
-- Dependência futura do cTrader isolada do ambiente base, evitando que uma integração não utilizada enfraqueça a auditoria de segurança do núcleo.
+- Memória, estatísticas, replay e feedback operacional.
+- CI com suíte de testes, auditoria de dependências e compilação.
+- Proteções HTTP, request ID, rate limiting, limite de payload e CSP.
 - Nenhuma credencial de conta deve ser persistida no repositório.
-- Trilha de auditoria HTTP bounded e privacy-conscious.
-- Persistência opcional da trilha de auditoria em SQLite, com retenção limitada e fallback em memória.
 
-## Validação de segurança SaaS
+## Validação DEMO — estado verdadeiro
 
-A primeira camada de hardening SaaS foi validada no CI: testes de robustez, suíte completa, `pip-audit` e compilação concluíram com sucesso.
+**Código/preparação: CONCLUÍDO.**
 
-A trilha de auditoria registra metadados mínimos e não armazena IP bruto, credenciais, tokens ou corpos de requisição. SQLite é uma opção de persistência para uma instância; armazenamento centralizado e durável para múltiplas instâncias continua pertencendo à infraestrutura de produção.
+O preflight físico é somente leitura e confirma:
+1. terminal MT5 inicializável;
+2. conta realmente classificada como DEMO;
+3. símbolo selecionável;
+4. bid/ask disponíveis e válidos;
+5. limites mínimo/step de volume.
 
-Essa camada é uma proteção de boundary HTTP e **não é, sozinha, um sistema completo de SaaS multiusuário**. Autenticação, autorização, isolamento por tenant/usuário, sessões persistentes, gestão de segredos e terminação HTTPS continuam pertencendo à próxima camada de infraestrutura/identidade de produção.
+A camada seguinte do adapter DEMO exige conta DEMO, símbolo/cotação válidos, volume compatível, `order_check()` aprovado, `order_send()` confirmado e identificador externo. A reconciliação consulta o histórico do MT5 e não reenviará uma ordem em caso de estado incerto.
 
-## Memória persistente de decisões
+**Validação física da primeira ordem: CONCLUÍDA em 2026-10-01.**
 
-A memória continua funcionando sem configuração externa. Quando `CONTROLADOR_DECISION_DB` aponta para um arquivo SQLite gravável, decisões e outcomes sobrevivem ao reinício do processo. Falhas de persistência são tratadas de forma fail-soft e não habilitam execução financeira. Essa persistência local não substitui o futuro isolamento por usuário/tenant em uma implantação SaaS multiusuário.
+Evidência externa obtida no terminal Windows + MT5 IC Markets DEMO conectado: `EURUSD`, volume `0.01`, `order_check` da abertura com `retcode=0`, `order_send` da abertura com `retcode=10009` e deal confirmado, posição identificada pelo ticket `1978110662`, `order_check` do fechamento com `retcode=0`, `order_send` do fechamento com `retcode=10009` e deal confirmado, e `REMAINING_CONTROLADOR_POSITIONS=0`. O validador encerrou com `VALIDATION=PASSED`, `DEMO_ONLY=True` e `REAL=False`. Esta evidência comprova o round-trip físico DEMO; não autoriza REAL. 
+
+## REAL — estado verdadeiro
+
+**EXECUÇÃO REAL: DESABILITADA.**
+
+A arquitetura possui contratos e testes da fronteira pré-REAL, mas isso não equivale a autorização para operar dinheiro real.
+
+Para uma futura liberação REAL ainda serão necessárias as condições de produção/identidade/segurança previstas pelo projeto, incluindo identidade confiável, isolamento durável por tenant/usuário, transporte seguro, gestão de segredos, auditoria durável, rate limiting centralizado e autorização REAL explícita.
+
+Nenhuma interface, memória, replay, notícia, aprendizado ou análise pode habilitar REAL por conta própria.
+
+## SaaS / produção
+
+A primeira camada de hardening SaaS foi validada no CI. Ela não é, sozinha, um sistema completo de SaaS multiusuário: identidade, autorização, isolamento persistente, sessões, gestão de segredos e HTTPS de produção pertencem à infraestrutura de produção.
 
 ## Validação de dispositivo
 
-A interface de software está implementada e coberta por testes de contrato. A abertura no navegador de um dispositivo real continua sendo validação de uso visual; ela não é uma pendência de arquitetura, lógica de decisão ou execução DEMO.
-
-## REAL
-
-REAL permanece bloqueado. A existência do adapter DEMO não autoriza execução financeira real. Nenhum componente da interface, memória, replay, notícias, aprendizado ou análise pode habilitar REAL.
-
-## cTrader
-
-cTrader permanece como alternativa futura e não bloqueia o projeto. A aprovação/autenticação do cTrader não é requisito para o funcionamento do caminho IC Markets MT5 DEMO.
-
-## Próxima expansão real
-
-Se o ecossistema for transformado em SaaS multiusuário de produção, a próxima expansão genuína é conectar uma camada de identidade/autorização de produção e isolamento persistente de dados. Essa camada deve usar um provedor de identidade e um armazenamento apropriado, com autorização por usuário/tenant e sessões seguras, em vez de uma autenticação improvisada dentro do servidor mínimo atual.
+A interface de software está implementada e coberta por testes de contrato. A abertura em navegador de um dispositivo real continua sendo validação de uso visual, não uma pendência de arquitetura.
 
 ## Regra de encerramento
 
-Não criar novas etapas apenas para prolongar o projeto. Novas alterações devem ser motivadas por um defeito concreto, uma necessidade funcional real ou uma expansão funcional real.
+Não criar novas etapas apenas para prolongar o projeto. Novas alterações devem ser motivadas por defeito concreto, necessidade funcional real, evidência externa de validação ou expansão funcional real.

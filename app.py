@@ -19,7 +19,7 @@ from security_audit import AUDIT
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
-EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
+EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "ic_markets_mt5_demo")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
@@ -68,6 +68,28 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _authorize_remote_mutation(environ) -> tuple[bool, str]:
+    """Authorize remote mutations through the deployment's trusted identity boundary."""
+    remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+    identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+    client = str(environ.get("REMOTE_ADDR") or "").strip()
+
+    if not remote_access_required and (not client or client in {"127.0.0.1", "::1"}):
+        return True, "local"
+
+    if not remote_access_required:
+        return False, "trusted remote identity provider is not configured"
+
+    if not identity_header:
+        return False, "trusted identity header is not configured"
+
+    identity = str(environ.get("HTTP_" + identity_header.upper().replace("-", "_")) or "").strip()
+    if not identity:
+        return False, "trusted identity is required"
+
+    return True, "trusted"
+
+
 def _authorize_internal_update(environ) -> tuple[bool, str]:
     expected = os.environ.get("CONTROLADOR_UPDATE_TOKEN", "").strip()
     if not expected:
@@ -111,6 +133,26 @@ def application(environ, start_response):
     if not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
+    if method == "POST" and path != "/api/updates":
+        raw_length = environ.get("CONTENT_LENGTH")
+        try:
+            declared_length = int(raw_length) if raw_length not in (None, "") else 0
+        except (TypeError, ValueError):
+            declared_length = -1
+        if declared_length < 0 or declared_length > MAX_BODY_BYTES:
+            # Let _read_json return the canonical 400 validation response.
+            pass
+        else:
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {"error": reason, "request_id": request_id},
+                    request_id,
+                    environ,
+                )
+
     try:
         if path == "/api/health" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
@@ -141,6 +183,53 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/runtime/reconcile" and method == "POST":
+            data = _read_json(environ)
+            snapshot = SERVICE.reconcile_mt5_cycle(
+                cycle_id=str(data.get("cycle_id", "")),
+                external_id=str(data.get("external_id", "")),
+            )
+            payload = None if snapshot is None else {
+                "cycle_id": snapshot.cycle_id,
+                "terminal_state": snapshot.terminal_state,
+                "outcome": snapshot.outcome,
+                "financial_result": snapshot.financial_result,
+                "reconciliation_state": snapshot.reconciliation_state.value,
+            }
+            return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
+        if path == "/api/runtime/cycle" and method == "POST":
+            data = _read_json(environ)
+            result = SERVICE.run_mt5_cycle(
+                symbol=str(data.get("symbol", "")),
+                timeframe=str(data.get("timeframe", "5m")),
+                limit=int(data.get("limit", 100)),
+                amount=float(data.get("amount", 0.01)),
+                duration_seconds=int(data.get("duration_seconds", 60)),
+                confirmed=bool(data.get("confirmed", False)),
+                filters_ok=bool(data.get("filters_ok", True)),
+                entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
+            )
+            cycle = result.cycles[-1]
+            execution = cycle.execution
+            payload = {
+                "stopped": result.stopped,
+                "stop_reason": result.stop_reason,
+                "decision": cycle.orchestration.decision.decision,
+                "signal": cycle.orchestration.analysis.signal.value,
+                "score": cycle.orchestration.analysis.score,
+                "reason": cycle.orchestration.decision.reason,
+                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
+                "market_data_source": cycle.orchestration.market_data.source,
+                "candles": len(cycle.orchestration.market_data.candles),
+                "request_id": cycle.plan.request_id if cycle.plan else None,
+                "cycle_id": (
+                    cycle.orchestration.senior_context.cycle_id
+                    if cycle.orchestration.senior_context is not None
+                    else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
+                ),
+                "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
+            }
+            return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)
@@ -219,10 +308,11 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
-def run(host: str = "0.0.0.0", port: int | None = None) -> None:
+def run(host: str | None = None, port: int | None = None) -> None:
+    selected_host = host or os.environ.get("CONTROLADOR_BIND_HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
-        print(f"Controlador Trading em http://{host}:{selected_port}")
+    with make_server(selected_host, selected_port, application) as server:
+        print(f"Controlador Trading em http://{selected_host}:{selected_port}")
         server.serve_forever()
 
 

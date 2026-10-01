@@ -43,3 +43,59 @@ def test_preferences_cannot_enable_real_or_autonomy():
         pass
     else:
         raise AssertionError("autonomy must remain outside preferences")
+
+
+def test_mt5_senior_context_uses_only_observed_risk_domains():
+    from core.operational_state import OperationalState
+    from data.models import Candle
+    from datetime import datetime, timezone
+
+    service = ConfiguredEcosystemService()
+    candles = tuple(Candle(datetime(2026, 1, 1, minute=i, tzinfo=timezone.utc), 100 + i, 101 + i, 99 + i, 100 + i, 10 + i) for i in range(3))
+    state = OperationalState(balance=1000, equity=1005, open_positions=1, net_position=0.01, exposure=100, trades_today=2, consecutive_losses=0)
+    context = service._build_mt5_senior_context(candles, state)
+    assert context.quality.value == "COMPLETE"
+    assert context.execution_authorized is False
+    assert context.risk_assessment.execution_authorized is False
+    assert {item.domain.value for item in context.risk_assessment.observations} == {"CAPITAL", "POSITION", "DATA_QUALITY"}
+
+
+def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
+    from core.operational_state import OperationalState
+    from execution.gateway import GatewayResult, GatewayStatus
+
+    class FakeRuntime:
+        def __init__(self):
+            self.kwargs = None
+        def run(self, *args, **kwargs):
+            self.kwargs = kwargs
+            return "runtime-result"
+
+    service = ConfiguredEcosystemService()
+    fake = FakeRuntime()
+    from types import SimpleNamespace
+    service.operational_runtime = SimpleNamespace(checkpoint_store=object())
+    service.trading_runtime = fake
+    service.mt5_operational_adapter.read_operational_state = lambda: OperationalState(
+        realized_pnl=0.0,
+        trades_today=0,
+        consecutive_losses=0,
+        balance=1000.0,
+        equity=1000.0,
+        open_positions=0,
+        net_position=0.0,
+        exposure=0.0,
+    )
+
+    result = service.run_mt5_cycle(symbol="EURUSD", timeframe="5m", limit=3)
+    assert result == "runtime-result"
+    assert fake.kwargs["automation_policy"].enabled is True
+    assert callable(fake.kwargs["automation_readiness_factory"])
+    assert callable(fake.kwargs["automation_risk_budget_factory"])
+
+
+def test_mt5_runtime_uses_the_single_controlled_automation_service(tmp_path):
+    from core.operational_runtime import build_operational_runtime
+    service = ConfiguredEcosystemService(operational_runtime=build_operational_runtime(tmp_path))
+    assert service.trading_runtime is not None
+    assert service.trading_runtime.automation_service is service.automation

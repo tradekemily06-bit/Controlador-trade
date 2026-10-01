@@ -36,6 +36,12 @@ def test_invalid_budget_state_blocks(state, limits, loss):
     assert RiskBudgetEvaluator().evaluate(state, limits, loss).decision is BudgetDecision.BLOCKED
 
 
+def test_unknown_proposed_loss_blocks():
+    result = RiskBudgetEvaluator().evaluate(RiskBudgetState(0, 0), RiskBudgetLimits(100, 5), None)
+    assert result.decision is BudgetDecision.BLOCKED
+    assert "unknown" in result.reason
+
+
 def test_non_finite_loss_blocks():
     result = RiskBudgetEvaluator().evaluate(RiskBudgetState(0, 0), RiskBudgetLimits(100, 5), float("inf"))
     assert result.decision is BudgetDecision.BLOCKED

@@ -5,6 +5,16 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from datetime import datetime
+import os
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows fallback
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX fallback
+    msvcrt = None
 
 
 class ExecutionLifecycleState(str, Enum):
@@ -66,15 +76,19 @@ class ExecutionLifecycleStore:
 
     def put(self, record: ExecutionLifecycleRecord) -> None:
         self._validate(record)
-        previous = self._records.get(record.request_id)
-        if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
-            raise ValueError("execução UNKNOWN requer reconciliação explícita.")
-        self._records[record.request_id] = record
-        self._save()
+
+        def mutation() -> None:
+            previous = self._records.get(record.request_id)
+            if previous is not None and previous.state is ExecutionLifecycleState.UNKNOWN and record.state is not ExecutionLifecycleState.UNKNOWN:
+                raise ValueError("execução UNKNOWN requer reconciliação explícita.")
+            self._records[record.request_id] = record
+
+        self._mutate_locked(mutation)
 
     def get(self, request_id: str) -> ExecutionLifecycleRecord | None:
         if not isinstance(request_id, str) or not request_id.strip():
             raise ValueError("request_id não pode ser vazio.")
+        self._load()
         return self._records.get(request_id)
 
     def reconcile(self, request_id: str, state: ExecutionLifecycleState, *, updated_at: datetime, message: str = "") -> ExecutionLifecycleRecord:
@@ -85,19 +99,48 @@ class ExecutionLifecycleStore:
             raise ValueError("execução não encontrada.")
         record = ExecutionLifecycleRecord(request_id, state, updated_at, message)
         self._validate(record)
-        self._records[request_id] = record
-        self._save()
+
+        def mutation() -> None:
+            self._records[request_id] = record
+
+        self._mutate_locked(mutation)
         return record
 
     def records(self) -> tuple[ExecutionLifecycleRecord, ...]:
+        self._load()
         return tuple(self._records[key] for key in sorted(self._records))
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        temporary.write_text(
             json.dumps([
                 {"request_id": r.request_id, "state": r.state.value, "updated_at": r.updated_at.isoformat(), "message": r.message}
-                for r in self.records()
+                for r in tuple(self._records[key] for key in sorted(self._records))
             ], ensure_ascii=False, indent=2, sort_keys=True),
             encoding="utf-8",
         )
+        os.replace(temporary, self.path)
+
+    def _mutate_locked(self, mutation) -> None:
+        lock_path = self.path.with_name(f".{self.path.name}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+", encoding="utf-8") as lock_file:
+            if msvcrt is not None:
+                if os.fstat(lock_file.fileno()).st_size == 0:
+                    lock_file.write("0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            elif fcntl is not None:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                self._load()
+                mutation()
+                self._save()
+            finally:
+                if msvcrt is not None:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                elif fcntl is not None:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
