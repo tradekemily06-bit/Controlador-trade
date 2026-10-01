@@ -39,6 +39,7 @@ class OperationalState:
     balance: Optional[float] = None
     equity: Optional[float] = None
     realized_pnl: Optional[float] = None
+    realized_loss_today: Optional[float] = None
     unrealized_pnl: Optional[float] = None
 
     trades_today: Optional[int] = None
@@ -57,6 +58,7 @@ class OperationalState:
             "balance",
             "equity",
             "realized_pnl",
+            "realized_loss_today",
             "unrealized_pnl",
             "net_position",
             "gross_position_volume",
