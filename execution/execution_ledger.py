@@ -130,6 +130,10 @@ class ExecutionLedger:
         def mutation() -> None:
             if request_id in self._records:
                 raise ValueError("request_id já possui estado; replay REAL recusado.")
+            if cycle_id is not None and any(
+                record.cycle_id == cycle_id.strip() for record in self._records.values()
+            ):
+                raise ValueError("cycle_id já possui uma execução registrada neste runtime.")
             self._records[request_id] = ExecutionLedgerRecord(
                 ExecutionLedgerStatus.RESERVED,
                 cycle_id.strip() if cycle_id else None,
