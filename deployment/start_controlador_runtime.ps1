@@ -37,6 +37,8 @@ function Save-RestartHistory {
 }
 
 Load-RestartHistory
+$finalState = 'STOPPED'
+$finalReason = 'Supervisor finalizado.'
 
 function Write-StartupLog([string]$Message) {
     Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
@@ -112,7 +114,9 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     if ($restartTimes.Count -ge $MaxRestartsPerHour) {
         Write-StartupLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). Controlador permanece parado."
-        Write-SupervisorStatus 'FAILED' 'RESTART_LIMIT_EXCEEDED'
+        $finalState = 'FAILED'
+        $finalReason = 'RESTART_LIMIT_EXCEEDED'
+        Write-SupervisorStatus $finalState $finalReason
         break
     }
 
@@ -126,4 +130,4 @@ if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
     Write-StartupLog 'Parada controlada solicitada pelo marcador do runtime.'
     Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
 }
-Write-SupervisorStatus 'STOPPED' 'Supervisor finalizado.'
+Write-SupervisorStatus $finalState $finalReason
