@@ -116,7 +116,8 @@ def test_mt5_runtime_uses_the_single_controlled_automation_service(tmp_path):
 
 
 def test_operational_incident_is_exposed_through_notification_channel():
-    service = ConfiguredEcosystemService()
+    from core.operational_runtime import build_operational_runtime
+    service = ConfiguredEcosystemService(operational_runtime=build_operational_runtime(__import__("pathlib").Path("/tmp/controlador-notification-test")))
     service.operational_observability = lambda: {
         "execution": {"state": "BLOCKED"},
         "recovery": {"state": "SAFE_TO_RESUME"},
@@ -137,7 +138,8 @@ def test_operational_incident_is_exposed_through_notification_channel():
 
 
 def test_healthy_operational_observability_does_not_create_incident_notifications():
-    service = ConfiguredEcosystemService()
+    from core.operational_runtime import build_operational_runtime
+    service = ConfiguredEcosystemService(operational_runtime=build_operational_runtime(__import__("pathlib").Path("/tmp/controlador-notification-test-healthy")))
     service.operational_observability = lambda: {
         "execution": {"state": "READY_DEMO"},
         "recovery": {"state": "SAFE_TO_RESUME"},
