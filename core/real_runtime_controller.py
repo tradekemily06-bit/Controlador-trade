@@ -13,6 +13,7 @@ from core.real_manual_confirmation import RealManualConfirmationGate
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState
 from execution.ports import ExecutionMode, ExecutionRequest
 from execution.real_gateway import RealExecutionGateway, RealGatewayResult
 from execution.default_registry import IC_MARKETS_MT5_REAL, build_real_registry
@@ -36,6 +37,7 @@ class RealRuntimeController:
         self.gateway = RealExecutionGateway(
             BrokerAdapterGateway(self.registry),
             self.runtime.execution_ledger,
+            self.runtime.execution_lifecycle,
         )
         self.confirmation = RealManualConfirmationGate(
             ttl_seconds=self._env_int("CONTROLADOR_REAL_CONFIRMATION_TTL", 60, 1, 300)
@@ -219,6 +221,27 @@ class RealRuntimeController:
             safety=safety,
             gateway=self.gateway,
         )
+
+    def close_and_reconcile(self, *, request_id: str, external_id: str):
+        record = self.runtime.execution_ledger.record_for(request_id)
+        if record is None:
+            raise ValueError("request_id REAL não encontrado no ledger.")
+        if record.external_id != external_id.strip():
+            raise ValueError("external_id não corresponde à identidade persistida do request REAL.")
+        adapter = self.registry.get(self.broker_id)
+        close = adapter.close_position(external_id.strip())
+        if not close.accepted:
+            return close
+        self.runtime.execution_ledger.reconcile(request_id, executed=True)
+        self.runtime.execution_lifecycle.put(
+            ExecutionLifecycleRecord(
+                request_id,
+                ExecutionLifecycleState.RECONCILED_EXECUTED,
+                datetime.now(timezone.utc),
+                close.message,
+            )
+        )
+        return close
 
     def reconcile(self, *, request_id: str, executed: bool) -> None:
         self.gateway.reconcile_unknown(request_id, executed=bool(executed))
