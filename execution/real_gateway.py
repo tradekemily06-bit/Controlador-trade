@@ -165,11 +165,9 @@ class RealExecutionGateway:
         self._ledger.reconcile(request_id, executed=executed)
         if self._lifecycle is not None:
             state = ExecutionLifecycleState.ACCEPTED if executed else ExecutionLifecycleState.REJECTED
-            self._lifecycle.put(
-                ExecutionLifecycleRecord(
-                    request_id,
-                    state,
-                    datetime.now(timezone.utc),
-                    "REAL reconciliação explícita",
-                )
+            self._lifecycle.reconcile(
+                request_id,
+                state,
+                updated_at=datetime.now(timezone.utc),
+                message="REAL reconciliação explícita",
             )
