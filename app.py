@@ -25,7 +25,7 @@ EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
 DECISION_STORE = DecisionStore(RUNTIME_DIR / "decision-memory.sqlite")
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, decision_store=DECISION_STORE)
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, decision_store=DECISION_STORE, runtime_dir=RUNTIME_DIR)
 ONBOARDING = EcosystemOnboarding()
 AUDIT = SecurityAudit(RUNTIME_DIR / "security-audit.sqlite")
 
