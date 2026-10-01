@@ -38,6 +38,11 @@ Os scripts `deployment/install_windows_autostart.ps1`, `deployment/start_mt5_run
 
 O instalador exige uma execução única como Administrador e pede apenas o caminho do executável do MT5. Nenhum segredo é gravado. O Controlador espera o preflight DEMO, mas não transforma uma falha de MT5 em autorização: sem DEMO válido, a execução continua bloqueada.
 
+## Proteção Cloudflare Access
+A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
+
+O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 8000 na Internet.
+
 ## Regras de segurança
 - REAL permanece desabilitado.
 - O Controlador não deve escutar em endereço público.
