@@ -65,9 +65,16 @@ class ExecutionGateway:
         request_id: str,
         request: ExecutionRequest,
         *,
+
+    def execute(
+        self,
+        request_id: str,
+        request: ExecutionRequest,
+        *,
         snapshot: DecisionSnapshot | None = None,
         timestamp: datetime | None = None,
         entry_conditions: tuple[str, ...] = (),
+        cycle_id: str | None = None,
     ) -> GatewayResult:
         validation_error = self._validate(request_id, request)
         if validation_error is not None:
@@ -105,7 +112,7 @@ class ExecutionGateway:
         # process dies after dispatch, restart sees RESERVED and cannot replay.
         if self._ledger is not None:
             try:
-                self._ledger.reserve(request_id)
+                self._ledger.reserve(request_id, cycle_id=cycle_id)
             except (OSError, ValueError) as exc:
                 return GatewayResult(GatewayStatus.DUPLICATE, f"request_id não pôde ser reservado com segurança: {exc}")
 
@@ -132,6 +139,7 @@ class ExecutionGateway:
 
         if self._ledger is not None:
             try:
+                self._ledger.bind_external_id(request_id, result.external_id or "")
                 self._ledger.mark_accepted(request_id)
             except (OSError, ValueError) as exc:
                 # RESERVED remains durable, so a restart cannot replay the order.
