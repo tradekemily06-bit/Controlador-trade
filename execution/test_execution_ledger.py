@@ -118,7 +118,7 @@ def test_find_by_cycle_id_is_durable_identity_lookup(tmp_path):
     assert ledger.find_by_cycle_id("cycle-1")[0][0] == "req-1"
 
 
-def test_cycle_id_is_required_for_canonical_reservation_when_supplied():
-    ledger = ExecutionLedger("/tmp/controlador-ledger-test.json")
+def test_cycle_id_is_required_for_canonical_reservation_when_supplied(tmp_path):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
     with pytest.raises(ValueError, match="cycle_id"):
         ledger.reserve("req-1", cycle_id="")
