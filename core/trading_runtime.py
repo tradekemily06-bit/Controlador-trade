@@ -119,6 +119,10 @@ class TradingRuntime:
             return None
 
         executed = reconciled.status is ExternalOrderStatus.EXECUTED
+        if identity.status is ExecutionLedgerStatus.RECONCILED_EXECUTED and not executed:
+            raise ValueError("reconciliação terminal contraditória para o mesmo external_id.")
+        if identity.status is ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED and executed:
+            raise ValueError("reconciliação terminal contraditória para o mesmo external_id.")
         if identity.status not in (
             ExecutionLedgerStatus.RECONCILED_EXECUTED,
             ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
