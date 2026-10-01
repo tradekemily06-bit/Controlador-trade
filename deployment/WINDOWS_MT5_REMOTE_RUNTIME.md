@@ -35,6 +35,22 @@ CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint in
 7. O Controlador exige a identidade confiável para mutações remotas.
 8. O mesmo hostname é usado no celular e notebook.
 
+## Supervisão e recuperação contínua
+
+Os launchers de MT5 e Controlador atuam como supervisores do processo, além do início no logon. Se um processo cair, o supervisor registra o evento, aplica um atraso de recuperação e tenta reiniciar dentro de um orçamento limitado de reinícios por hora. O limite evita loops agressivos em caso de falha persistente.
+
+O Agendador de Tarefas também recebe uma política de reinício para falha da própria tarefa. Isso cria duas camadas complementares: recuperação do processo pelo supervisor e recuperação do host da tarefa pelo Windows.
+
+A supervisão não autoriza execução. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
+
+Cada supervisor grava um estado pequeno e não secreto em `CONTROLADOR_RUNTIME_DIR`:
+- `controlador-supervisor-status.json`
+- `mt5-supervisor-status.json`
+
+Esses estados são somente telemetria. Falhas ou recuperação em andamento são incorporadas à observabilidade operacional e ao centro de notificações; nunca concedem autoridade de execução.
+
+Para manutenção controlada, o runtime usa marcadores locais de parada do supervisor. A remoção/uso desses marcadores pertence ao mecanismo de gerenciamento do runtime e não exige que o usuário execute comandos diariamente.
+
 ## Inicialização automática no Windows
 Os scripts `deployment/install_windows_autostart.ps1`, `deployment/start_mt5_runtime.ps1` e `deployment/start_controlador_runtime.ps1` configuram o início automático no logon da sessão Windows usada pelo runtime. Essa configuração é feita uma vez; durante o uso diário não há necessidade de executar Git ou Python manualmente.
 
