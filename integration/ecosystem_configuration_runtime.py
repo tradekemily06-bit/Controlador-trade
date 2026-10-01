@@ -199,8 +199,8 @@ class ConfiguredEcosystemService(EcosystemService):
         )
         if (
             operational_state is None
-            or operational_state.realized_loss_today is None
-            or operational_state.trades_today is None
+            or getattr(operational_state, "realized_loss_today", None) is None
+            or getattr(operational_state, "trades_today", None) is None
         ):
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "perda realizada diária DEMO indisponível.")
         if limits.max_daily_loss <= 0 or limits.max_operations <= 0:
@@ -210,8 +210,8 @@ class ConfiguredEcosystemService(EcosystemService):
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "perda máxima por operação não está configurada.")
         return RiskBudgetEvaluator().evaluate(
             RiskBudgetState(
-                accumulated_loss=float(operational_state.realized_loss_today),
-                operations_count=operational_state.trades_today,
+                accumulated_loss=float(getattr(operational_state, "realized_loss_today")),
+                operations_count=int(getattr(operational_state, "trades_today")),
             ),
             limits,
             proposed_loss,
