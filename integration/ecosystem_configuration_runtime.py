@@ -201,13 +201,16 @@ class ConfiguredEcosystemService(EcosystemService):
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "estado de risco DEMO incompleto.")
         if limits.max_daily_loss <= 0 or limits.max_operations <= 0:
             return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "orçamento P40 não está configurado com limites positivos.")
+        proposed_loss = self.automation_risk_policy.max_loss_per_operation
+        if proposed_loss is None:
+            return RiskBudgetAssessment(BudgetDecision.BLOCKED, 0.0, 0, "perda máxima por operação não está configurada.")
         return RiskBudgetEvaluator().evaluate(
             RiskBudgetState(
                 accumulated_loss=max(0.0, -float(operational_state.realized_pnl)),
                 operations_count=operational_state.trades_today,
             ),
             limits,
-            None,
+            proposed_loss,
         )
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
