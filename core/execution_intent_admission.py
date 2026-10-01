@@ -45,10 +45,12 @@ class ExecutionIntentAdmission:
         if intent.cycle_id is not None and intent.cycle_id != senior_context.cycle_id:
             raise ValueError("cycle_id da intenção não corresponde ao contexto sênior.")
 
+
         return self.gateway.execute(
             intent.request_id,
             intent.as_execution_request(),
             snapshot=snapshot,
             timestamp=intent.created_at,
             entry_conditions=entry_conditions,
+            cycle_id=intent.cycle_id,
         )
