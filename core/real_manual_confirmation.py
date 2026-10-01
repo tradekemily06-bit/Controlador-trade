@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from hashlib import sha256
 import secrets
 
 from core.p112_real_execution_contract import RealExecutionAuthorization
-from core.real_manual_confirmation_contract import RealManualConfirmation
+from core.real_manual_confirmation_contract import RealManualConfirmation, request_fingerprint
 from core.p114_real_safety_gate import RealSafetyReport
 from core.p117_real_admission import RealAdmission
 from execution.ports import ExecutionRequest
@@ -29,20 +28,7 @@ class RealManualConfirmationGate:
         self._consumed: set[str] = set()
 
     @staticmethod
-    def fingerprint(request: ExecutionRequest) -> str:
-        if not isinstance(request, ExecutionRequest):
-            raise ValueError("request inválido.")
-        canonical = "|".join(
-            (
-                request.symbol.strip(),
-                request.signal.value,
-                f"{float(request.amount):.12g}",
-                str(request.duration_seconds),
-                request.mode.value,
-                str(request.request_id or "").strip(),
-            )
-        )
-        return sha256(canonical.encode("utf-8")).hexdigest()
+    fingerprint = staticmethod(request_fingerprint)
 
     def prepare(self, *, request: ExecutionRequest, now: datetime | None = None) -> RealManualConfirmation:
         if request.mode.value != "REAL":
