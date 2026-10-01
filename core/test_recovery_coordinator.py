@@ -24,11 +24,12 @@ def test_fresh_session_is_safe(tmp_path):
     assert result.can_resume is True
 
 
-def test_checkpoint_allows_safe_resume(tmp_path):
+def test_checkpoint_allows_safe_resume_after_reconciliation(tmp_path):
     coordinator = make_coordinator(tmp_path)
     coordinator.execution_ledger.reserve("req-3")
     coordinator.execution_ledger.bind_external_id("req-3", "ext-3")
     coordinator.execution_ledger.mark_accepted("req-3")
+    coordinator.execution_ledger.reconcile("req-3", executed=True)
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc))
     )
