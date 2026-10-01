@@ -210,6 +210,25 @@ def test_runtime_rejects_external_id_belonging_to_another_cycle(tmp_path):
         )
 
 
+def test_runtime_rejects_contradictory_terminal_reconciliation(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000006", "req-6", "666")
+    TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000006",
+        external_id="666",
+        query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
+    )
+    with pytest.raises(ValueError, match="terminal contraditória"):
+        TradingRuntime.reconcile_external_cycle(
+            cycle_id="runtime-000006",
+            external_id="666",
+            query_port=FakeOrderQuery(ExternalOrderStatus.NOT_EXECUTED),
+            ledger=ledger,
+            execution_lifecycle=lifecycle,
+        )
+
+
 def test_runtime_rejects_unknown_cycle_even_when_external_order_exists(tmp_path):
     ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000005", "req-5", "333")
     with pytest.raises(ValueError, match="identidade de execução única"):
