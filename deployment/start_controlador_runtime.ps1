@@ -39,5 +39,8 @@ if ($demoReady) {
     Write-StartupLog 'MT5 DEMO ainda não confirmado; iniciando Controlador mesmo assim. A execução deve permanecer bloqueada até o preflight/risk gate ficar válido.'
 }
 
-& $PythonExe (Join-Path $ProjectRoot 'app.py') >> $logPath 2>&1
-exit $LASTEXITCODE
+Write-StartupLog 'Pré-verificação concluída; iniciando app.py.'
+& $PythonExe -u (Join-Path $ProjectRoot 'app.py') >> $logPath 2>&1
+$appExitCode = $LASTEXITCODE
+Write-StartupLog "Controlador finalizado com código de saída $appExitCode."
+exit $appExitCode
