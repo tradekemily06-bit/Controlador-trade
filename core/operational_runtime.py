@@ -74,7 +74,6 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         ledger=ledger,
         lifecycle=lifecycle,
         market_data=market_data,
-        safety_store=safety_store,
     )
     return OperationalRuntime(
         kill_switch=kill_switch,
@@ -85,4 +84,5 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
         health=health,
         gateway=gateway,
         market_data=market_data,
+        safety_store=safety_store,
     )
