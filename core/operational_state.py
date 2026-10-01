@@ -68,6 +68,11 @@ class OperationalState:
             if value is not None:
                 _finite_number(value, name)
 
+        if self.realized_loss_today is not None and self.realized_loss_today < 0:
+            raise OperationalStateValidationError(
+                "realized_loss_today must be non-negative"
+            )
+
         for name in (
             "trades_today",
             "consecutive_losses",
