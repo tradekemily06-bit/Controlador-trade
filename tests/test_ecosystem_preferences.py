@@ -34,3 +34,19 @@ def test_preferences_cannot_disable_critical_notifications():
     with pytest.raises(ValueError):
         store.update_notifications(critical_enabled=False)
     assert store.preferences.notifications.critical_enabled is True
+
+
+def test_selected_mode_can_be_changed_without_granting_real_authority():
+    store = EcosystemPreferencesStore()
+    result = store.update(selected_mode="REAL")
+    assert result.selected_mode == "REAL"
+    assert result.real_execution_enabled is False
+
+
+def test_invalid_selected_mode_is_rejected():
+    store = EcosystemPreferencesStore()
+    try:
+        store.update(selected_mode="LIVE")
+    except ValueError:
+        return
+    raise AssertionError("selected_mode inválido deveria ser rejeitado")
