@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 from typing import Any
 
@@ -22,6 +23,7 @@ class ICMarketsMT5DemoConfig:
     symbol: str | None = None
     deviation: int = 20
     magic: int = 2609001
+    risk_day_timezone: str = "UTC"
 
 
 class ICMarketsMT5DemoAdapter:
@@ -35,6 +37,10 @@ class ICMarketsMT5DemoAdapter:
 
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
+        try:
+            self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("risk_day_timezone deve ser um timezone IANA válido.")
         self._mt5 = mt5_module
 
     def _module(self) -> Any:
@@ -102,7 +108,11 @@ class ICMarketsMT5DemoAdapter:
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
             now = datetime.now(timezone.utc)
-            start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+            risk_day_now = now.astimezone(self._risk_day_zone)
+            risk_day_start = datetime.combine(
+                risk_day_now.date(), time.min, tzinfo=self._risk_day_zone
+            )
+            start = risk_day_start.astimezone(timezone.utc)
             realized_pnl = realized_loss_today = trades_today = consecutive_losses = None
             history_fn = getattr(mt5, "history_deals_get", None)
             if callable(history_fn):
