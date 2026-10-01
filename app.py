@@ -131,7 +131,7 @@ def application(environ, start_response):
 
     try:
         if path == "/api/health" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status()}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, {"ok": True, **SERVICE.system_status(), "security_audit": AUDIT.status()}, request_id, environ)
         if path == "/api/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.system_status(), request_id, environ)
         if path == "/api/onboarding" and method == "GET":
