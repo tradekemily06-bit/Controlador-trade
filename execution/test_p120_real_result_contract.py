@@ -1,9 +1,11 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
 from core.models import Signal
 from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
+from core.real_manual_confirmation import RealManualConfirmationGate
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -35,11 +37,12 @@ def test_accepted_without_external_id_is_unknown_and_persisted(tmp_path: Path):
         market_healthy=True, recovery_safe=True, risk_approved=True,
         broker_available=True,
     )
-    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+    request = ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id="missing-external-id")
 
     result = gateway.execute(
         broker="fake", request_id="missing-external-id", request=request,
         authorization=authorization, admission=admission, safety=safety,
+        confirmation=RealManualConfirmationGate().prepare(request=request, now=datetime(2026, 1, 1, tzinfo=timezone.utc)),
     )
 
     assert result.status == RealGatewayStatus.UNKNOWN

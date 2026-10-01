@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
 from core.models import Signal
 from core.p111_pre_real_audit import PreRealAuditBoundary, PreRealAuditStatus
@@ -9,6 +10,7 @@ from core.p116_real_release_audit import RealReleaseAuditBoundary, ReleaseAuditS
 from core.p117_real_admission import RealAdmissionBoundary, RealAdmissionStatus
 from core.p118_real_monitoring import RealMonitoringBoundary, RealOutcomeStatus
 from core.p119_release_closure import RealReleaseClosureBoundary, RealReleaseState
+from core.real_manual_confirmation import RealManualConfirmationGate
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
@@ -65,8 +67,12 @@ def _safety(auth):
     )
 
 
-def _request():
-    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL)
+def _request(request_id="req"):
+    return ExecutionRequest("TEST", Signal.COMPRA, 10.0, 60, ExecutionMode.REAL, request_id=request_id)
+
+
+def _confirmation(request):
+    return RealManualConfirmationGate().prepare(request=request, now=datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
 def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
@@ -97,7 +103,7 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
     registry.register("fake", adapter)
     ledger = ExecutionLedger(tmp_path / "real-ledger.json")
     gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ledger)
-    result = gateway.execute(broker="fake", request_id="req", request=_request(), authorization=auth, admission=p117, safety=safety)
+    result = gateway.execute(broker="fake", request_id="req", request=_request("req"), authorization=auth, admission=p117, safety=safety, confirmation=_confirmation(_request("req")))
     assert result.status == RealGatewayStatus.ADMITTED
     assert adapter.calls == 1
     assert ledger.status("req") is ExecutionLedgerStatus.ACCEPTED
@@ -109,6 +115,26 @@ def test_p111_p116_p117_p119_positive_flow(tmp_path: Path):
         p118_available=True, multi_broker_boundary=True,
     )
     assert p119.state is RealReleaseState.RELEASED
+
+
+def test_real_gateway_requires_human_confirmation_even_when_other_gates_are_ready(tmp_path: Path):
+    registry = BrokerRegistry()
+    adapter = FakeAdapter()
+    registry.register("fake", adapter)
+    gateway = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
+    auth = _authorization()
+    admission = _admission(auth)
+    safety = _safety(auth)
+    result = gateway.execute(
+        broker="fake",
+        request_id="direct-without-confirmation",
+        request=_request("direct-without-confirmation"),
+        authorization=auth,
+        admission=admission,
+        safety=safety,
+    )
+    assert result.status is RealGatewayStatus.BLOCKED
+    assert adapter.calls == 0
 
 
 def test_real_authorization_is_explicit():
@@ -142,7 +168,7 @@ def test_real_gateway_blocks_without_active_authorization(tmp_path: Path):
         authorization_active=False, kill_switch_clear=True,
         market_healthy=True, recovery_safe=True, risk_approved=True, broker_available=True,
     )
-    result = gateway.execute(broker="fake", request_id="blocked", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="blocked", request=_request("blocked"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("blocked")))
     assert result.status == RealGatewayStatus.BLOCKED
     assert adapter.calls == 0
 
@@ -156,11 +182,11 @@ def test_real_unknown_is_persisted_and_retry_is_blocked(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
+    first = gateway.execute(broker="fake", request_id="unknown-1", request=_request("unknown-1"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("unknown-1")))
     assert first.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("unknown-1") is ExecutionLedgerStatus.UNKNOWN
     restored = RealExecutionGateway(BrokerAdapterGateway(registry), ExecutionLedger(tmp_path / "ledger.json"))
-    second = restored.execute(broker="fake", request_id="unknown-1", request=_request(), authorization=auth, admission=admission, safety=safety)
+    second = restored.execute(broker="fake", request_id="unknown-1", request=_request("unknown-1"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("unknown-1")))
     assert second.status == RealGatewayStatus.UNKNOWN
 
 
@@ -172,7 +198,7 @@ def test_real_unknown_requires_explicit_reconciliation_before_resolution(tmp_pat
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="unknown-2", request=_request("unknown-2"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("unknown-2")))
     assert result.status == RealGatewayStatus.UNKNOWN
     gateway.reconcile_unknown("unknown-2", executed=True)
     assert ledger.status("unknown-2") is ExecutionLedgerStatus.RECONCILED_EXECUTED
@@ -188,7 +214,7 @@ def test_real_reserved_after_restart_is_unknown_and_reconcilable(tmp_path: Path)
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="crashed", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="crashed", request=_request("crashed"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("crashed")))
     assert result.status == RealGatewayStatus.UNKNOWN
     assert adapter.calls == 0
     gateway.reconcile_unknown("crashed", executed=False)
@@ -216,8 +242,8 @@ def test_real_gateway_rejects_malformed_request(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL)
-    result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety)
+    malformed = ExecutionRequest("TEST", Signal.COMPRA, float("nan"), 60, ExecutionMode.REAL, request_id="bad")
+    result = gateway.execute(broker="fake", request_id="bad", request=malformed, authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(malformed))
     assert result.status == RealGatewayStatus.REJECTED
     assert adapter.calls == 0
 
@@ -230,6 +256,6 @@ def test_real_accepted_without_external_id_is_unknown(tmp_path: Path):
     auth = _authorization()
     admission = _admission(auth)
     safety = _safety(auth)
-    result = gateway.execute(broker="fake", request_id="missing-id", request=_request(), authorization=auth, admission=admission, safety=safety)
+    result = gateway.execute(broker="fake", request_id="missing-id", request=_request("missing-id"), authorization=auth, admission=admission, safety=safety, confirmation=_confirmation(_request("missing-id")))
     assert result.status == RealGatewayStatus.UNKNOWN
     assert ledger.status("missing-id") is ExecutionLedgerStatus.UNKNOWN

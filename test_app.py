@@ -110,11 +110,11 @@ def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     assert data["runtime_reconciliation"]["reconciliation_state"] == "UNVERIFIED"
 
 
-def test_application_uses_mt5_demo_as_canonical_default_executor():
+def test_application_uses_safe_provider_by_default():
     import app
-    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+    from execution.paper import PaperExecutor
 
-    assert isinstance(app.EXECUTOR, ICMarketsMT5DemoAdapter)
+    assert isinstance(app.EXECUTOR, PaperExecutor)
 
 
 def test_remote_mutation_is_blocked_without_trusted_identity():
