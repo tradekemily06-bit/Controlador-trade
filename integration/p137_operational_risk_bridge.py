@@ -41,6 +41,7 @@ class OperationalRiskBridge:
             "balance": raw.get("balance"),
             "equity": raw.get("equity"),
             "realized_pnl": raw.get("realized_pnl"),
+            "realized_loss_today": raw.get("realized_loss_today"),
             "unrealized_pnl": raw.get("unrealized_pnl"),
             "trades_today": raw.get("trades_today"),
             "consecutive_losses": raw.get("consecutive_losses"),

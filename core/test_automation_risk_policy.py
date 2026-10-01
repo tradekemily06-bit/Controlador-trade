@@ -49,7 +49,7 @@ def test_p40_runtime_blocks_when_operation_loss_is_missing(monkeypatch):
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=0),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=0),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
@@ -68,7 +68,7 @@ def test_p40_runtime_uses_configured_operation_loss(monkeypatch):
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=2),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=2),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
@@ -88,7 +88,7 @@ def test_p40_runtime_requires_explicit_daily_loss_and_operation_limits(monkeypat
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=0),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=0),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
@@ -107,10 +107,29 @@ def test_p40_runtime_reads_explicit_daily_loss_and_operation_limits(monkeypatch)
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=2),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=2),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
     assert result.decision is BudgetDecision.APPROVED
     assert result.projected_loss == 12.5
     assert result.projected_operations == 3
+
+
+def test_p40_uses_sum_of_realized_losses_not_net_pnl(monkeypatch):
+    from types import SimpleNamespace
+    from core.p40_risk_budget import BudgetDecision
+    from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
+
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_LOSS_PER_OPERATION", "12.5")
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_DAILY_LOSS", "20")
+    monkeypatch.setenv("CONTROLADOR_RISK_MAX_OPERATIONS", "10")
+    service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
+    result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
+        service,
+        SimpleNamespace(realized_pnl=5.0, realized_loss_today=18.0, trades_today=2),
+        SimpleNamespace(amount=0.01),
+        SimpleNamespace(),
+    )
+    assert result.decision is BudgetDecision.BLOCKED
+    assert result.projected_loss == 30.5

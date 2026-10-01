@@ -103,7 +103,7 @@ class ICMarketsMT5DemoAdapter:
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; leitura bloqueada.")
             now = datetime.now(timezone.utc)
             start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
-            realized_pnl = trades_today = consecutive_losses = None
+            realized_pnl = realized_loss_today = trades_today = consecutive_losses = None
             history_fn = getattr(mt5, "history_deals_get", None)
             if callable(history_fn):
                 deals = history_fn(start, now)
@@ -111,7 +111,9 @@ class ICMarketsMT5DemoAdapter:
                     out = getattr(mt5, "DEAL_ENTRY_OUT", None)
                     out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
                     closed = [d for d in deals if out is None or getattr(d, "entry", None) in (out, out_by)]
-                    realized_pnl = float(sum(float(getattr(d, "profit", 0.0)) for d in closed))
+                    profits = [float(getattr(d, "profit", 0.0)) for d in closed]
+                    realized_pnl = float(sum(profits))
+                    realized_loss_today = float(sum(-profit for profit in profits if profit < 0))
                     trades_today = len(closed)
                     losses = 0
                     for deal in reversed(closed):
@@ -136,6 +138,7 @@ class ICMarketsMT5DemoAdapter:
                 balance=float(balance) if balance is not None else None,
                 equity=float(equity) if equity is not None else None,
                 realized_pnl=realized_pnl,
+                realized_loss_today=realized_loss_today,
                 unrealized_pnl=float(unrealized) if unrealized is not None else None,
                 trades_today=trades_today,
                 consecutive_losses=consecutive_losses,

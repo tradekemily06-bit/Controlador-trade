@@ -10,6 +10,7 @@ def _payload():
             "balance": 2000,
             "equity": 2000,
             "realized_pnl": 0,
+            "realized_loss_today": 18,
             "trades_today": 2,
             "consecutive_losses": 0,
             "open_positions": 0,
@@ -25,6 +26,7 @@ def test_bridge_preserves_explicit_operational_state():
     assert state.trades_today == 2
     assert state.consecutive_losses == 0
     assert state.balance == 2000
+    assert state.realized_loss_today == 18
 
 
 def test_bridge_missing_state_fails_closed():

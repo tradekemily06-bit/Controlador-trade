@@ -7,9 +7,10 @@ from core.senior_context_cycle import SeniorContextCycle, SeniorContextQuality
 from core.senior_risk_reasoning import RiskKnowledgeStatus, SeniorRiskAssessment
 
 
-def operational_state(*, realized_pnl=0, trades_today=0, consecutive_losses=0):
+def operational_state(*, realized_pnl=0, realized_loss_today=0, trades_today=0, consecutive_losses=0):
     return OperationalState(
         realized_pnl=realized_pnl,
+        realized_loss_today=realized_loss_today,
         trades_today=trades_today,
         consecutive_losses=consecutive_losses,
     )
@@ -64,7 +65,7 @@ def test_executa_compra_com_contexto_senior_completo():
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
         market_context=favorable_context(MarketDirection.ALTA),
-        operational_state=operational_state(realized_pnl=-20),
+        operational_state=operational_state(realized_pnl=-20, realized_loss_today=20),
         senior_context=senior_context(),
     )
     assert result.decision == FinalDecision.EXECUTAR
@@ -88,7 +89,7 @@ def test_bloqueia_sinal_por_risco():
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
         market_context=favorable_context(MarketDirection.ALTA),
-        operational_state=operational_state(realized_pnl=-100),
+        operational_state=operational_state(realized_pnl=-100, realized_loss_today=100),
         senior_context=senior_context(),
     )
     assert result.decision == FinalDecision.BLOQUEAR
@@ -184,7 +185,7 @@ def test_contexto_senior_completo_nao_substitui_risco_operacional():
     result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
         analysis=analysis,
         market_context=favorable_context(MarketDirection.ALTA),
-        operational_state=operational_state(realized_pnl=-100),
+        operational_state=operational_state(realized_pnl=-100, realized_loss_today=100),
         senior_context=senior_context(),
     )
     assert result.decision == FinalDecision.BLOQUEAR
