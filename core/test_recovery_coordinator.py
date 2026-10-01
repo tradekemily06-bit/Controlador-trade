@@ -126,7 +126,7 @@ def test_pending_lifecycle_requires_reserved_ledger(tmp_path):
     assert result.state is RecoveryState.REQUIRES_RECONCILIATION
 
 
-def test_accepted_pair_is_safe_to_resume(tmp_path):
+def test_accepted_pair_requires_reconciliation_before_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
     now = datetime.now(timezone.utc)
     coordinator.execution_ledger.reserve("req-ok")
@@ -134,6 +134,34 @@ def test_accepted_pair_is_safe_to_resume(tmp_path):
     coordinator.execution_ledger.mark_accepted("req-ok")
     coordinator.lifecycle_store.put(
         ExecutionLifecycleRecord("req-ok", ExecutionLifecycleState.ACCEPTED, now, "accepted")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+
+
+def test_reconciled_executed_pair_is_safe_to_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.bind_external_id("req-reconciled", "external-ok")
+    coordinator.execution_ledger.mark_accepted("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, now, "executed")
+    )
+    result = coordinator.assess()
+    assert result.state is RecoveryState.FRESH
+    assert result.can_resume is True
+
+
+def test_reconciled_not_executed_pair_is_safe_without_external_identity(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    now = datetime.now(timezone.utc)
+    coordinator.execution_ledger.reserve("req-not-executed")
+    coordinator.execution_ledger.reconcile("req-not-executed", executed=False)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-not-executed", ExecutionLifecycleState.REJECTED, now, "not executed")
     )
     result = coordinator.assess()
     assert result.state is RecoveryState.FRESH
