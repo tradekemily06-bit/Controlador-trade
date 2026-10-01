@@ -59,11 +59,11 @@ A interface web responsiva integra os módulos:
 - Memória, estatísticas e feedback WIN/LOSS/DRAW/OPEN/VOID;
 - Risk Gate e proteções;
 - Notícias & Contexto com boundary seguro e sem notícias inventadas;
-- Configurações locais de preferência;
+- Configurações persistidas no runtime compartilhado;
 - Conexões, auditoria e segurança;
 - navegação mobile-first para celular e notebook.
 
-A interface continua em SIMULAÇÃO/DEMO e não possui caminho visual para habilitar REAL. As preferências salvas pela interface são locais ao navegador e não alteram a autorização de execução.
+A interface continua em SIMULAÇÃO/DEMO e não possui caminho visual para habilitar REAL. As preferências operacionais salvas pela interface são persistidas no estado compartilhado do runtime e não alteram a autorização de execução.
 
 O manifest web é servido pelo próprio aplicativo e os endpoints possuem contratos automatizados.
 
