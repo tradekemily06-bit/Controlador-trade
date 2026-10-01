@@ -284,10 +284,35 @@ class ICMarketsMT5DemoAdapter:
                 target_ticket = int(external_id)
             except (TypeError, ValueError):
                 return ExecutionResult(False, "external_id deve ser um ticket MT5 numérico.")
+
+            # Opening results expose an order/deal ticket, while MT5 can assign
+            # a distinct position ticket. Resolve the external identity to the
+            # exact owned position before sending a close.
+            position_ticket = None
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            if callable(deal_fn):
+                deals = tuple(deal_fn(ticket=target_ticket) or ())
+                for deal in reversed(deals):
+                    candidate = getattr(deal, "position_id", None)
+                    if candidate is not None and int(candidate) > 0:
+                        position_ticket = int(candidate)
+                        break
+            if position_ticket is None:
+                order_fn = getattr(mt5, "history_orders_get", None)
+                if callable(order_fn):
+                    orders = tuple(order_fn(ticket=target_ticket) or ())
+                    for order in reversed(orders):
+                        candidate = getattr(order, "position_id", None)
+                        if candidate is not None and int(candidate) > 0:
+                            position_ticket = int(candidate)
+                            break
+            if position_ticket is None:
+                return ExecutionResult(False, "external_id não pôde ser associado a uma posição MT5; fechamento bloqueado.")
+
             positions = tuple(mt5.positions_get() or ())
             matches = tuple(
                 p for p in positions
-                if int(getattr(p, "ticket", -1)) == target_ticket
+                if int(getattr(p, "ticket", -1)) == position_ticket
                 and int(getattr(p, "magic", -1)) == self.config.magic
             )
             if len(matches) != 1:
@@ -296,7 +321,10 @@ class ICMarketsMT5DemoAdapter:
             symbol = str(getattr(position, "symbol", "")).strip()
             volume = float(getattr(position, "volume", 0.0))
             position_type = getattr(position, "type", None)
-            buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
+            buy_type = getattr(mt5, "POSITION_TYPE_BUY", None)
+            sell_type = getattr(mt5, "POSITION_TYPE_SELL", None)
+            if buy_type is None or sell_type is None or position_type not in (buy_type, sell_type):
+                return ExecutionResult(False, "tipo de posição MT5 inválido; fechamento bloqueado.")
             close_type = mt5.ORDER_TYPE_SELL if position_type == buy_type else mt5.ORDER_TYPE_BUY
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
