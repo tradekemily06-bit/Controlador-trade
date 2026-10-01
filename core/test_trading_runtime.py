@@ -10,6 +10,8 @@ from core.runtime_checkpoint import RuntimeCheckpointStore
 from core.trading_runtime import TradingRuntime
 from data.feed import MarketDataRequest
 from execution.gateway import GatewayResult, GatewayStatus
+from execution.execution_ledger import ExecutionLedger, ExecutionLedgerStatus
+from execution.execution_lifecycle import ExecutionLifecycleRecord, ExecutionLifecycleState, ExecutionLifecycleStore
 from core.p121_external_order_reconciliation import ExternalOrderObservation, ExternalOrderStatus
 from core.p41_controlled_automation import AutomationPolicy
 from core.demo_readiness import DemoReadinessReport
@@ -138,39 +140,86 @@ class FakeOrderQuery:
         return ExternalOrderObservation(external_id, self.status, "observed")
 
 
-def test_runtime_reconciles_executed_order_without_inventing_financial_outcome():
+def _reconciliation_identity(tmp_path, cycle_id: str, request_id: str, external_id: str):
+    ledger = ExecutionLedger(tmp_path / "ledger.json")
+    lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
+    ledger.reserve(request_id, cycle_id=cycle_id)
+    ledger.bind_external_id(request_id, external_id)
+    ledger.mark_accepted(request_id)
+    lifecycle.put(ExecutionLifecycleRecord(
+        request_id, ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc), "accepted"
+    ))
+    return ledger, lifecycle
+
+
+def test_runtime_reconciles_executed_order_without_inventing_financial_outcome(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000001", "req-1", "123")
     snapshot = TradingRuntime.reconcile_external_cycle(
         cycle_id="runtime-000001",
         external_id="123",
         query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
     )
     assert snapshot is not None
     assert snapshot.terminal_state == "COMPLETED"
     assert snapshot.outcome == "UNKNOWN"
     assert snapshot.financial_result is None
     assert snapshot.reconciliation_state.value == "UNVERIFIED"
+    assert ledger.status("req-1") is ExecutionLedgerStatus.RECONCILED_EXECUTED
 
 
-def test_runtime_reconciles_not_executed_order_as_blocked_without_financial_inference():
+def test_runtime_reconciles_not_executed_order_as_blocked_without_financial_inference(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000002", "req-2", "456")
     snapshot = TradingRuntime.reconcile_external_cycle(
         cycle_id="runtime-000002",
         external_id="456",
         query_port=FakeOrderQuery(ExternalOrderStatus.NOT_EXECUTED),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
     )
     assert snapshot is not None
     assert snapshot.terminal_state == "BLOCKED"
     assert snapshot.outcome == "UNKNOWN"
     assert snapshot.financial_result is None
     assert snapshot.reconciliation_state.value == "UNVERIFIED"
+    assert lifecycle.get("req-2").state is ExecutionLifecycleState.REJECTED
 
 
-def test_runtime_keeps_pending_external_order_open():
+def test_runtime_keeps_pending_external_order_open(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000003", "req-3", "789")
     snapshot = TradingRuntime.reconcile_external_cycle(
         cycle_id="runtime-000003",
         external_id="789",
         query_port=FakeOrderQuery(ExternalOrderStatus.PENDING),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
     )
     assert snapshot is None
+
+
+def test_runtime_rejects_external_id_belonging_to_another_cycle(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000004", "req-4", "111")
+    with pytest.raises(ValueError, match="external_id não pertence"):
+        TradingRuntime.reconcile_external_cycle(
+            cycle_id="runtime-000004",
+            external_id="222",
+            query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+            ledger=ledger,
+            execution_lifecycle=lifecycle,
+        )
+
+
+def test_runtime_rejects_unknown_cycle_even_when_external_order_exists(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000005", "req-5", "333")
+    with pytest.raises(ValueError, match="identidade de execução única"):
+        TradingRuntime.reconcile_external_cycle(
+            cycle_id="forged-cycle",
+            external_id="333",
+            query_port=FakeOrderQuery(ExternalOrderStatus.EXECUTED),
+            ledger=ledger,
+            execution_lifecycle=lifecycle,
+        )
 
 
 
