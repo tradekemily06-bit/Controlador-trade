@@ -84,4 +84,5 @@ class RealManualConfirmationGate:
             authorization=authorization,
             admission=admission,
             safety=safety,
+            confirmation=confirmation,
         )
