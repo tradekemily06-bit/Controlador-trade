@@ -6,7 +6,7 @@ from pathlib import Path
 from core.kill_switch import KillSwitch
 from core.market_data_runtime_integrity import MarketDataRuntimeIntegrity
 from core.market_data_runtime_state import MarketDataRuntimeState
-from core.operation_memory import OperationMemory
+from core.persistent_operational_recorder import PersistentOperationalRecorder
 from core.p21_observability import RuntimeHealthMonitor
 from core.recovery_coordinator import RecoveryCoordinator
 from core.runtime_checkpoint import RuntimeCheckpointStore
@@ -22,6 +22,7 @@ class OperationalRuntime:
     """Single authoritative DEMO runtime state shared by execution and observability."""
 
     kill_switch: KillSwitch
+    operational_recorder: PersistentOperationalRecorder
     execution_ledger: ExecutionLedger
     execution_lifecycle: ExecutionLifecycleStore
     checkpoint_store: RuntimeCheckpointStore
@@ -35,10 +36,15 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     """Compose one shared runtime; broker selection is injected at the edge."""
     root = Path(root)
     kill_switch = KillSwitch()
+    operational_recorder = PersistentOperationalRecorder.from_path(
+        root / "operation-memory.json",
+        kill_switch=kill_switch,
+        safety_path=root / "operational-safety.json",
+    )
     ledger = ExecutionLedger(root / "execution-ledger.json")
     lifecycle = ExecutionLifecycleStore(root / "execution-lifecycle.json")
     checkpoint = RuntimeCheckpointStore(root / "runtime-checkpoint.json")
-    memory = OperationMemory()
+    memory = operational_recorder.memory
     recovery = RecoveryCoordinator(
         checkpoint_store=checkpoint,
         lifecycle_store=lifecycle,
@@ -55,12 +61,14 @@ def build_operational_runtime(root: str | Path, executor: ExecutionPort | None =
     gateway = ExecutionGateway(
         executor or PaperExecutor(),
         kill_switch,
+        recorder=operational_recorder,
         ledger=ledger,
         lifecycle=lifecycle,
         market_data=market_data,
     )
     return OperationalRuntime(
         kill_switch=kill_switch,
+        operational_recorder=operational_recorder,
         execution_ledger=ledger,
         execution_lifecycle=lifecycle,
         checkpoint_store=checkpoint,
