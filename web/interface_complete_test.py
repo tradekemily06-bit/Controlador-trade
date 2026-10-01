@@ -68,6 +68,6 @@ def test_interface_surfaces_critical_runtime_observability():
         "WARNING",
         "SAÚDE INDISPONÍVEL",
         "Execução permanece bloqueada",
-        "REAL continua desabilitado",
+        "REAL só pode ser executado pelo fluxo controlado",
     ):
         assert marker in HTML
