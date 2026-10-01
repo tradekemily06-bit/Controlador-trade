@@ -3,11 +3,15 @@ param(
     [string]$PythonExe = 'python',
     [Parameter(Mandatory = $true)]
     [string]$Mt5TerminalPath,
-    [string]$RuntimeDir = 'C:\Controlador-trade\.runtime',
+    [string]$RuntimeDir = '',
     [string]$TaskPrefix = 'ControladorTrading'
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+    $RuntimeDir = Join-Path $ProjectRoot '.runtime'
+}
 
 $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
