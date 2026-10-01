@@ -95,12 +95,13 @@ Os artefatos de estado portáveis são:
 - `operational-safety.json`
 - `execution-ledger.json`
 - `execution-lifecycle.json`
+- `automation-lifecycle.json`
 - `runtime-checkpoint.json`
 - `ecosystem-state.sqlite`
 - `decision-memory.sqlite`
 - `security-audit.sqlite`
 
-`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
+`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup inclui também o lifecycle persistente da automação; usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
 
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 
