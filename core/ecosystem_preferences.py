@@ -67,6 +67,7 @@ class EcosystemPreferences:
     show_technical_details_by_default: bool = False
     autonomous_operation_enabled: bool = False
     real_execution_enabled: bool = False
+    selected_mode: str = "DEMO"
 
 
 class EcosystemPreferencesStore:
@@ -134,6 +135,7 @@ class EcosystemPreferencesStore:
             show_technical_details_by_default=bool(payload.get("show_technical_details_by_default", False)),
             autonomous_operation_enabled=False,
             real_execution_enabled=False,
+            selected_mode=str(payload.get("selected_mode", "DEMO")).upper(),
         )
         return cls(preferences)
 
@@ -147,6 +149,8 @@ class EcosystemPreferencesStore:
             raise ValueError("autonomous operation requires its dedicated authorization flow")
         if value.real_execution_enabled:
             raise ValueError("REAL execution cannot be enabled by preferences")
+        if value.selected_mode not in {"DEMO", "REAL"}:
+            raise ValueError("selected_mode must be DEMO or REAL")
         if not value.notifications.critical_enabled:
             raise ValueError("critical notifications cannot be disabled")
         for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
