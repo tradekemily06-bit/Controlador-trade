@@ -308,10 +308,11 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
-def run(host: str = "0.0.0.0", port: int | None = None) -> None:
+def run(host: str | None = None, port: int | None = None) -> None:
+    selected_host = host or os.environ.get("CONTROLADOR_BIND_HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(host, selected_port, application) as server:
-        print(f"Controlador Trading em http://{host}:{selected_port}")
+    with make_server(selected_host, selected_port, application) as server:
+        print(f"Controlador Trading em http://{selected_host}:{selected_port}")
         server.serve_forever()
 
 
