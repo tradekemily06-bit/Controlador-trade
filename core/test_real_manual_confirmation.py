@@ -120,3 +120,48 @@ def test_expired_confirmation_never_reaches_gateway():
             now=NOW + timedelta(seconds=11),
         )
     assert spy.calls == 0
+
+
+class FakeAdapter:
+    def __init__(self):
+        self.calls = 0
+
+    def is_available(self):
+        return True
+
+    def execute(self, request):
+        from execution.ports import ExecutionResult
+        self.calls += 1
+        return ExecutionResult(True, "real fake accepted", "external-001")
+
+
+def test_valid_confirmation_reaches_real_gateway_only_once(tmp_path):
+    from execution.broker_registry import BrokerRegistry
+    from execution.adapter_gateway import BrokerAdapterGateway
+    from execution.execution_ledger import ExecutionLedger
+    from execution.real_gateway import RealExecutionGateway
+
+    adapter = FakeAdapter()
+    registry = BrokerRegistry()
+    registry.register("broker-1", adapter)
+    gateway = RealExecutionGateway(
+        BrokerAdapterGateway(registry),
+        ExecutionLedger(tmp_path / "real-ledger.json"),
+    )
+    gate = RealManualConfirmationGate()
+    confirmation = gate.prepare(request=real_request(), now=NOW)
+    authorization, admission, safety = valid_dependencies()
+
+    result = gate.confirm(
+        confirmation_id=confirmation.confirmation_id,
+        request=real_request(),
+        broker="broker-1",
+        authorization=authorization,
+        admission=admission,
+        safety=safety,
+        gateway=gateway,
+        now=NOW,
+    )
+
+    assert result.status == RealGatewayStatus.ADMITTED
+    assert adapter.calls == 1
