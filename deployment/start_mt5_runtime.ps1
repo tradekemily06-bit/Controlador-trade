@@ -38,6 +38,8 @@ function Save-RestartHistory {
 }
 
 Load-RestartHistory
+$finalState = 'STOPPED'
+$finalReason = 'Supervisor finalizado.'
 
 function Write-SupervisorLog([string]$Message) {
     Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Message"
@@ -93,4 +95,4 @@ if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
     Write-SupervisorLog 'Parada controlada solicitada pelo marcador do runtime.'
     Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
 }
-Write-SupervisorStatus 'STOPPED' 'Supervisor finalizado.'
+Write-SupervisorStatus $finalState $finalReason
