@@ -1,12 +1,13 @@
 from types import SimpleNamespace
 
 from core.models import Signal
-from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter
+from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoAdapter, ICMarketsMT5RealAdapter
 from execution.ports import ExecutionMode, ExecutionRequest
 
 
 class FakeMT5:
     ACCOUNT_TRADE_MODE_DEMO = 2
+    ACCOUNT_TRADE_MODE_REAL = 0
     ORDER_TYPE_BUY = 0
     ORDER_TYPE_SELL = 1
     TRADE_ACTION_DEAL = 1
@@ -194,3 +195,36 @@ def test_risk_day_timezone_is_explicit_and_converted_to_utc():
 def test_invalid_risk_day_timezone_is_rejected():
     with __import__("pytest").raises(ValueError, match="timezone IANA"):
         ICMarketsMT5DemoAdapter(config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(risk_day_timezone="Not/AZone"), mt5_module=FakeMT5())
+
+
+class FakeRealMT5(FakeMT5):
+    def account_info(self):
+        self.calls.append("account_info")
+        return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_REAL, balance=1000.0, equity=1015.0, profit=15.0)
+
+
+def test_real_adapter_accepts_only_real_account_and_real_request():
+    mt5 = FakeRealMT5()
+    adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
+    result = adapter.execute(request(mode=ExecutionMode.REAL))
+    assert result.accepted is True
+    assert result.external_id == "123456"
+
+
+def test_real_adapter_blocks_when_terminal_is_demo():
+    mt5 = FakeMT5()
+    adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
+    result = adapter.execute(request(mode=ExecutionMode.REAL))
+    assert result.accepted is False
+    assert "DEMO" in result.message
+    assert not any(
+        isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls
+    )
+
+
+def test_real_adapter_never_accepts_demo_request():
+    mt5 = FakeRealMT5()
+    adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
+    result = adapter.execute(request(mode=ExecutionMode.DEMO))
+    assert result.accepted is False
+    assert mt5.calls == []
