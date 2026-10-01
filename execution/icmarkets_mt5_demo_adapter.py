@@ -121,12 +121,13 @@ class ICMarketsMT5DemoAdapter:
                     consecutive_losses = losses
             positions_fn = getattr(mt5, "positions_get", None)
             positions = positions_fn() if callable(positions_fn) else None
-            open_positions = net_position = exposure = None
+            open_positions = net_position = gross_position_volume = exposure = None
             if positions is not None:
                 positions = tuple(positions)
                 open_positions = len(positions)
                 buy_type = getattr(mt5, "POSITION_TYPE_BUY", 0)
                 net_position = float(sum((1.0 if getattr(p, "type", 0) == buy_type else -1.0) * float(getattr(p, "volume", 0.0)) for p in positions))
+                gross_position_volume = float(sum(abs(float(getattr(p, "volume", 0.0))) for p in positions))
                 exposure = float(sum(abs(float(getattr(p, "volume", 0.0)) * float(getattr(p, "price_current", 0.0))) for p in positions))
             balance = getattr(account, "balance", None)
             equity = getattr(account, "equity", None)
@@ -140,6 +141,7 @@ class ICMarketsMT5DemoAdapter:
                 consecutive_losses=consecutive_losses,
                 open_positions=open_positions,
                 net_position=net_position,
+                gross_position_volume=gross_position_volume,
                 exposure=exposure,
                 last_processed_candle=None,
             )
