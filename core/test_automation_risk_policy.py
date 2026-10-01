@@ -88,7 +88,7 @@ def test_p40_runtime_requires_explicit_daily_loss_and_operation_limits(monkeypat
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=0),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=0),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
@@ -107,7 +107,7 @@ def test_p40_runtime_reads_explicit_daily_loss_and_operation_limits(monkeypatch)
     service = SimpleNamespace(automation_risk_policy=AutomationRiskPolicy.from_environment())
     result = ConfiguredEcosystemService._build_mt5_automation_risk_budget(
         service,
-        SimpleNamespace(realized_pnl=0.0, trades_today=2),
+        SimpleNamespace(realized_pnl=0.0, realized_loss_today=0.0, trades_today=2),
         SimpleNamespace(amount=0.01),
         SimpleNamespace(),
     )
