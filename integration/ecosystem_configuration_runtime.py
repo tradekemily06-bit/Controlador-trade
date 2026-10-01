@@ -52,6 +52,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 ),
                 coordinator=ExecutionCoordinator(self.operational_runtime.gateway),
                 market_data_state=self.operational_runtime.market_data,
+                automation_service=self.automation,
             )
         else:
             self.trading_runtime = None
