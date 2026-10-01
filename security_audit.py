@@ -41,6 +41,7 @@ class SecurityAudit:
         self._salt = secrets.token_bytes(32)
         self._events: deque[SecurityEvent] = deque(maxlen=max_events)
         self._database_path = database_path if database_path is not None else os.environ.get("CONTROLADOR_SECURITY_AUDIT_DB")
+        self._persistence_error: str | None = None
         self._db_lock = Lock()
         if self._database_path:
             self._initialize_database()
@@ -67,7 +68,8 @@ class SecurityAudit:
                     )
                     """
                 )
-        except (OSError, sqlite3.Error):
+        except (OSError, sqlite3.Error) as exc:
+            self._persistence_error = str(exc)
             self._database_path = None
 
     def record(self, *, request_id: str, method: str, path: str, status: int, client_key: str) -> None:
@@ -86,8 +88,15 @@ class SecurityAudit:
                     "DELETE FROM security_events WHERE id NOT IN (SELECT id FROM security_events ORDER BY id DESC LIMIT ?)",
                     (self.max_events,),
                 )
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as exc:
+            self._persistence_error = str(exc)
+
+    def status(self) -> dict[str, object]:
+        return {
+            "configured": self._database_path is not None or self._persistence_error is not None,
+            "durable": self._database_path is not None and self._persistence_error is None,
+            "error": self._persistence_error,
+        }
 
     def snapshot(self) -> list[dict[str, object]]:
         if self._database_path:
