@@ -25,6 +25,7 @@ class DecisionRecord:
     reason: str
     execution_allowed: bool = False
     outcome: str | None = None
+    outcome_source: str = "MANUAL_STUDY"
 
     @classmethod
     def from_analysis(cls, result: AnalysisResult) -> "DecisionRecord":
@@ -42,10 +43,12 @@ class DecisionRecord:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    def with_outcome(self, outcome: str) -> "DecisionRecord":
+    def with_outcome(self, outcome: str, *, source: str = "MANUAL_STUDY") -> "DecisionRecord":
         if outcome not in {"WIN", "LOSS", "DRAW", "OPEN", "VOID"}:
             raise ValueError("outcome inválido")
-        return DecisionRecord(**{**self.to_dict(), "outcome": outcome})
+        if source != "MANUAL_STUDY":
+            raise ValueError("DecisionRecord manual aceita somente fonte MANUAL_STUDY")
+        return DecisionRecord(**{**self.to_dict(), "outcome": outcome, "outcome_source": source})
 
     @property
     def is_actionable(self) -> bool:
