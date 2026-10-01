@@ -65,12 +65,6 @@ class ExecutionGateway:
         request_id: str,
         request: ExecutionRequest,
         *,
-
-    def execute(
-        self,
-        request_id: str,
-        request: ExecutionRequest,
-        *,
         snapshot: DecisionSnapshot | None = None,
         timestamp: datetime | None = None,
         entry_conditions: tuple[str, ...] = (),
