@@ -127,7 +127,12 @@ def application(environ, start_response):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     if method == "POST" and path.startswith("/api/") and path != "/api/updates" and not _mutation_request_is_local(environ):
-        return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "mutação remota exige uma fronteira de identidade confiável", "request_id": request_id}, request_id, environ)
+        try:
+            declared_length = int(environ.get("CONTENT_LENGTH") or "0")
+        except (TypeError, ValueError):
+            declared_length = MAX_BODY_BYTES + 1
+        if declared_length <= MAX_BODY_BYTES:
+            return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": "mutação remota exige uma fronteira de identidade confiável", "request_id": request_id}, request_id, environ)
 
     try:
         if path == "/api/health" and method == "GET":
