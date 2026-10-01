@@ -94,7 +94,8 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     assert callable(fake.kwargs["automation_risk_budget_factory"])
 
 
-def test_mt5_runtime_uses_the_single_controlled_automation_service():
-    service = ConfiguredEcosystemService()
+def test_mt5_runtime_uses_the_single_controlled_automation_service(tmp_path):
+    from core.operational_runtime import build_operational_runtime
+    service = ConfiguredEcosystemService(operational_runtime=build_operational_runtime(tmp_path))
     assert service.trading_runtime is not None
     assert service.trading_runtime.automation_service is service.automation
