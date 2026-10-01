@@ -1,10 +1,14 @@
 param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
-    [string]$RuntimeDir = 'C:\Controlador-trade\.runtime'
+    [string]$RuntimeDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
+    $RuntimeDir = Join-Path $ProjectRoot '.runtime'
+}
 
 $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
