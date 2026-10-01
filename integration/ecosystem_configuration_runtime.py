@@ -38,9 +38,11 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        runtime_dir = Path(kwargs.get("runtime_dir") or ".runtime")
-        self.preferences = EcosystemPreferencesStore(path=runtime_dir / "preferences.json")
-        self.notifications = EcosystemNotificationCenter(path=runtime_dir / "notifications.json")
+        runtime_dir = kwargs.get("runtime_dir")
+        preferences_path = (Path(runtime_dir) / "preferences.json") if runtime_dir is not None else None
+        notifications_path = (Path(runtime_dir) / "notifications.json") if runtime_dir is not None else None
+        self.preferences = EcosystemPreferencesStore(path=preferences_path)
+        self.notifications = EcosystemNotificationCenter(path=notifications_path)
         self.senior_analysis_gate = SeniorAnalysisGate()
         self.operational_risk_bridge = OperationalRiskBridge(self.risk)
         self.automation_risk_policy = AutomationRiskPolicy.from_environment()
