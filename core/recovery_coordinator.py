@@ -79,11 +79,33 @@ class RecoveryCoordinator:
             }
         ))
 
-        inconsistent = [
-            r.request_id
-            for r in lifecycle
-            if r.state is ExecutionLifecycleState.ACCEPTED and r.request_id not in ledger_ids
-        ]
+        lifecycle_by_id = {record.request_id: record for record in lifecycle}
+        inconsistent = []
+        for request_id in sorted(ledger_ids | set(lifecycle_by_id)):
+            ledger_state = ledger_states.get(request_id)
+            lifecycle_record = lifecycle_by_id.get(request_id)
+            lifecycle_state = lifecycle_record.state if lifecycle_record is not None else None
+            if ledger_state is None:
+                inconsistent.append(request_id)
+                continue
+            if lifecycle_state is None:
+                inconsistent.append(request_id)
+                continue
+            allowed_pairs = {
+                ExecutionLifecycleState.PENDING: {ExecutionLedgerStatus.RESERVED},
+                ExecutionLifecycleState.UNKNOWN: {ExecutionLedgerStatus.UNKNOWN, ExecutionLedgerStatus.RESERVED},
+                ExecutionLifecycleState.ACCEPTED: {
+                    ExecutionLedgerStatus.ACCEPTED,
+                    ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                },
+                ExecutionLifecycleState.REJECTED: {
+                    ExecutionLedgerStatus.REJECTED,
+                    ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+                },
+            }
+            if ledger_state not in allowed_pairs[lifecycle_state]:
+                inconsistent.append(request_id)
+
         if unknown or pending or inconsistent:
             details = []
             if unknown:
@@ -91,7 +113,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("ACCEPTED sem ledger requer reconciliação")
+                details.append("Ledger/Lifecycle divergentes ou incompletos requerem reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
