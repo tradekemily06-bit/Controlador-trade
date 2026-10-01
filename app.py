@@ -9,6 +9,7 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from core.api_result import serialize_decision_record
+from analysis.decision_store import DecisionStore
 from core.ecosystem_onboarding import EcosystemOnboarding
 from core.operational_runtime import build_operational_runtime
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
@@ -23,7 +24,8 @@ EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "ic_market
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
 EXECUTOR = build_demo_execution_port(EXECUTION_PROVIDER, symbol=EXECUTION_SYMBOL)
 OPERATIONAL_RUNTIME = build_operational_runtime(RUNTIME_DIR, executor=EXECUTOR)
-SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME)
+DECISION_STORE = DecisionStore(RUNTIME_DIR / "decision-memory.sqlite")
+SERVICE = ConfiguredEcosystemService(operational_runtime=OPERATIONAL_RUNTIME, decision_store=DECISION_STORE)
 ONBOARDING = EcosystemOnboarding()
 
 
