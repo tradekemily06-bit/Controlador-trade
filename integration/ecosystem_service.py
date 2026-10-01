@@ -8,7 +8,6 @@ from analysis.decision_record import DecisionRecord
 from analysis.decision_store import DecisionStore
 from analysis.statistics import summarize, summarize_breakdowns, summarize_periods
 from core.ecosystem_health import build_health_alerts
-from core.operational_alerts import build_operational_incidents
 from core.ecosystem_notifications import EcosystemNotification, NotificationKind, NotificationSeverity
 from core.learning_content import ContentType, LearningActivity, LearningAttempt, LearningObservation, LearningResource, LearningStatus, normalize_tags
 from core.market_data_runtime_integrity import MarketDataRuntimeReport
