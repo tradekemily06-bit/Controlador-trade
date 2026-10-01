@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Keep the default runtime beside the selected project root; an explicit RuntimeDir still wins.
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
 }
