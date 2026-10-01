@@ -26,6 +26,12 @@ def test_fresh_session_is_safe(tmp_path):
 
 def test_checkpoint_allows_safe_resume(tmp_path):
     coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-3")
+    coordinator.execution_ledger.bind_external_id("req-3", "ext-3")
+    coordinator.execution_ledger.mark_accepted("req-3")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-3", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc))
+    )
     coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 3, "req-3", datetime.now(timezone.utc)))
     result = coordinator.assess()
     assert result.state is RecoveryState.SAFE_TO_RESUME
@@ -132,3 +138,43 @@ def test_accepted_pair_is_safe_to_resume(tmp_path):
     result = coordinator.assess()
     assert result.state is RecoveryState.FRESH
     assert result.can_resume is True
+
+
+def test_checkpoint_request_must_exist_in_persisted_execution_state(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.checkpoint_store.save(RuntimeCheckpoint("s1", 4, "missing-request", datetime.now(timezone.utc)))
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "missing-request" in result.unknown_request_ids or "checkpoint" in result.message
+
+
+def test_accepted_ledger_requires_external_identity_for_safe_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-accepted")
+    coordinator.execution_ledger.mark_accepted("req-accepted")
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-accepted", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc))
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False
+    assert "req-accepted" in result.message or "incompletos" in result.message
+
+
+def test_reconciled_ledger_requires_external_identity_for_safe_resume(tmp_path):
+    coordinator = make_coordinator(tmp_path)
+    coordinator.execution_ledger.reserve("req-reconciled")
+    coordinator.execution_ledger.reconcile("req-reconciled", executed=True)
+    coordinator.lifecycle_store.put(
+        ExecutionLifecycleRecord("req-reconciled", ExecutionLifecycleState.ACCEPTED, datetime.now(timezone.utc))
+    )
+
+    result = coordinator.assess()
+
+    assert result.state is RecoveryState.REQUIRES_RECONCILIATION
+    assert result.can_resume is False

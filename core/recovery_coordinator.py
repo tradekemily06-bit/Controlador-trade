@@ -81,6 +81,10 @@ class RecoveryCoordinator:
 
         lifecycle_by_id = {record.request_id: record for record in lifecycle}
         inconsistent = []
+        if checkpoint is not None and checkpoint.last_request_id is not None:
+            checkpoint_request_id = checkpoint.last_request_id
+            if checkpoint_request_id not in ledger_ids or checkpoint_request_id not in lifecycle_by_id:
+                inconsistent.append(checkpoint_request_id)
         for request_id in sorted(ledger_ids | set(lifecycle_by_id)):
             ledger_state = ledger_states.get(request_id)
             lifecycle_record = lifecycle_by_id.get(request_id)
@@ -105,6 +109,15 @@ class RecoveryCoordinator:
             }
             if ledger_state not in allowed_pairs[lifecycle_state]:
                 inconsistent.append(request_id)
+                continue
+            if ledger_state in (
+                ExecutionLedgerStatus.ACCEPTED,
+                ExecutionLedgerStatus.RECONCILED_EXECUTED,
+                ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
+            ):
+                identity = self.execution_ledger.record_for(request_id)
+                if identity is None or identity.external_id is None:
+                    inconsistent.append(request_id)
 
         if unknown or pending or inconsistent:
             details = []
@@ -113,7 +126,7 @@ class RecoveryCoordinator:
             if pending:
                 details.append("PENDING requer verificação")
             if inconsistent:
-                details.append("Ledger/Lifecycle divergentes ou incompletos requerem reconciliação")
+                details.append("Ledger/Lifecycle/checkpoint/identidade externa divergentes ou incompletos requerem reconciliação")
             return RecoveryAssessment(
                 RecoveryState.REQUIRES_RECONCILIATION,
                 checkpoint,
