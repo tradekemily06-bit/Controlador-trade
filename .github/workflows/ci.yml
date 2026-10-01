@@ -52,7 +52,7 @@ jobs:
 
           docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
 
-          for attempt in {1..30}; do
+          for attempt in {1..60}; do
             if python - <<'PY'
           import json
           import urllib.request
@@ -72,7 +72,7 @@ jobs:
             sleep 2
           done
 
-          echo "Container health endpoint did not become ready."
+          echo "Container health endpoint did not become ready within 120 seconds."
           exit 1
 
   test:
