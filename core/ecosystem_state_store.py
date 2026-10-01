@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import asdict
+from enum import Enum
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -45,7 +46,7 @@ class EcosystemStateStore:
         return None if row is None else json.loads(row[0])
 
     def save(self, key: str, value: Any) -> None:
-        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=lambda item: item.value if isinstance(item, Enum) else str(item))
         with self._lock, self._connect() as db:
             db.execute(
                 """
