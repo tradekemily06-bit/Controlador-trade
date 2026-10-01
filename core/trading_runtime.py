@@ -365,12 +365,16 @@ class TradingRuntime:
                     entry_conditions=entry_conditions,
                 )
                 if automation_policy is not None:
-                    if not execution_result.accepted:
+                    if execution_result.status is GatewayStatus.EXECUTION_REJECTED:
                         automation_lifecycle = AutomationLifecycleBoundary().transition(
                             automation_lifecycle,
                             AutomationLifecycleState.BLOCKED,
                         )
-                    # An accepted dispatch is not yet a completed operation.
+                    elif execution_result.status is GatewayStatus.EXECUTOR_ERROR:
+                        # External outcome may be uncertain; keep the automation
+                        # lifecycle DISPATCHED until explicit reconciliation.
+                        pass
+                    # An accepted or uncertain dispatch is not a completed operation.
                     # P47/P48/P49 close it only after external reconciliation.
             elif automation_policy is not None:
                 automation_lifecycle = AutomationLifecycleBoundary().transition(
