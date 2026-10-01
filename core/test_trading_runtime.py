@@ -152,6 +152,29 @@ def _reconciliation_identity(tmp_path, cycle_id: str, request_id: str, external_
     return ledger, lifecycle
 
 
+
+def test_runtime_validates_cycle_identity_before_any_close_side_effect(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-close-001", "req-close-1", "999")
+
+    request_id, identity, record = TradingRuntime.validate_external_cycle_identity(
+        cycle_id="runtime-close-001",
+        external_id="999",
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
+    )
+
+    assert request_id == "req-close-1"
+    assert identity.external_id == "999"
+    assert record.state is ExecutionLifecycleState.ACCEPTED
+
+    with pytest.raises(ValueError, match="external_id não pertence"):
+        TradingRuntime.validate_external_cycle_identity(
+            cycle_id="runtime-close-001",
+            external_id="wrong",
+            ledger=ledger,
+            execution_lifecycle=lifecycle,
+        )
+
 def test_runtime_reconciles_executed_order_without_inventing_financial_outcome(tmp_path):
     ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000001", "req-1", "123")
     snapshot = TradingRuntime.reconcile_external_cycle(

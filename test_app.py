@@ -81,6 +81,27 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["execution_allowed"] is False
 
 
+
+def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
+    import app
+
+    calls = []
+    monkeypatch.setattr(app.SERVICE, "validate_mt5_cycle_identity", lambda **kwargs: calls.append(("validate", kwargs)))
+    monkeypatch.setattr(app.SERVICE, "close_mt5_position", lambda **kwargs: calls.append(("close", kwargs)) or SimpleNamespace(accepted=False, message="blocked", external_id=None))
+
+    status, data = call_app(
+        "/api/runtime/close",
+        "POST",
+        {"cycle_id": "cycle-1", "external_id": "external-1"},
+    )
+
+    assert status.startswith("200")
+    assert calls == [
+        ("validate", {"cycle_id": "cycle-1", "external_id": "external-1"}),
+        ("close", {"external_id": "external-1"}),
+    ]
+    assert data["closed"] is False
+
 def test_runtime_reconcile_forwards_cycle_lineage(monkeypatch):
     import app
 

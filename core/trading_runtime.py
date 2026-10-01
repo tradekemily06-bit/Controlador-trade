@@ -68,6 +68,40 @@ class TradingRuntime:
         self.automation_service = automation_service or ControlledAutomationService()
 
     @staticmethod
+    def validate_external_cycle_identity(
+        *,
+        cycle_id: str,
+        external_id: str,
+        ledger: ExecutionLedger,
+        execution_lifecycle: ExecutionLifecycleStore,
+    ) -> tuple[str, object, object]:
+        """Validate cycle/external identity before any external side effect."""
+        if not isinstance(cycle_id, str) or not cycle_id.strip():
+            raise ValueError("cycle_id é obrigatório")
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id é obrigatório")
+        if not isinstance(ledger, ExecutionLedger):
+            raise ValueError("ledger é obrigatório")
+        if not isinstance(execution_lifecycle, ExecutionLifecycleStore):
+            raise ValueError("execution_lifecycle é obrigatório")
+        matches = ledger.find_by_cycle_id(cycle_id)
+        if len(matches) != 1:
+            raise ValueError("cycle_id não possui uma identidade de execução única neste runtime.")
+        request_id, identity = matches[0]
+        if identity.external_id is not None and identity.external_id != external_id.strip():
+            raise ValueError("external_id não pertence ao cycle_id informado.")
+        execution_record = execution_lifecycle.get(request_id)
+        if execution_record is None:
+            raise ValueError("request_id não possui ciclo de execução persistido.")
+        if execution_record.state not in (
+            ExecutionLifecycleState.PENDING,
+            ExecutionLifecycleState.ACCEPTED,
+            ExecutionLifecycleState.UNKNOWN,
+        ):
+            raise ValueError("request_id não está em estado de execução reconciliável.")
+        return request_id, identity, execution_record
+
+    @staticmethod
     def reconcile_external_cycle(
         *,
         cycle_id: str,
@@ -92,12 +126,12 @@ class TradingRuntime:
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:
             raise ValueError("observed_at deve ser timezone-aware")
 
-        matches = ledger.find_by_cycle_id(cycle_id)
-        if len(matches) != 1:
-            raise ValueError("cycle_id não possui uma identidade de execução única neste runtime.")
-        request_id, identity = matches[0]
-        if identity.external_id is not None and identity.external_id != external_id.strip():
-            raise ValueError("external_id não pertence ao cycle_id informado.")
+        request_id, identity, execution_record = TradingRuntime.validate_external_cycle_identity(
+            cycle_id=cycle_id,
+            external_id=external_id,
+            ledger=ledger,
+            execution_lifecycle=execution_lifecycle,
+        )
         if identity.status not in (
             ExecutionLedgerStatus.RESERVED,
             ExecutionLedgerStatus.UNKNOWN,
@@ -106,16 +140,6 @@ class TradingRuntime:
             ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
         ):
             raise ValueError("cycle_id não está em estado de execução reconciliável.")
-
-        execution_record = execution_lifecycle.get(request_id)
-        if execution_record is None:
-            raise ValueError("request_id não possui ciclo de execução persistido.")
-        if execution_record.state not in (
-            ExecutionLifecycleState.PENDING,
-            ExecutionLifecycleState.ACCEPTED,
-            ExecutionLifecycleState.UNKNOWN,
-        ):
-            raise ValueError("request_id não está em estado de execução reconciliável.")
 
         if identity.external_id is None:
             ledger.bind_external_id(request_id, external_id)

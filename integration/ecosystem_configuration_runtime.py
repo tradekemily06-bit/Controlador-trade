@@ -254,6 +254,17 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
+    def validate_mt5_cycle_identity(self, *, cycle_id: str, external_id: str) -> None:
+        """Validate the cycle/external binding before the MT5 close side effect."""
+        if self.trading_runtime is None or self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        TradingRuntime.validate_external_cycle_identity(
+            cycle_id=cycle_id,
+            external_id=external_id,
+            ledger=self.operational_runtime.execution_ledger,
+            execution_lifecycle=self.operational_runtime.execution_lifecycle,
+        )
+
     def close_mt5_position(self, *, external_id: str) -> Any:
         """Close only the identified DEMO position through the existing MT5 safety boundary."""
         return self.mt5_operational_adapter.close_position(external_id)
