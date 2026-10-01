@@ -96,9 +96,11 @@ class TradingRuntime:
         if len(matches) != 1:
             raise ValueError("cycle_id não possui uma identidade de execução única neste runtime.")
         request_id, identity = matches[0]
-        if identity.external_id != external_id.strip():
+        if identity.external_id is not None and identity.external_id != external_id.strip():
             raise ValueError("external_id não pertence ao cycle_id informado.")
         if identity.status not in (
+            ExecutionLedgerStatus.RESERVED,
+            ExecutionLedgerStatus.UNKNOWN,
             ExecutionLedgerStatus.ACCEPTED,
             ExecutionLedgerStatus.RECONCILED_EXECUTED,
             ExecutionLedgerStatus.RECONCILED_NOT_EXECUTED,
@@ -109,9 +111,16 @@ class TradingRuntime:
         if execution_record is None:
             raise ValueError("request_id não possui ciclo de execução persistido.")
         if execution_record.state not in (
+            ExecutionLifecycleState.PENDING,
             ExecutionLifecycleState.ACCEPTED,
+            ExecutionLifecycleState.UNKNOWN,
         ):
-            raise ValueError("request_id não está confirmado como execução aceita pelo runtime.")
+            raise ValueError("request_id não está em estado de execução reconciliável.")
+
+        if identity.external_id is None:
+            ledger.bind_external_id(request_id, external_id)
+            identity = ledger.record_for(request_id)
+            assert identity is not None
 
         observation = query_port.query_order(external_id)
         reconciled = ExternalOrderReconciliationBoundary().reconcile(external_id, observation)
