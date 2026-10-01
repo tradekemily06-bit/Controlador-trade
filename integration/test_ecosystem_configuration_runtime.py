@@ -71,7 +71,7 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
             self.kwargs = kwargs
             return "runtime-result"
 
-    service = ConfiguredEcosystemService()
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
     fake = FakeRuntime()
     from types import SimpleNamespace
     service.operational_runtime = SimpleNamespace(checkpoint_store=object())
@@ -92,6 +92,20 @@ def test_mt5_cycle_wires_controlled_automation_into_canonical_runtime():
     assert fake.kwargs["automation_policy"].enabled is True
     assert callable(fake.kwargs["automation_readiness_factory"])
     assert callable(fake.kwargs["automation_risk_budget_factory"])
+
+
+def test_mt5_cycle_blocks_when_selected_provider_is_not_mt5(tmp_path):
+    from core.operational_runtime import build_operational_runtime
+    service = ConfiguredEcosystemService(
+        operational_runtime=build_operational_runtime(tmp_path),
+        execution_provider="paper",
+    )
+    try:
+        service.run_mt5_cycle(symbol="EURUSD")
+    except RuntimeError as exc:
+        assert "ic_markets_mt5_demo" in str(exc)
+    else:
+        raise AssertionError("MT5 cycle must not mix live MT5 state with a non-MT5 execution provider")
 
 
 def test_mt5_runtime_uses_the_single_controlled_automation_service(tmp_path):
