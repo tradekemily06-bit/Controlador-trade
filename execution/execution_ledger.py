@@ -10,6 +10,10 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX fallback
+    msvcrt = None
 
 
 class ExecutionLedgerStatus(str, Enum):
@@ -102,14 +106,24 @@ class ExecutionLedger:
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         with lock_path.open("a+", encoding="utf-8") as lock_file:
-            if fcntl is not None:
+            if msvcrt is not None:
+                lock_file.seek(0)
+                if lock_file.tell() == 0:
+                    lock_file.write("0")
+                    lock_file.flush()
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+            elif fcntl is not None:
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             try:
                 self._load()
                 mutation()
                 self._write()
             finally:
-                if fcntl is not None:
+                if msvcrt is not None:
+                    lock_file.seek(0)
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                elif fcntl is not None:
                     fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def status(self, request_id: str) -> ExecutionLedgerStatus | None:
