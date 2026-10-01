@@ -13,6 +13,7 @@ from core.ecosystem_onboarding import EcosystemOnboarding
 from analysis.decision_store import DecisionStore
 from core.operational_runtime import build_operational_runtime
 from core.real_runtime_controller import RealRuntimeController
+from core.runtime_process_lock import RuntimeProcessLock
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
@@ -406,9 +407,11 @@ def application(environ, start_response):
 def run(host: str | None = None, port: int | None = None) -> None:
     selected_host = host or os.environ.get("CONTROLADOR_BIND_HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
-    with make_server(selected_host, selected_port, application) as server:
-        print(f"Controlador Trading em http://{selected_host}:{selected_port}")
-        server.serve_forever()
+    lock = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
+    with lock:
+        with make_server(selected_host, selected_port, application) as server:
+            print(f"Controlador Trading em http://{selected_host}:{selected_port}")
+            server.serve_forever()
 
 
 if __name__ == "__main__":
