@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_MT5_WAIT_SECONDS = 180
+DEFAULT_MT5_PREFLIGHT_TIMEOUT_SECONDS = 20
 DEFAULT_RESTART_DELAY_SECONDS = 10
 DEFAULT_MAX_RESTARTS_PER_HOUR = 6
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/api/health"
@@ -140,14 +141,28 @@ class ControllerRuntimeSupervisor:
                     [self.python_exe, "-c", code],
                     cwd=self.project_root,
                     stdin=subprocess.DEVNULL,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    capture_output=True,
+                    text=True,
                     check=False,
+                    timeout=DEFAULT_MT5_PREFLIGHT_TIMEOUT_SECONDS,
                 )
                 if completed.returncode == 0:
                     return True
-            except OSError:
-                pass
+                detail = (completed.stdout or completed.stderr or "").strip()
+                self._log(
+                    "Pré-verificação DEMO retornou código "
+                    f"{completed.returncode}."
+                    + (f" Detalhe: {detail}" if detail else "")
+                )
+            except subprocess.TimeoutExpired:
+                self._log(
+                    "Pré-verificação DEMO excedeu "
+                    f"{DEFAULT_MT5_PREFLIGHT_TIMEOUT_SECONDS}s; nova tentativa."
+                )
+            except OSError as exc:
+                self._log(
+                    f"Não foi possível executar o Python do preflight: {exc!r}."
+                )
             time.sleep(5)
 
         return False
@@ -216,8 +231,8 @@ class ControllerRuntimeSupervisor:
 
                 self._log("Iniciando app.py sob supervisão Python.")
                 self._write_status(
-                    "HEALTHY",
-                    "Controlador iniciado pelo supervisor Python.",
+                    "STARTING",
+                    "Processo app.py iniciado; aguardando health.",
                 )
 
                 exit_code = self._start_app()
