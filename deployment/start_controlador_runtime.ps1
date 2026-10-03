@@ -100,7 +100,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     }
 
     Write-StartupLog 'Iniciando app.py sob supervisão.'
-    Write-SupervisorStatus 'HEALTHY' 'Controlador iniciado pelo supervisor.'
+    Write-SupervisorStatus 'STARTING' 'Processo app.py iniciado; aguardando health.'
     & $PythonExe -u (Join-Path $ProjectRoot 'app.py') >> $logPath 2>&1
     $appExitCode = $LASTEXITCODE
     Write-StartupLog "Controlador finalizado com código de saída $appExitCode."
