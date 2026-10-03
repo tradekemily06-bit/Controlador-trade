@@ -210,6 +210,29 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"notification": item}, request_id, environ)
         if path == "/api/saas/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
+        if path == "/api/market/candles" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            symbol = (query.get("symbol") or ["EURUSD"])[-1].strip() or "EURUSD"
+            timeframe = (query.get("timeframe") or ["5m"])[-1].strip() or "5m"
+            limit = _query_limit(environ, 80, maximum=200)
+            candles = SERVICE.get_mt5_market_candles(symbol=symbol, timeframe=timeframe, limit=limit)
+            payload = {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "source": "IC Markets MT5 DEMO",
+                "candles": [
+                    {
+                        "timestamp": candle.timestamp.isoformat(),
+                        "open": candle.open,
+                        "high": candle.high,
+                        "low": candle.low,
+                        "close": candle.close,
+                        "volume": candle.volume,
+                    }
+                    for candle in candles
+                ],
+            }
+            return _json_response(start_response, HTTPStatus.OK, payload, request_id, environ)
         if path == "/api/runtime/real/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, REAL_RUNTIME.status(), request_id, environ)
         if path == "/api/runtime/real/prepare" and method == "POST":
