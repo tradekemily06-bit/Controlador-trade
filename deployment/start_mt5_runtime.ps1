@@ -5,7 +5,8 @@ param(
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
     [int]$RestartDelaySeconds = 10,
-    [int]$MaxRestartsPerHour = 6
+    [int]$MaxRestartsPerHour = 6,
+    [int]$Mt5WaitSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
