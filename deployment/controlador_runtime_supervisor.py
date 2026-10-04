@@ -176,7 +176,7 @@ class ControllerRuntimeSupervisor:
 
         return False
 
-    def _start_app(self) -> int:
+    def _start_app(self) -> subprocess.Popen[str]:
         log_handle = self.log_path.open("a", encoding="utf-8")
         try:
             self.child = subprocess.Popen(
