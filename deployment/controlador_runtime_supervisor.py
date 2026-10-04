@@ -17,6 +17,9 @@ DEFAULT_MT5_PREFLIGHT_TIMEOUT_SECONDS = 20
 DEFAULT_RESTART_DELAY_SECONDS = 10
 DEFAULT_MAX_RESTARTS_PER_HOUR = 6
 DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/api/health"
+DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS = 120
+DEFAULT_HEALTH_POLL_SECONDS = 10
+DEFAULT_HEALTH_FAILURE_THRESHOLD = 3
 
 
 def utc_now() -> str:
@@ -39,6 +42,9 @@ class ControllerRuntimeSupervisor:
         restart_delay_seconds: int = DEFAULT_RESTART_DELAY_SECONDS,
         max_restarts_per_hour: int = DEFAULT_MAX_RESTARTS_PER_HOUR,
         health_url: str = DEFAULT_HEALTH_URL,
+        startup_health_timeout_seconds: int = DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS,
+        health_poll_seconds: int = DEFAULT_HEALTH_POLL_SECONDS,
+        health_failure_threshold: int = DEFAULT_HEALTH_FAILURE_THRESHOLD,
     ) -> None:
         self.project_root = project_root.resolve()
         self.python_exe = python_exe
@@ -47,6 +53,9 @@ class ControllerRuntimeSupervisor:
         self.restart_delay_seconds = restart_delay_seconds
         self.max_restarts_per_hour = max_restarts_per_hour
         self.health_url = health_url
+        self.startup_health_timeout_seconds = startup_health_timeout_seconds
+        self.health_poll_seconds = health_poll_seconds
+        self.health_failure_threshold = health_failure_threshold
 
         self.log_path = self.runtime_dir / "controlador-startup.log"
         self.status_path = self.runtime_dir / "controlador-supervisor-status.json"
@@ -181,7 +190,7 @@ class ControllerRuntimeSupervisor:
         finally:
             log_handle.close()
 
-        return self.child.wait()
+        return self.child
 
     def _stop_child(self) -> None:
         if self.child is None or self.child.poll() is not None:
@@ -235,8 +244,73 @@ class ControllerRuntimeSupervisor:
                     "Processo app.py iniciado; aguardando health.",
                 )
 
-                exit_code = self._start_app()
-                self._log(f"Controlador finalizado com código de saída {exit_code}.")
+                child = self._start_app()
+                startup_deadline = time.monotonic() + self.startup_health_timeout_seconds
+                healthy = False
+
+                while time.monotonic() < startup_deadline and not self.stop_path.exists():
+                    exit_code = child.poll()
+                    if exit_code is not None:
+                        self._log(f"Controlador finalizado com código de saída {exit_code}.")
+                        break
+                    if self._health_check():
+                        healthy = True
+                        self._write_status("HEALTHY", "Controlador responde ao health.")
+                        self._log("Controlador confirmou health; supervisão contínua iniciada.")
+                        break
+                    time.sleep(2)
+
+                if self.stop_path.exists():
+                    break
+
+                if child.poll() is None and not healthy:
+                    self._log(
+                        "Controlador não confirmou health dentro da janela de inicialização; "
+                        "processo será encerrado para recuperação."
+                    )
+                    self._write_status(
+                        "RECOVERING",
+                        "Processo ativo, mas health não respondeu durante a inicialização.",
+                    )
+                    self._stop_child()
+                elif child.poll() is not None:
+                    exit_code = child.returncode
+
+                if child.poll() is None and healthy:
+                    health_failures = 0
+                    while not self.stop_path.exists():
+                        time.sleep(self.health_poll_seconds)
+                        if self._health_check():
+                            health_failures = 0
+                            continue
+                        health_failures += 1
+                        self._log(
+                            f"Falha de health do Controlador "
+                            f"({health_failures}/{self.health_failure_threshold})."
+                        )
+                        if health_failures >= self.health_failure_threshold:
+                            self._log(
+                                "Controlador permanece vivo mas sem health; "
+                                "encerrando processo para recuperação."
+                            )
+                            self._write_status(
+                                "RECOVERING",
+                                "Processo ativo, mas health permaneceu indisponível.",
+                            )
+                            self._stop_child()
+                            break
+
+                    if self.stop_path.exists():
+                        break
+
+                    exit_code = child.poll()
+                    if exit_code is None:
+                        self._stop_child()
+                    exit_code = child.returncode
+                    self._log(
+                        f"Controlador finalizado após perda de health; "
+                        f"código de saída {exit_code}."
+                    )
 
                 if self.stop_path.exists():
                     break
