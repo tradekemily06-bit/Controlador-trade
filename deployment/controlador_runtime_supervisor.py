@@ -235,7 +235,30 @@ class ControllerRuntimeSupervisor:
                         "nenhuma segunda instância será criada."
                     )
                     self._write_status("HEALTHY", "Instância existente detectada.")
-                    time.sleep(10)
+                    health_failures = 0
+                    while not self.stop_path.exists():
+                        time.sleep(self.health_poll_seconds)
+                        if self._health_check():
+                            health_failures = 0
+                            continue
+                        health_failures += 1
+                        self._log(
+                            f"Falha de health do Controlador já existente "
+                            f"({health_failures}/{self.health_failure_threshold})."
+                        )
+                        if health_failures >= self.health_failure_threshold:
+                            self._log(
+                                "Instância existente permanece viva mas sem health; "
+                                "será encerrada para recuperação."
+                            )
+                            self._write_status(
+                                "RECOVERING",
+                                "Instância existente perdeu health de forma persistente.",
+                            )
+                            self._stop_child()
+                            break
+                    if self.stop_path.exists():
+                        break
                     continue
 
                 self._log("Iniciando app.py sob supervisão Python.")
@@ -375,6 +398,9 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_RESTARTS_PER_HOUR,
     )
     parser.add_argument("--health-url", default=DEFAULT_HEALTH_URL)
+    parser.add_argument("--startup-health-timeout-seconds", type=int, default=DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS)
+    parser.add_argument("--health-poll-seconds", type=int, default=DEFAULT_HEALTH_POLL_SECONDS)
+    parser.add_argument("--health-failure-threshold", type=int, default=DEFAULT_HEALTH_FAILURE_THRESHOLD)
     return parser.parse_args()
 
 
@@ -388,6 +414,9 @@ def main() -> int:
         restart_delay_seconds=args.restart_delay_seconds,
         max_restarts_per_hour=args.max_restarts_per_hour,
         health_url=args.health_url,
+        startup_health_timeout_seconds=args.startup_health_timeout_seconds,
+        health_poll_seconds=args.health_poll_seconds,
+        health_failure_threshold=args.health_failure_threshold,
     )
     return supervisor.run()
 
