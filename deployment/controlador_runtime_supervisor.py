@@ -7,6 +7,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -192,6 +193,60 @@ class ControllerRuntimeSupervisor:
 
         return self.child
 
+    def _stop_existing_controller(self) -> bool:
+        """Stop only an existing app.py that owns the configured health port."""
+        if sys.platform != "win32":
+            return False
+        try:
+            port = urlparse(self.health_url).port
+            if port is None:
+                return False
+            pid_query = (
+                f"(Get-NetTCPConnection -LocalPort {int(port)} -State Listen "
+                "| Select-Object -First 1 -ExpandProperty OwningProcess)"
+            )
+            pid_result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", pid_query],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            pid_text = (pid_result.stdout or "").strip()
+            if not pid_text.isdigit():
+                return False
+            pid = int(pid_text)
+            command_query = (
+                f"(Get-CimInstance Win32_Process -Filter "
+                f"'ProcessId = {pid}' | Select-Object -ExpandProperty CommandLine)"
+            )
+            command_result = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", command_query],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            command_line = (command_result.stdout or "").strip()
+            if "app.py" not in command_line or str(self.project_root) not in command_line:
+                self._log(
+                    f"Health port {port} pertence ao PID {pid}, mas o processo "
+                    "não foi reconhecido como o app.py deste projeto; não será encerrado."
+                )
+                return False
+            subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", f"Stop-Process -Id {pid} -Force"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=5,
+            )
+            self._log(f"Instância existente app.py encerrada para recuperação (PID {pid}).")
+            return True
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            self._log(f"Não foi possível encerrar instância existente com segurança: {exc!r}")
+            return False
+
     def _stop_child(self) -> None:
         if self.child is None or self.child.poll() is not None:
             return
@@ -255,7 +310,15 @@ class ControllerRuntimeSupervisor:
                                 "RECOVERING",
                                 "Instância existente perdeu health de forma persistente.",
                             )
-                            self._stop_child()
+                            if not self._stop_existing_controller():
+                                self._log(
+                                    "Instância existente não pôde ser encerrada com segurança; "
+                                    "supervisor será encerrado para evitar segunda instância."
+                                )
+                                final_state = "FAILED"
+                                final_reason = "EXISTING_CONTROLLER_UNSAFE_TO_STOP"
+                                self._write_status(final_state, final_reason)
+                                return 1
                             break
                     if self.stop_path.exists():
                         break
