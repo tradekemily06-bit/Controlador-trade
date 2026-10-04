@@ -71,9 +71,16 @@ function Test-Mt5Demo {
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
     while ((Get-Date) -lt $deadline -and -not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         try {
-            & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); raise SystemExit(0 if r.available and r.demo else 1)"
-            if ($LASTEXITCODE -eq 0) {
+            $preflightOutput = & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); print(r.message); raise SystemExit(0 if r.available and r.demo else 1)" 2>&1 | Out-String
+            $preflightExitCode = $LASTEXITCODE
+            if ($preflightExitCode -eq 0) {
                 return $true
+            }
+            $detail = $preflightOutput.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($detail)) {
+                Write-SupervisorLog "Pré-verificação DEMO não confirmada (código $preflightExitCode): $detail"
+            } else {
+                Write-SupervisorLog "Pré-verificação DEMO não confirmada (código $preflightExitCode)."
             }
         } catch {
             Write-SupervisorLog "Falha ao executar pré-verificação DEMO: $($_.Exception.Message)"
@@ -136,7 +143,15 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         }
     }
 
-    Write-SupervisorStatus 'RECOVERING' 'MT5 está em execução, mas a pré-verificação DEMO/readiness não foi confirmada.'
+    if (-not $startedBySupervisor) {
+        $finalState = 'FAILED'
+        $finalReason = 'MT5_EXISTENTE_NAO_PRONTO'
+        Write-SupervisorLog 'MT5 já estava em execução, mas não confirmou DEMO/readiness; o supervisor será encerrado sem interferir no terminal existente.'
+        Write-SupervisorStatus $finalState $finalReason
+        break
+    }
+
+    Write-SupervisorStatus 'RECOVERING' 'MT5 iniciado pelo supervisor não confirmou DEMO/readiness; preparando nova tentativa.'
     Start-Sleep -Seconds $RestartDelaySeconds
 }
 
