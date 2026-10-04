@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Mt5TerminalPath,
+    [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
     [int]$RestartDelaySeconds = 10,
@@ -8,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-Location $ProjectRoot
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path (Split-Path -Parent (Split-Path -Parent $Mt5TerminalPath)) '.runtime'
 }
@@ -115,7 +117,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     }
 
     Write-SupervisorStatus 'STARTING' 'MT5 em execução; validando DEMO + símbolo + cotação.'
-    if (Test-Mt5Demo -WaitSeconds $RestartDelaySeconds) {
+    if (Test-Mt5Demo -WaitSeconds $Mt5WaitSeconds) {
         Write-SupervisorStatus 'HEALTHY' 'MT5 DEMO + símbolo + cotação validados.'
         Start-Sleep -Seconds 10
         continue
