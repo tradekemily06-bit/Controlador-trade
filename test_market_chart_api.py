@@ -42,3 +42,16 @@ def test_market_candles_endpoint_serializes_mt5_candles(monkeypatch):
     assert len(payload["candles"]) == 2
     assert payload["candles"][0]["close"] == 1.15
     assert payload["candles"][1]["volume"] == 12
+
+
+def test_preferences_restore_default_view():
+    from core.ecosystem_preferences import EcosystemPreferencesStore
+
+    store = EcosystemPreferencesStore.from_dict({
+        "default_symbol": "EURUSD",
+        "default_timeframe": "5m",
+        "default_view": "grafico",
+    })
+    assert store.preferences.default_symbol == "EURUSD"
+    assert store.preferences.default_timeframe == "5m"
+    assert store.preferences.default_view == "grafico"
