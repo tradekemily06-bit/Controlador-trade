@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Mt5TerminalPath,
+    [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6
@@ -60,6 +61,25 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
 }
 
 $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
+
+function Test-Mt5Demo {
+    param([int]$WaitSeconds)
+
+    $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    while ((Get-Date) -lt $deadline -and -not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
+        try {
+            & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); raise SystemExit(0 if r.available and r.demo else 1)"
+            if ($LASTEXITCODE -eq 0) {
+                return $true
+            }
+        } catch {
+            Write-SupervisorLog "Falha ao executar pré-verificação DEMO: $($_.Exception.Message)"
+        }
+        Start-Sleep -Seconds 5
+    }
+    return $false
+}
+
 if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
     $finalState = 'FAILED'
     $finalReason = 'MT5 terminal não encontrado.'
@@ -70,6 +90,8 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $startedBySupervisor = $false
+
     if ($null -eq $process) {
         $now = Get-Date
         while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
@@ -85,15 +107,34 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
         Write-SupervisorLog 'MT5 não está em execução; iniciando/reiniciando.'
         Start-Process -FilePath $Mt5TerminalPath
+        $startedBySupervisor = $true
         $restartTimes.Add($now)
         Save-RestartHistory
-        Write-SupervisorStatus 'STARTING' 'MT5 iniciado pelo supervisor.'
-        Start-Sleep -Seconds $RestartDelaySeconds
+        Write-SupervisorStatus 'STARTING' 'MT5 iniciado; aguardando pré-verificação DEMO.'
+        Start-Sleep -Seconds 5
     }
-    else {
-        Write-SupervisorStatus 'HEALTHY' 'Processo MT5 observado em execução.'
+
+    Write-SupervisorStatus 'STARTING' 'MT5 em execução; validando DEMO + símbolo + cotação.'
+    if (Test-Mt5Demo -WaitSeconds $RestartDelaySeconds) {
+        Write-SupervisorStatus 'HEALTHY' 'MT5 DEMO + símbolo + cotação validados.'
         Start-Sleep -Seconds 10
+        continue
     }
+
+    if ($startedBySupervisor) {
+        Write-SupervisorLog 'MT5 iniciado pelo supervisor não confirmou DEMO/readiness; encerrando processo antes de nova tentativa.'
+        try {
+            $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -ne $process) {
+                Stop-Process -Id $process.Id -Force
+            }
+        } catch {
+            Write-SupervisorLog "Não foi possível encerrar MT5 iniciado pelo supervisor: $($_.Exception.Message)"
+        }
+    }
+
+    Write-SupervisorStatus 'RECOVERING' 'MT5 está em execução, mas a pré-verificação DEMO/readiness não foi confirmada.'
+    Start-Sleep -Seconds $RestartDelaySeconds
 }
 
 if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
