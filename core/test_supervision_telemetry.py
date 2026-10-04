@@ -20,12 +20,14 @@ def _runtime(tmp_path: Path):
     )
     kill_switch = SimpleNamespace(state=SimpleNamespace(enabled=False, reason=None))
     market_data = SimpleNamespace(status=lambda: {"health": "HEALTHY"})
+    automation_lifecycle = SimpleNamespace()
     return SimpleNamespace(
         checkpoint_store=checkpoint,
         health=health,
         recovery=recovery,
         kill_switch=kill_switch,
         market_data=market_data,
+        automation_lifecycle=automation_lifecycle,
     )
 
 
