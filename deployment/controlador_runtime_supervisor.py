@@ -39,12 +39,21 @@ class SupervisorProcessLock:
 
     def acquire(self) -> bool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.handle = self.path.open("a+b")
-        self.handle.seek(0)
-        self.handle.write(b"0")
-        self.handle.flush()
-        self.handle.seek(0)
+        # Ensure the lock file has one byte before opening it for byte-range locking.
+        if not self.path.exists():
+            try:
+                self.path.write_bytes(b"0")
+            except FileExistsError:
+                pass
+        elif self.path.stat().st_size == 0:
+            try:
+                self.path.write_bytes(b"0")
+            except OSError:
+                pass
+
+        self.handle = self.path.open("r+b")
         try:
+            self.handle.seek(0)
             if self._windows:
                 import msvcrt
                 msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
