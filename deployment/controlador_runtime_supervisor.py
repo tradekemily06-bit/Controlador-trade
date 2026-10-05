@@ -29,51 +29,6 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-class ControllerRuntimeSupervisor:
-    """Python equivalent of the Windows Controller supervisor.
-
-    This layer supervises startup only. It never authorizes execution and
-    delegates the actual runtime safety gates to app.py/core.
-    """
-
-    def __init__(
-        self,
-        project_root: Path,
-        python_exe: str,
-        runtime_dir: Path,
-        mt5_wait_seconds: int = DEFAULT_MT5_WAIT_SECONDS,
-        restart_delay_seconds: int = DEFAULT_RESTART_DELAY_SECONDS,
-        max_restarts_per_hour: int = DEFAULT_MAX_RESTARTS_PER_HOUR,
-        health_url: str = DEFAULT_HEALTH_URL,
-        startup_health_timeout_seconds: int = DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS,
-        health_poll_seconds: int = DEFAULT_HEALTH_POLL_SECONDS,
-        health_failure_threshold: int = DEFAULT_HEALTH_FAILURE_THRESHOLD,
-    ) -> None:
-        self.project_root = project_root.resolve()
-        self.python_exe = python_exe
-        self.runtime_dir = runtime_dir.resolve()
-        self.mt5_wait_seconds = mt5_wait_seconds
-        self.restart_delay_seconds = restart_delay_seconds
-        self.max_restarts_per_hour = max_restarts_per_hour
-        self.health_url = health_url
-        self.startup_health_timeout_seconds = startup_health_timeout_seconds
-        self.health_poll_seconds = health_poll_seconds
-        self.health_failure_threshold = health_failure_threshold
-
-        self.log_path = self.runtime_dir / "controlador-startup.log"
-        self.status_path = self.runtime_dir / "controlador-supervisor-status.json"
-        self.stop_path = self.runtime_dir / "controlador.supervisor.stop"
-        self.restart_history_path = (
-            self.runtime_dir / "controlador-supervisor-restart-history.json"
-        )
-        self.restart_times: deque[datetime] = deque()
-        self.child: subprocess.Popen[str] | None = None
-
-    def prepare(self) -> None:
-        self.runtime_dir.mkdir(parents=True, exist_ok=True)
-        self._load_restart_history()
-
-
 class SupervisorProcessLock:
     """Prevent overlapping controller supervisors on Windows Task Scheduler restarts."""
 
@@ -120,6 +75,52 @@ class SupervisorProcessLock:
         finally:
             self.handle.close()
             self.handle = None
+
+
+
+class ControllerRuntimeSupervisor:
+    """Python equivalent of the Windows Controller supervisor.
+
+    This layer supervises startup only. It never authorizes execution and
+    delegates the actual runtime safety gates to app.py/core.
+    """
+
+    def __init__(
+        self,
+        project_root: Path,
+        python_exe: str,
+        runtime_dir: Path,
+        mt5_wait_seconds: int = DEFAULT_MT5_WAIT_SECONDS,
+        restart_delay_seconds: int = DEFAULT_RESTART_DELAY_SECONDS,
+        max_restarts_per_hour: int = DEFAULT_MAX_RESTARTS_PER_HOUR,
+        health_url: str = DEFAULT_HEALTH_URL,
+        startup_health_timeout_seconds: int = DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS,
+        health_poll_seconds: int = DEFAULT_HEALTH_POLL_SECONDS,
+        health_failure_threshold: int = DEFAULT_HEALTH_FAILURE_THRESHOLD,
+    ) -> None:
+        self.project_root = project_root.resolve()
+        self.python_exe = python_exe
+        self.runtime_dir = runtime_dir.resolve()
+        self.mt5_wait_seconds = mt5_wait_seconds
+        self.restart_delay_seconds = restart_delay_seconds
+        self.max_restarts_per_hour = max_restarts_per_hour
+        self.health_url = health_url
+        self.startup_health_timeout_seconds = startup_health_timeout_seconds
+        self.health_poll_seconds = health_poll_seconds
+        self.health_failure_threshold = health_failure_threshold
+
+        self.log_path = self.runtime_dir / "controlador-startup.log"
+        self.status_path = self.runtime_dir / "controlador-supervisor-status.json"
+        self.stop_path = self.runtime_dir / "controlador.supervisor.stop"
+        self.restart_history_path = (
+            self.runtime_dir / "controlador-supervisor-restart-history.json"
+        )
+        self.restart_times: deque[datetime] = deque()
+        self.child: subprocess.Popen[str] | None = None
+
+    def prepare(self) -> None:
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        self._load_restart_history()
 
 
     def _log(self, message: str) -> None:
