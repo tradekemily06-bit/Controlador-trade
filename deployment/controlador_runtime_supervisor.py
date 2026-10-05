@@ -30,59 +30,80 @@ def utc_now() -> str:
 
 
 class SupervisorProcessLock:
-    """Prevent overlapping controller supervisors on Windows Task Scheduler restarts."""
+    """Non-blocking process singleton for the controller supervisor."""
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self.handle: Any = None
+        self.mutex_handle: Any = None
         self._windows = sys.platform == "win32"
 
     def acquire(self) -> bool:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        # Ensure the lock file has one byte before opening it for byte-range locking.
-        if not self.path.exists():
-            try:
-                self.path.write_bytes(b"0")
-            except FileExistsError:
-                pass
-        elif self.path.stat().st_size == 0:
-            try:
-                self.path.write_bytes(b"0")
-            except OSError:
-                pass
+        if self._windows:
+            import ctypes
+            from ctypes import wintypes
 
-        self.handle = self.path.open("r+b")
-        try:
-            self.handle.seek(0)
-            if self._windows:
-                import msvcrt
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            create_mutex = kernel32.CreateMutexW
+            create_mutex.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+            create_mutex.restype = wintypes.HANDLE
+
+            wait_for_single_object = kernel32.WaitForSingleObject
+            wait_for_single_object.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            wait_for_single_object.restype = wintypes.DWORD
+
+            ERROR_ALREADY_EXISTS = 183
+            WAIT_OBJECT_0 = 0
+            WAIT_ABANDONED = 0x80
+
+            mutex_name = "Global\\ControladorTradingControllerSupervisor"
+            handle = create_mutex(None, False, mutex_name)
+            if not handle:
+                return False
+
+            last_error = ctypes.get_last_error()
+            if last_error == ERROR_ALREADY_EXISTS:
+                kernel32.CloseHandle(handle)
+                return False
+
+            result = wait_for_single_object(handle, 0)
+            if result not in (WAIT_OBJECT_0, WAIT_ABANDONED):
+                kernel32.CloseHandle(handle)
+                return False
+
+            self.mutex_handle = handle
+            self._log_lock_file("mutex")
             return True
-        except (OSError, ImportError):
-            try:
-                self.handle.close()
-            finally:
-                self.handle = None
+
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("ascii"))
+            os.close(fd)
+            self.handle = True
+            return True
+        except FileExistsError:
+            return False
+        except OSError:
             return False
 
-    def release(self) -> None:
-        if self.handle is None:
-            return
+    def _log_lock_file(self, mode: str) -> None:
         try:
-            self.handle.seek(0)
-            if self._windows:
-                import msvcrt
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
-        except (OSError, ImportError):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_text(f"{mode}:{os.getpid()}", encoding="utf-8")
+        except OSError:
             pass
-        finally:
-            self.handle.close()
+
+    def release(self) -> None:
+        if self.mutex_handle is not None:
+            import ctypes
+            ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(self.mutex_handle)
+            self.mutex_handle = None
+        if self.handle:
+            try:
+                self.path.unlink()
+            except OSError:
+                pass
             self.handle = None
 
 
@@ -351,12 +372,15 @@ class ControllerRuntimeSupervisor:
             self.child.wait(timeout=5)
 
     def run(self) -> int:
+        self._log("Supervisor Python entrando em preparação.")
         self.prepare()
+        self._log("Preparação do supervisor concluída.")
         supervisor_lock = SupervisorProcessLock(self.runtime_dir / "controlador-supervisor.lock")
+        self._log("Supervisor Python iniciado; adquirindo exclusão mútua.")
         if not supervisor_lock.acquire():
             self._log("Outro supervisor do Controlador já está ativo; esta instância será encerrada sem criar um segundo supervisor.")
             return 0
-        self._log("Supervisor Python do Controlador iniciado.")
+        self._log("Supervisor Python do Controlador iniciado; exclusão mútua adquirida.")
 
         final_state = "STOPPED"
         final_reason = "Supervisor finalizado."
