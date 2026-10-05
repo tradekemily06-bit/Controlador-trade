@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from analysis.decision_record import DecisionRecord
@@ -241,12 +241,32 @@ class EcosystemService:
         from pathlib import Path
         supervision: dict[str, Any] = {}
         runtime_dir = Path(runtime.checkpoint_store.path).parent
+        supervision_now = datetime.now(timezone.utc)
+        supervision_max_age_seconds = 30
+        active_states = {"HEALTHY", "STARTING", "RECOVERING"}
         for component, filename in (("controller", "controlador-supervisor-status.json"), ("mt5", "mt5-supervisor-status.json")):
             status_path = runtime_dir / filename
             try:
                 if status_path.is_file():
                     payload = json.loads(status_path.read_text(encoding="utf-8"))
                     if isinstance(payload, dict):
+                        state = str(payload.get("state", "UNKNOWN")).upper()
+                        observed_at = payload.get("observed_at")
+                        if state in active_states:
+                            try:
+                                observed = datetime.fromisoformat(str(observed_at).replace("Z", "+00:00"))
+                                if observed.tzinfo is None:
+                                    observed = observed.replace(tzinfo=timezone.utc)
+                                age = (supervision_now - observed.astimezone(timezone.utc)).total_seconds()
+                            except (TypeError, ValueError, OverflowError):
+                                age = float("inf")
+                            if age > supervision_max_age_seconds:
+                                supervision[component] = {
+                                    **payload,
+                                    "state": "UNKNOWN",
+                                    "reason": "telemetria de supervisão expirada",
+                                }
+                                continue
                         supervision[component] = payload
             except (OSError, ValueError, TypeError):
                 supervision[component] = {"state": "UNKNOWN", "reason": "status de supervisão inválido"}
