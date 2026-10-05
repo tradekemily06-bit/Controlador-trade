@@ -119,6 +119,7 @@ class ControllerRuntimeSupervisor:
         self.health_failure_threshold = health_failure_threshold
 
         self.log_path = self.runtime_dir / "controlador-startup.log"
+        self.app_log_path = self.runtime_dir / "controlador-app.log"
         self.status_path = self.runtime_dir / "controlador-supervisor-status.json"
         self.stop_path = self.runtime_dir / "controlador.supervisor.stop"
         self.restart_history_path = (
@@ -257,18 +258,31 @@ class ControllerRuntimeSupervisor:
         return False
 
     def _start_app(self) -> subprocess.Popen[str]:
-        log_handle = self.log_path.open("a", encoding="utf-8")
+        """Start app.py with an independent log stream and explicit diagnostics."""
+        self._log(f"Preparando criação do processo app.py com Python={self.python_exe!r}.")
+        app_path = self.project_root / "app.py"
+        if not app_path.is_file():
+            raise FileNotFoundError(f"app.py não encontrado: {app_path}")
+        self.app_log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = self.app_log_path.open("a", encoding="utf-8")
         try:
+            self._log("Abrindo processo filho app.py.")
             self.child = subprocess.Popen(
-                [self.python_exe, "-u", str(self.project_root / "app.py")],
+                [self.python_exe, "-u", str(app_path)],
                 cwd=self.project_root,
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 text=True,
+                close_fds=True,
             )
+            self._log(f"Processo filho app.py criado com PID {self.child.pid}.")
+        except Exception:
+            self._log("Falha durante subprocess.Popen de app.py.")
+            raise
         finally:
             log_handle.close()
+            self._log("Handle do log do app.py fechado no supervisor.")
 
         return self.child
 
@@ -404,10 +418,14 @@ class ControllerRuntimeSupervisor:
                 self._log("Iniciando app.py sob supervisão Python.")
                 self._write_status(
                     "STARTING",
-                    "Processo app.py iniciado; aguardando health.",
+                    "Preparando criação do processo app.py.",
                 )
 
                 child = self._start_app()
+                self._write_status(
+                    "STARTING",
+                    f"Processo app.py criado (PID {child.pid}); aguardando health.",
+                )
                 startup_deadline = time.monotonic() + self.startup_health_timeout_seconds
                 healthy = False
 
