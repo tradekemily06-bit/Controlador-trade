@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -21,6 +22,7 @@ DEFAULT_HEALTH_URL = "http://127.0.0.1:8000/api/health"
 DEFAULT_STARTUP_HEALTH_TIMEOUT_SECONDS = 120
 DEFAULT_HEALTH_POLL_SECONDS = 10
 DEFAULT_HEALTH_FAILURE_THRESHOLD = 3
+DEFAULT_STATUS_WRITE_RETRIES = 5
 
 
 def utc_now() -> str:
@@ -71,10 +73,81 @@ class ControllerRuntimeSupervisor:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self._load_restart_history()
 
+
+class SupervisorProcessLock:
+    """Prevent overlapping controller supervisors on Windows Task Scheduler restarts."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.handle: Any = None
+        self._windows = sys.platform == "win32"
+
+    def acquire(self) -> bool:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.handle = self.path.open("a+b")
+        self.handle.seek(0)
+        self.handle.write(b"0")
+        self.handle.flush()
+        self.handle.seek(0)
+        try:
+            if self._windows:
+                import msvcrt
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except (OSError, ImportError):
+            try:
+                self.handle.close()
+            finally:
+                self.handle = None
+            return False
+
+    def release(self) -> None:
+        if self.handle is None:
+            return
+        try:
+            self.handle.seek(0)
+            if self._windows:
+                import msvcrt
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        except (OSError, ImportError):
+            pass
+        finally:
+            self.handle.close()
+            self.handle = None
+
+
     def _log(self, message: str) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as handle:
             handle.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+
+    def _atomic_write_text(self, path: Path, content: str) -> None:
+        """Write a runtime file atomically and tolerate short Windows sharing races."""
+        last_error: OSError | None = None
+        for attempt in range(DEFAULT_STATUS_WRITE_RETRIES):
+            temporary = path.with_name(
+                f"{path.name}.{os.getpid()}.{attempt}.tmp"
+            )
+            try:
+                temporary.write_text(content, encoding="utf-8")
+                os.replace(temporary, path)
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(0.2)
+            finally:
+                try:
+                    temporary.unlink()
+                except OSError:
+                    pass
+        if last_error is not None:
+            raise last_error
 
     def _write_status(self, state: str, reason: str) -> None:
         payload = {
@@ -84,12 +157,10 @@ class ControllerRuntimeSupervisor:
             "observed_at": utc_now(),
             "restart_count_last_hour": len(self.restart_times),
         }
-        temporary = self.status_path.with_suffix(".json.tmp")
-        temporary.write_text(
+        self._atomic_write_text(
+            self.status_path,
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-            encoding="utf-8",
         )
-        temporary.replace(self.status_path)
 
     def _load_restart_history(self) -> None:
         if not self.restart_history_path.is_file():
@@ -108,12 +179,10 @@ class ControllerRuntimeSupervisor:
 
     def _save_restart_history(self) -> None:
         values = [value.astimezone(timezone.utc).isoformat() for value in self.restart_times]
-        temporary = self.restart_history_path.with_suffix(".json.tmp")
-        temporary.write_text(
+        self._atomic_write_text(
+            self.restart_history_path,
             json.dumps(values, ensure_ascii=False),
-            encoding="utf-8",
         )
-        temporary.replace(self.restart_history_path)
 
     def _prune_restart_history(self) -> None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -259,6 +328,10 @@ class ControllerRuntimeSupervisor:
 
     def run(self) -> int:
         self.prepare()
+        supervisor_lock = SupervisorProcessLock(self.runtime_dir / "controlador-supervisor.lock")
+        if not supervisor_lock.acquire():
+            self._log("Outro supervisor do Controlador já está ativo; esta instância será encerrada sem criar um segundo supervisor.")
+            return 0
         self._log("Supervisor Python do Controlador iniciado.")
 
         final_state = "STOPPED"
@@ -268,19 +341,13 @@ class ControllerRuntimeSupervisor:
             while not self.stop_path.exists():
                 self._prune_restart_history()
 
+                # MT5 readiness is deliberately not a prerequisite for HTTP availability.
+                # The controller must come up independently; execution gates fail closed
+                # until the MT5/runtime safety state is actually healthy.
                 self._write_status(
                     "STARTING",
-                    "Pré-verificação DEMO antes de iniciar o Controlador.",
+                    "Iniciando o Controlador; prontidão MT5 é monitorada separadamente pelos gates de execução.",
                 )
-                demo_ready = self._mt5_demo_ready()
-
-                if demo_ready:
-                    self._log("MT5 DEMO confirmado; Controlador pode iniciar.")
-                else:
-                    self._log(
-                        "MT5 DEMO não confirmado; Controlador será iniciado, "
-                        "mas os gates de execução continuam responsáveis pelo bloqueio."
-                    )
 
                 # If an already-running controller survived a task restart,
                 # keep supervising the existing runtime instead of spawning a second one.
@@ -433,6 +500,7 @@ class ControllerRuntimeSupervisor:
             return 1
         finally:
             self._stop_child()
+            supervisor_lock.release()
             if self.stop_path.exists():
                 self._log("Parada controlada solicitada pelo marcador do runtime.")
                 try:
