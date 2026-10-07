@@ -443,8 +443,9 @@ void CloseCycle(){
 }
 int OnInit(){
    Panel();
-   SetView("COCKPIT");
+   active_view="COCKPIT";
    LoadWatermark();
+   RenderView();
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
    RefreshSecondary();
