@@ -176,7 +176,7 @@ void SaveConfig(){
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
-   string body="{"selected_mode":"DEMO","default_symbol":""+JsonEscape(sym)+"","default_timeframe":""+JsonEscape(tf)+"","require_closed_candle":true,"require_filters":true}";
+   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code))
       SetLabel(Obj("MSG"),"Configuracoes DEMO salvas no runtime • HTTP "+IntegerToString(code),20,447,8,C'88,214,141');
@@ -191,7 +191,7 @@ void RunCycle(){
    if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
    StringReplace(tf,"PERIOD_","");
    StringToUpper(tf);
-   string body="{"symbol":""+JsonEscape(sym)+"","timeframe":""+JsonEscape(tf)+"","limit":100,"amount":0.01,"duration_seconds":60,"confirmed":true,"filters_ok":true,"entry_conditions":[]}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
    SetLabel(Obj("MSG"),"Executando ciclo DEMO no mesmo runtime...",20,447,8,C'255,209,102');
    string r; int code=0;
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
@@ -225,7 +225,7 @@ void CloseCycle(){
       SetLabel(Obj("MSG"),"Nao ha ciclo DEMO com execucao para fechar.",20,447,8,C'255,209,102');
       return;
    }
-   string body="{"cycle_id":""+JsonEscape(last_cycle_id)+"","external_id":""+JsonEscape(last_external_id)+""}";
+   string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
    if(Http("POST","/api/runtime/close",body,r,code)){
       SetLabel(Obj("MSG"),"Fechamento DEMO + reconciliacao confirmado.",20,447,8,C'88,214,141');
