@@ -189,7 +189,7 @@ bool Http(string method,string path,string body,string &response,int &code){
       code=WebRequest(method,InpRuntimeUrl+path,h,5000,data,result,headers);
    }else{
       char empty[];
-      code=WebRequest(method,InpRuntimeUrl+path,"","",5000,empty,result,headers);
+      code=WebRequest(method,InpRuntimeUrl+path,"","",5000,empty,0,result,headers);
    }
    response=CharArrayToString(result,0,-1,CP_UTF8);
    return code>=200 && code<300;
