@@ -429,6 +429,11 @@ class ConfiguredEcosystemService(EcosystemService):
             "count": len(items),
             "critical_count": sum(1 for item in items if item["severity"] == NotificationSeverity.CRITICAL.value),
             "items": items,
+            # Compatibility contract for the native MT5 panel.
+            "notifications": items,
+            "total": len(items),
+            "unread": sum(1 for item in items if item.get("requires_attention", False)),
+            "execution_allowed": False,
         }
 
     def all_notifications(self) -> list[dict[str, Any]]:
