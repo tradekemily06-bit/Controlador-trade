@@ -1,6 +1,8 @@
 import io
 import json
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app import application
 
@@ -26,6 +28,13 @@ class ApiContractTests(unittest.TestCase):
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], json.loads(response)
+
+    def test_notifications_endpoint_is_available_and_fail_closed(self):
+        status, _, payload = self.request("/api/notifications")
+        self.assertEqual(status, "200 OK")
+        self.assertIsInstance(payload["notifications"], list)
+        self.assertEqual(payload["total"], len(payload["notifications"]))
+        self.assertFalse(payload["execution_allowed"])
 
     def test_read_endpoints_are_available_and_safe(self):
         for path in ("/api/health", "/api/status", "/api/saas/status", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections"):
@@ -73,6 +82,27 @@ class ApiContractTests(unittest.TestCase):
         status, _, payload = self.request("/api/memory", query="limit=0")
         self.assertEqual(status, "400 Bad Request")
         self.assertIn("error", payload)
+
+    def test_mt5_runtime_analysis_is_read_only_and_exposes_market_snapshot(self):
+        fake = SimpleNamespace(
+            analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),
+            quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),
+            decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),
+            snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "symbol": "EURUSD"}),
+            market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        )
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake) as analyze:
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+        self.assertEqual(status, "200 OK")
+        self.assertEqual(payload["analysis"]["signal"], "AGUARDAR")
+        self.assertEqual(payload["market_data"]["source"], "IC Markets MT5 DEMO")
+        self.assertEqual(payload["market_data"]["candles"], 20)
+        self.assertFalse(payload["execution_allowed"])
+        analyze.assert_called_once()
 
     def test_analyze_exposes_stable_presentation_and_security_contract(self):
         status, _, payload = self.request(

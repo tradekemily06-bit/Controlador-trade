@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+from dataclasses import asdict
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -321,9 +322,50 @@ def application(environ, start_response):
                     if cycle.orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
+                "external_id": execution.external_id if execution else None,
+                "execution_status": execution.status.value if execution else None,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
+        if path == "/api/runtime/analysis" and method == "POST":
+            data = _read_json(environ)
+            orchestration = SERVICE.analyze_mt5_market(
+                symbol=str(data.get("symbol", "")),
+                timeframe=str(data.get("timeframe", "5m")),
+                limit=int(data.get("limit", 100)),
+                confirmed=data.get("confirmed"),
+                filters_ok=data.get("filters_ok"),
+            )
+            snapshot = orchestration.snapshot
+            return _json_response(start_response, HTTPStatus.OK, {
+                "signal": orchestration.analysis.signal.value,
+                "score": orchestration.analysis.score,
+                "reason": orchestration.analysis.reason,
+                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                "analysis": {
+                    "signal": orchestration.analysis.signal.value,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                    "confirmed": orchestration.analysis.confirmed,
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "quality": {
+                    "score": orchestration.quality.score,
+                    "level": orchestration.quality.level.value,
+                    "actionable": orchestration.quality.actionable,
+                },
+                "decision_detail": {
+                    "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                    "reason": orchestration.decision.reason,
+                },
+                "snapshot": snapshot.as_dict(),
+                "market_data": {
+                    "source": orchestration.market_data.source,
+                    "candles": len(orchestration.market_data.candles),
+                },
+                "execution_allowed": False,
+            }, request_id, environ)
         if path == "/api/analyze" and method == "POST":
             record = SERVICE.analyze(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {**record.to_dict(), **serialize_decision_record(record), "execution_allowed": False}, request_id, environ)

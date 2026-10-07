@@ -255,6 +255,58 @@ class ConfiguredEcosystemService(EcosystemService):
             automation_risk_budget_factory=self._build_mt5_automation_risk_budget,
             automation_pretrade_risk_factory=self._build_mt5_pretrade_risk,
         )
+    def analyze_mt5_market(
+        self,
+        *,
+        symbol: str,
+        timeframe: str = "5m",
+        limit: int = 100,
+        confirmed: bool | None = None,
+        filters_ok: bool | None = None,
+    ) -> Any:
+        """Analyze the current MT5 DEMO market snapshot without executing an order."""
+        if self.trading_runtime is None or self.operational_runtime is None:
+            raise RuntimeError("runtime operacional não conectado")
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError(
+                "análise MT5 DEMO exige CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_demo; "
+                f"provider atual: {self.execution_provider!r}"
+            )
+        symbol = str(symbol).strip()
+        timeframe = str(timeframe).strip()
+        if not symbol:
+            raise ValueError("symbol é obrigatório")
+        if not timeframe:
+            raise ValueError("timeframe é obrigatório")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
+            raise ValueError("limit deve estar entre 20 e 500")
+        prefs = self.preferences.preferences
+        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
+        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        operational_state = self.mt5_operational_adapter.read_operational_state()
+        orchestration = self.trading_runtime.orchestrator.evaluate(
+            request,
+            operational_state=operational_state,
+            market_context=None,
+            confirmed=effective_confirmed,
+            filters_ok=effective_filters,
+        )
+        if self.trading_runtime.market_data_state is not None:
+            from core.p122_broker_market_data import BrokerMarketDataSnapshot
+            self.trading_runtime.market_data_state.update(
+                BrokerMarketDataSnapshot(
+                    symbol=request.symbol,
+                    timeframe=request.timeframe,
+                    candles=tuple(orchestration.market_data.candles),
+                    source=orchestration.market_data.source,
+                    received_at=orchestration.timestamp,
+                ),
+                now=orchestration.timestamp,
+            )
+        self._record_analysis(orchestration.analysis)
+        return orchestration
+
     def validate_mt5_cycle_identity(self, *, cycle_id: str, external_id: str) -> None:
         """Validate the cycle/external binding before the MT5 close side effect."""
         if self.trading_runtime is None or self.operational_runtime is None:
@@ -377,6 +429,11 @@ class ConfiguredEcosystemService(EcosystemService):
             "count": len(items),
             "critical_count": sum(1 for item in items if item["severity"] == NotificationSeverity.CRITICAL.value),
             "items": items,
+            # Compatibility contract for the native MT5 panel.
+            "notifications": items,
+            "total": len(items),
+            "unread": sum(1 for item in items if item.get("requires_attention", False)),
+            "execution_allowed": False,
         }
 
     def all_notifications(self) -> list[dict[str, Any]]:
