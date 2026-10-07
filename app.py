@@ -339,7 +339,7 @@ def application(environ, start_response):
                 "signal": orchestration.analysis.signal.value,
                 "score": orchestration.analysis.score,
                 "reason": orchestration.analysis.reason,
-                "decision": orchestration.decision.decision.value,
+                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                 "analysis": {
                     "signal": orchestration.analysis.signal.value,
                     "score": orchestration.analysis.score,
@@ -354,7 +354,7 @@ def application(environ, start_response):
                     "actionable": orchestration.quality.actionable,
                 },
                 "decision_detail": {
-                    "decision": orchestration.decision.decision.value,
+                    "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                     "reason": orchestration.decision.reason,
                 },
                 "snapshot": snapshot.as_dict(),
