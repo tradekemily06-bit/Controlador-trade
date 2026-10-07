@@ -380,9 +380,9 @@ void Analyze(){
    if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
    StringReplace(tf,"PERIOD_","");
    StringToUpper(tf);
-   string body="{\"score\":50,\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"confirmed\":true,\"filters_ok\":true}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
-   if(!Http("POST","/api/analyze",body,r,code)){
+   if(!Http("POST","/api/runtime/analysis",body,r,code)){
       SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
       return;
    }
