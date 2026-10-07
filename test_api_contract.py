@@ -29,6 +29,13 @@ class ApiContractTests(unittest.TestCase):
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], json.loads(response)
 
+    def test_notifications_endpoint_is_available_and_fail_closed(self):
+        status, _, payload = self.request("/api/notifications")
+        self.assertEqual(status, "200 OK")
+        self.assertIsInstance(payload["notifications"], list)
+        self.assertEqual(payload["total"], len(payload["notifications"]))
+        self.assertFalse(payload["execution_allowed"])
+
     def test_read_endpoints_are_available_and_safe(self):
         for path in ("/api/health", "/api/status", "/api/saas/status", "/api/memory", "/api/statistics", "/api/risk", "/api/news", "/api/connections"):
             status, headers, payload = self.request(path)
