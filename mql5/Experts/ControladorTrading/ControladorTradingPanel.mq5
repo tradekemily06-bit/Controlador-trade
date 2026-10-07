@@ -108,7 +108,7 @@ void DeletePanel(){
 }
 
 string JsonValue(string json,string key){
-   string needle="""+key+"":";
+   string needle="\"" + key + "\":";
    int p=StringFind(json,needle);
    if(p<0) return "";
    p+=StringLen(needle);
@@ -167,7 +167,7 @@ void RefreshHealth(){
 
 string JsonEscape(string s){
    StringReplace(s,"\\","\\\\");
-   StringReplace(s,""","\\"");
+   StringReplace(s,"\"","\\\"");
    return s;
 }
 
