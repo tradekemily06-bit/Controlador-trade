@@ -5,7 +5,7 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 390;
+input int    InpPanelWidth = 430;
 input int    InpPanelHeight = 620;
 
 string P="CTP_";
@@ -114,11 +114,13 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • RUNTIME REAL",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"COCKPIT",20,67,72,25);
-   SetButton(Obj("V2"),"ANALISE",96,67,72,25);
-   SetButton(Obj("V3"),"MEMORIA",172,67,72,25);
-   SetButton(Obj("V4"),"LAB",248,67,55,25);
-   SetButton(Obj("V5"),"CONFIG",307,67,72,25);
+   SetButton(Obj("V1"),"COCKPIT",18,67,54,25);
+   SetButton(Obj("V2"),"ANALISE",74,67,54,25);
+   SetButton(Obj("V3"),"MEMORIA",130,67,54,25);
+   SetButton(Obj("V4"),"LAB",186,67,48,25);
+   SetButton(Obj("V5"),"ENSINO",236,67,54,25);
+   SetButton(Obj("V6"),"NOTIF",292,67,54,25);
+   SetButton(Obj("V7"),"CONFIG",348,67,54,25);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -291,6 +293,20 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execution Gate: bloqueado para REAL",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Aprendizado nao autoriza trading",20,441,9,C'255,155,155');
+   }else if(active_view=="ENSINO"){
+      SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshLearning();
+   }else if(active_view=="NOTIF"){
+      SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
@@ -452,12 +468,16 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
    else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
+   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
+   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
+      else if(active_view=="ENSINO") RefreshLearning();
+      else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
