@@ -6,15 +6,17 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 390;
-input int    InpPanelHeight = 540;
+input int    InpPanelHeight = 590;
 
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
+bool watermark_enabled=true;
 
 string Obj(string suffix){ return P+suffix; }
+string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
@@ -58,6 +60,43 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+}
+void ApplyWatermark(){
+   string name=Obj("WATERMARK");
+   if(!watermark_enabled){
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+   int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMax(180,w/2));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,MathMax(120,h/2));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
+   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
+   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
+   ObjectSetInteger(0,name,OBJPROP_BACK,true);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+}
+void RefreshWatermarkControl(){
+   SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
+   ApplyWatermark();
+}
+void ToggleWatermark(){
+   watermark_enabled=!watermark_enabled;
+   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+   RefreshWatermarkControl();
+   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   ChartRedraw();
+}
+void LoadWatermark(){
+   if(GlobalVariableCheck(WatermarkKey()))
+      watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
+   RefreshWatermarkControl();
 }
 void Panel(){
    string bg=Obj("BG");
@@ -107,6 +146,7 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
+   SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
 }
 void DeletePanel(){
    int total=ObjectsTotal(0,-1,-1);
@@ -298,6 +338,7 @@ void CloseCycle(){
 int OnInit(){
    Panel();
    SetView("COCKPIT");
+   LoadWatermark();
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
    RefreshSecondary();
@@ -310,6 +351,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    RefreshHealth();
    RefreshSecondary();
+   ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
@@ -324,4 +366,5 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
+   else if(sparam==Obj("WM")) ToggleWatermark();
 }
