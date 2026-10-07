@@ -1,6 +1,8 @@
 import io
 import json
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app import application
 
@@ -74,7 +76,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertIn("error", payload)
 
-    def test_analyze_exposes_stable_presentation_and_security_contract(self):
+    def test_mt5_runtime_analysis_is_read_only_and_exposes_market_snapshot(self):\n        fake = SimpleNamespace(\n            analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),\n            quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),\n            decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),\n            snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "symbol": "EURUSD"}),\n            market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),\n        )\n        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake) as analyze:\n            status, _, payload = self.request(\n                "/api/runtime/analysis",\n                method="POST",\n                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},\n            )\n        self.assertEqual(status, "200 OK")\n        self.assertEqual(payload["analysis"]["signal"], "AGUARDAR")\n        self.assertEqual(payload["market_data"]["source"], "IC Markets MT5 DEMO")\n        self.assertEqual(payload["market_data"]["candles"], 20)\n        self.assertFalse(payload["execution_allowed"])\n        analyze.assert_called_once()\n\n    def test_analyze_exposes_stable_presentation_and_security_contract(self):
         status, _, payload = self.request(
             "/api/analyze",
             method="POST",
