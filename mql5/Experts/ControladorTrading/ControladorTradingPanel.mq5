@@ -6,7 +6,7 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 390;
-input int    InpPanelHeight = 590;
+input int    InpPanelHeight = 620;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -197,19 +197,109 @@ string JsonEscape(string s){
    StringReplace(s,"\"","\\\"");
    return s;
 }
-void SetView(string view){
-   active_view=view;
-   if(view=="COCKPIT"){
-      SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
-   }else if(view=="ANALISE"){
-      SetLabel(Obj("SUB"),"ANALISE • leitura e decisao produzidas pelo runtime",20,47,9,C'150,165,185');
-   }else if(view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS e estatisticas",20,47,9,C'150,165,185');
-   }else if(view=="LAB"){
-      SetLabel(Obj("SUB"),"LAB • replay, simulacao e validacao",20,47,9,C'150,165,185');
-   }else{
-      SetLabel(Obj("SUB"),"CONFIG • preferencias sincronizadas no runtime",20,47,9,C'150,165,185');
+void RefreshPreferences(){
+   string r; int code=0;
+   if(!Http("GET","/api/preferences","",r,code)){
+      SetLabel(Obj("INFO1"),"Configuracoes: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      return;
    }
+   string mode=JsonValue(r,"selected_mode");
+   string sym=JsonValue(r,"default_symbol");
+   string tf=JsonValue(r,"default_timeframe");
+   string closed=JsonValue(r,"require_closed_candle");
+   string filters=JsonValue(r,"require_filters");
+   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Marca d'agua: "+(watermark_enabled?"ATIVADA":"DESATIVADA")+" • persistencia local MT5",20,421,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
+}
+void RefreshNotifications(){
+   string r; int code=0;
+   if(Http("GET","/api/notifications","",r,code)){
+      string unread=JsonValue(r,"unread");
+      string total=JsonValue(r,"total");
+      SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Atualizacao: HTTP "+IntegerToString(code),20,421,9,C'88,214,141');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   }else{
+      SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }
+}
+void RefreshLearning(){
+   string r; int code=0;
+   if(Http("GET","/api/learning","",r,code)){
+      string progress=JsonValue(r,"progress");
+      string active=JsonValue(r,"active_module");
+      SetLabel(Obj("INFO1"),"Ensino: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   }else{
+      SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }
+}
+void RenderView(){
+   if(active_view=="COCKPIT"){
+      SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",20,381,9,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
+      SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshSecondary();
+   }else if(active_view=="ANALISE"){
+      SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      Analyze();
+      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/analyze",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   }else if(active_view=="MEMORIA"){
+      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshSecondary();
+      SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   }else if(active_view=="LAB"){
+      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshHealth();
+      RefreshSecondary();
+      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Execution Gate: bloqueado para REAL",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Aprendizado nao autoriza trading",20,441,9,C'255,155,155');
+   }else if(active_view=="CONFIG"){
+      SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      RefreshPreferences();
+   }
+   RefreshWatermarkControl();
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -350,19 +440,26 @@ void OnDeinit(const int reason){
 }
 void OnTimer(){
    RefreshHealth();
-   RefreshSecondary();
+   if(active_view=="COCKPIT") RefreshSecondary();
+   else if(active_view=="CONFIG") RefreshPreferences();
    ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("V1")) SetView("COCKPIT");
-   else if(sparam==Obj("V2")) SetView("ANALISE");
-   else if(sparam==Obj("V3")) SetView("MEMORIA");
-   else if(sparam==Obj("V4")) SetView("LAB");
-   else if(sparam==Obj("V5")) SetView("CONFIG");
-   else if(sparam==Obj("ANALYZE")) Analyze();
+   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
+   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
+   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("ANALYZE")) {
+      if(active_view=="ANALISE") Analyze();
+      else if(active_view=="CONFIG") RefreshPreferences();
+      else if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
+      else Analyze();
+   }
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
