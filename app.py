@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+from dataclasses import asdict
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -346,6 +347,20 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.news_status(_query_limit(environ, 10)), request_id, environ)
         if path == "/api/connections" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.connections(), request_id, environ)
+        if path == "/api/notifications" and method == "GET":
+            events = SERVICE.notifications.visible(include_info=False)
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {
+                    "notifications": [asdict(item) for item in events],
+                    "total": len(events),
+                    "unread": sum(1 for item in events if item.requires_attention),
+                    "execution_allowed": False,
+                },
+                request_id,
+                environ,
+            )
         if path == "/api/learning" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, SERVICE.learning_summary(), request_id, environ)
         if path == "/api/learning/resources" and method == "GET":
