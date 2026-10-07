@@ -322,6 +322,8 @@ def application(environ, start_response):
                     if cycle.orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
+                "external_id": execution.external_id if execution else None,
+                "execution_status": execution.status.value if execution else None,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
