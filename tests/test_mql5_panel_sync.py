@@ -22,3 +22,9 @@ def test_mql5_sync_script_exists_and_is_self_contained():
 def test_mql5_panel_has_single_repository_source():
     panel = ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5"
     assert panel.is_file()
+
+
+def test_controller_startup_calls_panel_sync():
+    startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
+    assert "Sync-Mt5Panel" in startup
+    assert "sync_mql5_panel.ps1" in startup
