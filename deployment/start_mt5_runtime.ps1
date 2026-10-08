@@ -7,7 +7,8 @@ param(
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6,
     [int]$HealthWaitSeconds = 60,
-    [int]$HealthPollSeconds = 5
+    [int]$HealthPollSeconds = 5,
+    [int]$HealthFailureThreshold = 3
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,7 +64,7 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
 
-function Test-Mt5Demo {
+function Test-Mt5TerminalHealth {
     try {
         $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
             $ProjectRoot
@@ -71,7 +72,7 @@ function Test-Mt5Demo {
             "$ProjectRoot;$($env:PYTHONPATH)"
         }
         Set-Location $ProjectRoot
-        & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); raise SystemExit(0 if r.available and r.demo else 1)"
+        & $PythonExe -c "import MetaTrader5 as mt5; ok=mt5.initialize(); terminal=mt5.terminal_info() if ok else None; account=mt5.account_info() if ok else None; demo_mode=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); healthy=ok and terminal is not None and bool(getattr(terminal,'connected',False)) and account is not None and demo_mode is not None and getattr(account,'trade_mode',None)==demo_mode; mt5.shutdown(); raise SystemExit(0 if healthy else 1)"
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
@@ -91,7 +92,7 @@ function Wait-Mt5Health {
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
     while ((Get-Date) -lt $deadline) {
         if (Test-Path -LiteralPath $stopPath -PathType Leaf) { return $false }
-        if (Test-Mt5Demo) { return $true }
+        if (Test-Mt5TerminalHealth) { return $true }
         Start-Sleep -Seconds $HealthPollSeconds
     }
     return $false
@@ -110,15 +111,34 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
 
     if ($null -ne $process) {
-        Write-SupervisorStatus 'STARTING' 'Processo MT5 encontrado; validando conexão DEMO pelo health gate.'
+        Write-SupervisorStatus 'STARTING' 'Processo MT5 encontrado; validando conexão do terminal e conta DEMO.'
         if (Wait-Mt5Health -WaitSeconds $HealthWaitSeconds) {
-            Write-SupervisorStatus 'HEALTHY' 'MT5 em execução e preflight DEMO confirmado.'
-            Start-Sleep -Seconds 10
-            continue
+            Write-SupervisorStatus 'HEALTHY' 'MT5 em execução, terminal conectado e conta DEMO confirmada.'
+            $healthFailures = 0
+            while (-not $process.HasExited) {
+                if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
+                    Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
+                    Stop-Mt5Process -Process $process
+                    break
+                }
+                if (Test-Mt5TerminalHealth) {
+                    $healthFailures = 0
+                } else {
+                    $healthFailures++
+                    Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
+                    if ($healthFailures -ge $HealthFailureThreshold) {
+                        Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
+                        Stop-Mt5Process -Process $process
+                        break
+                    }
+                }
+                Start-Sleep -Seconds $HealthPollSeconds
+            }
+            if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+        } else {
+            if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+            Stop-Mt5Process -Process $process
         }
-
-        if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
-        Stop-Mt5Process -Process $process
     }
 
     $now = Get-Date
@@ -141,10 +161,32 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     Write-SupervisorStatus 'STARTING' 'MT5 iniciado pelo supervisor; aguardando health gate DEMO.'
 
     if (Wait-Mt5Health -WaitSeconds $HealthWaitSeconds) {
-        Write-SupervisorLog 'MT5 saudável: preflight DEMO confirmado.'
-        Write-SupervisorStatus 'HEALTHY' 'MT5 em execução e preflight DEMO confirmado.'
-        Start-Sleep -Seconds 10
-        continue
+        Write-SupervisorLog 'MT5 saudável: terminal conectado e conta DEMO confirmada.'
+        Write-SupervisorStatus 'HEALTHY' 'MT5 em execução, terminal conectado e conta DEMO confirmada.'
+        $healthFailures = 0
+        $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+        while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
+            if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
+                Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
+                Stop-Mt5Process -Process $processAfterStart
+                break
+            }
+            if (Test-Mt5TerminalHealth) {
+                $healthFailures = 0
+            } else {
+                $healthFailures++
+                Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
+                if ($healthFailures -ge $HealthFailureThreshold) {
+                    Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
+                    Stop-Mt5Process -Process $processAfterStart
+                    break
+                }
+            }
+            Start-Sleep -Seconds $HealthPollSeconds
+            $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+        }
+        if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+        if ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) { continue }
     }
 
     $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
