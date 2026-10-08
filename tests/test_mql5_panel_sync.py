@@ -126,7 +126,7 @@ def test_mql5_panel_off_does_not_render_on_init():
 
 def test_web_dashboard_uses_separate_compact_workspaces():
     web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-    assert '<nav class="nav" aria-label="Áreas do ecossistema">' in web
+    assert '<nav class="nav">' in web
     assert "workspace-hidden" in web
     assert "function applyDefaultView(view)" in web
     assert 'href="#memoria">Memória</a>' in web
