@@ -377,7 +377,7 @@ void RefreshMarketAssets(){
    }
    int total=0; int p=0;
    while(true){
-      int hit=StringFind(r,"\\\"symbol\\\":",p);
+      int hit=StringFind(r,"\"symbol\":",p);
       if(hit<0) break;
       total++; p=hit+9;
       if(total>999) break;
