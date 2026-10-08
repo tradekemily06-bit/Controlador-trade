@@ -15,6 +15,10 @@ def test_mql5_sync_script_exists_and_is_self_contained():
         "errors",
         "warnings",
         "backup",
+        "Copy-WithRetry",
+        '"/log:$explicitLog"',
+        "MetaEditor terminou sem gerar o EX5 esperado",
+        "O EX5 não foi atualizado pela compilação",
     ):
         assert required in text
 
