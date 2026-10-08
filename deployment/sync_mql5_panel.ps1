@@ -27,26 +27,6 @@ function Restore-File([string]$Backup, [string]$Target) {
     }
 }
 
-function Copy-WithRetry([string]$Source, [string]$Destination, [int]$Attempts = 5) {
-    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-        try {
-            Copy-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
-            return
-        } catch {
-            if ($attempt -eq $Attempts) { throw }
-            Start-Sleep -Milliseconds (250 * $attempt)
-        }
-    }
-}
-
-function Restore-File([string]$Backup, [string]$Target) {
-    if (Test-Path -LiteralPath $Backup -PathType Leaf) {
-        Copy-WithRetry -Source $Backup -Destination $Target
-    } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
-        Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
-    }
-}
-
 $source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
     throw "Fonte MQL5 não encontrada: $source"
