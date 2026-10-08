@@ -30,6 +30,14 @@ def test_mobile_operation_controls_remain_touch_friendly():
 
 
 def test_mobile_ui_keeps_real_execution_blocked():
+    assert 'id="real"' in HTML and 'id="conexoes"' in HTML
     assert "REAL BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
+
+
+def test_mobile_workspace_navigation_and_watermark_remain_compact():
+    assert 'href="#painel">Cockpit</a>' in HTML
+    assert "workspace-hidden" in HTML
+    assert 'class="watermark-mark"' in HTML
+    assert "transform:rotate(-18deg)" not in HTML
