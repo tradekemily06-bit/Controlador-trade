@@ -30,7 +30,9 @@ def test_mobile_operation_controls_remain_touch_friendly():
 
 
 def test_mobile_ui_keeps_real_execution_blocked():
-    assert "REAL BLOQUEADO" in HTML
+    assert 'id="real"' in HTML and 'id="conexoes"' in HTML
+    cockpit = HTML.split('<div class="section" id="modo">', 1)[0]
+    assert 'class="chip">REAL BLOQUEADO</span>' not in cockpit
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
 
@@ -45,7 +47,9 @@ def test_watermark_stays_subtle_and_does_not_cover_mobile_content():
 
 
 def test_workspace_view_and_market_controls_sync_through_runtime():
-    assert 'href="#grafico">Gráfico</a>' in HTML
+    assert 'href="#painel">Cockpit</a>' in HTML
+    assert 'id="grafico"' in HTML
+    assert "workspace-hidden" in HTML
     assert "function applyWorkspacePreferences(p)" in HTML
     assert "function persistWorkspacePreferences()" in HTML
     assert "function persistDefaultView()" in HTML
