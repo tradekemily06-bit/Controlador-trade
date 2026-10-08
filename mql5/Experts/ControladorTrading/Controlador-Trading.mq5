@@ -160,6 +160,7 @@ void Panel(){
    SetEdit(Obj("SYM"),_Symbol,20,249,150,25);
    SetLabel(Obj("TFL"),"TIMEFRAME",184,236,8,C'130,145,165');
    SetEdit(Obj("TF"),EnumToString((ENUM_TIMEFRAMES)_Period),184,249,195,25);
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
 
    SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
    SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
@@ -368,6 +369,22 @@ void RefreshHealth(){
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
 }
+void RefreshMarketAssets(){
+   string r; int code=0;
+   if(!Http("GET","/api/market/assets","",r,code)){
+      SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
+      return;
+   }
+   int total=0; int p=0;
+   while(true){
+      int hit=StringFind(r,"\"symbol\":",p);
+      if(hit<0) break;
+      total++; p=hit+9;
+      if(total>999) break;
+   }
+   string source=JsonValue(r,"source");
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+IntegerToString(total)+" • "+(source==""?"MT5 DEMO":source),20,278,8,C'145,160,180');
+}
 void RefreshSecondary(){
    string r; int code=0;
    if(Http("GET","/api/risk","",r,code)){
@@ -481,6 +498,7 @@ int OnInit(){
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
    RefreshSecondary();
+   RefreshMarketAssets();
    return(INIT_SUCCEEDED);
 }
 void OnDeinit(const int reason){
@@ -490,7 +508,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    RefreshPanelLayout();
    RefreshHealth();
-   if(active_view=="COCKPIT") RefreshSecondary();
+   if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    ApplyWatermark();
