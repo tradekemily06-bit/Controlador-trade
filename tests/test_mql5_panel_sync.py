@@ -9,7 +9,7 @@ def test_mql5_sync_script_exists_and_is_self_contained():
     for required in (
         "terminal_info()",
         "data_path",
-        "ControladorTradingPanel.mq5",
+        "Controlador-Trading.mq5",
         "metaeditor64.exe",
         "/compile:",
         "errors",
@@ -24,8 +24,10 @@ def test_mql5_sync_script_exists_and_is_self_contained():
 
 
 def test_mql5_panel_has_single_repository_source():
-    panel = ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5"
+    panel = ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5"
+    legacy = ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5"
     assert panel.is_file()
+    assert not legacy.exists()
 
 
 def test_controller_startup_calls_panel_sync():
@@ -35,7 +37,7 @@ def test_controller_startup_calls_panel_sync():
 
 
 def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
-    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5").read_text(encoding="utf-8")
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '"Controlador-Trading"' in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
