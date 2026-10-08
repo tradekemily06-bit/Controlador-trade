@@ -42,3 +42,45 @@ def test_restore_checks_all_conflicts_before_replacing_anything(tmp_path: Path):
     with pytest.raises(FileExistsError): restore_backup(backup, target)
     assert not (target / "operation-memory.json").exists()
     assert (target / "operational-safety.json").read_text(encoding="utf-8") == "existing"
+
+
+def test_backup_rejects_non_object_manifest(tmp_path: Path):
+    bad = tmp_path / "manifest-list.zip"
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", "[]")
+    with pytest.raises(ValueError, match="manifest is invalid"):
+        verify_backup(bad)
+
+
+def test_backup_rejects_boolean_file_size(tmp_path: Path):
+    bad = tmp_path / "boolean-size.zip"
+    manifest = (
+        '{"format":"controlador-runtime-portable","version":1,"files":['
+        '{"path":"operation-memory.json","sha256":"' + "0" * 64 + '","size":true}]}'
+    )
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", manifest)
+        archive.writestr("operation-memory.json", "x")
+    with pytest.raises(ValueError, match="manifest entry is invalid"):
+        verify_backup(bad)
+
+
+def test_backup_rejects_duplicate_archive_members(tmp_path: Path):
+    bad = tmp_path / "duplicate.zip"
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", '{"format":"controlador-runtime-portable","version":1,"files":[]}')
+        archive.writestr("operation-memory.json", "x")
+        with pytest.warns(UserWarning):
+            archive.writestr("operation-memory.json", "x")
+    with pytest.raises(ValueError, match="duplicate members"):
+        verify_backup(bad)
+
+
+def test_backup_rejects_duplicate_manifest(tmp_path: Path):
+    bad = tmp_path / "duplicate-manifest.zip"
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", '{"format":"controlador-runtime-portable","version":1,"files":[]}')
+        with pytest.warns(UserWarning):
+            archive.writestr("manifest.json", '{"format":"controlador-runtime-portable","version":1,"files":[]}')
+    with pytest.raises(ValueError, match="manifest is missing or duplicated"):
+        verify_backup(bad)
