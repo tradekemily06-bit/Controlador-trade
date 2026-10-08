@@ -68,6 +68,7 @@ class EcosystemPreferences:
     autonomous_operation_enabled: bool = False
     real_execution_enabled: bool = False
     selected_mode: str = "DEMO"
+    default_view: str = "painel"
 
 
 class EcosystemPreferencesStore:
@@ -136,6 +137,7 @@ class EcosystemPreferencesStore:
             autonomous_operation_enabled=False,
             real_execution_enabled=False,
             selected_mode=str(payload.get("selected_mode", "DEMO")).upper(),
+            default_view=str(payload.get("default_view", "painel")).strip().lower() or "painel",
         )
         return cls(preferences)
 
@@ -151,6 +153,8 @@ class EcosystemPreferencesStore:
             raise ValueError("REAL execution cannot be enabled by preferences")
         if value.selected_mode not in {"DEMO", "REAL"}:
             raise ValueError("selected_mode must be DEMO or REAL")
+        if value.default_view not in {"painel", "modo", "grafico", "operacao", "analise", "laboratorio", "memoria", "risco", "noticias", "config", "conexoes", "real"}:
+            raise ValueError("default_view inválida")
         if not value.notifications.critical_enabled:
             raise ValueError("critical notifications cannot be disabled")
         for field in (value.candle.bullish_color, value.candle.bearish_color, value.candle.wick_color):
