@@ -77,7 +77,7 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
-   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
+   ObjectSetString(0,name,OBJPROP_TEXT,"Controlador-Trading");
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -112,7 +112,7 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",20,27,13,clrWhite);
+   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • RUNTIME REAL",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"COCKPIT",18,67,54,25);
    SetButton(Obj("V2"),"ANALISE",74,67,54,25);
