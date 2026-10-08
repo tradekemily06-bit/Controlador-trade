@@ -87,20 +87,18 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 A configuração de Cloudflare exige conta/domínio e um servidor Windows real. Essas partes externas não podem ser declaradas como concluídas pelo repositório sozinho.
 ## REAL — ativação explícita e controlada
 
-A ponte REAL usa o mesmo terminal MT5 Windows, mas não transforma o runtime em REAL apenas por selecionar um provider. O envio REAL exige, simultaneamente:
+A ponte REAL usa o mesmo terminal MT5 Windows, mas selecionar um provider ou ativar a autorização do usuário não transforma o runtime em REAL por si só.
 
 - CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_real apenas no ambiente de produção;
-- CONTROLADOR_REAL_AUTHORIZATION_ID e CONTROLADOR_REAL_AUDIT_ID definidos;
-- CONTROLADOR_REAL_ADMISSION_ID definido;
-- CONTROLADOR_REAL_EXPLICITLY_ENABLED=true;
-- CONTROLADOR_REAL_EXECUTION_ALLOWED=true;
+- autorização REAL do usuário ativa no estado persistente do ecossistema (`ecosystem-state.sqlite`, dentro de `CONTROLADOR_RUNTIME_DIR`);
+- `CONTROLADOR_REAL_ADMISSION_ID` válido;
 - CONTROLADOR_REAL_AUDIT_VERIFIED=true;
 - CONTROLADOR_REAL_RISK_APPROVED=true;
 - terminal MT5 classificado pelo próprio MetaTrader5 como conta REAL;
 - mercado saudável, recovery seguro, kill switch liberado e adapter disponível;
 - confirmação humana única, curta e vinculada exatamente ao request.
 
-Essas variáveis são configuração de ambiente/segredo operacional e não devem ser gravadas no GitHub. Ausência de qualquer pré-requisito mantém o REAL bloqueado. A preparação (/api/runtime/real/prepare) não envia ordem; somente /api/runtime/real/confirm, após a confirmação humana válida, pode alcançar o RealExecutionGateway. Um resultado externo incerto não é reenviado automaticamente: exige reconciliação explícita.
+As variáveis de auditoria, risco e admission continuam sendo controles de implantação e não devem ser expostas como preferências comuns da interface. A autorização do usuário representa a intenção explícita do usuário e não substitui esses controles. Ausência de qualquer pré-requisito mantém o REAL bloqueado. A preparação (/api/runtime/real/prepare) não envia ordem; somente /api/runtime/real/confirm, após a confirmação humana válida, pode alcançar o RealExecutionGateway. Um resultado externo incerto não é reenviado automaticamente: exige reconciliação explícita.
 
 ## Continuidade e migração do runtime
 
