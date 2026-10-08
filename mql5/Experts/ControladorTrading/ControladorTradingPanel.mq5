@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 430;
-input int    InpPanelHeight = 620;
+input int    InpPanelWidth = 360;
+input int    InpPanelHeight = 460;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -14,18 +14,37 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 bool watermark_enabled=true;
+int panel_x=0;
+int panel_width=360;
+int panel_height=460;
+double panel_sx=1.0;
+double panel_sy=1.0;
 
 string Obj(string suffix){ return P+suffix; }
 string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 
+int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
+int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
+int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
+void RefreshPanelLayout(){
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   panel_width=MathMin(InpPanelWidth,MathMax(300,(int)MathRound(cw*0.28)));
+   panel_width=MathMin(panel_width,MathMax(300,cw-40));
+   panel_height=MathMin(InpPanelHeight,MathMax(360,ch-48));
+   panel_x=MathMax(12,cw-panel_width-12);
+   panel_sx=(double)panel_width/430.0;
+   panel_sy=(double)panel_height/620.0;
+}
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(size*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
-   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -33,14 +52,15 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
 void SetButton(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,w);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -48,11 +68,11 @@ void SetButton(string name,string text,int x,int y,int w,int h){
 void SetEdit(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,w);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
@@ -83,7 +103,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RefreshWatermarkControl(){
-   SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
+   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
+   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    ApplyWatermark();
 }
 void ToggleWatermark(){
@@ -102,10 +123,11 @@ void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,8);
+   RefreshPanelLayout();
+   ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,InpPanelWidth);
-   ObjectSetInteger(0,bg,OBJPROP_YSIZE,InpPanelHeight);
+   ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
    ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'55,65,85');
    ObjectSetInteger(0,bg,OBJPROP_BACK,false);
@@ -114,13 +136,13 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • RUNTIME REAL",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"COCKPIT",18,67,54,25);
-   SetButton(Obj("V2"),"ANALISE",74,67,54,25);
-   SetButton(Obj("V3"),"MEMORIA",130,67,54,25);
-   SetButton(Obj("V4"),"LAB",186,67,48,25);
-   SetButton(Obj("V5"),"ENSINO",236,67,54,25);
-   SetButton(Obj("V6"),"NOTIF",292,67,54,25);
-   SetButton(Obj("V7"),"CONFIG",348,67,54,25);
+   SetButton(Obj("V1"),"⌂",18,67,54,25);
+   SetButton(Obj("V2"),"A",74,67,54,25);
+   SetButton(Obj("V3"),"M",130,67,54,25);
+   SetButton(Obj("V4"),"L",186,67,48,25);
+   SetButton(Obj("V5"),"E",236,67,54,25);
+   SetButton(Obj("V6"),"🔔",292,67,54,25);
+   SetButton(Obj("V7"),"⚙",348,67,54,25);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -456,6 +478,7 @@ void OnDeinit(const int reason){
    DeletePanel();
 }
 void OnTimer(){
+   RefreshPanelLayout();
    RefreshHealth();
    if(active_view=="COCKPIT") RefreshSecondary();
    else if(active_view=="CONFIG") RefreshPreferences();
