@@ -50,3 +50,16 @@ def test_invalid_selected_mode_is_rejected():
     except ValueError:
         return
     raise AssertionError("selected_mode inválido deveria ser rejeitado")
+
+
+def test_default_view_persists_without_granting_execution_authority():
+    store = EcosystemPreferencesStore.from_dict({"default_view": "grafico"})
+    assert store.preferences.default_view == "grafico"
+    assert store.preferences.real_execution_enabled is False
+    assert store.preferences.autonomous_operation_enabled is False
+
+
+def test_invalid_default_view_is_rejected():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError, match="default_view inválida"):
+        store.update(default_view="not-a-view")
