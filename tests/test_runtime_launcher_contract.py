@@ -48,14 +48,14 @@ def test_read_only_windows_validator_covers_deployment_surface():
 def test_controller_health_gate_uses_current_safe_health_contract():
     text = _read("deployment/start_controlador_runtime.ps1")
     for required in (
-        "$payload.execution_allowed",
+        "$payload.execution_allowed -ne $false",
         "$payload.real -ne \"DESABILITADO\"",
         "$payload.operational_observability.execution",
-        "$op.allowed",
-        "$op.real",
+        "$op.allowed -ne $false",
+        "$op.real -ne \"DISABLED\"",
         "$payload.real_runtime",
-        "$realRuntime.real_execution_allowed",
-        "$realRuntime.explicitly_enabled",
+        "$realRuntime.real_execution_allowed -ne $false",
+        "$realRuntime.explicitly_enabled -ne $false",
     ):
         assert required in text
     assert '$payload.execution.allowed' not in text
