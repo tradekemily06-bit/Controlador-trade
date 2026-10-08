@@ -32,8 +32,12 @@ class RealRuntimeController:
         self.runtime = runtime
         self.root = Path(root)
         self.symbol = symbol
-        self.broker_id = IC_MARKETS_MT5_REAL
+        self.broker_id = os.environ.get("CONTROLADOR_REAL_BROKER_ID", IC_MARKETS_MT5_REAL).strip().lower() or IC_MARKETS_MT5_REAL
         self.registry: BrokerRegistry = build_real_registry(symbol=symbol)
+        if self.broker_id not in self.registry.names():
+            # Fail closed: a configured broker is not considered supported merely
+            # because an arbitrary identifier was supplied.
+            self.broker_id = "__unsupported__"
         self.gateway = RealExecutionGateway(
             BrokerAdapterGateway(self.registry),
             self.runtime.execution_ledger,
