@@ -187,6 +187,11 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         Write-SupervisorStatus 'HEALTHY' 'app.py ativo e /api/health respondeu 2xx.'
         $healthFailures = 0
         while (-not $process.HasExited) {
+            if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
+                Write-StartupLog 'Parada controlada detectada enquanto o Controlador estava saudável.'
+                Stop-ControllerProcess -Process $process
+                break
+            }
             if (Test-ControllerHealth) {
                 $healthFailures = 0
             } else {
