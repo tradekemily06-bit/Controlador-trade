@@ -17,6 +17,8 @@ from core.real_runtime_controller import RealRuntimeController
 from core.runtime_process_lock import RuntimeProcessLock
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from execution.icmarkets_mt5_demo_adapter import MT5AdapterError
+from execution.icmarkets_mt5_market_data import MT5MarketDataError
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -445,6 +447,8 @@ def application(environ, start_response):
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+    except (MT5MarketDataError, MT5AdapterError) as exc:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "MT5 DEMO indisponível para esta operação de leitura", "detail": str(exc), "execution_allowed": False, "request_id": request_id}, request_id, environ)
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
