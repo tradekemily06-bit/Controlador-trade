@@ -45,13 +45,10 @@ $controllerArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $controlle
 
 $mt5Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $mt5Arguments
 $controllerAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $controllerArguments
-$syncArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $syncScript + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '"'
-$syncAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $syncArguments
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 
 Register-ScheduledTask -TaskName "$TaskPrefix-MT5" -Action $mt5Action -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o MetaTrader 5 usado pelo Controlador Trading.' -Force | Out-Null
 Register-ScheduledTask -TaskName "$TaskPrefix-Controlador" -Action $controllerAction -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o Controlador Trading e aguarda o MT5 DEMO.' -Force | Out-Null
-Register-ScheduledTask -TaskName "$TaskPrefix-MT5-Sync" -Action $syncAction -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Sincroniza e compila automaticamente o painel MQL5 do Controlador Trading.' -Force | Out-Null
 
 if ($AutostartMode -eq 'AtStartupS4U') {
     Write-Host 'Inicialização 24/7 configurada para iniciar no boot sem depender de logon interativo (S4U).'
@@ -61,5 +58,5 @@ if ($AutostartMode -eq 'AtStartupS4U') {
     Write-Host 'Este modo NÃO garante operação após logoff/reboot sem novo logon; use -AutostartMode AtStartupS4U no host 24/7 após validar o MT5.'
 }
 Write-Host 'MT5 e Controlador serão supervisionados; quedas são recuperadas com limite e backoff.'
-Write-Host 'O painel MQL5 é sincronizado e compilado automaticamente a partir do repositório local; não é necessário copiar o .mq5 manualmente para o MetaEditor.'
+Write-Host 'O painel MQL5 é sincronizado e compilado automaticamente pelo supervisor do Controlador após o MT5 DEMO ficar válido; não há uma segunda tarefa concorrente de compilação.'
 Write-Host 'Nenhuma senha, token ou credencial foi gravada por este instalador.'
