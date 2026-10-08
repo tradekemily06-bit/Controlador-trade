@@ -327,6 +327,17 @@ def application(environ, start_response):
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
+        if path == "/api/market/assets" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            include_invisible = (query.get("include_invisible", ["false"])[-1].lower() in {"1", "true", "yes"})
+            assets = SERVICE.get_mt5_assets(include_invisible=include_invisible)
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {"source": "IC Markets MT5 DEMO", "count": len(assets), "assets": list(assets)},
+                request_id,
+                environ,
+            )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
             orchestration = SERVICE.analyze_mt5_market(
