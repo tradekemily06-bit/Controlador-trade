@@ -129,9 +129,13 @@ function Wait-ControllerHealth {
     return $false
 }
 
-function Stop-ControllerProcess([System.Diagnostics.Process]$Process) {
+function Stop-ControllerProcess {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Reason = "Health não respondeu dentro de $HealthWaitSeconds s"
+    )
     if ($null -eq $Process -or $Process.HasExited) { return }
-    Write-StartupLog "Health não respondeu dentro de $HealthWaitSeconds s; encerrando PID $($Process.Id) para recuperação limpa."
+    Write-StartupLog "$Reason; encerrando PID $($Process.Id) para recuperação limpa."
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 2
 }
@@ -189,7 +193,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         while (-not $process.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-StartupLog 'Parada controlada detectada enquanto o Controlador estava saudável.'
-                Stop-ControllerProcess -Process $process
+                Stop-ControllerProcess -Process $process -Reason 'Parada controlada solicitada pelo runtime'
                 break
             }
             if (Test-ControllerHealth) {
