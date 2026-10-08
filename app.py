@@ -154,7 +154,11 @@ def application(environ, start_response):
     request_id = SECURITY.request_id()
     path = environ.get("PATH_INFO", "/")
     method = environ.get("REQUEST_METHOD", "GET").upper()
-    if not SECURITY.allow(environ):
+    # O supervisor local precisa consultar o health com frequência. Esse probe é
+    # somente leitura e só pode ser isento do rate limit quando vem do loopback.
+    # O limite continua valendo para health remoto e para toda a API restante.
+    is_local_health_probe = method == "GET" and path == "/api/health" and str(environ.get("REMOTE_ADDR") or "") in {"127.0.0.1", "::1"}
+    if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
     if method == "POST" and path != "/api/updates":
