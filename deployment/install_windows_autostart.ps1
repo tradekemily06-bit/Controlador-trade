@@ -40,7 +40,7 @@ if ($AutostartMode -eq 'AtStartupS4U') {
     $principalTask = New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType Interactive -RunLevel Highest
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentIdentity.Name
 }
-$mt5Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $mt5Script + '" -Mt5TerminalPath "' + $Mt5TerminalPath + '" -RuntimeDir "' + $RuntimeDir + '"'
+$mt5Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $mt5Script + '" -Mt5TerminalPath "' + $Mt5TerminalPath + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '" -RuntimeDir "' + $RuntimeDir + '"'
 $controllerArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $controllerScript + '" -ProjectRoot "' + $ProjectRoot + '" -PythonExe "' + $PythonExe + '" -RuntimeDir "' + $RuntimeDir + '"'
 
 $mt5Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $mt5Arguments
