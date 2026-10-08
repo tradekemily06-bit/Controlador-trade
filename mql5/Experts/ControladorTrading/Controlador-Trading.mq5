@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 460;
+input int    InpPanelWidth = 320;
+input int    InpPanelHeight = 420;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -16,8 +16,8 @@ bool runtime_ok=false;
 bool watermark_enabled=true;
 bool panel_visible=true;
 int panel_x=0;
-int panel_width=360;
-int panel_height=460;
+int panel_width=320;
+int panel_height=420;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
@@ -32,10 +32,10 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(300,(int)MathRound(cw*0.28)));
+   panel_width=MathMin(InpPanelWidth,MathMax(300,(int)MathRound(cw*0.25)));
    panel_width=MathMin(panel_width,MathMax(300,cw-40));
-   panel_height=MathMin(InpPanelHeight,MathMax(360,ch-48));
-   panel_x=MathMax(12,cw-panel_width-12);
+   panel_height=MathMin(InpPanelHeight,MathMax(360,(int)MathRound(ch*0.55)));
+   panel_x=12;
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -90,22 +90,45 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void ApplyWatermark(){
-   string name=Obj("WATERMARK");
+   string legacy=Obj("WATERMARK");
+   string mark=Obj("WATERMARK_MARK");
+   string name=Obj("WATERMARK_TEXT");
+   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
    if(!watermark_enabled){
+      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
       if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
       return;
    }
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int center_y=MathMax(120,h/2);
+
+   // Marca visual inspirada na identidade aprovada: símbolo ascendente + nome,
+   // em diagonal e atrás dos candles para não competir com a leitura do preço.
+   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(90,w/2-235));
+   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,42);
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,85,135');
+   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
+   ObjectSetDouble(0,mark,OBJPROP_ANGLE,-18.0);
+   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
+   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
+
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMax(180,w/2));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,MathMax(120,h/2));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-120,w/2+115));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
-   ObjectSetString(0,name,OBJPROP_TEXT,"Controlador-Trading");
+   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
+   ObjectSetDouble(0,name,OBJPROP_ANGLE,-18.0);
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -130,7 +153,7 @@ void LoadWatermark(){
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,12);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,74);

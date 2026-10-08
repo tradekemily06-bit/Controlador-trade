@@ -376,6 +376,17 @@ def application(environ, start_response):
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),
+                    "ohlcv": [
+                        {
+                            "timestamp": candle.timestamp.isoformat(),
+                            "open": candle.open,
+                            "high": candle.high,
+                            "low": candle.low,
+                            "close": candle.close,
+                            "volume": candle.volume,
+                        }
+                        for candle in orchestration.market_data.candles[-120:]
+                    ],
                 },
                 "execution_allowed": False,
             }, request_id, environ)
