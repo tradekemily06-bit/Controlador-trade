@@ -33,3 +33,12 @@ def test_mobile_ui_keeps_real_execution_blocked():
     assert "REAL BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
+
+
+def test_watermark_stays_subtle_and_does_not_cover_mobile_content():
+    assert ".watermark-brand" in HTML
+    assert "clamp(18px,3.8vw,42px)" in HTML
+    assert "transform:rotate(-18deg)" not in HTML
+    assert "watermark-mark" not in HTML
+    assert "pointer-events:none" in HTML
+    assert "opacity:.025" in HTML
