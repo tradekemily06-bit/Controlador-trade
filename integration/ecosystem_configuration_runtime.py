@@ -34,6 +34,8 @@ from core.senior_risk_reasoning import RiskDomain, RiskObservation
 from integration.ecosystem_service import EcosystemService
 from integration.p135_senior_analysis_boundary import SeniorAnalysisBoundary
 from integration.p137_operational_risk_bridge import OperationalRiskBridge
+from execution.mt5_instrument_universe import discover_mt5_instruments
+from integration.mt5_asset_suitability_bridge import prioritize_mt5_assets
 
 
 class ConfiguredEcosystemService(EcosystemService):
@@ -306,6 +308,35 @@ class ConfiguredEcosystemService(EcosystemService):
             )
         self._record_analysis(orchestration.analysis)
         return orchestration
+
+    def get_mt5_assets(self, *, include_invisible: bool = False) -> tuple[dict[str, Any], ...]:
+        """Return the broker-observed MT5 universe with session and 24/7 evidence."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError("catálogo MT5 exige provider IC Markets MT5 DEMO")
+        try:
+            import MetaTrader5 as mt5
+        except ImportError as exc:
+            raise RuntimeError("MetaTrader5 não está instalado") from exc
+        if not mt5.initialize():
+            raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
+        try:
+            statuses = discover_mt5_instruments(mt5, include_invisible=include_invisible)
+            assessments = {item.symbol: item for item in prioritize_mt5_assets(mt5, statuses)}
+            result = []
+            for status in statuses:
+                assessment = assessments.get(status.symbol)
+                result.append({
+                    **asdict(status),
+                    "is_24_7_capable": bool(status.weekend_capable),
+                    "suitability": assessment.suitability.value if assessment else "INSUFFICIENT",
+                    "suitability_evidence": list(assessment.evidence) if assessment else [],
+                    "suitability_gaps": list(assessment.gaps) if assessment else [],
+                    "suitability_rationale": assessment.rationale if assessment else "sem avaliação",
+                    "source": "IC Markets MT5 DEMO",
+                })
+            return tuple(result)
+        finally:
+            mt5.shutdown()
 
     def validate_mt5_cycle_identity(self, *, cycle_id: str, external_id: str) -> None:
         """Validate the cycle/external binding before the MT5 close side effect."""

@@ -41,7 +41,7 @@ Os launchers de MT5 e Controlador atuam como supervisores do processo, além do 
 
 O Agendador de Tarefas também recebe uma política de reinício para falha da própria tarefa. Isso cria duas camadas complementares: recuperação do processo pelo supervisor e recuperação do host da tarefa pelo Windows.
 
-A supervisão não autoriza execução. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
+A supervisão não autoriza execução. No supervisor do MT5, o health contínuo verifica conexão real do terminal e conta DEMO; disponibilidade de cotação/símbolo é tratada separadamente como condição de mercado/dados. Assim, fechamento de mercado ou ausência temporária de tick não deve ser confundido com terminal morto nem provocar reinício desnecessário do MT5. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
 
 Cada supervisor grava um estado pequeno e não secreto em `CONTROLADOR_RUNTIME_DIR`:
 - `controlador-supervisor-status.json`
@@ -52,9 +52,14 @@ Esses estados são somente telemetria. Falhas ou recuperação em andamento são
 Para manutenção controlada, o runtime usa marcadores locais de parada do supervisor. A remoção/uso desses marcadores pertence ao mecanismo de gerenciamento do runtime e não exige que o usuário execute comandos diariamente.
 
 ## Inicialização automática no Windows
-Os scripts `deployment/install_windows_autostart.ps1`, `deployment/start_mt5_runtime.ps1` e `deployment/start_controlador_runtime.ps1` configuram o início automático no logon da sessão Windows usada pelo runtime. Essa configuração é feita uma vez; durante o uso diário não há necessidade de executar Git ou Python manualmente.
+O instalador exige uma execução única como Administrador e oferece dois modos:
 
-O instalador exige uma execução única como Administrador e pede apenas o caminho do executável do MT5. Nenhum segredo é gravado. O Controlador espera o preflight DEMO, mas não transforma uma falha de MT5 em autorização: sem DEMO válido, a execução continua bloqueada.
+- `Interactive` (padrão): inicia no logon do usuário dedicado. É apropriado para validação inicial, mas **não é uma garantia de 24/7 após logoff/reboot sem logon**.
+- `AtStartupS4U`: inicia no boot sem depender de uma sessão interativa. É o modo destinado ao host 24/7; antes de produção, o MT5 precisa ser validado nesse tipo de sessão, porque o repositório não pode assumir que o terminal do broker funcionará sem desktop interativo.
+
+Exemplo do modo 24/7: `-AutostartMode AtStartupS4U`. A configuração é feita uma vez; durante o uso diário não há necessidade de executar Git ou Python manualmente.
+
+O instalador não grava senha, token ou segredo. O Controlador continua fazendo preflight DEMO e não transforma uma falha do MT5 em autorização: sem DEMO válido, a execução permanece bloqueada.
 
 ## Proteção Cloudflare Access
 A rota publicada deve estar protegida por uma aplicação Cloudflare Access e o Tunnel deve exigir a validação do Access antes de encaminhar o tráfego ao origin. Para túnel gerenciado localmente, isso corresponde a `originRequest.access.required: true` com o `teamName` e o `audTag` da aplicação; em túnel gerenciado remotamente, configure a mesma exigência nas opções da rota. Assim, o header de identidade usado pelo Controlador chega somente depois da autenticação/validação na borda.
@@ -85,6 +90,8 @@ O origin continua em `http://127.0.0.1:8000`; não é necessário expor a porta 
 
 ## Importante
 A configuração de Cloudflare exige conta/domínio e um servidor Windows real. Essas partes externas não podem ser declaradas como concluídas pelo repositório sozinho.
+
+A opção `AtStartupS4U` remove a dependência do logon interativo do usuário para iniciar os supervisores, mas isso não prova sozinho que o MT5 estará operacional em todos os hosts. A prova final de implantação exige reboot/logoff controlado no host escolhido, confirmação de que o MT5 realmente inicializou, preflight DEMO válido, `/api/health` 2xx e recuperação após uma falha simulada.
 ## REAL — ativação explícita e controlada
 
 A ponte REAL usa o mesmo terminal MT5 Windows, mas não transforma o runtime em REAL apenas por selecionar um provider. O envio REAL exige, simultaneamente:

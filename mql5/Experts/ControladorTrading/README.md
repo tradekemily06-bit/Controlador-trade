@@ -22,12 +22,12 @@ O EA é apenas a camada visual/controle sobre o runtime já existente em 127.0.0
 1. Abra o MT5.
 2. Vá em Arquivo → Abrir pasta de dados.
 3. Entre em MQL5/Experts/ControladorTrading.
-4. Copie ControladorTradingPanel.mq5 para essa pasta.
+4. Copie Controlador-Trading.mq5 para essa pasta.
 5. Abra o MetaEditor e compile o arquivo.
 6. No MT5, vá em Ferramentas → Opções → Expert Advisors.
 7. Adicione exatamente http://127.0.0.1:8000 à lista de URLs permitidos para WebRequest.
 8. Abra o gráfico, por exemplo EURUSD M5.
-9. Arraste ControladorTradingPanel para o gráfico.
+9. Arraste Controlador-Trading para o gráfico.
 10. Mantenha o runtime do Controlador ativo.
 
 ## Segurança
