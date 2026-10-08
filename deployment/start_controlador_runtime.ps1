@@ -97,7 +97,14 @@ function Test-Mt5Demo {
 function Test-ControllerHealth {
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 3 -ErrorAction Stop
-        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300)
+        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { return $false }
+        $payload = $response.Content | ConvertFrom-Json
+        if ($payload.ok -ne $true) { return $false }
+        if (-not $payload.PSObject.Properties.Name.Contains("execution")) { return $false }
+        if (-not $payload.PSObject.Properties.Name.Contains("real_runtime")) { return $false }
+        if ($payload.execution.allowed -eq $true) { return $false }
+        if ($payload.execution.real -ne "DISABLED") { return $false }
+        return $true
     } catch {
         return $false
     }
