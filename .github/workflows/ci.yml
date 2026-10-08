@@ -97,13 +97,13 @@ jobs:
             const description = passed
               ? "CI and test jobs completed successfully"
               : "CI or test job failed; merge must remain blocked";
-            for (const context of ["CI", "test"]) {
+            for (const statusContext of ["CI", "test"]) {
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 sha: context.sha,
                 state,
-                context,
+                context: statusContext,
                 description
               });
             }
