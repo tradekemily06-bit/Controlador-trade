@@ -115,20 +115,20 @@ function Test-ControllerHealth {
 
         # Contrato canonico atual do /api/health.
         if ($payload.ok -ne $true) { return $false }
-        if ($payload.execution_allowed -eq $true) { return $false }
+        if ($payload.execution_allowed -ne $false) { return $false }
         if ($payload.real -ne "DESABILITADO") { return $false }
 
         # Estado operacional detalhado.
         $op = $payload.operational_observability.execution
         if ($null -eq $op) { return $false }
-        if ($op.allowed -eq $true) { return $false }
+        if ($op.allowed -ne $false) { return $false }
         if ($op.real -ne "DISABLED") { return $false }
 
         # Camada independente de REAL.
         $realRuntime = $payload.real_runtime
         if ($null -eq $realRuntime) { return $false }
-        if ($realRuntime.real_execution_allowed -eq $true) { return $false }
-        if ($realRuntime.explicitly_enabled -eq $true) { return $false }
+        if ($realRuntime.real_execution_allowed -ne $false) { return $false }
+        if ($realRuntime.explicitly_enabled -ne $false) { return $false }
 
         return $true
     } catch {
