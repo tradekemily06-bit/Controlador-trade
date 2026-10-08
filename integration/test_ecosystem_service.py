@@ -129,3 +129,42 @@ def test_production_operation_accepts_explicit_ready_storage():
     assert context.subject_id == "user-a"
     assert context.tenant_id == "tenant-a"
     assert service.system_status()["real"] == "DESABILITADO"
+
+
+def test_operational_observability_accepts_utf8_bom_supervisor_status(tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    for name, payload in (
+        ("controlador-supervisor-status.json", {"state": "HEALTHY", "component": "controlador"}),
+        ("mt5-supervisor-status.json", {"state": "HEALTHY", "component": "mt5"}),
+    ):
+        (runtime_dir / name).write_text(json.dumps(payload), encoding="utf-8-sig")
+
+    runtime = SimpleNamespace(
+        checkpoint_store=SimpleNamespace(path=runtime_dir / "checkpoint.json"),
+        health=SimpleNamespace(assess=lambda: SimpleNamespace(
+            state=SimpleNamespace(value="HEALTHY"),
+            ledger_entries=0,
+            pending_executions=0,
+            unknown_executions=0,
+            recovery_state=SimpleNamespace(value="FRESH"),
+            message="healthy",
+        )),
+        recovery=SimpleNamespace(assess=lambda: SimpleNamespace(
+            can_resume=True,
+            state=SimpleNamespace(value="READY"),
+            pending_request_ids=(),
+            unknown_request_ids=(),
+            message="ready",
+        )),
+        kill_switch=SimpleNamespace(state=SimpleNamespace(enabled=False, reason=None)),
+        market_data=SimpleNamespace(status=lambda: {"health": "HEALTHY", "safe_for_analysis": True}),
+    )
+
+    supervision = EcosystemService(operational_runtime=runtime).operational_observability()["supervision"]
+
+    assert supervision["controller"]["state"] == "HEALTHY"
+    assert supervision["mt5"]["state"] == "HEALTHY"
