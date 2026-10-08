@@ -75,3 +75,36 @@ jobs:
     steps:
       - name: Protected-branch compatibility check
         run: echo "CI completed successfully; legacy required check test is satisfied."
+
+  publish-required-status-contexts:
+    name: Publish required commit status contexts
+    if: always()
+    needs: [CI, test]
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - name: Mirror required-check results to legacy commit statuses
+        uses: actions/github-script@v7
+        env:
+          CI_RESULT: ${{ needs.CI.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        with:
+          script: |
+            const passed = process.env.CI_RESULT === "success" &&
+              process.env.TEST_RESULT === "success";
+            const state = passed ? "success" : "failure";
+            const description = passed
+              ? "CI and test jobs completed successfully"
+              : "CI or test job failed; merge must remain blocked";
+            for (const statusContext of ["CI", "test"]) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: process.env.TARGET_SHA,
+                state,
+                context: statusContext,
+                description
+              });
+            }
