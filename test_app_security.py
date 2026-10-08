@@ -44,6 +44,19 @@ class AppSecurityTests(unittest.TestCase):
         self.assertEqual(status, "400 Bad Request")
         self.assertIn(b"Entrada inv\xc3\xa1lida", body)
 
+
+    def test_local_health_probe_is_not_throttled(self):
+        from app import SECURITY
+        old_limit = SECURITY.limit
+        try:
+            SECURITY.limit = 1
+            for _ in range(5):
+                status, _, _ = self.request("/api/health", remote="127.0.0.1")
+                self.assertEqual(status, "200 OK")
+        finally:
+            SECURITY.limit = old_limit
+            SECURITY._buckets.clear()
+
     def test_rate_limit_is_per_client(self):
         from app import SECURITY
         old_limit = SECURITY.limit

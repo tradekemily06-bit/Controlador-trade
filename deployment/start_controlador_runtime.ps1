@@ -110,12 +110,26 @@ function Test-ControllerHealth {
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 3 -ErrorAction Stop
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { return $false }
+
         $payload = $response.Content | ConvertFrom-Json
+
+        # Contrato canonico atual do /api/health.
         if ($payload.ok -ne $true) { return $false }
-        if (-not $payload.PSObject.Properties.Name.Contains("execution")) { return $false }
-        if (-not $payload.PSObject.Properties.Name.Contains("real_runtime")) { return $false }
-        if ($payload.execution.allowed -eq $true) { return $false }
-        if ($payload.execution.real -ne "DISABLED") { return $false }
+        if ($payload.execution_allowed -ne $false) { return $false }
+        if ($payload.real -ne "DESABILITADO") { return $false }
+
+        # Estado operacional detalhado.
+        $op = $payload.operational_observability.execution
+        if ($null -eq $op) { return $false }
+        if ($op.allowed -ne $false) { return $false }
+        if ($op.real -ne "DISABLED") { return $false }
+
+        # Camada independente de REAL.
+        $realRuntime = $payload.real_runtime
+        if ($null -eq $realRuntime) { return $false }
+        if ($realRuntime.real_execution_allowed -ne $false) { return $false }
+        if ($realRuntime.explicitly_enabled -ne $false) { return $false }
+
         return $true
     } catch {
         return $false
