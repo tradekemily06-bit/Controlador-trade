@@ -10,6 +10,7 @@ from core.p112_real_execution_contract import RealExecutionAuthorization
 from core.p114_real_safety_gate import RealSafetyGate
 from core.p117_real_admission import RealAdmissionBoundary
 from core.real_manual_confirmation import RealManualConfirmationGate
+from core.real_user_authorization import RealUserAuthorizationStore
 from execution.adapter_gateway import BrokerAdapterGateway
 from execution.broker_registry import BrokerRegistry
 from execution.execution_ledger import ExecutionLedger
@@ -39,6 +40,7 @@ class RealRuntimeController:
             self.runtime.execution_ledger,
             self.runtime.execution_lifecycle,
         )
+        self.user_authorization = RealUserAuthorizationStore(self.root / "ecosystem-state.sqlite")
         self.confirmation = RealManualConfirmationGate(
             ttl_seconds=self._env_int("CONTROLADOR_REAL_CONFIRMATION_TTL", 60, 1, 300)
         )
@@ -61,10 +63,11 @@ class RealRuntimeController:
         return parsed
 
     def _authorization(self) -> RealExecutionAuthorization:
-        authorization_id = os.environ.get("CONTROLADOR_REAL_AUTHORIZATION_ID", "").strip()
-        audit_id = os.environ.get("CONTROLADOR_REAL_AUDIT_ID", "").strip()
-        explicitly_enabled = self._env_bool("CONTROLADOR_REAL_EXPLICITLY_ENABLED") and bool(authorization_id)
-        real_execution_allowed = self._env_bool("CONTROLADOR_REAL_EXECUTION_ALLOWED") and bool(audit_id)
+        stored = self.user_authorization.load()
+        authorization_id = stored.authorization_id
+        audit_id = stored.audit_id
+        explicitly_enabled = stored.enabled
+        real_execution_allowed = stored.enabled
         return RealExecutionAuthorization(
             authorization_id=authorization_id or "real-disabled",
             audit_id=audit_id or "real-disabled",
@@ -145,7 +148,20 @@ class RealRuntimeController:
             "confirmation_ttl_seconds": int(self.confirmation._ttl.total_seconds()),
             "pending_confirmations": len(self.confirmation._pending),
             "real_dispatch": "MANUAL_CONFIRMATION_REQUIRED",
+            "user_authorization_enabled": self.user_authorization.load().enabled,
+            "authorization_source": self.user_authorization.load().source,
         }
+
+    def enable_from_ecosystem(self) -> dict[str, Any]:
+        """Persist the user's explicit REAL activation inside the ecosystem."""
+        self.user_authorization.enable()
+        return self.status()
+
+    def disable_from_ecosystem(self) -> dict[str, Any]:
+        """Persist the user's REAL deactivation inside the ecosystem."""
+        self.user_authorization.disable()
+        self.confirmation._pending.clear()
+        return self.status()
 
     @staticmethod
     def _request(
