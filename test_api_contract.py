@@ -180,3 +180,17 @@ class ApiContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_mt5_runtime_analysis_maps_mt5_read_failures_to_safe_503(self):
+        from execution.icmarkets_mt5_market_data import MT5MarketDataError
+
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=MT5MarketDataError("dados indisponíveis")):
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["execution_allowed"], False)
+        self.assertEqual(payload["detail"], "dados indisponíveis")
