@@ -42,3 +42,13 @@ def test_watermark_stays_subtle_and_does_not_cover_mobile_content():
     assert "watermark-mark" not in HTML
     assert "pointer-events:none" in HTML
     assert "opacity:.025" in HTML
+
+
+def test_workspace_view_and_market_controls_sync_through_runtime():
+    assert 'href="#grafico">Gráfico</a>' in HTML
+    assert "function applyWorkspacePreferences(p)" in HTML
+    assert "function persistWorkspacePreferences()" in HTML
+    assert "function persistDefaultView()" in HTML
+    assert "$('refreshChart').onclick=refreshMarketChart;" in HTML
+    assert "window.addEventListener('hashchange'" in HTML
+    assert "default_view:view" in HTML
