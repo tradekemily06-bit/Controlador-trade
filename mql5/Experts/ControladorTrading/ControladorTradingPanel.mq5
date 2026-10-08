@@ -186,7 +186,7 @@ bool Http(string method,string path,string body,string &response,int &code){
    if(body!=""){
       string h="Content-Type: application/json\r\n";
       StringToCharArray(body,data,0,StringLen(body),CP_UTF8);
-      code=WebRequest(method,InpRuntimeUrl+path,h,5000,data,ArraySize(data)-1,result,headers);
+      code=WebRequest(method,InpRuntimeUrl+path,h,5000,data,result,headers);
    }else{
       char empty[];
       code=WebRequest(method,InpRuntimeUrl+path,"","",5000,empty,0,result,headers);
