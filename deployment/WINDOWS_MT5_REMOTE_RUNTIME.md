@@ -41,7 +41,7 @@ Os launchers de MT5 e Controlador atuam como supervisores do processo, além do 
 
 O Agendador de Tarefas também recebe uma política de reinício para falha da própria tarefa. Isso cria duas camadas complementares: recuperação do processo pelo supervisor e recuperação do host da tarefa pelo Windows.
 
-A supervisão não autoriza execução. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
+A supervisão não autoriza execução. No supervisor do MT5, o health contínuo verifica conexão real do terminal e conta DEMO; disponibilidade de cotação/símbolo é tratada separadamente como condição de mercado/dados. Assim, fechamento de mercado ou ausência temporária de tick não deve ser confundido com terminal morto nem provocar reinício desnecessário do MT5. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
 
 Cada supervisor grava um estado pequeno e não secreto em `CONTROLADOR_RUNTIME_DIR`:
 - `controlador-supervisor-status.json`
