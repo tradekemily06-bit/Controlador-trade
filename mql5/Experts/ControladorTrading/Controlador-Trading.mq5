@@ -6,7 +6,7 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 610;
+input int    InpPanelHeight = 460;
 
 string P="CTP_";
 string last_cycle_id="";
