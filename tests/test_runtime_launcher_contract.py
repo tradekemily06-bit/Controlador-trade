@@ -67,3 +67,25 @@ def test_controller_health_gate_uses_current_safe_health_contract():
         assert required in text
     assert '$payload.execution.allowed' not in text
     assert '$payload.execution.real' not in text
+
+
+
+def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    for required in (
+        "$env:CONTROLADOR_BIND_HOST = '127.0.0.1'",
+        "$env:PORT = '8000'",
+        "$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'",
+        "$env:CONTROLADOR_RUNTIME_DIR = $RuntimeDir",
+        "$env:CONTROLADOR_SECURITY_AUDIT_DB = Join-Path $RuntimeDir 'security-audit.sqlite'",
+        "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'",
+        "$env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'",
+        "$env:CONTROLADOR_REAL_EXPLICITLY_ENABLED = 'false'",
+        "$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'",
+        "$env:CONTROLADOR_REAL_AUDIT_VERIFIED = 'false'",
+        "$env:CONTROLADOR_REAL_RISK_APPROVED = 'false'",
+        "$env:CONTROLADOR_REAL_AUTHORIZATION_ID = ''",
+        "$env:CONTROLADOR_REAL_AUDIT_ID = ''",
+        "$env:CONTROLADOR_REAL_ADMISSION_ID = ''",
+    ):
+        assert required in text

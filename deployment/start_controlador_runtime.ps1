@@ -23,6 +23,27 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
 }
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) { $RuntimeDir = Join-Path $ProjectRoot '.runtime' }
+$RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
+
+# Pin the child app to the validated local DEMO runtime. Do not inherit stale
+# machine-level values that could point state elsewhere, expose a public bind,
+# or enable REAL through an old environment setting.
+$env:CONTROLADOR_BIND_HOST = '127.0.0.1'
+$env:PORT = '8000'
+$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
+$env:CONTROLADOR_RUNTIME_DIR = $RuntimeDir
+$env:CONTROLADOR_SECURITY_AUDIT_DB = Join-Path $RuntimeDir 'security-audit.sqlite'
+$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
+$env:CONTROLADOR_LOCAL_MUTATIONS_ALLOWED = 'true'
+$env:CONTROLADOR_LOCAL_MUTATION_HOSTS = 'localhost,127.0.0.1,[::1]'
+$env:CONTROLADOR_TRUSTED_IDENTITY_HEADER = 'Cf-Access-Authenticated-User-Email'
+$env:CONTROLADOR_REAL_EXPLICITLY_ENABLED = 'false'
+$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'
+$env:CONTROLADOR_REAL_AUDIT_VERIFIED = 'false'
+$env:CONTROLADOR_REAL_RISK_APPROVED = 'false'
+$env:CONTROLADOR_REAL_AUTHORIZATION_ID = ''
+$env:CONTROLADOR_REAL_AUDIT_ID = ''
+$env:CONTROLADOR_REAL_ADMISSION_ID = ''
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $logPath = Join-Path $RuntimeDir 'controlador-startup.log'
