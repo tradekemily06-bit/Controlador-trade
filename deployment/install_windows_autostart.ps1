@@ -45,7 +45,7 @@ $controllerArguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $controlle
 
 $mt5Action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $mt5Arguments
 $controllerAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $controllerArguments
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 
 Register-ScheduledTask -TaskName "$TaskPrefix-MT5" -Action $mt5Action -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o MetaTrader 5 usado pelo Controlador Trading.' -Force | Out-Null
 Register-ScheduledTask -TaskName "$TaskPrefix-Controlador" -Action $controllerAction -Trigger $trigger -Principal $principalTask -Settings $settings -Description 'Supervisiona o Controlador Trading e aguarda o MT5 DEMO.' -Force | Out-Null
