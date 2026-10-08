@@ -35,9 +35,23 @@ try {
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:8000/api/health' -TimeoutSec 3 -ErrorAction Stop
         $payload = $response.Content | ConvertFrom-Json
-        $health = $response.StatusCode -ge 200 -and $response.StatusCode -lt 300 -and $payload.ok -eq $true -and $payload.execution.allowed -ne $true -and $payload.execution.real -eq 'DISABLED'
-        Add-Check 'controller-health-safe' $health "HTTP=$($response.StatusCode); execution.allowed=$($payload.execution.allowed); execution.real=$($payload.execution.real)"
-    } catch { Add-Check 'controller-health-safe' $false 'http://127.0.0.1:8000/api/health não respondeu com estado seguro.' }
+        $op = $payload.operational_observability.execution
+        $realRuntime = $payload.real_runtime
+        $health = (
+            $response.StatusCode -ge 200 -and
+            $response.StatusCode -lt 300 -and
+            $payload.ok -eq $true -and
+            $payload.execution_allowed -eq $false -and
+            $payload.real -eq 'DESABILITADO' -and
+            $null -ne $op -and
+            $op.allowed -eq $false -and
+            $op.real -eq 'DISABLED' -and
+            $null -ne $realRuntime -and
+            $realRuntime.real_execution_allowed -eq $false -and
+            $realRuntime.explicitly_enabled -eq $false
+        )
+        Add-Check 'controller-health-safe' $health "HTTP=$($response.StatusCode); execution_allowed=$($payload.execution_allowed); real=$($payload.real); operational.allowed=$($op.allowed); operational.real=$($op.real); real_runtime.allowed=$($realRuntime.real_execution_allowed); real_runtime.explicitly_enabled=$($realRuntime.explicitly_enabled)"
+    } catch { Add-Check 'controller-health-safe' $false 'http://127.0.0.1:8000/api/health não respondeu com contrato canônico seguro.' }
 
     $mt5Healthy = $false
     try {

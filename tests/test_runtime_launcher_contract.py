@@ -37,10 +37,17 @@ def test_read_only_windows_validator_covers_deployment_surface():
         "scheduled-task:$task",
         "mql5-source",
         "mql5-ex5-current",
-        "execution.real",
+        "$payload.execution_allowed -eq $false",
+        "$payload.real -eq 'DESABILITADO'",
+        "$op.allowed -eq $false",
+        "$op.real -eq 'DISABLED'",
+        "$realRuntime.real_execution_allowed -eq $false",
+        "$realRuntime.explicitly_enabled -eq $false",
         "exit 2",
     ):
         assert required in text
+    assert "$payload.execution.allowed" not in text
+    assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
 
