@@ -171,6 +171,7 @@ void Panel(){
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    RefreshPanelLayout();
+   RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
@@ -555,6 +556,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){ RefreshPanelToggle(); return; }
    RefreshPanelLayout();
+   RefreshPanelToggle();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
