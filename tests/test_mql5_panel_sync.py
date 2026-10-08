@@ -119,3 +119,17 @@ def test_mql5_panel_off_does_not_render_on_init():
     assert "RenderView();" in init
     assert "}else{" in init
     assert "RefreshPanelToggle();" in init
+
+
+def test_mql5_watermark_is_centered_subtle_and_not_diagonal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshWatermarkControl()", 1)[0]
+    assert 'ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,w/2);' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,h/2);' in watermark
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");' in watermark
+    assert 'ObjectSetString(0,name,OBJPROP_FONT,"Arial");' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_BACK,true);' in watermark
+    assert 'OBJPROP_ANGLE' not in watermark
+    assert 'ObjectDelete(0,mark);' in watermark
