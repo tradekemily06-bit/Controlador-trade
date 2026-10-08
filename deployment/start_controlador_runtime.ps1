@@ -57,6 +57,24 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
 
+function Sync-Mt5Panel {
+    $syncScript = Join-Path $ProjectRoot 'deployment\sync_mql5_panel.ps1'
+    if (-not (Test-Path -LiteralPath $syncScript -PathType Leaf)) {
+        Write-StartupLog 'Sincronizador MQL5 não encontrado; seguindo sem alterar o painel.'
+        return
+    }
+    try {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe
+        if ($LASTEXITCODE -eq 0) {
+            Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
+        } else {
+            Write-StartupLog "Sincronização MQL5 terminou com código $LASTEXITCODE; runtime seguirá protegido."
+        }
+    } catch {
+        Write-StartupLog "Falha na sincronização MQL5: $($_.Exception.Message). Runtime seguirá protegido."
+    }
+}
+
 function Test-Mt5Demo {
     param([int]$WaitSeconds)
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
@@ -78,6 +96,8 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $demoReady = Test-Mt5Demo -WaitSeconds $Mt5WaitSeconds
 
     if ($demoReady) {
+        Write-StartupLog 'MT5 DEMO confirmado; sincronizando ponte MQL5 antes do Controlador.'
+        Sync-Mt5Panel
         Write-StartupLog 'MT5 DEMO confirmado; iniciando Controlador.'
     } else {
         Write-StartupLog 'MT5 DEMO não confirmado; Controlador será iniciado, mas execução deve permanecer bloqueada pelo safety gate.'
