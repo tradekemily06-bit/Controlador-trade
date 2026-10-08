@@ -11,6 +11,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
+    $resolvedPython = Get-Command $PythonExe -ErrorAction SilentlyContinue
+    if ($null -eq $resolvedPython -or [string]::IsNullOrWhiteSpace($resolvedPython.Source)) {
+        throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."
+    }
+    $PythonExe = $resolvedPython.Source
+}
+if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
+    throw "Python não encontrado: $PythonExe"
+}
+
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
 }
@@ -32,6 +43,7 @@ foreach ($path in @($mt5Script, $controllerScript, $syncScript)) {
 }
 
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
+Write-Host "Python do runtime: $PythonExe"
 
 if ($AutostartMode -eq 'AtStartupS4U') {
     $principalTask = New-ScheduledTaskPrincipal -UserId $currentIdentity.Name -LogonType S4U -RunLevel Highest
