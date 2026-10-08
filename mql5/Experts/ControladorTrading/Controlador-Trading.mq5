@@ -6,7 +6,7 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 320;
-input int    InpPanelHeight = 420;
+input int    InpPanelHeight = 460;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -32,10 +32,10 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(300,(int)MathRound(cw*0.25)));
-   panel_width=MathMin(panel_width,MathMax(300,cw-40));
-   panel_height=MathMin(InpPanelHeight,MathMax(360,(int)MathRound(ch*0.55)));
-   panel_x=12;
+   panel_width=MathMin(InpPanelWidth,MathMax(260,(int)MathRound(cw*0.28)));
+   panel_width=MathMin(panel_width,MathMax(260,cw-24));
+   panel_height=MathMin(InpPanelHeight,MathMax(360,(int)MathRound(ch*0.62)));
+   panel_x=MathMax(12,cw-panel_width-12);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -138,7 +138,9 @@ void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,12);
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int toggle_x=panel_visible?panel_x:MathMax(12,cw-panel_width-12);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
    ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
