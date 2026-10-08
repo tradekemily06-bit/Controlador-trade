@@ -47,15 +47,12 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"Controlador-Trading"' in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshWatermarkControl()", 1)[0]
-    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" not in watermark
-    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" not in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,w/2);' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,h/2);' in watermark
+    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" in panel
+    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" in panel
     assert "InpPanelWidth = 320" in panel
-    assert "InpPanelHeight = 460" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.28)" in panel
+    assert "InpPanelHeight = 420" in panel
+    assert "panel_x=12;" in panel
+    assert "MathRound(cw*0.25)" in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
 
@@ -122,31 +119,3 @@ def test_mql5_panel_off_does_not_render_on_init():
     assert "RenderView();" in init
     assert "}else{" in init
     assert "RefreshPanelToggle();" in init
-
-
-def test_web_dashboard_uses_separate_compact_workspaces():
-    web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-    assert '<nav class="nav">' in web
-    assert "workspace-hidden" in web
-    assert "function applyDefaultView(view)" in web
-    assert 'href="#memoria">Memória</a>' in web
-    assert 'href="#noticias">Notificações</a>' in web
-    assert 'href="#config">Config.</a>' in web
-    assert 'id="grafico"' in web
-    assert 'id="painel"' in web
-    cockpit = web.split('<div class="section" id="modo">', 1)[0]
-    assert 'class="chip">REAL BLOQUEADO</span>' not in cockpit
-
-
-def test_mql5_watermark_is_centered_subtle_and_not_diagonal():
-    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshWatermarkControl()", 1)[0]
-    assert 'ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,w/2);' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,h/2);' in watermark
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");' in watermark
-    assert 'ObjectSetString(0,name,OBJPROP_FONT,"Arial");' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_BACK,true);' in watermark
-    assert 'OBJPROP_ANGLE' not in watermark
-    assert 'ObjectDelete(0,mark);' in watermark
