@@ -41,3 +41,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"Controlador-Trading"' in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
+
+
+def test_mql5_sync_script_has_single_retry_helper_definition():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert text.count("function Copy-WithRetry") == 1
+    assert text.count("function Restore-File") == 1
