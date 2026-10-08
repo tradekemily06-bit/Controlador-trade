@@ -105,9 +105,16 @@ $log = [System.IO.Path]::ChangeExtension($destination, '.log')
 if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 $compileStartedAt = Get-Date
 $explicitLog = $log
+$binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash } else { '' }
 
 & $MetaEditorPath "/compile:$destination" "/log:$explicitLog" | Out-Null
+$metaEditorExitCode = $LASTEXITCODE
 Start-Sleep -Milliseconds 500
+if ($metaEditorExitCode -ne 0) {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    throw "MetaEditor terminou com código de saída $metaEditorExitCode. Log: $log"
+}
 
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
@@ -131,7 +138,8 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
 }
 
 $binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
-if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
+$binaryHashAfter = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2) -or ($binaryHashBefore -and $binaryHashAfter -eq $binaryHashBefore)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     throw "O EX5 não foi atualizado pela compilação: $binary"
