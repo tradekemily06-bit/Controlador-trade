@@ -77,16 +77,25 @@ if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
 
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $destinationHash = if (Test-Path -LiteralPath $destination -PathType Leaf) { (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash } else { '' }
+$binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
+$sourceWriteTime = (Get-Item -LiteralPath $source).LastWriteTime
+$binaryUsable = $false
+if (Test-Path -LiteralPath $binary -PathType Leaf) {
+    $binaryUsable = (Get-Item -LiteralPath $binary).LastWriteTime -ge $sourceWriteTime
+}
 
-if (-not $Force -and $sourceHash -eq $destinationHash) {
-    Write-Host "MQL5 já sincronizado: $destination"
+if (-not $Force -and $sourceHash -eq $destinationHash -and $binaryUsable) {
+    Write-Host "MQL5 + EX5 já sincronizados: $destination"
     exit 0
+}
+
+if (-not $Force -and $sourceHash -eq $destinationHash -and -not $binaryUsable) {
+    Write-Host "Fonte já sincronizada, mas EX5 ausente/desatualizado; recompilando."
 }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
-$binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
 if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
 if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
 
