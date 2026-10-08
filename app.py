@@ -213,6 +213,16 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, SERVICE.saas_status(), request_id, environ)
         if path == "/api/runtime/real/status" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, REAL_RUNTIME.status(), request_id, environ)
+        if path == "/api/runtime/real/authorize" and method == "POST":
+            data = _read_json(environ)
+            if str(data.get("confirmation", "")).strip() != "ATIVAR REAL":
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "confirmação explícita 'ATIVAR REAL' é obrigatória", "request_id": request_id}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, REAL_RUNTIME.enable_from_ecosystem(), request_id, environ)
+        if path == "/api/runtime/real/deauthorize" and method == "POST":
+            data = _read_json(environ)
+            if str(data.get("confirmation", "")).strip() != "DESATIVAR REAL":
+                return _json_response(start_response, HTTPStatus.BAD_REQUEST, {"error": "confirmação explícita 'DESATIVAR REAL' é obrigatória", "request_id": request_id}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, REAL_RUNTIME.disable_from_ecosystem(), request_id, environ)
         if path == "/api/runtime/real/prepare" and method == "POST":
             data = _read_json(environ)
             prepared = REAL_RUNTIME.prepare(
