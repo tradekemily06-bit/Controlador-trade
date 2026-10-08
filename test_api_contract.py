@@ -230,7 +230,7 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
         market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=candles),
     )
     monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: fake)
-    status, _, payload = _call("/api/runtime/analysis", method="POST", body={"symbol": "EURUSD", "timeframe": "5m", "limit": 120, "confirmed": True, "filters_ok": True})
+    status, _, payload = ApiContractTests().request("/api/runtime/analysis", method="POST", payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 120, "confirmed": True, "filters_ok": True})
     assert status.startswith("200")
     assert payload["market_data"]["candles"] == 130
     assert len(payload["market_data"]["ohlcv"]) == 120
