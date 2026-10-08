@@ -165,25 +165,28 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         } |
         Select-Object -First 1
 
+    $process = $null
     if ($null -ne $existingController) {
         Write-StartupLog "Instância existente detectada (PID $($existingController.ProcessId)); verificando /api/health antes de declarar HEALTHY."
         if (Test-ControllerHealth) {
-            Write-SupervisorStatus 'HEALTHY' 'Instância existente detectada e /api/health respondeu 2xx.'
-            Start-Sleep -Seconds 10
-            continue
+            $process = Get-Process -Id $existingController.ProcessId -ErrorAction Stop
+            Write-SupervisorStatus 'HEALTHY' 'Instância existente detectada e /api/health respondeu 2xx; entrando no monitoramento contínuo.'
+        } else {
+            Write-StartupLog 'Instância existente não respondeu /api/health; encerrando-a para evitar estado falso/duplicado.'
+            & taskkill.exe /PID $existingController.ProcessId /T /F 2>$null | Out-Null
+            Start-Sleep -Seconds 2
         }
-        Write-StartupLog 'Instância existente não respondeu /api/health; encerrando-a para evitar estado falso/duplicado.'
-        & taskkill.exe /PID $existingController.ProcessId /T /F 2>$null | Out-Null
-        Start-Sleep -Seconds 2
     }
 
-    Write-StartupLog 'Iniciando app.py sob supervisão.'
-    if (Test-Path -LiteralPath $appStdoutPath) { Remove-Item -LiteralPath $appStdoutPath -Force -ErrorAction SilentlyContinue }
-    if (Test-Path -LiteralPath $appStderrPath) { Remove-Item -LiteralPath $appStderrPath -Force -ErrorAction SilentlyContinue }
+    if ($null -eq $process) {
+        Write-StartupLog 'Iniciando app.py sob supervisão.'
+        if (Test-Path -LiteralPath $appStdoutPath) { Remove-Item -LiteralPath $appStdoutPath -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $appStderrPath) { Remove-Item -LiteralPath $appStderrPath -Force -ErrorAction SilentlyContinue }
 
-    $appPath = Join-Path $ProjectRoot 'app.py'
-    $process = Start-Process -FilePath $PythonExe -ArgumentList @('-u', $appPath) -WorkingDirectory $ProjectRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $appStdoutPath -RedirectStandardError $appStderrPath
-    Write-SupervisorStatus 'STARTING' "app.py iniciado; aguardando /api/health (PID $($process.Id))."
+        $appPath = Join-Path $ProjectRoot 'app.py'
+        $process = Start-Process -FilePath $PythonExe -ArgumentList @('-u', $appPath) -WorkingDirectory $ProjectRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $appStdoutPath -RedirectStandardError $appStderrPath
+        Write-SupervisorStatus 'STARTING' "app.py iniciado; aguardando /api/health (PID $($process.Id))."
+    }
 
     $healthy = Wait-ControllerHealth -Process $process -WaitSeconds $HealthWaitSeconds
     if ($healthy) {
