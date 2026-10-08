@@ -19,6 +19,10 @@ def test_mql5_sync_script_exists_and_is_self_contained():
         '"/log:$explicitLog"',
         "MetaEditor terminou sem gerar o EX5 esperado",
         "O EX5 não foi atualizado pela compilação",
+        "MetaEditor terminou com código de saída",
+        "Log de compilação sem contagem inequívoca",
+        "erros?",
+        "avisos?",
         "EX5 ausente/desatualizado; recompilando.",
     ):
         assert required in text
