@@ -307,6 +307,21 @@ class ConfiguredEcosystemService(EcosystemService):
         self._record_analysis(orchestration.analysis)
         return orchestration
 
+    def get_mt5_market_candles(self, *, symbol: str, timeframe: str = "5m", limit: int = 80) -> tuple[Any, ...]:
+        """Read validated MT5 DEMO candles through the existing market-data boundary."""
+        if self.execution_provider != "ic_markets_mt5_demo":
+            raise RuntimeError(
+                "gráfico MT5 exige CONTROLADOR_EXECUTION_PROVIDER=ic_markets_mt5_demo; "
+                f"provider atual: {self.execution_provider!r}"
+            )
+        if not isinstance(symbol, str) or not symbol.strip():
+            raise ValueError("símbolo inválido")
+        if not isinstance(timeframe, str) or not timeframe.strip():
+            raise ValueError("timeframe inválido")
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 200:
+            raise ValueError("limit deve estar entre 1 e 200")
+        return self.mt5_market_adapter.fetch(MarketDataRequest(symbol=symbol.strip(), timeframe=timeframe.strip(), limit=limit))
+
     def validate_mt5_cycle_identity(self, *, cycle_id: str, external_id: str) -> None:
         """Validate the cycle/external binding before the MT5 close side effect."""
         if self.trading_runtime is None or self.operational_runtime is None:
