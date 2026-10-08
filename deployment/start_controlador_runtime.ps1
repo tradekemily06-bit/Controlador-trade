@@ -6,7 +6,8 @@ param(
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6,
     [int]$HealthWaitSeconds = 60,
-    [int]$HealthPollSeconds = 3
+    [int]$HealthPollSeconds = 3,
+    [int]$HealthFailureThreshold = 3
 )
 
 $ErrorActionPreference = 'Stop'
@@ -184,7 +185,21 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     if ($healthy) {
         Write-StartupLog "Controlador saudável: /api/health respondeu 2xx (PID $($process.Id))."
         Write-SupervisorStatus 'HEALTHY' 'app.py ativo e /api/health respondeu 2xx.'
-        Wait-Process -Id $process.Id
+        $healthFailures = 0
+        while (-not $process.HasExited) {
+            if (Test-ControllerHealth) {
+                $healthFailures = 0
+            } else {
+                $healthFailures++
+                Write-StartupLog "Health do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
+                if ($healthFailures -ge $HealthFailureThreshold) {
+                    Write-StartupLog 'Health do Controlador permaneceu indisponível; iniciando recuperação supervisionada.'
+                    Stop-ControllerProcess -Process $process
+                    break
+                }
+            }
+            Start-Sleep -Seconds $HealthPollSeconds
+        }
     } else {
         if (-not $process.HasExited) { Stop-ControllerProcess -Process $process }
         if (Test-Path -LiteralPath $appStdoutPath) { Get-Content -LiteralPath $appStdoutPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
