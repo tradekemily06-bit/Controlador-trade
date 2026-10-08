@@ -47,7 +47,7 @@ function Restore-File([string]$Backup, [string]$Target) {
     }
 }
 
-$source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\ControladorTradingPanel.mq5'
+$source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
     throw "Fonte MQL5 não encontrada: $source"
 }
@@ -79,7 +79,7 @@ if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
 
 $dataPath = [string]$paths.data_path
 $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
-$destination = Join-Path $destinationDir 'ControladorTradingPanel.mq5'
+$destination = Join-Path $destinationDir 'Controlador-Trading.mq5'
 New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($MetaEditorPath)) {
