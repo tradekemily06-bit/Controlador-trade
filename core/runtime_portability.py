@@ -53,10 +53,18 @@ def _safe_member(name:str)->str:
 
 def verify_backup(backup_file:str|Path)->dict[str,Any]:
     with zipfile.ZipFile(backup_file,"r") as archive:
+        names=archive.namelist()
+        if names.count("manifest.json") != 1:
+            raise ValueError("backup manifest is missing or duplicated")
+        member_names=[name for name in names if name!="manifest.json"]
+        if len(member_names) != len(set(member_names)):
+            raise ValueError("backup contains duplicate members")
         try:
             manifest=json.loads(archive.read("manifest.json"))
         except (KeyError, json.JSONDecodeError) as exc:
             raise ValueError("backup manifest is invalid") from exc
+        if not isinstance(manifest,dict):
+            raise ValueError("backup manifest is invalid")
         if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION:
             raise ValueError("unsupported backup format or version")
         entries=manifest.get("files")
@@ -66,12 +74,23 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         for item in entries:
             if not isinstance(item,dict) or set(item) != {"path","sha256","size"}:
                 raise ValueError("backup manifest entry is invalid")
+            if not isinstance(item["path"],str):
+                raise ValueError("backup manifest entry is invalid")
             name=_safe_member(item["path"])
-            digest=item["sha256"]; size=item["size"]
-            if name in expected or not isinstance(digest,str) or len(digest)!=64 or not isinstance(size,int) or size < 0:
+            digest=item["sha256"]
+            size=item["size"]
+            if (
+                name in expected
+                or not isinstance(digest,str)
+                or len(digest)!=64
+                or any(char not in "0123456789abcdefABCDEF" for char in digest)
+                or not isinstance(size,int)
+                or isinstance(size,bool)
+                or size < 0
+            ):
                 raise ValueError("backup manifest entry is invalid")
             expected[name]=(digest,size)
-        members={name for name in archive.namelist() if name!="manifest.json"}
+        members=set(member_names)
         if members != set(expected):
             raise ValueError("backup contents do not match manifest")
         for member,(digest,size) in expected.items():
@@ -79,7 +98,6 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
             if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
                 raise ValueError(f"backup integrity failure: {member}")
     return manifest
-
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
     manifest=verify_backup(backup_file); runtime=Path(runtime_dir).resolve(); runtime.mkdir(parents=True,exist_ok=True)
     entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
