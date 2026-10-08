@@ -33,3 +33,18 @@ def test_mobile_ui_keeps_real_execution_blocked():
     assert "REAL BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
+
+
+def test_workspace_navigation_is_progressively_disclosed():
+    assert 'data-view="analise"' in HTML
+    assert 'data-view="notificacoes"' in HTML
+    assert 'data-view="config"' in HTML
+    assert 'id="notificationBtn"' in HTML
+    assert 'id="settingsBtn"' in HTML
+    assert 'class="view-hidden"' not in HTML
+
+
+def test_market_chart_uses_runtime_candles():
+    assert 'id="marketChart"' in HTML
+    assert '/api/market/candles' in HTML
+    assert 'IC Markets MT5 DEMO' in HTML
