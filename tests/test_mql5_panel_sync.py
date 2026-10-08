@@ -47,12 +47,13 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"Controlador-Trading"' in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" in panel
-    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" in panel
-    assert "InpPanelWidth = 320" in panel
-    assert "InpPanelHeight = 420" in panel
-    assert "panel_x=12;" in panel
-    assert "MathRound(cw*0.25)" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
+    assert "InpPanelWidth = 280" in panel
+    assert "InpPanelHeight = 380" in panel
+    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
+    assert "MathRound(cw*0.22)" in panel
+    assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
 
@@ -119,3 +120,25 @@ def test_mql5_panel_off_does_not_render_on_init():
     assert "RenderView();" in init
     assert "}else{" in init
     assert "RefreshPanelToggle();" in init
+
+
+def test_web_dashboard_uses_compact_separate_workspaces_without_runtime_view_persistence():
+    web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    assert '<nav class="nav">' in web
+    assert "workspace-hidden" in web
+    assert "function applyDefaultView(view)" in web
+    assert 'href="#memoria">Memória</a>' in web
+    assert 'href="#noticias">Notificações</a>' in web
+    assert 'href="#config">Config.</a>' in web
+    assert 'id="grafico"' in web
+    assert 'id="painel"' in web
+    assert "persistDefaultView" not in web
+    assert "default_view" not in web
+
+
+def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
+    web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    assert '<div class="watermark-brand">' in web
+    assert 'class="watermark-mark"' in web
+    assert "transform:rotate(-18deg)" not in web
+    assert "opacity:.035" in web
