@@ -212,6 +212,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             }
             Start-Sleep -Seconds $HealthPollSeconds
         }
+        $appExitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
     } else {
         if (-not $process.HasExited) { Stop-ControllerProcess -Process $process }
         if (Test-Path -LiteralPath $appStdoutPath) { Get-Content -LiteralPath $appStdoutPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
