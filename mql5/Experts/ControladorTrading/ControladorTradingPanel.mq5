@@ -343,6 +343,10 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshPreferences();
    }
+   if(active_view!="CONFIG"){
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
+   }
    RefreshWatermarkControl();
 }
 void RefreshHealth(){
@@ -488,6 +492,7 @@ void OnTimer(){
    RefreshHealth();
    if(active_view=="COCKPIT") RefreshSecondary();
    else if(active_view=="CONFIG") RefreshPreferences();
+   else if(active_view=="NOTIF") RefreshNotifications();
    ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
