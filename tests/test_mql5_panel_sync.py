@@ -32,3 +32,10 @@ def test_controller_startup_calls_panel_sync():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
     assert "Sync-Mt5Panel" in startup
     assert "sync_mql5_panel.ps1" in startup
+
+
+def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5").read_text(encoding="utf-8")
+    assert '"Controlador-Trading"' in panel
+    assert "ToggleWatermark" in panel
+    assert "GlobalVariableSet(WatermarkKey()" in panel
