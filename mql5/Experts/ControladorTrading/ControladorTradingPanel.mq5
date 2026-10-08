@@ -36,6 +36,12 @@ void RefreshPanelLayout(){
    panel_x=MathMax(12,cw-panel_width-12);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
+   string bg=Obj("BG");
+   if(ObjectFind(0,bg)>=0){
+      ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
+      ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
+   }
 }
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
@@ -126,7 +132,7 @@ void Panel(){
    RefreshPanelLayout();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,bg,OBJPROP_XSIZE,InpPanelWidth);
+   ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
    ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'55,65,85');
