@@ -245,7 +245,7 @@ class EcosystemService:
             status_path = runtime_dir / filename
             try:
                 if status_path.is_file():
-                    payload = json.loads(status_path.read_text(encoding="utf-8"))
+                    payload = json.loads(status_path.read_text(encoding="utf-8-sig"))
                     if isinstance(payload, dict):
                         supervision[component] = payload
             except (OSError, ValueError, TypeError):
