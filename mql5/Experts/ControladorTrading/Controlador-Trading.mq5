@@ -6,7 +6,7 @@
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
 input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 460;
+input int    InpPanelHeight = 610;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -162,10 +162,10 @@ void Panel(){
    SetEdit(Obj("TF"),EnumToString((ENUM_TIMEFRAMES)_Period),184,249,195,25);
    SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
 
-   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
-   SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-   SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-   SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,294,172,30);
+   SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,294,177,30);
+   SetButton(Obj("SAVE"),"SALVAR CONFIG",20,330,172,28);
+   SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,330,177,28);
 
    SetLabel(Obj("INFO1"),"Decisao: —",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
