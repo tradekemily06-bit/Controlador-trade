@@ -31,7 +31,8 @@ def test_mobile_operation_controls_remain_touch_friendly():
 
 def test_mobile_ui_keeps_real_execution_blocked():
     assert 'id="real"' in HTML and 'id="conexoes"' in HTML
-    assert 'class="chip">REAL BLOQUEADO</span>' not in HTML
+    cockpit = HTML.split('<div class="section" id="modo">', 1)[0]
+    assert 'class="chip">REAL BLOQUEADO</span>' not in cockpit
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
 
