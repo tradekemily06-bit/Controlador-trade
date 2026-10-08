@@ -49,6 +49,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"WATERMARK_MARK"' in panel
     assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,-18.0)" in panel
     assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,-18.0)" in panel
+    assert "InpPanelWidth = 320" in panel
+    assert "InpPanelHeight = 420" in panel
+    assert "panel_x=12;" in panel
+    assert "MathRound(cw*0.25)" in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
 
