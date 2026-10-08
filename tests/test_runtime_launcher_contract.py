@@ -27,3 +27,19 @@ def test_bootstrap_stops_after_dependency_install_failure():
     assert "Falha ao instalar requirements.txt." in text
     assert "Falha ao instalar requirements-mt5.txt." in text
     assert "MetaTrader5 não pôde ser importado" in text
+
+
+def test_read_only_windows_validator_covers_deployment_surface():
+    text = _read("deployment/validate_windows_runtime.ps1")
+    for required in (
+        "controller-health-safe",
+        "mt5-demo-health",
+        "scheduled-task:$task",
+        "mql5-source",
+        "mql5-ex5-current",
+        "execution.real",
+        "exit 2",
+    ):
+        assert required in text
+    assert "Register-ScheduledTask" not in text
+    assert "Start-Process" not in text
