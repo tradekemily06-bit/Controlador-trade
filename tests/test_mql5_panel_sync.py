@@ -19,6 +19,7 @@ def test_mql5_sync_script_exists_and_is_self_contained():
         '"/log:$explicitLog"',
         "MetaEditor terminou sem gerar o EX5 esperado",
         "O EX5 não foi atualizado pela compilação",
+        "timestamp anterior à compilação",
         "MetaEditor terminou com código de saída",
         "Log de compilação sem contagem inequívoca",
         "erros?",
@@ -76,3 +77,18 @@ def test_controller_supervisor_recovers_unhealthy_existing_process():
     assert "Instância existente não respondeu /api/health" in startup
     assert "taskkill.exe /PID $existingController.ProcessId /T /F" in startup
     assert "RESTART_LIMIT_EXCEEDED" in startup
+
+
+def test_deployment_resolves_python_to_an_absolute_executable():
+    install = (ROOT / "deployment" / "install_windows_autostart.ps1").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "deployment" / "bootstrap_windows_runtime.ps1").read_text(encoding="utf-8")
+    assert "Get-Command $PythonExe" in install
+    assert "Get-Command $PythonExe" in bootstrap
+    assert "Python não foi encontrado no PATH" in install
+    assert "Python não foi encontrado no PATH" in bootstrap
+
+
+def test_mql5_sync_does_not_reject_identical_binary_hash_after_successful_recompile():
+    text = (ROOT / "deployment" / "sync_mql5_panel.ps1").read_text(encoding="utf-8")
+    assert "($binaryHashBefore -and $binaryHashAfter -eq $binaryHashBefore)" not in text
+    assert "timestamp anterior à compilação" in text

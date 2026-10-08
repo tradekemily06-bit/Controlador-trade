@@ -146,10 +146,10 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
 
 $binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
 $binaryHashAfter = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
-if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2) -or ($binaryHashBefore -and $binaryHashAfter -eq $binaryHashBefore)) {
+if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
-    throw "O EX5 não foi atualizado pela compilação: $binary"
+    throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
