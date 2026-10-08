@@ -527,8 +527,12 @@ int OnInit(){
    active_view="COCKPIT";
    LoadWatermark();
    LoadPanelVisibility();
-   if(panel_visible) Panel();
-   RenderView();
+   if(panel_visible){
+      Panel();
+      RenderView();
+   }else{
+      RefreshPanelToggle();
+   }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
    RefreshSecondary();
