@@ -27,6 +27,26 @@ function Restore-File([string]$Backup, [string]$Target) {
     }
 }
 
+function Copy-WithRetry([string]$Source, [string]$Destination, [int]$Attempts = 5) {
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            Copy-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq $Attempts) { throw }
+            Start-Sleep -Milliseconds (250 * $attempt)
+        }
+    }
+}
+
+function Restore-File([string]$Backup, [string]$Target) {
+    if (Test-Path -LiteralPath $Backup -PathType Leaf) {
+        Copy-WithRetry -Source $Backup -Destination $Target
+    } elseif (Test-Path -LiteralPath $Target -PathType Leaf) {
+        Remove-Item -LiteralPath $Target -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\ControladorTradingPanel.mq5'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
     throw "Fonte MQL5 não encontrada: $source"
@@ -87,19 +107,22 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
 $binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
-if (Test-Path -LiteralPath $destination) { Copy-Item -LiteralPath $destination -Destination $backupSource -Force }
-if (Test-Path -LiteralPath $binary) { Copy-Item -LiteralPath $binary -Destination $backupBinary -Force }
+if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
+if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
 
-Copy-Item -LiteralPath $source -Destination $destination -Force
+Copy-WithRetry -Source $source -Destination $destination
 
 $log = [System.IO.Path]::ChangeExtension($destination, '.log')
 if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+$compileStartedAt = Get-Date
+$explicitLog = $log
 
-& $MetaEditorPath "/compile:$destination" /log | Out-Null
+& $MetaEditorPath "/compile:$destination" "/log:$explicitLog" | Out-Null
 Start-Sleep -Milliseconds 500
 
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
-    if (Test-Path -LiteralPath $backupSource) { Copy-Item -LiteralPath $backupSource -Destination $destination -Force }
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
     throw "MetaEditor não produziu log de compilação: $log"
 }
 
@@ -107,9 +130,22 @@ $logText = Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue
 $errors = [regex]::Match($logText, '(?i)(\d+)\s+errors?').Groups[1].Value
 $warnings = [regex]::Match($logText, '(?i)(\d+)\s+warnings?').Groups[1].Value
 if ($errors -ne '0' -or $warnings -ne '0') {
-    if (Test-Path -LiteralPath $backupSource) { Copy-Item -LiteralPath $backupSource -Destination $destination -Force }
-    if (Test-Path -LiteralPath $backupBinary) { Copy-Item -LiteralPath $backupBinary -Destination $binary -Force } elseif (Test-Path -LiteralPath $binary) { Remove-Item -LiteralPath $binary -Force }
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
     throw "Compilação MQL5 rejeitada: errors=$errors warnings=$warnings. Log: $log"
+}
+
+if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    throw "MetaEditor terminou sem gerar o EX5 esperado: $binary"
+}
+
+$binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
+if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    throw "O EX5 não foi atualizado pela compilação: $binary"
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
