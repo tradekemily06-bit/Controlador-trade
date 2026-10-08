@@ -123,8 +123,15 @@ if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
 }
 
 $logText = Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue
-$errors = [regex]::Match($logText, '(?i)(\d+)\s+errors?').Groups[1].Value
-$warnings = [regex]::Match($logText, '(?i)(\d+)\s+warnings?').Groups[1].Value
+$errorMatch = [regex]::Match($logText, '(?i)(\d+)\s+(errors?|erros?)')
+$warningMatch = [regex]::Match($logText, '(?i)(\d+)\s+(warnings?|avisos?)')
+if (-not $errorMatch.Success -or -not $warningMatch.Success) {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    throw "Log de compilação sem contagem inequívoca de erros/avisos: $log"
+}
+$errors = $errorMatch.Groups[1].Value
+$warnings = $warningMatch.Groups[1].Value
 if ($errors -ne '0' -or $warnings -ne '0') {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
