@@ -14,6 +14,7 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 bool watermark_enabled=true;
+bool panel_visible=true;
 int panel_x=0;
 int panel_width=360;
 int panel_height=460;
@@ -22,6 +23,7 @@ double panel_sy=1.0;
 
 string Obj(string suffix){ return P+suffix; }
 string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
+string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
 int SY(int y){ return (int)MathRound(18+y*panel_sy); }
@@ -125,6 +127,36 @@ void LoadWatermark(){
       watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
    RefreshWatermarkControl();
 }
+void RefreshPanelToggle(){
+   string name=Obj("PANEL_TOGGLE");
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_RIGHT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,12);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+}
+void TogglePanel(){
+   panel_visible=!panel_visible;
+   GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
+   if(panel_visible){ Panel(); RenderView(); }
+   else DeletePanel();
+   RefreshPanelToggle();
+   ChartRedraw();
+}
+void LoadPanelVisibility(){
+   if(GlobalVariableCheck(PanelVisibilityKey()))
+      panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
+   RefreshPanelToggle();
+}
 void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
@@ -183,8 +215,9 @@ void DeletePanel(){
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
-      if(StringFind(n,P)==0) ObjectDelete(0,n);
+      if(StringFind(n,P)==0 && n!=Obj("PANEL_TOGGLE")) ObjectDelete(0,n);
    }
+   RefreshPanelToggle();
 }
 string JsonValue(string json,string key){
    string needle="\"" + key + "\":";
@@ -491,9 +524,10 @@ void CloseCycle(){
    }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
 }
 int OnInit(){
-   Panel();
    active_view="COCKPIT";
    LoadWatermark();
+   LoadPanelVisibility();
+   if(panel_visible) Panel();
    RenderView();
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
@@ -506,6 +540,7 @@ void OnDeinit(const int reason){
    DeletePanel();
 }
 void OnTimer(){
+   if(!panel_visible){ RefreshPanelToggle(); return; }
    RefreshPanelLayout();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
@@ -517,6 +552,7 @@ void OnTimer(){
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
+   if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
