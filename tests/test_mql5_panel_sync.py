@@ -47,8 +47,11 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"Controlador-Trading"' in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" in panel
-    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" in panel
+    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshWatermarkControl()", 1)[0]
+    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" not in watermark
+    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" not in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,w/2);' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,h/2);' in watermark
     assert "InpPanelWidth = 320" in panel
     assert "InpPanelHeight = 420" in panel
     assert "panel_x=12;" in panel
