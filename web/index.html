@@ -65,11 +65,15 @@ function applyDefaultView(view){
  const section=document.getElementById(target);if(section)section.scrollIntoView({behavior:'auto',block:'start'});
 }
 async function persistWorkspacePreferences(){
- try{await getJson('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_symbol:$('symbolInput').value.trim()||'EURUSD',default_timeframe:$('tfInput').value})})}
+ const symbol=$('symbolInput').value.trim()||'EURUSD';const timeframe=$('tfInput').value;
+ $('defaultSymbol').value=symbol;$('defaultTf').value=timeframe;
+ try{await getJson('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_symbol:symbol,default_timeframe:timeframe})})}
  catch(e){$('chartSource').textContent='Preferência não sincronizada: '+e.message}
 }
 async function persistDefaultView(){
  const view=(location.hash||'#painel').slice(1)||'painel';
+ const allowed=new Set(['painel','modo','grafico','operacao','analise','laboratorio','memoria','risco','noticias','config','conexoes','real']);
+ if(!allowed.has(view))return;
  try{await getJson('/api/preferences',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({default_view:view})})}
  catch(e){console.warn('Não foi possível sincronizar a tela atual',e)}
 }
