@@ -87,3 +87,20 @@ def test_shared_runtime_uses_persistent_operational_recorder(tmp_path):
         safety_path=tmp_path / "operational-safety.json",
     )
     assert restored.memory.records() == ()
+
+
+
+def test_supervisor_status_accepts_utf8_bom(tmp_path):
+    import json
+
+    runtime = build_operational_runtime(tmp_path)
+    for name, component in (("controlador-supervisor-status.json", "controlador"), ("mt5-supervisor-status.json", "mt5")):
+        (tmp_path / name).write_text(
+            json.dumps({"component": component, "state": "HEALTHY", "reason": "teste"}),
+            encoding="utf-8-sig",
+        )
+
+    snapshot = EcosystemService(operational_runtime=runtime).operational_observability()
+
+    assert snapshot["supervision"]["controller"]["state"] == "HEALTHY"
+    assert snapshot["supervision"]["mt5"]["state"] == "HEALTHY"
