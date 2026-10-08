@@ -10,12 +10,73 @@
 <title>Controlador Trading</title>
 <style>
 :root{font-family:Inter,system-ui,sans-serif;color:#f4f6f8;background:#090b10}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 20% 0%,#182033,#090b10 42%);min-height:100vh;position:relative}.app{position:relative;z-index:1}.app{max-width:1100px;position:relative;z-index:1;margin:auto;padding:18px 14px 100px}.top,.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.brand{font-weight:800;font-size:20px}.sub,.muted{color:#8f99aa;font-size:13px;line-height:1.45}.pill{border:1px solid #263044;border-radius:999px;padding:7px 10px;font-size:11px;color:#aab5c8;background:#101521}.hero,.card{border:1px solid #20283a;border-radius:18px;background:#0f141e;padding:15px}.hero{margin-top:18px;background:linear-gradient(145deg,#111725,#0d111a)}.hero h1{font-size:30px;margin:6px 0}.label{font-size:11px;color:#7f899b;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px}.wide{grid-column:1/-1}.value{font-size:24px;font-weight:800;margin-top:6px}.signal{font-size:30px}.buy{color:#58d68d}.sell{color:#ff7676}.wait{color:#ffd166}.bar{height:9px;background:#20283a;border-radius:99px;overflow:hidden;margin:12px 0}.bar i{display:block;height:100%;width:50%;background:#e9edf2;border-radius:99px}.controls{display:grid;gap:10px;margin-top:12px}.controls label{font-size:13px;color:#b9c2d0}.controls input,.controls select{width:100%;background:#0a0e15;color:#f4f6f8;border:1px solid #293246;border-radius:12px;padding:11px}.check{display:flex;gap:8px;align-items:center}.check input{width:auto}.btn{width:100%;border:0;border-radius:13px;padding:13px;font-weight:800;background:#f2f4f7;color:#0b0e13;cursor:pointer}.btn.alt{background:#20283a;color:#f4f6f8}.btn.small{width:auto;padding:7px 9px;font-size:11px}.list{display:grid;gap:8px;margin-top:10px}.item{padding:10px;border:1px solid #20283a;border-radius:12px;background:#0a0e15}.status{display:flex;align-items:center;gap:7px;font-size:12px;margin-top:12px}.dot{width:8px;height:8px;border-radius:50%;background:#58d68d}.danger{color:#ff9b9b}.ok{color:#58d68d}.section{margin-top:24px;font-size:14px;font-weight:800;color:#dfe4ec;scroll-margin-top:12px}.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.chip{border:1px solid #293246;border-radius:999px;padding:7px 9px;color:#b9c2d0;background:#0a0e15;font-size:11px}.module-title{font-size:16px;font-weight:800;margin-bottom:5px}.metric{font-size:18px;font-weight:800}.nav{position:fixed;bottom:0;left:0;right:0;background:#0a0d13ee;border-top:1px solid #20283a;backdrop-filter:blur(12px);padding:9px;display:flex;justify-content:center;gap:5px;z-index:10;overflow-x:auto}.nav a{font-size:11px;color:#9099aa;padding:7px;text-decoration:none;white-space:nowrap}.nav a.active{color:#fff}.runtime{margin-top:10px;border:1px solid #263044;border-radius:14px;background:#0a0e15;padding:10px}.runtime strong{font-size:12px}.runtime.critical{border-color:#7b3030;background:#211013}.runtime.warning{border-color:#6d5526;background:#1d180c}.runtime.ok{border-color:#2b5b43;background:#0c1711}.runtime-row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}.runtime-badge{border:1px solid #39445a;border-radius:999px;padding:5px 8px;font-size:10px;font-weight:800}.alert{margin-top:8px;padding:8px;border-radius:10px;border:1px solid #633033;font-size:12px}.hidden{display:none!important}.watermark{position:fixed;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0;overflow:hidden}.watermark span{font-size:clamp(56px,12vw,150px);font-weight:900;letter-spacing:.18em;white-space:nowrap;transform:rotate(-18deg);opacity:.025;color:#fff;user-select:none}.app{position:relative;z-index:1}@media(min-width:720px){.app{padding-top:28px}.grid{grid-template-columns:repeat(3,minmax(0,1fr))}.wide{grid-column:span 2}}
+
+/* Responsive ecosystem workspace */
+:root{--top-h:72px;--nav-h:64px;--panel-max:1180px}
+body{overflow-x:hidden}
+.app{max-width:var(--panel-max);padding:14px 16px calc(var(--nav-h) + 18px);margin:0 auto}
+.top{position:sticky;top:0;z-index:20;min-height:var(--top-h);padding:10px 0;background:linear-gradient(180deg,#090b10f5 70%,transparent);backdrop-filter:blur(10px)}
+.top-actions{display:flex;gap:8px;align-items:center}
+.icon-btn{width:40px;height:40px;border:1px solid #263044;border-radius:12px;background:#101521;color:#dfe4ec;font-size:18px;display:grid;place-items:center;cursor:pointer}
+.icon-btn:hover{border-color:#53627d;background:#151c29}
+.icon-btn .badge{position:absolute;transform:translate(12px,-12px);min-width:16px;height:16px;padding:2px 4px;border-radius:999px;background:#ff7676;color:#090b10;font-size:9px;font-weight:900}
+.view-shell{display:none}
+.view-shell.active{display:block}
+.view-shell>.section:first-child{margin-top:10px}
+.hero{margin-top:8px;border-radius:16px}
+.hero-compact{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center}
+.hero-compact .signal{margin:0}
+.market-chart{margin-top:12px}
+.chart-head{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.chart-wrap{margin-top:12px;border:1px solid #20283a;border-radius:14px;background:#0a0e15;overflow:hidden}
+.chart-svg{display:block;width:100%;height:clamp(250px,42vw,420px)}
+.chart-meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.chart-meta span{font-size:11px;color:#9da7b8}
+.chart-error{margin-top:8px;font-size:12px;color:#ff9b9b}
+.nav{bottom:0;height:var(--nav-h);padding:7px max(8px,env(safe-area-inset-left)) max(7px,env(safe-area-inset-bottom));gap:4px;justify-content:space-evenly}
+.nav a{min-width:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10px;padding:5px 4px;border-radius:10px}
+.nav a::first-line{font-size:16px}
+.nav a.active{background:#151c29;color:#fff}
+.section{scroll-margin-top:var(--top-h)}
+.notification-center{margin-top:12px}
+@media(min-width:900px){
+  :root{--nav-h:0px}
+  .app{padding:0 24px 32px}
+  .top{min-height:76px}
+  .nav{position:fixed;left:18px;top:50%;bottom:auto;right:auto;width:72px;height:auto;transform:translateY(-50%);display:flex;flex-direction:column;padding:8px;gap:5px;border:1px solid #20283a;border-radius:16px;overflow:visible}
+  .nav a{min-width:54px}
+  .app{padding-left:112px}
+  .view-shell{max-width:1060px;margin:0 auto}
+  .grid{gap:14px}
+  .hero{padding:18px}
+  .chart-svg{height:420px}
+}
+@media(max-width:560px){
+  .app{padding-left:10px;padding-right:10px}
+  .top .sub{display:none}
+  .brand{font-size:18px}
+  .pill{font-size:10px;padding:6px 8px}
+  .hero{padding:12px}
+  .hero h1{font-size:28px}
+  .grid{grid-template-columns:1fr}
+  .wide{grid-column:auto}
+  .card{padding:12px;border-radius:14px}
+  .controls{gap:8px}
+  .btn{min-height:46px}
+  .controls input,.controls select{min-height:44px}
+  .chart-svg{height:280px}
+}
+@media(max-width:360px){
+  .nav a{min-width:48px;font-size:9px}
+  .nav{gap:1px}
+  .icon-btn{width:36px;height:36px}
+}
 </style>
 </head>
 <body><div class="watermark" aria-hidden="true"><span>CONTROLADOR TRADING • ECOSSISTEMA</span></div><main class="app">
-<header class="top"><div><div class="brand">Controlador Trading</div><div class="sub">Ecossistema de análise, decisão, risco, memória e execução • celular + notebook</div></div><div class="pill" id="modeBadge">DEMO / SIMULAÇÃO</div></header>
+<header class="top"><div><div class="brand">Controlador Trading</div><div class="sub">Ecossistema de análise, decisão, risco, memória e execução • celular + notebook</div></div><div class="top-actions"><div class="pill" id="modeBadge">DEMO / SIMULAÇÃO</div><button class="icon-btn" id="notificationBtn" type="button" aria-label="Notificações">🔔<span id="notificationTopBadge" class="badge hidden">0</span></button><button class="icon-btn" id="settingsBtn" type="button" aria-label="Configurações">⚙️</button></div></header>
 <section class="hero" id="painel"><div class="label">Painel operacional</div><h1 id="headline" class="signal wait">AGUARDAR</h1><p id="reason">Aguardando confirmação no fechamento.</p><div class="status"><i id="engineDot" class="dot"></i><span id="engineStatus">Motor de decisão online</span></div><div class="chips"><span class="chip">COMPRA / VENDA / AGUARDAR</span><span class="chip">REAL BLOQUEADO</span><span class="chip">DEMO VALIDADO</span></div><div id="runtimeStatus" class="runtime ok"><div class="runtime-row"><strong id="runtimeHealth">SAÚDE: VERIFICANDO</strong><span id="runtimeBadge" class="runtime-badge">CONSULTANDO</span></div><div id="runtimeReason" class="muted">Verificando saúde do ecossistema, Risk Gate e estado de execução.</div><div id="runtimeAlerts" class="hidden"></div></div></section>
-<div class="section" id="modo">Modo de operação</div><section class="grid"><article class="card wide"><div class="module-title">Escolha do modo</div><div class="muted">Esta escolha é sincronizada no runtime. Ela define o modo desejado, mas <b>não concede autorização para enviar ordens REAL</b>. REAL continua dependente das barreiras, credenciais e confirmação humana.</div><div class="controls"><label>Modo<select id="operationMode"><option value="DEMO">DEMO / SIMULAÇÃO</option><option value="REAL">REAL</option></select></label><button class="btn alt" id="saveOperationMode">SALVAR MODO</button><div id="operationModeStatus" class="muted">Carregando modo sincronizado...</div></div></article></section><div class="section">Visão geral</div><section class="grid">
+<div class="section" id="modo">Modo de operação</div><div class="section" id="grafico">Mercado</div><section class="grid"><article class="card wide market-chart"><div class="chart-head"><div><div class="module-title">Gráfico MT5 DEMO</div><div class="muted">Candles do mesmo fluxo de mercado usado pelo núcleo de análise. Sem dados inventados.</div></div><div class="pill" id="chartSource">IC Markets MT5 DEMO</div></div><div class="controls"><label>Ativo<select id="chartSymbol"><option value="EURUSD">EURUSD</option></select></label><label>Tempo<select id="chartTimeframe"><option value="5m">5m</option><option value="1m">1m</option><option value="15m">15m</option><option value="1h">1h</option></select></label></div><div class="chart-wrap"><svg id="marketChart" class="chart-svg" viewBox="0 0 1000 420" role="img" aria-label="Gráfico de candles do mercado"></svg></div><div class="chart-meta"><span id="chartLast">Último: —</span><span id="chartUpdated">Atualização: —</span><span id="chartCount">Candles: —</span></div><div id="chartError" class="chart-error hidden"></div></article></section><section class="grid"><article class="card wide"><div class="module-title">Escolha do modo</div><div class="muted">Esta escolha é sincronizada no runtime. Ela define o modo desejado, mas <b>não concede autorização para enviar ordens REAL</b>. REAL continua dependente das barreiras, credenciais e confirmação humana.</div><div class="controls"><label>Modo<select id="operationMode"><option value="DEMO">DEMO / SIMULAÇÃO</option><option value="REAL">REAL</option></select></label><button class="btn alt" id="saveOperationMode">SALVAR MODO</button><div id="operationModeStatus" class="muted">Carregando modo sincronizado...</div></div></article></section><div class="section">Visão geral</div><section class="grid">
 <article class="card"><div class="label">Força / qualidade</div><div class="value" id="score">50/100</div><div class="bar"><i id="scorebar"></i></div><div class="muted">Score do núcleo; não representa garantia de resultado.</div></article>
 <article class="card"><div class="label">Ativo</div><div class="value" id="symbol">EURUSD</div><div class="muted" id="timeframe">5m</div></article>
 <article class="card"><div class="label">Execução</div><div class="value" style="font-size:18px" id="executionState">BLOQUEADA</div><div class="muted" id="executionReason">REAL só pode ser executado pelo fluxo controlado, com todas as barreiras e confirmação humana.</div></article>
@@ -33,9 +94,9 @@
 <article class="card wide"><div class="module-title">Últimas decisões</div><div id="memory" class="list"><div class="muted">Nenhuma decisão registrada.</div></div></article><article class="card wide"><div class="module-title">Resultado da operação</div><div class="muted">Registre o desfecho de uma decisão já criada. Isso não envia ordem.</div><div id="outcomeResult" class="list"><div class="muted">Nenhuma decisão disponível para resultado.</div></div></article><article class="card"><div class="module-title">Aprendizado</div><div class="muted">Os resultados registrados alimentam estatísticas e memória operacional. A interface não promete eficácia nem causalidade.</div></article></section>
 <div class="section" id="risco">Risco</div><section class="grid"><article class="card wide"><div class="row"><strong>Risk Gate</strong><span id="riskAllowed" class="danger">VERIFICANDO</span></div><div id="riskReason" class="muted" style="margin-top:8px">Consultando limites operacionais...</div><div id="riskLimits" class="list"></div></article><article class="card"><div class="module-title">Proteções</div><div class="chips"><span class="chip">Kill switch</span><span class="chip">Duplicidade</span><span class="chip">UNKNOWN</span><span class="chip">Reconciliação</span><span class="chip">REAL bloqueado</span></div></article></section>
 <div class="section" id="noticias">Notícias & Contexto</div><section class="grid"><article class="card wide"><div class="row"><strong id="newsProvider">Fonte</strong><span id="newsLive" class="danger">OFFLINE</span></div><div id="newsItems" class="list"><div class="muted">Nenhuma fonte de notícias configurada. O sistema não inventa notícias.</div></div></article><article class="card"><div class="module-title">Contexto</div><p class="muted">A notícia é separada da decisão. Sem fonte configurada, permanece offline e não interfere artificialmente no sinal.</p></article></section>
-<div class="section" id="config">Configurações</div><section class="grid"><article class="card wide"><div class="module-title">Preferências da análise</div><div class="controls"><label>Ativo padrão <input id="defaultSymbol" value="EURUSD"></label><label>Timeframe padrão <select id="defaultTf"><option>5m</option><option>1m</option><option>15m</option><option>1h</option></select></label><label class="check"><input id="confirmDefault" type="checkbox" checked> Exigir candle fechado</label><label class="check"><input id="filtersDefault" type="checkbox" checked> Exigir filtros aprovados</label><button class="btn alt" id="savePrefs">SALVAR PREFERÊNCIAS SINCRONIZADAS</button><div id="prefsStatus" class="muted">Preferências sincronizadas no runtime; elas não habilitam execução REAL.</div></div></article><article class="card"><div class="module-title">Ambiente</div><div class="metric">DEMO / SIMULAÇÃO</div><div class="muted">Execução financeira permanece bloqueada pela arquitetura.</div></article></section>
+<div class="section" id="notificacoes">Notificações</div><section class="grid"><article class="card wide"><div id="notificationMount"></div></article></section><div class="section" id="config">Configurações</div><section class="grid"><article class="card wide"><div class="module-title">Preferências da análise</div><div class="controls"><label>Ativo padrão <input id="defaultSymbol" value="EURUSD"></label><label>Timeframe padrão <select id="defaultTf"><option>5m</option><option>1m</option><option>15m</option><option>1h</option></select></label><label class="check"><input id="confirmDefault" type="checkbox" checked> Exigir candle fechado</label><label class="check"><input id="filtersDefault" type="checkbox" checked> Exigir filtros aprovados</label><button class="btn alt" id="savePrefs">SALVAR PREFERÊNCIAS SINCRONIZADAS</button><div id="prefsStatus" class="muted">Preferências sincronizadas no runtime; elas não habilitam execução REAL.</div></div></article><article class="card"><div class="module-title">Ambiente</div><div class="metric">DEMO / SIMULAÇÃO</div><div class="muted">Execução financeira permanece bloqueada pela arquitetura.</div></article></section>
 <div class="section" id="conexoes">Conexões & Segurança</div><section class="grid"><article class="card wide"><div class="row"><strong>REAL</strong><span class="danger">DESABILITADO</span></div><div id="connections" class="list"></div><p class="muted">O núcleo permanece independente de corretora. MT5/IC Markets é uma integração operacional DEMO.</p></article><article class="card"><div class="module-title">Auditoria</div><div class="metric ok">ATIVA</div><div class="muted">Decisões, resultados e estados permanecem separados de autorização de execução.</div></article></section>
-</main><nav class="nav"><a class="active" href="#painel">Painel</a><a href="#operacao">Operação</a><a href="#analise">Análise</a><a href="#laboratorio">Lab</a><a href="#memoria">Memória</a><a href="#risco">Risco</a><a href="#noticias">Notícias</a><a href="#config">Config.</a></nav>
+</main><nav class="nav"><a class="active" data-view="painel" href="#painel">⌂<span>Painel</span></a><a data-view="analise" href="#analise">⌁<span>Análise</span></a><a data-view="laboratorio" href="#laboratorio">🧪<span>Lab</span></a><a data-view="memoria" href="#memoria">◫<span>Memória</span></a><a data-view="notificacoes" href="#notificacoes">🔔<span>Notif.</span></a><a data-view="config" href="#config">⚙<span>Config.</span></a></nav>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function render(d){$('headline').textContent=d.signal;$('headline').className='signal '+(d.signal==='COMPRA'?'buy':d.signal==='VENDA'?'sell':'wait');$('reason').textContent=d.reason;$('score').textContent=String(d.score)+'/100';$('scorebar').style.width=Math.max(0,Math.min(100,Number(d.score)||0))+'%';$('symbol').textContent=d.symbol||'—';$('timeframe').textContent=d.timeframe||'—';$('analysisResult').innerHTML='<b>'+esc(d.signal)+'</b> · '+esc(d.score)+'/100<br><span class="muted">'+esc(d.reason)+'</span>';}
@@ -59,4 +120,66 @@ loadPrefs();
 refreshMode();
 refreshReal();
 refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('executionState').textContent='BLOQUEADA';});
+</script><script>
+/* Responsive view controller: one workspace at a time, compact cockpit, progressive disclosure. */
+(function(){
+  const $id=id=>document.getElementById(id);
+  const major={painel:['painel','modo','grafico'],analise:['analise','noticias'],laboratorio:['laboratorio'],memoria:['memoria'],notificacoes:['notificacoes'],config:['modo','real','config','conexoes']};
+  function buildGroups(){
+    const main=document.querySelector('.app'); if(!main) return;
+    const nodes=[...main.children];
+    const headers=new Map(nodes.filter(n=>n.classList?.contains('section')).map(n=>[n.id,n]));
+    const hideable=nodes.filter(n=>n!==nodes[0] && n!==$id('painel') && n!==document.querySelector('.nav'));
+    window.__viewNodes={painel:[],analise:[],laboratorio:[],memoria:[],notificacoes:[],config:[]};
+    let current='painel';
+    for(const n of nodes){
+      if(n.classList?.contains('section')){
+        const id=n.id||'';
+        current=Object.keys(major).find(v=>major[v].includes(id))||current;
+      }
+      if(window.__viewNodes[current] && n!==document.querySelector('.nav')) window.__viewNodes[current].push(n);
+    }
+    // Header and operational hero are always visible only in the cockpit.
+    window.__viewNodes.painel.push(document.querySelector('header.top'));
+    window.__viewNodes.painel.push($id('painel'));
+  }
+  window.showControladorView=function(view){
+    if(!window.__viewNodes) buildGroups();
+    Object.entries(window.__viewNodes).forEach(([key,nodes])=>nodes.forEach(n=>{if(n) n.classList.toggle('view-hidden',key!==view)}));
+    const top=$id('painel'); if(top) top.classList.toggle('view-hidden',view!=='painel');
+    document.querySelectorAll('.nav a[data-view]').forEach(a=>a.classList.toggle('active',a.dataset.view===view));
+    document.body.dataset.view=view;
+    if(view==='notificacoes' && window.ControladorNotifications) window.ControladorNotifications.refresh().catch(()=>{});
+    if(view==='config') window.scrollTo({top:0,behavior:'smooth'});
+  };
+  const style=document.createElement('style'); style.textContent='.view-hidden{display:none!important}'; document.head.appendChild(style);
+  window.addEventListener('DOMContentLoaded',()=>{
+    buildGroups();
+    document.querySelectorAll('.nav a[data-view]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showControladorView(a.dataset.view);}));
+    $id('notificationBtn')?.addEventListener('click',()=>showControladorView('notificacoes'));
+    $id('settingsBtn')?.addEventListener('click',()=>showControladorView('config'));
+    showControladorView('painel');
+  });
+})();
+</script><script>
+(function(){
+  const $=id=>document.getElementById(id);
+  function draw(data){
+    const svg=$('marketChart'), candles=data.candles||[]; if(!svg) return;
+    svg.innerHTML='';
+    if(!candles.length){$('chartError').textContent='Nenhum candle recebido do MT5 DEMO.';$('chartError').classList.remove('hidden');return}
+    $('chartError').classList.add('hidden');
+    const W=1000,H=420,pad={l:10,r:10,t:14,b:24},min=Math.min(...candles.map(c=>c.low)),max=Math.max(...candles.map(c=>c.high)),span=max-min||1,step=(W-pad.l-pad.r)/candles.length,bodyW=Math.max(2,Math.min(11,step*.62)),x=i=>pad.l+(i+.5)*step,y=v=>pad.t+(max-v)/span*(H-pad.t-pad.b);
+    candles.forEach((c,i)=>{
+      const g=document.createElementNS('http://www.w3.org/2000/svg','g'),wick=document.createElementNS('http://www.w3.org/2000/svg','line'),body=document.createElementNS('http://www.w3.org/2000/svg','rect');
+      wick.setAttribute('x1',x(i));wick.setAttribute('x2',x(i));wick.setAttribute('y1',y(c.high));wick.setAttribute('y2',y(c.low));wick.setAttribute('stroke','#9da7b8');wick.setAttribute('stroke-width','1');
+      const top=y(Math.max(c.open,c.close)),bottom=y(Math.min(c.open,c.close));body.setAttribute('x',x(i)-bodyW/2);body.setAttribute('y',top);body.setAttribute('width',bodyW);body.setAttribute('height',Math.max(1,bottom-top));body.setAttribute('rx','1');body.setAttribute('fill',c.close>=c.open?'#58d68d':'#ff7676');
+      g.appendChild(wick);g.appendChild(body);svg.appendChild(g);
+    });
+    const last=candles[candles.length-1];$('chartLast').textContent='Último: '+Number(last.close).toFixed(5);$('chartUpdated').textContent='Atualização: '+new Date().toLocaleTimeString('pt-BR');$('chartCount').textContent='Candles: '+candles.length;$('symbol').textContent=data.symbol;$('timeframe').textContent=data.timeframe;$('chartSource').textContent=data.source||'MT5 DEMO';
+  }
+  async function refresh(){try{const symbol=$('chartSymbol').value,timeframe=$('chartTimeframe').value;const r=await fetch('/api/market/candles?symbol='+encodeURIComponent(symbol)+'&timeframe='+encodeURIComponent(timeframe)+'&limit=80');if(!r.ok) throw new Error('HTTP '+r.status);draw(await r.json())}catch(e){const box=$('chartError');if(box){box.textContent='Gráfico indisponível: '+e.message;box.classList.remove('hidden')}}}
+  window.refreshControladorChart=refresh;
+  window.addEventListener('DOMContentLoaded',()=>{$('chartSymbol')?.addEventListener('change',refresh);$('chartTimeframe')?.addEventListener('change',refresh);refresh();setInterval(refresh,5000)});
+})();
 </script></body></html>
