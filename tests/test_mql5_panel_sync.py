@@ -92,3 +92,12 @@ def test_mql5_sync_does_not_reject_identical_binary_hash_after_successful_recomp
     text = (ROOT / "deployment" / "sync_mql5_panel.ps1").read_text(encoding="utf-8")
     assert "($binaryHashBefore -and $binaryHashAfter -eq $binaryHashBefore)" not in text
     assert "timestamp anterior à compilação" in text
+
+
+def test_mql5_panel_has_safe_visibility_toggle():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "PANEL_TOGGLE" in panel
+    assert "TogglePanel()" in panel
+    assert "PanelVisibilityKey()" in panel
+    assert "if(!panel_visible){ RefreshPanelToggle(); return; }" in panel
+    assert "execution" not in "TogglePanel" or "runtime" not in "TogglePanel"
