@@ -54,10 +54,13 @@ foreach ($entry in $machineSettings.GetEnumerator()) {
 
 Set-Location $ProjectRoot
 & $PythonExe -m pip install -r requirements.txt
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar requirements.txt.' }
 & $PythonExe -m pip install -r requirements-mt5.txt
+if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar requirements-mt5.txt.' }
 
 Write-Host 'Verificando import do MetaTrader5...'
 & $PythonExe -c 'import MetaTrader5; print(MetaTrader5.__version__)'
+if ($LASTEXITCODE -ne 0) { throw 'MetaTrader5 não pôde ser importado pelo Python selecionado.' }
 
 Write-Host 'Bootstrap concluido. O runtime sera iniciado somente em loopback.'
 Write-Host 'A configuracao nao-secreta foi persistida para sobreviver a reinicios do Windows.'
