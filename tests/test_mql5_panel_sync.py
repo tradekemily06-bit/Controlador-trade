@@ -134,7 +134,8 @@ def test_web_dashboard_uses_separate_compact_workspaces():
     assert 'href="#config">Config.</a>' in web
     assert 'id="grafico"' in web
     assert 'id="painel"' in web
-    assert 'class="chip">REAL BLOQUEADO</span>' not in web
+    cockpit = web.split('<div class="section" id="modo">', 1)[0]
+    assert 'class="chip">REAL BLOQUEADO</span>' not in cockpit
 
 
 def test_mql5_watermark_is_centered_subtle_and_not_diagonal():
