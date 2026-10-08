@@ -108,6 +108,7 @@ $('refreshChart').onclick=refreshMarketChart;
 $('symbolInput').addEventListener('change',async()=>{await persistWorkspacePreferences();await refreshMarketChart()});
 $('tfInput').addEventListener('change',async()=>{await persistWorkspacePreferences();await refreshMarketChart()});
 window.addEventListener('hashchange',()=>{applyDefaultView((location.hash||'#painel').slice(1));persistDefaultView()});
+applyDefaultView((location.hash||'#painel').slice(1));
 loadPrefs();
 refreshMode();
 refreshReal();
