@@ -94,41 +94,25 @@ void ApplyWatermark(){
    string mark=Obj("WATERMARK_MARK");
    string name=Obj("WATERMARK_TEXT");
    if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
+   // Remove the decorative symbol used by the previous diagonal watermark.
+   if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
    if(!watermark_enabled){
-      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
       if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
       return;
    }
    int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int center_y=MathMax(120,h/2);
 
-   // Marca visual inspirada na identidade aprovada: símbolo ascendente + nome,
-   // em diagonal e atrás dos candles para não competir com a leitura do preço.
-   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(90,w/2-235));
-   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,42);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,85,135');
-   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
-   ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0);
-   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
-   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
-
+   // A single, centered, low-contrast label stays behind the candles.
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-120,w/2+115));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,w/2);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,h/2);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,30);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
-   ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0);
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
