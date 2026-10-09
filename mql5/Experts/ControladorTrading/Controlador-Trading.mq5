@@ -282,8 +282,8 @@ bool Http(string method,string path,string body,string &response,int &code){
 string NormalizeTimeframe(string tf){
    StringTrimLeft(tf);
    StringTrimRight(tf);
-   StringReplace(tf,"PERIOD_","");
    StringToUpper(tf);
+   StringReplace(tf,"PERIOD_","");
    if(tf=="M1" || tf=="1M") return "1m";
    if(tf=="M5" || tf=="5M") return "5m";
    if(tf=="M15" || tf=="15M") return "15m";
