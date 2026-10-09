@@ -217,3 +217,25 @@ def test_backup_rejects_total_size_limit_before_reading_members(tmp_path: Path):
             archive.writestr(name, b"x")
     with pytest.raises(ValueError, match="total size limit"):
         verify_backup(bad)
+
+
+
+def test_backup_preserves_previous_archive_when_new_archive_verification_fails(tmp_path: Path, monkeypatch):
+    import core.runtime_portability as portability
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "operation-memory.json").write_text("current-state", encoding="utf-8")
+    output = tmp_path / "state.zip"
+    output.write_bytes(b"previous-known-backup")
+    previous_bytes = output.read_bytes()
+
+    def reject_archive(_path):
+        raise ValueError("injected archive verification failure")
+
+    monkeypatch.setattr(portability, "verify_backup", reject_archive)
+    with pytest.raises(ValueError, match="injected archive verification failure"):
+        create_backup(runtime, output)
+
+    assert output.read_bytes() == previous_bytes
+    assert not list(tmp_path.glob(".state.zip.*.tmp"))
