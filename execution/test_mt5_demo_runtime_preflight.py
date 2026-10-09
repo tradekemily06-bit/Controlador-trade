@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 from execution.mt5_demo_runtime_preflight import run_preflight
@@ -13,9 +14,16 @@ class FakeMT5:
         self.symbol_ok = symbol_ok
         self.tick_ok = tick_ok
         self.shutdown_called = False
+        self.initialize_path = None
+        self.active_path = None
 
-    def initialize(self) -> bool:
+    def initialize(self, path=None) -> bool:
+        self.initialize_path = path
+        self.active_path = path
         return True
+
+    def terminal_info(self):
+        return SimpleNamespace(path=os.path.dirname(self.active_path), connected=True)
 
     def account_info(self):
         return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO if self.demo else 0)
@@ -72,3 +80,23 @@ def test_preflight_rejects_missing_quote_or_metadata() -> None:
     assert result.available is False
     assert result.demo is True
     assert "cotação/metadados indisponíveis" in result.message
+
+
+
+def test_preflight_uses_the_configured_terminal(tmp_path) -> None:
+    terminal_path = str(tmp_path / "terminal64.exe")
+    mt5 = FakeMT5()
+    result = run_preflight(mt5, terminal_path=terminal_path)
+    assert result.available is True
+    assert mt5.initialize_path == terminal_path
+    assert mt5.shutdown_called is True
+
+
+def test_preflight_rejects_a_different_connected_terminal(tmp_path) -> None:
+    terminal_path = str(tmp_path / "terminal64.exe")
+    mt5 = FakeMT5()
+    mt5.terminal_info = lambda: SimpleNamespace(path=str(tmp_path / "other-install"), connected=True)
+    result = run_preflight(mt5, terminal_path=terminal_path)
+    assert result.available is False
+    assert "não corresponde ao caminho configurado" in result.message
+    assert mt5.shutdown_called is True
