@@ -2,7 +2,6 @@ param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
-    [string]$Mt5TerminalPath = 'C:\Program Files\MetaTrader 5\terminal64.exe',
     [int]$Mt5WaitSeconds = 180,
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6,
@@ -32,7 +31,6 @@ $RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
 $env:CONTROLADOR_BIND_HOST = '127.0.0.1'
 $env:PORT = '8000'
 $env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
-$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath
 $env:CONTROLADOR_RUNTIME_DIR = $RuntimeDir
 $env:CONTROLADOR_SECURITY_AUDIT_DB = Join-Path $RuntimeDir 'security-audit.sqlite'
 $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
@@ -60,23 +58,40 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # ConvertFrom-Json can accept scalar JSON such as null or a string.
+        # Only the persisted JSON array contract is valid; malformed history
+        # must stop the supervisor rather than silently reset its restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
         foreach ($item in @($items)) {
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
             $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
+        throw $message
     }
 }
 
 function Save-RestartHistory {
     $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
-    $tmp = "$restartHistoryPath.tmp"
-    $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($restartHistoryPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -93,10 +108,16 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
         observed_at = (Get-Date).ToUniversalTime().ToString('o')
         restart_count_last_hour = $restartTimes.Count
     } | ConvertTo-Json -Compress
-    $tmp = "$statusPath.tmp"
-    Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($statusPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
+
+Load-RestartHistory
 
 function Sync-Mt5Panel {
     $syncScript = Join-Path $ProjectRoot 'deployment\sync_mql5_panel.ps1'
@@ -105,7 +126,7 @@ function Sync-Mt5Panel {
         return
     }
     try {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe
         if ($LASTEXITCODE -eq 0) {
             Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
         } else {
@@ -206,13 +227,27 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     # A task restart can overlap an older app process that survived. Do not
     # create a second controller instance; app.py also owns the runtime lock.
-    $existingController = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -match '^(python|python3)(\.exe)?$' -and
-            $_.CommandLine -like "*$ProjectRoot*app.py*"
-        } |
-        Select-Object -First 1
-
+    try {
+        $existingControllers = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object {
+                    $_.Name -match '^(python|python3)(\.exe)?$' -and
+                    $_.CommandLine -like "*$ProjectRoot*app.py*"
+                }
+        )
+    } catch {
+        $message = "Não foi possível identificar com segurança processos existentes do Controlador: $($_.Exception.Message)"
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'PROCESS_DISCOVERY_FAILED'
+        throw $message
+    }
+    if ($existingControllers.Count -gt 1) {
+        $message = "Mais de uma instância potencial do Controlador foi encontrada; estado ambíguo, sem iniciar ou encerrar processos automaticamente."
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'DUPLICATE_CONTROLLER_PROCESSES'
+        throw $message
+    }
+    $existingController = if ($existingControllers.Count -eq 1) { $existingControllers[0] } else { $null }
     $process = $null
     if ($null -ne $existingController) {
         Write-StartupLog "Instância existente detectada (PID $($existingController.ProcessId)); verificando /api/health antes de declarar HEALTHY."
@@ -277,26 +312,11 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     }
 
     if ($restartTimes.Count -ge $MaxRestartsPerHour) {
-        Write-StartupLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). Controlador entra em espera controlada; o supervisor continuará ativo."
-        $finalState = 'RECOVERING'
-        $finalReason = 'RESTART_LIMIT_EXCEEDED; aguardando cooldown para nova tentativa'
+        Write-StartupLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). Controlador permanece parado."
+        $finalState = 'FAILED'
+        $finalReason = 'RESTART_LIMIT_EXCEEDED'
         Write-SupervisorStatus $finalState $finalReason
-
-        # Keep supervision alive without retrying in a tight loop. Resume when
-        # the oldest restart falls outside the one-hour rolling window.
-        $retryAt = $restartTimes[0].AddHours(1)
-        while ((Get-Date) -lt $retryAt) {
-            if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
-            $remainingSeconds = [int][Math]::Ceiling(($retryAt - (Get-Date)).TotalSeconds)
-            if ($remainingSeconds -le 0) { break }
-            Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))
-        }
-        if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
-            $finalState = 'STOPPED'
-            $finalReason = 'Parada controlada durante espera de recuperação.'
-            break
-        }
-        continue
+        break
     }
 
     $restartTimes.Add($now)
