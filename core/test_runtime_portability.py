@@ -254,10 +254,10 @@ def test_restore_rechecks_no_overwrite_conflicts_at_commit_time(tmp_path: Path, 
 
     target = tmp_path / "target"
     target.mkdir()
-    original_replace = portability.os.replace
+    original_link = portability.os.link
     injected = False
 
-    def introduce_racing_destination(source_path, destination_path):
+    def introduce_racing_destination(source_path, destination_path, *args, **kwargs):
         nonlocal injected
         source_text = str(source_path)
         if not injected and "incoming" in source_text and source_text.endswith("operation-memory.json"):
@@ -265,9 +265,9 @@ def test_restore_rechecks_no_overwrite_conflicts_at_commit_time(tmp_path: Path, 
             (target / "operational-safety.json").write_text(
                 "created-by-concurrent-process", encoding="utf-8"
             )
-        return original_replace(source_path, destination_path)
+        return original_link(source_path, destination_path, *args, **kwargs)
 
-    monkeypatch.setattr(portability.os, "replace", introduce_racing_destination)
+    monkeypatch.setattr(portability.os, "link", introduce_racing_destination)
     with pytest.raises(FileExistsError, match="appeared during staging"):
         restore_backup(backup, target, replace=False)
 
