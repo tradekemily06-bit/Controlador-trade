@@ -160,3 +160,15 @@ def test_restore_rechecks_staged_payload_after_preflight(tmp_path: Path, monkeyp
         portability.restore_backup(backup, runtime)
 
     assert list(runtime.iterdir()) == []
+
+
+
+def test_verify_backup_rejects_oversized_manifest(tmp_path: Path):
+    import zipfile
+
+    backup = tmp_path / "oversized-manifest.zip"
+    with zipfile.ZipFile(backup, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", b" " * (1024 * 1024 + 1))
+
+    with pytest.raises(ValueError, match="backup manifest is too large"):
+        portability.verify_backup(backup)
