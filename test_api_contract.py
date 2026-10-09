@@ -47,7 +47,7 @@ class ApiContractTests(unittest.TestCase):
         status, _, payload = self.request("/api/connections")
         self.assertEqual(status, "200 OK")
         self.assertEqual(payload["real"], "DESABILITADO")
-        self.assertEqual(payload["ic_markets_mt5_demo"], "DEMO_VALIDADO")
+        self.assertEqual(payload["ic_markets_mt5_demo"], "NOT_CONNECTED")
         self.assertEqual(payload["saas"], "FOUNDATION")
 
     def test_saas_status_is_explicitly_provider_neutral_and_fail_closed(self):

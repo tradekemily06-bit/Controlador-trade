@@ -53,7 +53,7 @@ class WebInterfaceSmokeTests(unittest.TestCase):
         data = json.loads(body)
         self.assertEqual(data["mode"], "SIMULACAO")
         self.assertFalse(data["execution_allowed"])
-        self.assertEqual(data["mt5_demo"], "DEMO_VALIDADO")
+        self.assertEqual(data["mt5_demo"], "NOT_CONNECTED")
         self.assertEqual(data["real"], "DESABILITADO")
 
     def test_analyze_endpoint_returns_decision(self):
