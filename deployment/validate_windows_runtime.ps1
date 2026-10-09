@@ -72,7 +72,7 @@ $mq5 = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Tradi
 Add-Check 'mql5-source' (Has-File $mq5) $mq5
 if (Has-File $mq5) {
     try {
-        $mt5Data = & $PythonExe -c 'import json,MetaTrader5 as mt5; ok=mt5.initialize(); i=mt5.terminal_info() if ok else None; print(getattr(i,"data_path","") if i else ""); mt5.shutdown(); raise SystemExit(0 if ok and i else 1)' 2>$null
+        $mt5Data = & $PythonExe -c 'import os,sys,MetaTrader5 as mt5; ok=mt5.initialize(path=sys.argv[1]); i=mt5.terminal_info() if ok else None; expected=os.path.normcase(os.path.realpath(sys.argv[1])); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(i,"path",""),os.path.basename(sys.argv[1])))) if i else ""; valid=bool(ok and i and actual==expected); print(getattr(i,"data_path","") if valid else ""); mt5.shutdown(); raise SystemExit(0 if valid else 1)' $Mt5TerminalPath 2>$null
         $dataPath = ($mt5Data | Select-Object -Last 1).Trim()
         if ($LASTEXITCODE -eq 0 -and $dataPath) {
             $ex5 = Join-Path $dataPath 'MQL5\Experts\ControladorTrading\Controlador-Trading.ex5'
