@@ -176,9 +176,7 @@ def test_restart_history_rejects_json_scalars_and_non_string_entries():
         "deployment/start_mt5_runtime.ps1",
     ):
         text = _read(name)
-        loader = text.split("function Load-RestartHistory {", 1)[1].split(
-            "\\nfunction Save-RestartHistory", 1
-        )[0]
+        loader = text.split("function Load-RestartHistory {", 1)[1].split("function Save-RestartHistory", 1)[0]
         assert "$raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop" in loader
         assert "$raw.Trim() -notmatch '(?s)^\\[.*\\]$'" in loader
         assert "$item -isnot [string]" in loader
