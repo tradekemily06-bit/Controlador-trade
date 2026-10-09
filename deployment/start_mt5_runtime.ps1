@@ -120,18 +120,22 @@ raise SystemExit(0 if healthy else 1)
 function Get-ConfiguredMt5Process {
     try {
         $configuredPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
-        $candidate = Get-CimInstance Win32_Process -ErrorAction Stop |
-            Where-Object {
-                -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
-                [string]::Equals(
-                    [System.IO.Path]::GetFullPath($_.ExecutablePath),
-                    $configuredPath,
-                    [System.StringComparison]::OrdinalIgnoreCase
-                )
-            } |
-            Select-Object -First 1
-        if ($null -eq $candidate) { return $null }
-        return Get-Process -Id $candidate.ProcessId -ErrorAction Stop
+        $candidates = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+                    [string]::Equals(
+                        [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                        $configuredPath,
+                        [System.StringComparison]::OrdinalIgnoreCase
+                    )
+                }
+        )
+        if ($candidates.Count -gt 1) {
+            throw "Mais de um processo usa o terminal MT5 configurado; estado ambíguo, sem iniciar ou encerrar processos automaticamente."
+        }
+        if ($candidates.Count -eq 0) { return $null }
+        return Get-Process -Id $candidates[0].ProcessId -ErrorAction Stop
     } catch {
         $message = "Não foi possível identificar com segurança o processo do terminal configurado: $($_.Exception.Message)"
         Write-SupervisorLog $message
