@@ -62,7 +62,7 @@ try {
 } finally { Pop-Location }
 
 # Read-only market probe: query completed candles directly from the exact configured
-# MT5 terminal. Avoid POST /api/runtime/analysis here because normal analysis also
+# MT5 terminal. Avoid the analysis endpoint here because normal analysis also
 # updates the ecosystem market snapshot and decision memory.
 $marketDataHealthy = $false
 $candleCount = 0
