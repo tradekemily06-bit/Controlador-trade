@@ -35,11 +35,10 @@ def test_read_only_windows_validator_covers_deployment_surface():
         "controller-health-safe",
         "mt5-demo-health",
         "market-data-candles-read-only",
-        "/api/runtime/analysis",
-        "$analysisPayload.market_data.candles",
+        "mt5.copy_rates_from_pos('EURUSD',mt5.TIMEFRAME_M5,1,100)",
         "$candleCount -gt 0",
-        "$marketSource -match 'MT5 DEMO'",
-        "$analysisPayload.execution_allowed -eq $false",
+        "MT5_DEMO_MARKET=True",
+        "orders=not requested",
         "scheduled-task:$task",
         "mql5-source",
         "mql5-ex5-current",
@@ -58,7 +57,9 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "Start-Process" not in text
     assert "mt5.initialize(path=p)" in text
     assert "$Mt5TerminalPath | Out-Null" in text
-    assert "Invoke-WebRequest -UseBasicParsing -Method Post" in text
+    assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
+    assert "/api/runtime/analysis" not in text
+    assert "copy_rates_from_pos" in text
 
 
 def test_controller_health_gate_uses_current_safe_health_contract():
