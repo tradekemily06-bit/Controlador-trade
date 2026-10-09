@@ -124,7 +124,9 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert "PANEL_TOGGLE" in panel
     assert "TogglePanel()" in panel
     assert "PanelVisibilityKey()" in panel
-    assert "if(!panel_visible){ RefreshPanelToggle(); return; }" in panel
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    assert "if(!panel_visible){" in timer
+    assert "Analyze(false);" in timer
     assert "execution" not in "TogglePanel" or "runtime" not in "TogglePanel"
 
 
