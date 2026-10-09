@@ -2,6 +2,7 @@ param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
+    [string]$Mt5TerminalPath = 'C:\Program Files\MetaTrader 5\terminal64.exe',
     [int]$Mt5WaitSeconds = 180,
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6,
@@ -31,6 +32,7 @@ $RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
 $env:CONTROLADOR_BIND_HOST = '127.0.0.1'
 $env:PORT = '8000'
 $env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
+$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath
 $env:CONTROLADOR_RUNTIME_DIR = $RuntimeDir
 $env:CONTROLADOR_SECURITY_AUDIT_DB = Join-Path $RuntimeDir 'security-audit.sqlite'
 $env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
@@ -103,7 +105,7 @@ function Sync-Mt5Panel {
         return
     }
     try {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath
         if ($LASTEXITCODE -eq 0) {
             Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
         } else {
