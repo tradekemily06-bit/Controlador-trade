@@ -105,3 +105,58 @@ def test_create_backup_preserves_previous_archive_and_cleans_temp_on_write_failu
 
     assert output.read_bytes() == b"previous-valid-backup"
     assert list(tmp_path.glob(".runtime.zip.*.tmp")) == []
+
+
+
+def test_verify_backup_rejects_payload_changed_without_manifest_update(tmp_path: Path):
+    import json
+    import zipfile
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    backup = tmp_path / "runtime.zip"
+    portability.create_backup(source, backup)
+    tampered = tmp_path / "tampered.zip"
+
+    with zipfile.ZipFile(backup, "r") as original:
+        manifest = original.read("manifest.json")
+        with zipfile.ZipFile(tampered, "w", compression=zipfile.ZIP_DEFLATED) as changed:
+            changed.writestr("manifest.json", manifest)
+            changed.writestr("operation-memory.json", b'{"safe":false}')
+
+    with pytest.raises(ValueError, match="backup integrity failure"):
+        portability.verify_backup(tampered)
+
+
+def test_restore_rechecks_staged_payload_after_preflight(tmp_path: Path, monkeypatch):
+    import zipfile
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"trusted":true}', encoding="utf-8")
+    backup = tmp_path / "runtime.zip"
+    portability.create_backup(source, backup)
+    original_verify = portability.verify_backup
+
+    def verify_then_tamper(path):
+        manifest = original_verify(path)
+        rewritten = tmp_path / "rewritten.zip"
+        with zipfile.ZipFile(path, "r") as original:
+            with zipfile.ZipFile(rewritten, "w", compression=zipfile.ZIP_DEFLATED) as changed:
+                for info in original.infolist():
+                    data = original.read(info.filename)
+                    if info.filename == "operation-memory.json":
+                        data = b'{"trusted":false}'
+                    changed.writestr(info.filename, data)
+        os.replace(rewritten, path)
+        return manifest
+
+    monkeypatch.setattr(portability, "verify_backup", verify_then_tamper)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+
+    with pytest.raises(ValueError, match="backup integrity failure"):
+        portability.restore_backup(backup, runtime)
+
+    assert list(runtime.iterdir()) == []
