@@ -578,7 +578,15 @@ void OnDeinit(const int reason){
    DeletePanel();
 }
 void OnTimer(){
-   if(!panel_visible){ RefreshPanelToggle(); return; }
+   if(!panel_visible){
+      RefreshPanelToggle();
+      datetime hidden_bar=iTime(_Symbol,_Period,0);
+      if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
+         last_analysis_bar=hidden_bar;
+         Analyze(false);
+      }
+      return;
+   }
    RefreshPanelLayout();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
