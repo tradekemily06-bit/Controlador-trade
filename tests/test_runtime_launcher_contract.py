@@ -182,3 +182,17 @@ def test_restart_history_rejects_json_scalars_and_non_string_entries():
         assert "$item -isnot [string]" in loader
         assert "RESTART_HISTORY_INVALID" in loader
         assert "throw $message" in loader
+
+def test_supervisors_isolate_restart_history_temp_files():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        saver = text.split("function Save-RestartHistory {", 1)[1].split(
+            "\\n}", 1
+        )[0]
+        assert "[guid]::NewGuid().ToString('N')" in saver
+        assert "Set-Content -LiteralPath $tmp" in saver
+        assert "Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force" in saver
+        assert "Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue" in saver
