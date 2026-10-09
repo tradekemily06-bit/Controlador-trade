@@ -352,3 +352,47 @@ def test_create_backup_refuses_output_that_is_runtime_state_file(tmp_path: Path)
 
     assert state.read_text(encoding="utf-8") == '{"preserve":true}'
 
+
+
+
+def test_verify_backup_rejects_boolean_manifest_version(tmp_path: Path):
+    import json
+    import zipfile
+
+    backup = tmp_path / "boolean-version.zip"
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": True,
+        "files": [{"path": "operation-memory.json", "sha256": "0" * 64, "size": 0}],
+    }
+    with zipfile.ZipFile(backup, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("operation-memory.json", b"")
+
+    with pytest.raises(ValueError, match="unsupported backup format or version"):
+        portability.verify_backup(backup)
+
+
+def test_sqlite_snapshot_closes_source_when_target_open_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source.sqlite"
+    with sqlite3.connect(source) as connection:
+        connection.execute("CREATE TABLE sample (value INTEGER)")
+    target = tmp_path / "target.sqlite"
+    real_connect = portability.sqlite3.connect
+    source_connection = real_connect(source)
+    calls = 0
+
+    def fail_target(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return source_connection
+        raise OSError("simulated target database open failure")
+
+    monkeypatch.setattr(portability.sqlite3, "connect", fail_target)
+    with pytest.raises(OSError, match="target database open failure"):
+        portability._sqlite_snapshot(source, target)
+
+    # A closed sqlite connection raises ProgrammingError on use.
+    with pytest.raises(sqlite3.ProgrammingError):
+        source_connection.execute("SELECT 1")
