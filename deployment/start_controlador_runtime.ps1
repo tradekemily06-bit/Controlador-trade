@@ -68,11 +68,21 @@ function Load-RestartHistory {
             throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
         }
         $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        $previousRestart = [datetime]::MinValue
+        $futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)
         foreach ($item in @($items)) {
             if ($item -isnot [string]) {
                 throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
             }
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+            $parsedRestart = [datetime]::Parse($item).ToUniversalTime()
+            if ($parsedRestart -gt $futureLimit) {
+                throw 'Formato do histórico de reinícios inválido: existe data no futuro.'
+            }
+            if ($parsedRestart -lt $previousRestart) {
+                throw 'Formato do histórico de reinícios inválido: registros fora de ordem cronológica.'
+            }
+            $restartTimes.Add($parsedRestart.ToLocalTime())
+            $previousRestart = $parsedRestart
         }
     } catch {
         $restartTimes.Clear()
