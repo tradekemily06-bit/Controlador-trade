@@ -13,6 +13,34 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024*1024), b""): digest.update(chunk)
     return digest.hexdigest()
 
+def _hash_archive_member(archive: zipfile.ZipFile, member: str, expected_size: int) -> tuple[str, int]:
+    """Hash a ZIP member incrementally; never load an entire runtime database into RAM."""
+    digest=hashlib.sha256()
+    size=0
+    with archive.open(member,"r") as source:
+        for chunk in iter(lambda: source.read(1024*1024), b""):
+            size += len(chunk)
+            if size > expected_size:
+                raise ValueError(f"backup integrity failure: {member}")
+            digest.update(chunk)
+    return digest.hexdigest(), size
+
+def _copy_archive_member(archive: zipfile.ZipFile, member: str, target: Path, expected_digest: str, expected_size: int) -> None:
+    """Stage and verify the exact bytes that will be restored, protecting against archive changes after preflight."""
+    digest=hashlib.sha256()
+    size=0
+    target.parent.mkdir(parents=True,exist_ok=True)
+    with archive.open(member,"r") as source, target.open("wb") as destination:
+        for chunk in iter(lambda: source.read(1024*1024), b""):
+            size += len(chunk)
+            if size > expected_size:
+                raise ValueError(f"backup integrity failure: {member}")
+            digest.update(chunk)
+            destination.write(chunk)
+    if size != expected_size or digest.hexdigest() != expected_digest:
+        target.unlink(missing_ok=True)
+        raise ValueError(f"backup integrity failure: {member}")
+
 def _sqlite_snapshot(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     source_db=sqlite3.connect(source); target_db=sqlite3.connect(target)
@@ -34,12 +62,11 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
         stage=Path(tmp); staged=[]
         for name in PORTABLE_FILES:
             source=runtime/name
-            if source.is_file():
+            if source.is_file() and not source.is_symlink():
                 dest=stage/name; _copy_state(source,dest); staged.append((name,dest))
         manifest={"format":"controlador-runtime-portable","version":PORTABILITY_VERSION,"created_at":datetime.now(timezone.utc).isoformat(),"runtime_identity":"portable-runtime-state","machine_specific_configuration":"excluded","secrets":"excluded","files":[{"path":n,"sha256":_sha256(p),"size":p.stat().st_size} for n,p in staged]}
         (stage/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True),encoding="utf-8")
-        # Use a unique temporary file beside the destination: concurrent backup
-        # attempts must not overwrite each other's staging archive.
+        # Unique temp file beside destination: concurrent backups cannot share it.
         temp_handle=tempfile.NamedTemporaryFile(
             prefix=f".{output.name}.",suffix=".tmp",dir=output.parent,delete=False
         )
@@ -98,28 +125,37 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
                 or size < 0
             ):
                 raise ValueError("backup manifest entry is invalid")
-            expected[name]=(digest,size)
+            expected[name]=(digest.lower(),size)
         members=set(member_names)
         if members != set(expected):
             raise ValueError("backup contents do not match manifest")
         for member,(digest,size) in expected.items():
-            data=archive.read(member)
-            if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
+            info=archive.getinfo(member)
+            if info.file_size != size:
+                raise ValueError(f"backup integrity failure: {member}")
+            actual_digest,actual_size=_hash_archive_member(archive,member,size)
+            if actual_size!=size or actual_digest!=digest:
                 raise ValueError(f"backup integrity failure: {member}")
     return manifest
+
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
-    manifest=verify_backup(backup_file)
+    backup=Path(backup_file).resolve()
+    manifest=verify_backup(backup)
     runtime=Path(runtime_dir).resolve()
     runtime.mkdir(parents=True,exist_ok=True)
     entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
+    expected={item["path"]:(item["sha256"].lower(),item["size"]) for item in manifest.get("files",[])}
+    symlinks=[name for name in entries if (runtime/name).is_symlink()]
+    if symlinks:
+        raise ValueError(f"restore refuses symbolic-link destinations: {', '.join(symlinks)}")
     if not replace:
         conflicts=[name for name in entries if (runtime/name).exists()]
         if conflicts:
             raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
 
-    # Stage both incoming files and rollback copies on the same filesystem as
-    # the destinations so os.replace remains atomic per file on Windows too.
-    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(
+    # Stage incoming data and rollback copies on the destination filesystem.
+    # Verify staged bytes too, so changed/corrupt archives never reach commit.
+    with zipfile.ZipFile(backup,"r") as archive, tempfile.TemporaryDirectory(
         prefix=".controlador-restore-",dir=runtime
     ) as tmp:
         stage=Path(tmp)
@@ -128,11 +164,13 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
         existed={}
         for name in entries:
             incoming[name]=stage/"incoming"/name
-            incoming[name].parent.mkdir(parents=True,exist_ok=True)
-            incoming[name].write_bytes(archive.read(name))
+            digest,size=expected[name]
+            _copy_archive_member(archive,name,incoming[name],digest,size)
             destination=runtime/name
             existed[name]=destination.exists()
             if existed[name]:
+                if not destination.is_file():
+                    raise ValueError(f"restore refuses non-file destination: {name}")
                 originals[name]=stage/"originals"/name
                 originals[name].parent.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(destination,originals[name])
