@@ -171,3 +171,49 @@ def test_restore_reports_incomplete_rollback_after_commit_failure(tmp_path: Path
     monkeypatch.setattr(portability.os, "replace", fail_commit_and_rollback)
     with pytest.raises(RuntimeError, match="rollback incomplete"):
         restore_backup(backup, target, replace=True)
+
+
+
+def test_backup_rejects_manifest_file_over_size_limit(tmp_path: Path):
+    from core.runtime_portability import MAX_PORTABLE_FILE_BYTES
+
+    bad = tmp_path / "oversized-member.zip"
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": 1,
+        "files": [{
+            "path": "operation-memory.json",
+            "sha256": "0" * 64,
+            "size": MAX_PORTABLE_FILE_BYTES + 1,
+        }],
+    }
+    with zipfile.ZipFile(bad, "w") as archive:
+        import json
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("operation-memory.json", b"x")
+    with pytest.raises(ValueError, match="size limit"):
+        verify_backup(bad)
+
+
+def test_backup_rejects_total_size_limit_before_reading_members(tmp_path: Path):
+    from core.runtime_portability import MAX_PORTABLE_FILE_BYTES, MAX_PORTABLE_TOTAL_BYTES
+
+    bad = tmp_path / "oversized-total.zip"
+    names = ["operation-memory.json", "operational-safety.json", "execution-ledger.json"]
+    each_size = MAX_PORTABLE_TOTAL_BYTES // 2
+    assert each_size <= MAX_PORTABLE_FILE_BYTES
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": 1,
+        "files": [
+            {"path": name, "sha256": "0" * 64, "size": each_size}
+            for name in names
+        ],
+    }
+    with zipfile.ZipFile(bad, "w") as archive:
+        import json
+        archive.writestr("manifest.json", json.dumps(manifest))
+        for name in names:
+            archive.writestr(name, b"x")
+    with pytest.raises(ValueError, match="total size limit"):
+        verify_backup(bad)
