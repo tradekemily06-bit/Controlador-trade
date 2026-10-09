@@ -153,7 +153,7 @@ void RefreshPanelToggle(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?panel_x:MathMax(12,cw-86);
+   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
