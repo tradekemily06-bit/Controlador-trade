@@ -84,23 +84,50 @@ function Test-Mt5TerminalHealth {
         }
         Set-Location $ProjectRoot
         $healthCheckCode = @'
-import MetaTrader5 as mt5, os, sys
+import json, MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
-ok = mt5.initialize(path=path)
+reasons = []
+try:
+    ok = bool(mt5.initialize(path=path))
+except Exception as exc:
+    print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps({"healthy": False, "initialize": False, "exception": repr(exc)}, ensure_ascii=False))
+    raise SystemExit(1)
+error = mt5.last_error()
 terminal = mt5.terminal_info() if ok else None
 account = mt5.account_info() if ok else None
 demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
 expected = os.path.normcase(os.path.realpath(path))
 actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
-healthy = bool(ok and terminal is not None and getattr(terminal, "connected", False) and actual == expected and account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode)
-mt5.shutdown()
+connected = bool(getattr(terminal, "connected", False)) if terminal else False
+trade_mode = getattr(account, "trade_mode", None) if account else None
+if not ok: reasons.append("initialize_false")
+if ok and terminal is None: reasons.append("terminal_info_missing")
+if terminal is not None and not connected: reasons.append("terminal_not_connected")
+if terminal is not None and actual != expected: reasons.append("configured_terminal_path_mismatch")
+if account is None: reasons.append("account_info_missing")
+if demo_mode is None: reasons.append("demo_mode_constant_missing")
+elif account is not None and trade_mode != demo_mode: reasons.append("account_not_confirmed_demo")
+healthy = bool(ok and terminal is not None and connected and actual == expected and account is not None and demo_mode is not None and trade_mode == demo_mode)
+print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps({
+    "healthy": healthy, "initialize": ok, "last_error": repr(error),
+    "terminal_connected": connected, "terminal_reported_path": getattr(terminal, "path", None) if terminal else None,
+    "expected_path": expected, "actual_path": actual, "account_info_present": account is not None,
+    "trade_mode": trade_mode, "demo_mode": demo_mode, "reasons": reasons
+}, ensure_ascii=False))
+try:
+    mt5.shutdown()
+except Exception:
+    pass
 raise SystemExit(0 if healthy else 1)
 '@
         $encodedHealthCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($healthCheckCode))
         $oneLineHealthCode = "import base64;exec(compile(base64.b64decode('$encodedHealthCode'),'<mt5-health>','exec'))"
-        & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath
-        return ($LASTEXITCODE -eq 0)
+        $healthOutput = & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath 2>&1
+        $healthExitCode = $LASTEXITCODE
+        $script:LastMt5HealthDiagnostic = (@($healthOutput | ForEach-Object { [string]$_ }) -join ' ')
+        return ($healthExitCode -eq 0)
     } catch {
+        $script:LastMt5HealthDiagnostic = "Falha ao executar diagnóstico MT5: $($_.Exception.Message)"
         return $false
     }
 }
@@ -214,7 +241,10 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                     $healthFailures++
                     Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                     if ($healthFailures -ge $HealthFailureThreshold) {
-                        Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
+                        if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+                        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
+                    }
+                    Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
                         Stop-Mt5Process -Process $process
                         break
                     }
@@ -224,6 +254,9 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
         } else {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+            if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+                Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
+            }
             Stop-Mt5Process -Process $process
         }
     }
@@ -279,6 +312,9 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 $healthFailures++
                 Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                 if ($healthFailures -ge $HealthFailureThreshold) {
+                    if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+                        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
+                    }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
                     Stop-Mt5Process -Process $processAfterStart
                     break
@@ -294,6 +330,9 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
         Stop-Mt5Process -Process $processAfterStart
+    }
+    if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
     }
     Write-SupervisorLog "MT5 não alcançou o health gate em $HealthWaitSeconds s; nova tentativa após backoff."
     Write-SupervisorStatus 'RECOVERING' 'MT5 sem health DEMO; nova tentativa após backoff.'
