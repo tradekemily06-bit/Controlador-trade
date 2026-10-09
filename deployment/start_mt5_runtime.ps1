@@ -45,6 +45,7 @@ function Load-RestartHistory {
         $restartTimes.Clear()
         $message = "Histórico de reinícios inválido; supervisor interrompido para preservar o limite de segurança: $($_.Exception.Message)"
         Write-SupervisorLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
         throw $message
     }
 }
@@ -56,7 +57,6 @@ function Save-RestartHistory {
     Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -77,6 +77,8 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
+
+Load-RestartHistory
 
 function Test-Mt5TerminalHealth {
     try {
