@@ -169,15 +169,16 @@ def test_mql5_sync_parses_numeric_error_and_warning_counts():
     assert r"(?i)(\d+)\s+(warnings?|avisos?)" in text
     assert r"(?i)(\\d+)\\s+" not in text
 
-def test_mql5_sync_fails_closed_when_target_terminal_instance_is_ambiguous():
+def test_mql5_sync_resolves_unique_data_folder_when_terminal_processes_duplicate():
     text = SCRIPT.read_text(encoding="utf-8")
     assert "function Resolve-Mt5TerminalPath" in text
-    assert "Get-CimInstance Win32_Process" in text
-    assert "Mais de uma instância corresponde ao MT5 configurado" in text
-    assert "$Mt5TerminalPath = Resolve-Mt5TerminalPath -RequestedPath $Mt5TerminalPath" in text
-    assert "sincronização cancelada para não atualizar a pasta de dados errada" in text
-
-
+    assert "function Resolve-Mt5DataPath" in text
+    assert "[string]$Mt5DataPath = $env:CONTROLADOR_MT5_DATA_PATH" in text
+    assert "Get-ChildItem -LiteralPath $profilesRoot -Directory" in text
+    assert "Mais de uma pasta de dados MT5 contém o painel" in text
+    assert "Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel" in text
+    assert "$dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath" in text
+    assert "Mais de uma instância corresponde ao MT5 configurado" not in text
 
 def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
