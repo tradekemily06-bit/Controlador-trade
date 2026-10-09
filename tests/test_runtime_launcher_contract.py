@@ -98,3 +98,11 @@ def test_mt5_supervisor_pins_health_check_to_configured_terminal():
     assert "configured_directory" in text
     assert "actual_directory == configured_directory" in text
     assert "& $PythonExe -c $healthCheckCode $Mt5TerminalPath" in text
+
+def test_mt5_supervisor_only_tracks_process_matching_configured_executable():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "function Get-ConfiguredMt5Process" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "[System.IO.Path]::GetFullPath($_.ExecutablePath)" in text
+    assert "Get-ConfiguredMt5Process" in text
+    assert "Get-Process -Name $processName" not in text
