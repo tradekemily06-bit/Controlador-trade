@@ -22,7 +22,10 @@ def test_dashboard_renders_runtime_health_before_waiting_for_risk_gate():
     assert source.index(status_request) < source.index(risk_request)
 
 
-def test_dashboard_loads_market_assets_and_chart_on_initial_page_load():
+def test_dashboard_loads_market_assets_and_chart_before_final_runtime_status():
     source = DASHBOARD.read_text(encoding="utf-8")
-    assert "refreshMarketAssets().catch(()=>{});" in source
-    assert "refreshMarketChart().catch(()=>{});" in source
+    bootstrap = source.index("async function bootstrapWorkspace()")
+    assets = source.index("await refreshMarketAssets().catch(()=>{});", bootstrap)
+    chart = source.index("await refreshMarketChart().catch(()=>{});", assets)
+    status = source.index("await refresh().catch(e=>", chart)
+    assert bootstrap < assets < chart < status
