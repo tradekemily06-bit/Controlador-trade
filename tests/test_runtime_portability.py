@@ -397,3 +397,29 @@ def test_sqlite_snapshot_closes_source_when_target_open_fails(tmp_path: Path, mo
     # A closed sqlite connection raises ProgrammingError on use.
     with pytest.raises(sqlite3.ProgrammingError):
         source_connection.execute("SELECT 1")
+
+
+def test_restore_refuses_symlink_backup_source(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    backup = tmp_path / "runtime.zip"
+    portability.create_backup(source, backup)
+    link = tmp_path / "backup-link.zip"
+    try:
+        link.symlink_to(backup)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    with pytest.raises(ValueError, match="symbolic-link backup source"):
+        portability.restore_backup(link, runtime)
+    assert list(runtime.iterdir()) == []
+
+
+def test_restore_missing_backup_has_clear_error(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    with pytest.raises(FileNotFoundError, match="runtime backup not found"):
+        portability.restore_backup(tmp_path / "missing.zip", runtime)
+    assert not runtime.exists()
