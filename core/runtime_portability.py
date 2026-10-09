@@ -13,13 +13,46 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024*1024), b""): digest.update(chunk)
     return digest.hexdigest()
 
+def _hash_archive_member(archive: zipfile.ZipFile, member: str, expected_size: int) -> tuple[str, int]:
+    """Hash a ZIP member incrementally; never load an entire runtime database into RAM."""
+    digest=hashlib.sha256()
+    size=0
+    with archive.open(member,"r") as source:
+        for chunk in iter(lambda: source.read(1024*1024), b""):
+            size += len(chunk)
+            if size > expected_size:
+                raise ValueError(f"backup integrity failure: {member}")
+            digest.update(chunk)
+    return digest.hexdigest(), size
+
+def _copy_archive_member(archive: zipfile.ZipFile, member: str, target: Path, expected_digest: str, expected_size: int) -> None:
+    """Stage and verify the exact bytes that will be restored, protecting against archive changes after preflight."""
+    digest=hashlib.sha256()
+    size=0
+    target.parent.mkdir(parents=True,exist_ok=True)
+    with archive.open(member,"r") as source, target.open("wb") as destination:
+        for chunk in iter(lambda: source.read(1024*1024), b""):
+            size += len(chunk)
+            if size > expected_size:
+                raise ValueError(f"backup integrity failure: {member}")
+            digest.update(chunk)
+            destination.write(chunk)
+    if size != expected_size or digest.hexdigest() != expected_digest:
+        target.unlink(missing_ok=True)
+        raise ValueError(f"backup integrity failure: {member}")
+
 def _sqlite_snapshot(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    source_db=sqlite3.connect(source); target_db=sqlite3.connect(target)
+    source_db = sqlite3.connect(source)
     try:
-        with target_db: source_db.backup(target_db)
+        target_db = sqlite3.connect(target)
+        try:
+            with target_db:
+                source_db.backup(target_db)
+        finally:
+            target_db.close()
     finally:
-        target_db.close(); source_db.close()
+        source_db.close()
 
 def _copy_state(source: Path, target: Path) -> None:
     if source.suffix.lower()==".sqlite": _sqlite_snapshot(source,target)
@@ -27,22 +60,46 @@ def _copy_state(source: Path, target: Path) -> None:
         target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
 
 def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]:
-    runtime=Path(runtime_dir).resolve(); output=Path(output_file).resolve()
+    # Do not resolve an existing output symlink: that would silently redirect
+    # publication to another file and defeat the caller's chosen destination.
+    requested_runtime=Path(runtime_dir).expanduser()
+    if requested_runtime.is_symlink():
+        raise ValueError(f"runtime backup refuses symbolic-link source directory: {requested_runtime}")
+    requested_output=Path(output_file).expanduser()
+    if requested_output.is_symlink():
+        raise ValueError(f"backup output refuses symbolic-link destination: {requested_output}")
+    runtime=requested_runtime.resolve(); output=requested_output.resolve()
     if not runtime.is_dir(): raise FileNotFoundError(f"runtime directory not found: {runtime}")
+    if output in {runtime/name for name in PORTABLE_FILES}:
+        raise ValueError("backup output must not overwrite a portable runtime state file")
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="controlador-portability-") as tmp:
         stage=Path(tmp); staged=[]
         for name in PORTABLE_FILES:
             source=runtime/name
+            if source.is_symlink():
+                raise ValueError(f"runtime backup refuses symbolic-link state file: {name}")
             if source.is_file():
                 dest=stage/name; _copy_state(source,dest); staged.append((name,dest))
+        if not staged:
+            raise ValueError("runtime backup refused: no portable state files were found")
         manifest={"format":"controlador-runtime-portable","version":PORTABILITY_VERSION,"created_at":datetime.now(timezone.utc).isoformat(),"runtime_identity":"portable-runtime-state","machine_specific_configuration":"excluded","secrets":"excluded","files":[{"path":n,"sha256":_sha256(p),"size":p.stat().st_size} for n,p in staged]}
         (stage/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True),encoding="utf-8")
-        temporary=output.with_suffix(output.suffix+".tmp")
-        with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.write(stage/"manifest.json","manifest.json")
-            for name,path in staged: archive.write(path,name)
-        os.replace(temporary,output)
+        # Unique temp file beside destination: concurrent backups cannot share it.
+        temp_handle=tempfile.NamedTemporaryFile(
+            prefix=f".{output.name}.",suffix=".tmp",dir=output.parent,delete=False
+        )
+        temporary=Path(temp_handle.name)
+        temp_handle.close()
+        try:
+            with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.write(stage/"manifest.json","manifest.json")
+                for name,path in staged: archive.write(path,name)
+            # Never publish a backup until the exact archive on disk passes verification.
+            verify_backup(temporary)
+            os.replace(temporary,output)
+        finally:
+            temporary.unlink(missing_ok=True)
     return manifest|{"backup":str(output)}
 
 def _safe_member(name:str)->str:
@@ -50,6 +107,20 @@ def _safe_member(name:str)->str:
     if candidate.is_absolute() or ".." in candidate.parts or len(candidate.parts)!=1: raise ValueError("backup contains an unsafe path")
     if candidate.name not in PORTABLE_FILES: raise ValueError(f"backup contains an unsupported file: {name}")
     return candidate.name
+
+class _DuplicateManifestKeyError(ValueError):
+    pass
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently keeping the last duplicate key."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateManifestKeyError(f"backup manifest contains duplicate key: {key}")
+        result[key] = value
+    return result
+
 
 def verify_backup(backup_file:str|Path)->dict[str,Any]:
     with zipfile.ZipFile(backup_file,"r") as archive:
@@ -60,12 +131,28 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         if len(member_names) != len(set(member_names)):
             raise ValueError("backup contains duplicate members")
         try:
-            manifest=json.loads(archive.read("manifest.json"))
-        except (KeyError, json.JSONDecodeError) as exc:
+            manifest_info=archive.getinfo("manifest.json")
+            # The manifest only describes at most PORTABLE_FILES; bound its
+            # parsing cost instead of trusting a potentially huge ZIP member.
+            if manifest_info.file_size > 1024 * 1024:
+                raise ValueError("backup manifest is too large")
+            with archive.open("manifest.json","r") as manifest_stream:
+                manifest_bytes=manifest_stream.read(1024 * 1024 + 1)
+            if len(manifest_bytes) > 1024 * 1024:
+                raise ValueError("backup manifest is too large")
+            manifest=json.loads(manifest_bytes, object_pairs_hook=_reject_duplicate_json_keys)
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError, _DuplicateManifestKeyError) as exc:
             raise ValueError("backup manifest is invalid") from exc
         if not isinstance(manifest,dict):
             raise ValueError("backup manifest is invalid")
-        if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION:
+        version = manifest.get("version")
+        # bool is a subclass of int in Python (True == 1); reject it explicitly
+        # so a malformed manifest cannot pass the format-version gate.
+        if (
+            manifest.get("format") != "controlador-runtime-portable"
+            or type(version) is not int
+            or version != PORTABILITY_VERSION
+        ):
             raise ValueError("unsupported backup format or version")
         entries=manifest.get("files")
         if not isinstance(entries,list):
@@ -89,30 +176,90 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
                 or size < 0
             ):
                 raise ValueError("backup manifest entry is invalid")
-            expected[name]=(digest,size)
+            expected[name]=(digest.lower(),size)
         members=set(member_names)
         if members != set(expected):
             raise ValueError("backup contents do not match manifest")
+        if not entries:
+            raise ValueError("backup manifest files are invalid or empty")
         for member,(digest,size) in expected.items():
-            data=archive.read(member)
-            if len(data)!=size or hashlib.sha256(data).hexdigest()!=digest:
+            info=archive.getinfo(member)
+            if info.file_size != size:
+                raise ValueError(f"backup integrity failure: {member}")
+            actual_digest,actual_size=_hash_archive_member(archive,member,size)
+            if actual_size!=size or actual_digest!=digest:
                 raise ValueError(f"backup integrity failure: {member}")
     return manifest
+
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
-    manifest=verify_backup(backup_file); runtime=Path(runtime_dir).resolve(); runtime.mkdir(parents=True,exist_ok=True)
+    requested_backup=Path(backup_file).expanduser()
+    if requested_backup.is_symlink():
+        raise ValueError(f"restore refuses symbolic-link backup source: {requested_backup}")
+    backup=requested_backup.resolve()
+    if not backup.is_file():
+        raise FileNotFoundError(f"runtime backup not found: {backup}")
+    requested_runtime=Path(runtime_dir).expanduser()
+    if requested_runtime.is_symlink():
+        raise ValueError(f"restore refuses symbolic-link runtime directory: {requested_runtime}")
+    manifest=verify_backup(backup)
+    runtime=requested_runtime.resolve()
+    runtime.mkdir(parents=True,exist_ok=True)
     entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
+    expected={item["path"]:(item["sha256"].lower(),item["size"]) for item in manifest.get("files",[])}
+    symlinks=[name for name in entries if (runtime/name).is_symlink()]
+    if symlinks:
+        raise ValueError(f"restore refuses symbolic-link destinations: {', '.join(symlinks)}")
     if not replace:
         conflicts=[name for name in entries if (runtime/name).exists()]
         if conflicts:
             raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
-    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix="controlador-restore-") as tmp:
-        staged={}
+
+    # Stage incoming data and rollback copies on the destination filesystem.
+    # Verify staged bytes too, so changed/corrupt archives never reach commit.
+    with zipfile.ZipFile(backup,"r") as archive, tempfile.TemporaryDirectory(
+        prefix=".controlador-restore-",dir=runtime
+    ) as tmp:
+        stage=Path(tmp)
+        incoming={}
+        originals={}
+        existed={}
         for name in entries:
-            staged[name]=Path(tmp)/name
-            staged[name].write_bytes(archive.read(name))
-        for name in entries:
+            incoming[name]=stage/"incoming"/name
+            digest,size=expected[name]
+            _copy_archive_member(archive,name,incoming[name],digest,size)
             destination=runtime/name
-            temporary=destination.with_name(f".{destination.name}.restore.tmp")
-            os.replace(staged[name],temporary)
-            os.replace(temporary,destination)
-    return {"restored":True,"runtime_dir":str(runtime),"files":entries,"machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
+            existed[name]=destination.exists()
+            if existed[name]:
+                if not destination.is_file():
+                    raise ValueError(f"restore refuses non-file destination: {name}")
+                originals[name]=stage/"originals"/name
+                originals[name].parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(destination,originals[name])
+
+        committed=[]
+        try:
+            for name in entries:
+                os.replace(incoming[name],runtime/name)
+                committed.append(name)
+        except Exception as commit_error:
+            rollback_errors=[]
+            for name in reversed(committed):
+                destination=runtime/name
+                try:
+                    if existed[name]:
+                        rollback_temp=stage/"rollback"/name
+                        rollback_temp.parent.mkdir(parents=True,exist_ok=True)
+                        shutil.copy2(originals[name],rollback_temp)
+                        os.replace(rollback_temp,destination)
+                    elif destination.exists():
+                        destination.unlink()
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{name}: {rollback_error}")
+            if rollback_errors:
+                raise RuntimeError(
+                    f"restore failed ({commit_error}); rollback incomplete: "
+                    + "; ".join(rollback_errors)
+                ) from commit_error
+            raise
+    return {"restored":True,"runtime_dir":str(runtime),"files":entries,
+            "machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
