@@ -423,3 +423,12 @@ def test_restore_missing_backup_has_clear_error(tmp_path: Path):
     with pytest.raises(FileNotFoundError, match="runtime backup not found"):
         portability.restore_backup(tmp_path / "missing.zip", runtime)
     assert not runtime.exists()
+
+
+def test_verify_backup_rejects_duplicate_manifest_json_keys(tmp_path: Path):
+    backup = tmp_path / "duplicate-json-key.zip"
+    manifest = '{"format":"controlador-runtime-portable","version":1,"version":2,"files":[]}'
+    with zipfile.ZipFile(backup, "w") as archive:
+        archive.writestr("manifest.json", manifest)
+    with pytest.raises(ValueError, match="backup manifest is invalid"):
+        portability.verify_backup(backup)
