@@ -239,3 +239,36 @@ def test_backup_preserves_previous_archive_when_new_archive_verification_fails(t
 
     assert output.read_bytes() == previous_bytes
     assert not list(tmp_path.glob(".state.zip.*.tmp"))
+
+
+
+def test_restore_rechecks_no_overwrite_conflicts_at_commit_time(tmp_path: Path, monkeypatch):
+    import core.runtime_portability as portability
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("incoming-memory", encoding="utf-8")
+    (source / "operational-safety.json").write_text("incoming-safety", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    original_replace = portability.os.replace
+    injected = False
+
+    def introduce_racing_destination(source_path, destination_path):
+        nonlocal injected
+        source_text = str(source_path)
+        destination = Path(destination_path)
+        if not injected and "incoming" in source_text and source_text.endswith("operational-safety.json"):
+            injected = True
+            destination.write_text("created-by-concurrent-process", encoding="utf-8")
+        return original_replace(source_path, destination_path)
+
+    monkeypatch.setattr(portability.os, "replace", introduce_racing_destination)
+    with pytest.raises(FileExistsError, match="appeared during staging"):
+        restore_backup(backup, target, replace=False)
+
+    assert not (target / "operation-memory.json").exists()
+    assert (target / "operational-safety.json").read_text(encoding="utf-8") == "created-by-concurrent-process"
