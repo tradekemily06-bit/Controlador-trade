@@ -241,7 +241,6 @@ if ($copiedSourceHash -ne $sourceHash) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     Restore-File -Backup $backupProvenance -Target $provenance
-    Restore-File -Backup $backupProvenance -Target $provenance
     throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
 }
 
