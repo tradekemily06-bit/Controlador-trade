@@ -22,12 +22,19 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
     _TIMEFRAMES = {
         "1m": "TIMEFRAME_M1",
+        "m1": "TIMEFRAME_M1",
         "5m": "TIMEFRAME_M5",
+        "m5": "TIMEFRAME_M5",
         "15m": "TIMEFRAME_M15",
+        "m15": "TIMEFRAME_M15",
         "30m": "TIMEFRAME_M30",
+        "m30": "TIMEFRAME_M30",
         "1h": "TIMEFRAME_H1",
+        "h1": "TIMEFRAME_H1",
         "4h": "TIMEFRAME_H4",
+        "h4": "TIMEFRAME_H4",
         "1d": "TIMEFRAME_D1",
+        "d1": "TIMEFRAME_D1",
     }
 
     def __init__(self, mt5_module: Any = None) -> None:
