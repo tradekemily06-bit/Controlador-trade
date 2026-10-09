@@ -133,10 +133,10 @@ def test_create_backup_skips_symlinked_portable_state(tmp_path: Path):
         pytest.skip("symbolic links are not available for this user/platform")
 
     backup = tmp_path / "runtime.zip"
-    manifest = portability.create_backup(source, backup)
+    with pytest.raises(ValueError, match="no portable state files"):
+        portability.create_backup(source, backup)
 
-    assert manifest["files"] == []
-    assert portability.verify_backup(backup)["files"] == []
+    assert not backup.exists()
 
 def test_restore_replaces_all_files_after_successful_staging(tmp_path: Path):
     source = tmp_path / "source"
