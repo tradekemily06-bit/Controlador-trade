@@ -127,10 +127,49 @@ function Get-ConfiguredMt5Process {
     return Get-Process -Id $candidates[0].ProcessId -ErrorAction SilentlyContinue
 }
 
+function Get-Mt5AccountSafetyState {
+    # A terminal may be stopped automatically only when its configured account is explicitly confirmed DEMO.
+    try {
+        $accountCheckCode = @'
+import MetaTrader5 as mt5, os, sys
+path = sys.argv[1]
+state = "UNKNOWN"
+try:
+    ok = mt5.initialize(path=path)
+    terminal = mt5.terminal_info() if ok else None
+    account = mt5.account_info() if ok else None
+    demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+    expected = os.path.normcase(os.path.realpath(path))
+    actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+    if ok and terminal is not None and actual == expected and account is not None and demo_mode is not None:
+        state = "DEMO" if getattr(account, "trade_mode", None) == demo_mode else "NON_DEMO"
+finally:
+    mt5.shutdown()
+print(state)
+'@
+        $encodedAccountCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($accountCheckCode))
+        $oneLineAccountCode = "import base64;exec(compile(base64.b64decode('$encodedAccountCode'),'<mt5-account-safety>','exec'))"
+        $result = & $PythonExe -c $oneLineAccountCode $Mt5TerminalPath 2>$null
+        if ($LASTEXITCODE -ne 0) { return 'UNKNOWN' }
+        $state = [string]($result | Select-Object -Last 1)
+        if ($state.Trim() -in @('DEMO', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
+        return 'UNKNOWN'
+    } catch {
+        return 'UNKNOWN'
+    }
+}
+
 function Stop-Mt5Process {
     param([System.Diagnostics.Process]$Process)
     if ($null -eq $Process -or $Process.HasExited) { return }
-    Write-SupervisorLog "MT5 não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
+    $accountSafetyState = Get-Mt5AccountSafetyState
+    if ($accountSafetyState -ne 'DEMO') {
+        $reason = "MT5 não será encerrado automaticamente: conta/caminho não confirmados como DEMO (estado=$accountSafetyState)."
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'FAILED' $reason
+        throw $reason
+    }
+    Write-SupervisorLog "MT5 DEMO não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 3
 }
