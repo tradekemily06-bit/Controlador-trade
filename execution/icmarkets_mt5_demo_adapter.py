@@ -39,8 +39,15 @@ class ICMarketsMT5DemoAdapter:
         self.config = config or ICMarketsMT5DemoConfig()
         try:
             self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("risk_day_timezone deve ser um timezone IANA válido.")
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            # UTC has a fixed offset and is available in the standard library.
+            # This keeps the default runtime portable on Windows even when the
+            # optional tzdata package is missing or its installation is damaged.
+            # Named regional zones still require valid IANA timezone data.
+            if self.config.risk_day_timezone.strip().upper() in {"UTC", "ETC/UTC", "GMT", "ETC/GMT"}:
+                self._risk_day_zone = timezone.utc
+            else:
+                raise ValueError("risk_day_timezone deve ser um timezone IANA válido.") from exc
         self._mt5 = mt5_module
 
     def _module(self) -> Any:
