@@ -277,7 +277,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     if ($restartTimes.Count -ge $MaxRestartsPerHour) {
         Write-StartupLog "Limite de reinícios atingido ($MaxRestartsPerHour/h). Controlador entra em espera controlada; o supervisor continuará ativo."
         $finalState = 'RECOVERING'
-        $finalReason = 'RESTART_LIMIT_COOLDOWN'
+        $finalReason = 'RESTART_LIMIT_EXCEEDED; aguardando cooldown para nova tentativa'
         Write-SupervisorStatus $finalState $finalReason
 
         # Keep supervision alive without retrying in a tight loop. Resume when
