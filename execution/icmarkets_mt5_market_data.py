@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -37,8 +38,32 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         "d1": "TIMEFRAME_D1",
     }
 
-    def __init__(self, mt5_module: Any = None) -> None:
+    def __init__(self, mt5_module: Any = None, terminal_path: str | None = None) -> None:
         self._mt5 = mt5_module
+        self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
+
+    def _initialize(self, mt5: Any) -> bool:
+        if not self._terminal_path:
+            return bool(mt5.initialize())
+        if not mt5.initialize(path=self._terminal_path):
+            return False
+        terminal = mt5.terminal_info()
+        expected = os.path.normcase(os.path.realpath(self._terminal_path))
+        actual = (
+            os.path.normcase(
+                os.path.realpath(
+                    os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
+                )
+            )
+            if terminal is not None
+            else ""
+        )
+        if actual != expected:
+            mt5.shutdown()
+            raise MT5MarketDataError(
+                "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
+            )
+        return True
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -91,7 +116,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
         mt5 = self._module()
         timeframe = self._timeframe(request.timeframe)
-        if not mt5.initialize():
+        if not self._initialize(mt5):
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
