@@ -198,8 +198,9 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     render = panel.split("void Panel()", 1)[1].split("void RenderView()", 1)[0]
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
-    assert timer.index("RefreshPanelLayout();") < timer.index("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?panel_x:MathMax(12,cw-86);" in panel
+    assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
+    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
 
 
