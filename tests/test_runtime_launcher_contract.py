@@ -110,6 +110,8 @@ def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
     controller = _read("deployment/start_controlador_runtime.ps1")
     installer = _read("deployment/install_windows_autostart.ps1")
     assert "$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in controller
+    bootstrap = _read("deployment/bootstrap_windows_runtime.ps1")
+    assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
     assert "run_preflight(mt5)" in controller
     assert "-Mt5TerminalPath $Mt5TerminalPath" in controller
     assert "-Mt5TerminalPath \"' + $Mt5TerminalPath + '\"" in installer
