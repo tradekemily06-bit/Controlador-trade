@@ -114,6 +114,18 @@ def test_mt5_supervisor_only_tracks_process_matching_configured_executable():
 
 
 
+def test_mt5_supervisor_fails_closed_when_restart_history_is_corrupt():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    loader = text.split("function Load-RestartHistory {", 1)[1].split(
+        "\nfunction Save-RestartHistory", 1
+    )[0]
+    assert "ConvertFrom-Json" in loader
+    assert "Histórico de reinícios inválido" in loader
+    assert "throw $message" in loader
+    assert "$restartTimes.Clear()" in loader
+    assert loader.index("throw $message") > loader.index("Histórico de reinícios inválido")
+
+
 def test_portability_scripts_pass_paths_as_arguments_and_keep_restore_safe_by_default():
     backup = _read("deployment/backup_runtime.ps1")
     restore = _read("deployment/restore_runtime.ps1")
