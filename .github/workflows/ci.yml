@@ -38,7 +38,32 @@ jobs:
         run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
 
       - name: Build production container
-        run: docker build --tag controlador-trade:ci .
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_log="$(mktemp)"
+          for attempt in 1 2 3 4; do
+            if docker build --tag controlador-trade:ci . 2>&1 | tee "$build_log"; then
+              rm -f "$build_log"
+              exit 0
+            fi
+
+            if ! grep -Eiq '429 Too Many Requests|toomanyrequests|rate limit' "$build_log"; then
+              echo "Container build failed for a reason other than an apparent Docker Hub rate limit." >&2
+              rm -f "$build_log"
+              exit 1
+            fi
+
+            if [ "$attempt" -eq 4 ]; then
+              echo "Container build still rate-limited after $attempt attempts." >&2
+              rm -f "$build_log"
+              exit 1
+            fi
+
+            delay=$((attempt * 15))
+            echo "Docker Hub rate limit detected (attempt $attempt/4); retrying in ${delay}s."
+            sleep "$delay"
+          done
 
       - name: Smoke test production container health
         shell: bash
