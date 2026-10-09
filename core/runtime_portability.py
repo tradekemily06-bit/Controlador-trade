@@ -62,6 +62,8 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
         raise ValueError(f"backup output refuses symbolic-link destination: {requested_output}")
     runtime=Path(runtime_dir).resolve(); output=requested_output.resolve()
     if not runtime.is_dir(): raise FileNotFoundError(f"runtime directory not found: {runtime}")
+    if output in {runtime/name for name in PORTABLE_FILES}:
+        raise ValueError("backup output must not overwrite a portable runtime state file")
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="controlador-portability-") as tmp:
         stage=Path(tmp); staged=[]
