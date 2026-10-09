@@ -72,7 +72,8 @@ function Save-RestartHistory {
     $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
     $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($restartHistoryPath)).$([guid]::NewGuid().ToString('N')).tmp")
     try {
-        $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
+        $json = ConvertTo-Json -InputObject @($values) -Depth 3
+        Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
         Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
     } finally {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
