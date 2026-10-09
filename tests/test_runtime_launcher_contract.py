@@ -96,3 +96,20 @@ def test_mt5_supervisor_health_initializes_the_configured_terminal():
     assert "mt5.initialize(path=sys.argv[1])" in text
     assert '" $Mt5TerminalPath' in text
     assert "mt5.initialize(); terminal=mt5.terminal_info()" not in text
+
+
+def test_mt5_supervisor_tracks_only_the_configured_terminal_process():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "function Get-ConfiguredMt5Process" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "[System.IO.Path]::GetFullPath($_.ExecutablePath)" in text
+    assert text.count("Get-ConfiguredMt5Process") >= 4
+    assert "Get-Process -Name $processName" not in text
+
+
+def test_mt5_health_rejects_wrong_installation_and_non_demo_account():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "mt5.initialize(path=sys.argv[1])" in text
+    assert "os.path.realpath(getattr(t,'path',''))" in text
+    assert "actual==expected" in text
+    assert "getattr(a,'trade_mode',None)==d" in text
