@@ -340,3 +340,15 @@ def test_verify_backup_rejects_unsafe_archive_member(tmp_path: Path):
 
     with pytest.raises(ValueError, match="unsafe path"):
         portability.verify_backup(backup)
+
+def test_create_backup_refuses_output_that_is_runtime_state_file(tmp_path: Path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    state = runtime / "operation-memory.json"
+    state.write_text('{"preserve":true}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must not overwrite a portable runtime state file"):
+        portability.create_backup(runtime, state)
+
+    assert state.read_text(encoding="utf-8") == '{"preserve":true}'
+
