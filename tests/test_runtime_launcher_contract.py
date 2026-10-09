@@ -130,3 +130,17 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     assert "mt5.initialize(path=self._terminal_path)" in adapter
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
     assert "mt5.initialize(path=configured_path)" in preflight
+
+
+
+def test_supervisors_reject_restart_history_that_is_future_dated_or_out_of_order():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        assert "$futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)" in text
+        assert "$parsedRestart -gt $futureLimit" in text
+        assert "$parsedRestart -lt $previousRestart" in text
+        assert "RESTART_HISTORY_INVALID" in text
+        assert "supervisor interrompido para preservar o limite de segurança" in text or "supervisor MT5 interrompido para preservar o limite de segurança" in text
