@@ -83,7 +83,7 @@ function Test-Mt5TerminalHealth {
             "$ProjectRoot;$($env:PYTHONPATH)"
         }
         Set-Location $ProjectRoot
-        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; ok=False; healthy=False; exec('try:\\n ok=mt5.initialize(path=sys.argv[1])\\n t=mt5.terminal_info() if ok else None\\n a=mt5.account_info() if ok else None\\n d=getattr(mt5,\'ACCOUNT_TRADE_MODE_DEMO\',None)\\n expected=os.path.normcase(os.path.realpath(sys.argv[1]))\\n actual=os.path.normcase(os.path.realpath(getattr(t,\'path\',\'\'))) if t else \'\'\\n healthy=bool(ok and t is not None and getattr(t,\'connected\',False) and actual==expected and a is not None and d is not None and getattr(a,\'trade_mode\',None)==d)\\nfinally:\\n mt5.shutdown()'); raise SystemExit(0 if healthy else 1)" $Mt5TerminalPath
+        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; ok=mt5.initialize(path=sys.argv[1]); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(sys.argv[1])); actual=os.path.normcase(os.path.realpath(getattr(t,'path',''))) if t else ''; healthy=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); mt5.shutdown(); raise SystemExit(0 if healthy else 1)" $Mt5TerminalPath
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
