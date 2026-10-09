@@ -89,6 +89,36 @@ def test_system_status_has_safe_gates():
     assert status["production_operation_gate"]["authorized"] is False
 
 
+def test_mt5_demo_is_validated_only_after_healthy_candles_reach_runtime(tmp_path):
+    from core.operational_runtime import build_operational_runtime
+    from core.p122_broker_market_data import BrokerMarketDataSnapshot
+
+    runtime = build_operational_runtime(tmp_path)
+    service = EcosystemService(operational_runtime=runtime)
+    assert service.connections()["ic_markets_mt5_demo"] == "NOT_CONNECTED"
+
+    candles = _candles()
+    received_at = candles[-1].timestamp + timedelta(minutes=1)
+    snapshot = BrokerMarketDataSnapshot(
+        symbol="EURUSD",
+        timeframe="1m",
+        candles=candles,
+        source="IC Markets MT5 DEMO",
+        received_at=received_at,
+    )
+    service.update_market_data_snapshot(
+        snapshot,
+        now=received_at,
+        expected_interval_seconds=60,
+    )
+
+    assert service.connections()["ic_markets_mt5_demo"] == "DEMO_VALIDADO"
+    status = service.system_status()
+    assert status["mt5_demo"] == "DEMO_VALIDADO"
+    assert status["execution_allowed"] is False
+    assert status["real"] == "DESABILITADO"
+
+
 def test_production_context_requires_subject_and_tenant():
     service = EcosystemService()
 
