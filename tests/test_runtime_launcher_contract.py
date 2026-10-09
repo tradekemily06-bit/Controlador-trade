@@ -101,6 +101,17 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         assert required in text
 
 
+def test_mt5_supervisor_logs_specific_health_gate_failure_reason():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "MT5_HEALTH_DIAGNOSTIC=" in text
+    assert "last_error" in text
+    assert "terminal_connected" in text
+    assert "configured_terminal_path_mismatch" in text
+    assert "account_not_confirmed_demo" in text
+    assert "$script:LastMt5HealthDiagnostic" in text
+    assert "Diagnóstico do health gate MT5" in text
+
+
 def test_mt5_supervisor_pins_health_and_process_management_to_configured_terminal():
     text = _read("deployment/start_mt5_runtime.ps1")
     assert "mt5.initialize(path=path)" in text
