@@ -55,7 +55,12 @@ def _copy_state(source: Path, target: Path) -> None:
         target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
 
 def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]:
-    runtime=Path(runtime_dir).resolve(); output=Path(output_file).resolve()
+    # Do not resolve an existing output symlink: that would silently redirect
+    # publication to another file and defeat the caller's chosen destination.
+    requested_output=Path(output_file).expanduser()
+    if requested_output.is_symlink():
+        raise ValueError(f"backup output refuses symbolic-link destination: {requested_output}")
+    runtime=Path(runtime_dir).resolve(); output=requested_output.resolve()
     if not runtime.is_dir(): raise FileNotFoundError(f"runtime directory not found: {runtime}")
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="controlador-portability-") as tmp:
