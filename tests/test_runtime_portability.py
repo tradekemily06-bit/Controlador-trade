@@ -84,3 +84,24 @@ def test_restore_replaces_all_files_after_successful_staging(tmp_path: Path):
     assert result["restored"] is True
     assert (runtime / "operation-memory.json").read_text(encoding="utf-8") == '{"from":"backup"}'
     assert (runtime / "operational-safety.json").read_text(encoding="utf-8") == '{"from":"backup"}'
+
+
+
+def test_create_backup_preserves_previous_archive_and_cleans_temp_on_write_failure(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    output = tmp_path / "runtime.zip"
+    output.write_bytes(b"previous-valid-backup")
+
+    class BrokenArchive:
+        def __init__(self, *args, **kwargs):
+            raise OSError("simulated archive creation failure")
+
+    monkeypatch.setattr(portability.zipfile, "ZipFile", BrokenArchive)
+
+    with pytest.raises(OSError, match="simulated archive creation failure"):
+        portability.create_backup(source, output)
+
+    assert output.read_bytes() == b"previous-valid-backup"
+    assert list(tmp_path.glob(".runtime.zip.*.tmp")) == []
