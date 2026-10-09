@@ -114,6 +114,17 @@ def test_mt5_supervisor_only_tracks_process_matching_configured_executable():
 
 
 
+def test_mt5_supervisor_fails_closed_on_duplicate_configured_processes():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    process_lookup = text.split("function Get-ConfiguredMt5Process {", 1)[1].split(
+        "\nfunction Stop-Mt5Process", 1
+    )[0]
+    assert "$candidates.Count -gt 1" in process_lookup
+    assert "estado ambíguo" in process_lookup
+    assert "$candidates.Count -eq 0" in process_lookup
+    assert "Select-Object -First 1" not in process_lookup
+
+
 def test_mt5_supervisor_fails_closed_when_restart_history_is_corrupt():
     text = _read("deployment/start_mt5_runtime.ps1")
     loader = text.split("function Load-RestartHistory {", 1)[1].split(
