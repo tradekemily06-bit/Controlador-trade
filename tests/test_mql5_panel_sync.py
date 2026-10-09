@@ -207,3 +207,14 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
 
 
+def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert '$provenance = "$binary.provenance.json"' in text
+    assert "recordedProvenance.source_sha256" in text
+    assert "recordedProvenance.binary_sha256" in text
+    assert "if (-not $Force -and $sourceHash -eq $destinationHash -and $binaryUsable)" in text
+    assert "source_sha256 = $sourceHash" in text
+    assert "binary_sha256 = $binaryHashAfter" in text
+    assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
+    assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
+    assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
