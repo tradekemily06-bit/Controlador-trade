@@ -108,9 +108,13 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
         observed_at = (Get-Date).ToUniversalTime().ToString('o')
         restart_count_last_hour = $restartTimes.Count
     } | ConvertTo-Json -Compress
-    $tmp = "$statusPath.tmp"
-    Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($statusPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Load-RestartHistory
