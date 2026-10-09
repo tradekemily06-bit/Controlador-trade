@@ -341,3 +341,32 @@ def test_restore_rollback_preserves_concurrently_replaced_destination(tmp_path: 
 
     assert (target / "operation-memory.json").read_text(encoding="utf-8") == "changed-by-concurrent-process"
     assert (target / "operational-safety.json").read_text(encoding="utf-8") == "old-safety"
+
+
+def test_restore_replace_mode_does_not_overwrite_racing_new_file(tmp_path: Path, monkeypatch):
+    import core.runtime_portability as portability
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text("incoming", encoding="utf-8")
+    backup = tmp_path / "state.zip"
+    create_backup(source, backup)
+    target = tmp_path / "target"
+    target.mkdir()
+
+    original_link = portability.os.link
+    raced = False
+
+    def create_destination_before_link(source_path, destination_path, *args, **kwargs):
+        nonlocal raced
+        if not raced and str(destination_path).endswith("operation-memory.json"):
+            raced = True
+            Path(destination_path).write_text("external-writer", encoding="utf-8")
+        return original_link(source_path, destination_path, *args, **kwargs)
+
+    monkeypatch.setattr(portability.os, "link", create_destination_before_link)
+    with pytest.raises(FileExistsError, match="appeared during staging"):
+        restore_backup(backup, target, replace=True)
+
+    assert (target / "operation-memory.json").read_text(encoding="utf-8") == "external-writer"
+
