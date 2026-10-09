@@ -209,13 +209,27 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     # A task restart can overlap an older app process that survived. Do not
     # create a second controller instance; app.py also owns the runtime lock.
-    $existingController = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -match '^(python|python3)(\.exe)?$' -and
-            $_.CommandLine -like "*$ProjectRoot*app.py*"
-        } |
-        Select-Object -First 1
-
+    try {
+        $existingControllers = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object {
+                    $_.Name -match '^(python|python3)(\\.exe)?$' -and
+                    $_.CommandLine -like "*$ProjectRoot*app.py*"
+                }
+        )
+    } catch {
+        $message = "Não foi possível identificar com segurança processos existentes do Controlador: $($_.Exception.Message)"
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'PROCESS_DISCOVERY_FAILED'
+        throw $message
+    }
+    if ($existingControllers.Count -gt 1) {
+        $message = "Mais de uma instância potencial do Controlador foi encontrada; estado ambíguo, sem iniciar ou encerrar processos automaticamente."
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'DUPLICATE_CONTROLLER_PROCESSES'
+        throw $message
+    }
+    $existingController = if ($existingControllers.Count -eq 1) { $existingControllers[0] } else { $null }
     $process = $null
     if ($null -ne $existingController) {
         Write-StartupLog "Instância existente detectada (PID $($existingController.ProcessId)); verificando /api/health antes de declarar HEALTHY."
