@@ -3,6 +3,7 @@ param(
     [string]$PythonExe = 'python',
     [string]$MetaEditorPath = '',
     [string]$Mt5TerminalPath = '',
+    [string]$Mt5DataPath = $env:CONTROLADOR_MT5_DATA_PATH,
     [switch]$Force
 )
 
@@ -39,15 +40,17 @@ function Resolve-Mt5TerminalPath([string]$RequestedPath) {
     }
 
     if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
-        if ($processes.Count -gt 1) {
-            $pids = ($processes | ForEach-Object { [string]$_.ProcessId }) -join ', '
-            throw "Mais de uma instância do MT5 está em execução (PID: $pids); informe o terminal correto e deixe apenas uma instância correspondente ativa."
+        $resolvedPaths = @($processes |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) } |
+            ForEach-Object { [System.IO.Path]::GetFullPath($_.ExecutablePath) } |
+            Sort-Object -Unique)
+        if ($resolvedPaths.Count -gt 1) {
+            throw 'Mais de uma instalação do MT5 está em execução; informe -Mt5TerminalPath explicitamente.'
         }
-        $resolved = [string]$processes[0].ExecutablePath
-        if ([string]::IsNullOrWhiteSpace($resolved)) {
-            throw 'Não foi possível resolver o caminho executável da única instância do MT5.'
+        if ($resolvedPaths.Count -eq 0) {
+            throw 'Não foi possível resolver o caminho executável do MT5 em execução.'
         }
-        return [System.IO.Path]::GetFullPath($resolved)
+        return $resolvedPaths[0]
     }
 
     $requested = [System.IO.Path]::GetFullPath($RequestedPath)
@@ -65,13 +68,11 @@ function Resolve-Mt5TerminalPath([string]$RequestedPath) {
         }
     })
 
-    if ($matching.Count -gt 1) {
-        $pids = ($matching | ForEach-Object { [string]$_.ProcessId }) -join ', '
-        throw "Mais de uma instância corresponde ao MT5 configurado (PID: $pids); sincronização cancelada para não atualizar a pasta de dados errada."
-    }
     if ($matching.Count -eq 0) {
         throw "Nenhum processo em execução corresponde ao MT5 configurado: $requested"
     }
+    # Multiple processes may share the executable but use different data folders.
+    # Resolve the data folder independently before deciding where to deploy the EA.
     return $requested
 }
 
@@ -116,22 +117,79 @@ mt5.shutdown()
     try { return ($result | ConvertFrom-Json) } catch { return $null }
 }
 
-$paths = Get-Mt5Paths -TerminalPath $Mt5TerminalPath
-if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
-    throw 'Não foi possível obter o data_path do MT5 conectado.'
+function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $resolved = [System.IO.Path]::GetFullPath($RequestedPath)
+        if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
+            throw "Pasta de dados MT5 configurada não encontrada: $resolved"
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $resolved 'MQL5') -PathType Container)) {
+            throw "Pasta configurada não parece ser uma pasta de dados MT5 (MQL5 ausente): $resolved"
+        }
+        return $resolved
+    }
+
+    # Prefer the unique existing terminal data folder that already owns this EA.
+    # This allows multiple terminal64.exe processes without guessing which data
+    # directory is intended. If more than one candidate exists, fail closed.
+    $profilesRoot = Join-Path $env:APPDATA 'MetaQuotes\Terminal'
+    $candidates = @()
+    if (Test-Path -LiteralPath $profilesRoot -PathType Container) {
+        foreach ($profile in @(Get-ChildItem -LiteralPath $profilesRoot -Directory -ErrorAction SilentlyContinue)) {
+            $eaDir = Join-Path $profile.FullName 'MQL5\Experts\ControladorTrading'
+            $sourcePresent = Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.mq5') -PathType Leaf
+            $binaryPresent = Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.ex5') -PathType Leaf
+            if ($sourcePresent -or $binaryPresent) {
+                $candidates += $profile.FullName
+            }
+        }
+    }
+    $candidates = @($candidates | Sort-Object -Unique)
+    if ($candidates.Count -eq 1) { return [System.IO.Path]::GetFullPath($candidates[0]) }
+    if ($candidates.Count -gt 1) {
+        throw "Mais de uma pasta de dados MT5 contém o painel; configure CONTROLADOR_MT5_DATA_PATH explicitamente: $($candidates -join '; ')"
+    }
+
+    # A fresh install may not yet have an EA file to identify its data directory.
+    # In that case the Python bridge fallback is allowed only when one process
+    # matches the configured terminal executable.
+    $matchingProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq ([System.IO.Path]::GetFileName($TerminalPath)) -and
+            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+            [string]::Equals(
+                [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                [System.IO.Path]::GetFullPath($TerminalPath),
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        })
+    if ($matchingProcesses.Count -gt 1) {
+        throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para evitar um destino ambíguo.'
+    }
+    $paths = Get-Mt5Paths -TerminalPath $TerminalPath
+    if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
+        throw 'Não foi possível resolver a pasta de dados MT5 com segurança.'
+    }
+    $resolvedDataPath = [System.IO.Path]::GetFullPath([string]$paths.data_path)
+    if (-not (Test-Path -LiteralPath $resolvedDataPath -PathType Container) -or
+        -not (Test-Path -LiteralPath (Join-Path $resolvedDataPath 'MQL5') -PathType Container)) {
+        throw "A ponte MT5 retornou uma pasta de dados inválida: $resolvedDataPath"
+    }
+    return $resolvedDataPath
 }
 
-$dataPath = [string]$paths.data_path
+$dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath
+$terminalInstallPath = Split-Path -Parent $Mt5TerminalPath
 $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
 $destination = Join-Path $destinationDir 'Controlador-Trading.mq5'
 New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
 
 if ([string]::IsNullOrWhiteSpace($MetaEditorPath)) {
-    $candidate = Join-Path ([string]$paths.path) 'metaeditor64.exe'
+    $candidate = Join-Path $terminalInstallPath 'metaeditor64.exe'
     if (Test-Path -LiteralPath $candidate -PathType Leaf) {
         $MetaEditorPath = $candidate
     } else {
-        $candidate = Join-Path ([string]$paths.path) 'metaeditor.exe'
+        $candidate = Join-Path $terminalInstallPath 'metaeditor.exe'
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { $MetaEditorPath = $candidate }
     }
 }
