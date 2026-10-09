@@ -37,12 +37,24 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # A corrupt restart history must not silently reset the restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
         foreach ($item in @($items)) {
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
             $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor MT5 interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-SupervisorLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
+        throw $message
     }
 }
 
@@ -53,7 +65,6 @@ function Save-RestartHistory {
     Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -74,6 +85,8 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
+
+Load-RestartHistory
 
 function Test-Mt5TerminalHealth {
     try {
