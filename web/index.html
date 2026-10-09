@@ -117,10 +117,13 @@ $('tfInput').addEventListener('change',async()=>{await persistWorkspacePreferenc
 window.addEventListener('hashchange',()=>applyDefaultView((location.hash||'#painel').slice(1)));
 const mt5Toggle=$('mt5PanelToggle'),mt5Panel=$('mt5SidePanel');mt5Toggle.onclick=()=>{const hide=!mt5Panel.hidden;mt5Panel.hidden=hide;mt5Toggle.setAttribute('aria-expanded',String(!hide));mt5Toggle.textContent=hide?'MT5 · MOSTRAR':'MT5 · OCULTAR';};
 applyDefaultView((location.hash||'#painel').slice(1));
-loadPrefs();
-refreshMode();
-refreshReal();
-refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('executionState').textContent='BLOQUEADA';});
-refreshMarketAssets().catch(()=>{});
-refreshMarketChart().catch(()=>{});
+(async function bootstrapWorkspace(){
+ await Promise.all([loadPrefs(),refreshMode(),refreshReal()]);
+ await refreshMarketAssets().catch(()=>{});
+ // The first successful analysis writes the observed MT5 candles into runtime
+ // observability. Refresh status only afterward so the panel shows that same
+ // verified state instead of racing an empty startup snapshot.
+ await refreshMarketChart().catch(()=>{});
+ await refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('executionState').textContent='BLOQUEADA';});
+})();
 </script></body></html>
