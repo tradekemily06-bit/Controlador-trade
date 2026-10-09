@@ -168,3 +168,19 @@ def test_controller_supervisor_fails_closed_on_ambiguous_process_discovery():
     assert "DUPLICATE_CONTROLLER_PROCESSES" in text
     assert "Select-Object -First 1" not in text
 
+
+
+def test_restart_history_rejects_json_scalars_and_non_string_entries():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        loader = text.split("function Load-RestartHistory {", 1)[1].split(
+            "\\nfunction Save-RestartHistory", 1
+        )[0]
+        assert "$raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop" in loader
+        assert "$raw.Trim() -notmatch '(?s)^\\[.*\\]$'" in loader
+        assert "$item -isnot [string]" in loader
+        assert "RESTART_HISTORY_INVALID" in loader
+        assert "throw $message" in loader
