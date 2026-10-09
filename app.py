@@ -7,7 +7,8 @@ from dataclasses import asdict
 from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs
-from wsgiref.simple_server import make_server
+from socketserver import ThreadingMixIn
+from wsgiref.simple_server import WSGIServer, make_server
 
 from core.api_result import serialize_decision_record
 from core.ecosystem_onboarding import EcosystemOnboarding
@@ -472,12 +473,24 @@ def application(environ, start_response):
     return [b"Not Found"]
 
 
+class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    """Serve each request independently so a slow route cannot block local health probes."""
+
+    daemon_threads = True
+    block_on_close = False
+
+
 def run(host: str | None = None, port: int | None = None) -> None:
     selected_host = host or os.environ.get("CONTROLADOR_BIND_HOST", "127.0.0.1")
     selected_port = port or int(os.environ.get("PORT", "8000"))
     lock = RuntimeProcessLock(RUNTIME_DIR / "controlador-runtime.lock")
     with lock:
-        with make_server(selected_host, selected_port, application) as server:
+        with make_server(
+            selected_host,
+            selected_port,
+            application,
+            server_class=ThreadingWSGIServer,
+        ) as server:
             print(f"Controlador Trading em http://{selected_host}:{selected_port}")
             server.serve_forever()
 
