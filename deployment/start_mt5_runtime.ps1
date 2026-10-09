@@ -96,7 +96,9 @@ healthy = bool(ok and terminal is not None and getattr(terminal, "connected", Fa
 mt5.shutdown()
 raise SystemExit(0 if healthy else 1)
 '@
-        & $PythonExe -c $healthCheckCode $Mt5TerminalPath
+        $encodedHealthCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($healthCheckCode))
+        $oneLineHealthCode = "import base64;exec(compile(base64.b64decode('$encodedHealthCode'),'<mt5-health>','exec'))"
+        & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
