@@ -114,6 +114,27 @@ raise SystemExit(0 if healthy else 1)
     }
 }
 
+function Get-ConfiguredMt5Process {
+    try {
+        $configuredPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
+        $candidate = Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+                [string]::Equals(
+                    [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                    $configuredPath,
+                    [System.StringComparison]::OrdinalIgnoreCase
+                )
+            } |
+            Select-Object -First 1
+        if ($null -eq $candidate) { return $null }
+        return Get-Process -Id $candidate.ProcessId -ErrorAction Stop
+    } catch {
+        Write-SupervisorLog "Não foi possível identificar com segurança o processo do terminal configurado: $($_.Exception.Message)"
+        return $null
+    }
+}
+
 function Stop-Mt5Process {
     param([System.Diagnostics.Process]$Process)
     if ($null -eq $Process -or $Process.HasExited) { return }
@@ -143,7 +164,7 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
-    $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $process = Get-ConfiguredMt5Process
 
     if ($null -ne $process) {
         Write-SupervisorStatus 'STARTING' 'Processo MT5 encontrado; validando conexão do terminal e conta DEMO.'
