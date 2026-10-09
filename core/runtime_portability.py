@@ -6,6 +6,10 @@ from typing import Any
 
 PORTABILITY_VERSION = 1
 PORTABLE_FILES = ("operation-memory.json","operational-safety.json","execution-ledger.json","execution-lifecycle.json","automation-lifecycle.json","runtime-checkpoint.json","ecosystem-state.sqlite","decision-memory.sqlite","security-audit.sqlite")
+# Defensive limits for imported archives and runtime state. These allow large
+# SQLite histories while bounding accidental/malicious archive expansion.
+MAX_PORTABLE_FILE_BYTES = 2 * 1024 * 1024 * 1024
+MAX_PORTABLE_TOTAL_BYTES = 4 * 1024 * 1024 * 1024
 
 def _sha256(path: Path) -> str:
     digest=hashlib.sha256()
@@ -80,7 +84,14 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             if source.is_symlink():
                 raise ValueError(f"runtime backup refuses symbolic-link state file: {name}")
             if source.is_file():
-                dest=stage/name; _copy_state(source,dest); staged.append((name,dest))
+                if source.stat().st_size > MAX_PORTABLE_FILE_BYTES:
+                    raise ValueError(f"runtime state file exceeds portability size limit: {name}")
+                dest=stage/name; _copy_state(source,dest)
+                if dest.stat().st_size > MAX_PORTABLE_FILE_BYTES:
+                    raise ValueError(f"runtime state file exceeds portability size limit: {name}")
+                staged.append((name,dest))
+        if sum(path.stat().st_size for _, path in staged) > MAX_PORTABLE_TOTAL_BYTES:
+            raise ValueError("runtime state exceeds portability total size limit")
         if not staged:
             raise ValueError("runtime backup refused: no portable state files were found")
         manifest={"format":"controlador-runtime-portable","version":PORTABILITY_VERSION,"created_at":datetime.now(timezone.utc).isoformat(),"runtime_identity":"portable-runtime-state","machine_specific_configuration":"excluded","secrets":"excluded","files":[{"path":n,"sha256":_sha256(p),"size":p.stat().st_size} for n,p in staged]}
@@ -158,6 +169,7 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         if not isinstance(entries,list):
             raise ValueError("backup manifest files are invalid")
         expected={}
+        total_size = 0
         for item in entries:
             if not isinstance(item,dict) or set(item) != {"path","sha256","size"}:
                 raise ValueError("backup manifest entry is invalid")
@@ -174,8 +186,12 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
                 or not isinstance(size,int)
                 or isinstance(size,bool)
                 or size < 0
+                or size > MAX_PORTABLE_FILE_BYTES
             ):
-                raise ValueError("backup manifest entry is invalid")
+                raise ValueError("backup manifest entry is invalid or exceeds size limit")
+            total_size += size
+            if total_size > MAX_PORTABLE_TOTAL_BYTES:
+                raise ValueError("backup exceeds portability total size limit")
             expected[name]=(digest.lower(),size)
         members=set(member_names)
         if members != set(expected):
