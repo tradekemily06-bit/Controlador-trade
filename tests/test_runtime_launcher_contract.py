@@ -135,6 +135,8 @@ def test_mt5_supervisor_fails_closed_when_restart_history_is_corrupt():
     assert "throw $message" in loader
     assert "$restartTimes.Clear()" in loader
     assert loader.index("throw $message") > loader.index("Histórico de reinícios inválido")
+    assert "Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'" in loader
+    assert text.index("function Write-SupervisorStatus") < text.index("Load-RestartHistory")
 
 
 def test_portability_scripts_pass_paths_as_arguments_and_keep_restore_safe_by_default():
