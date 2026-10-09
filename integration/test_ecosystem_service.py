@@ -83,7 +83,9 @@ def test_system_status_has_safe_gates():
     assert status["mode"] == "SIMULACAO"
     assert status["execution_allowed"] is False
     assert status["real"] == "DESABILITADO"
-    assert status["mt5_demo"] == "DEMO_VALIDADO"
+    assert status["mt5_demo"] == "NOT_CONNECTED"
+    assert status["components"]["mt5_demo"] == "NOT_CONNECTED"
+    assert status["operational_observability"]["market_data"]["health"] == "NOT_CONNECTED"
     assert status["production_operation_gate"]["authorized"] is False
 
 
