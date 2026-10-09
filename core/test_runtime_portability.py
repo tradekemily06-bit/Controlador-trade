@@ -260,10 +260,11 @@ def test_restore_rechecks_no_overwrite_conflicts_at_commit_time(tmp_path: Path, 
     def introduce_racing_destination(source_path, destination_path):
         nonlocal injected
         source_text = str(source_path)
-        destination = Path(destination_path)
-        if not injected and "incoming" in source_text and source_text.endswith("operational-safety.json"):
+        if not injected and "incoming" in source_text and source_text.endswith("operation-memory.json"):
             injected = True
-            destination.write_text("created-by-concurrent-process", encoding="utf-8")
+            (target / "operational-safety.json").write_text(
+                "created-by-concurrent-process", encoding="utf-8"
+            )
         return original_replace(source_path, destination_path)
 
     monkeypatch.setattr(portability.os, "replace", introduce_racing_destination)
