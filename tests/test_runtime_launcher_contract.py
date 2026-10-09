@@ -159,7 +159,6 @@ def test_controller_supervisor_fails_closed_when_restart_history_is_corrupt():
     assert "throw $message" in loader
     assert "$restartTimes.Clear()" in loader
     assert text.index("function Write-SupervisorStatus") < text.index("\nLoad-RestartHistory\n")
-\n
 
 def test_controller_supervisor_fails_closed_on_ambiguous_process_discovery():
     text = _read("deployment/start_controlador_runtime.ps1")
