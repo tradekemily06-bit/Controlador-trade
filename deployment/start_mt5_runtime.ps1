@@ -43,6 +43,9 @@ function Load-RestartHistory {
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-SupervisorLog $message
+        throw $message
     }
 }
 
