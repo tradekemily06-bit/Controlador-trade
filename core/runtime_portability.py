@@ -99,20 +99,59 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
                 raise ValueError(f"backup integrity failure: {member}")
     return manifest
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
-    manifest=verify_backup(backup_file); runtime=Path(runtime_dir).resolve(); runtime.mkdir(parents=True,exist_ok=True)
+    manifest=verify_backup(backup_file)
+    runtime=Path(runtime_dir).resolve()
+    runtime.mkdir(parents=True,exist_ok=True)
     entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
     if not replace:
         conflicts=[name for name in entries if (runtime/name).exists()]
         if conflicts:
             raise FileExistsError(f"restore would overwrite existing state: {', '.join(conflicts)}")
-    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(prefix="controlador-restore-") as tmp:
-        staged={}
+
+    # Stage both incoming files and rollback copies on the same filesystem as
+    # the destinations so os.replace remains atomic per file on Windows too.
+    with zipfile.ZipFile(backup_file,"r") as archive, tempfile.TemporaryDirectory(
+        prefix=".controlador-restore-",dir=runtime
+    ) as tmp:
+        stage=Path(tmp)
+        incoming={}
+        originals={}
+        existed={}
         for name in entries:
-            staged[name]=Path(tmp)/name
-            staged[name].write_bytes(archive.read(name))
-        for name in entries:
+            incoming[name]=stage/"incoming"/name
+            incoming[name].parent.mkdir(parents=True,exist_ok=True)
+            incoming[name].write_bytes(archive.read(name))
             destination=runtime/name
-            temporary=destination.with_name(f".{destination.name}.restore.tmp")
-            os.replace(staged[name],temporary)
-            os.replace(temporary,destination)
-    return {"restored":True,"runtime_dir":str(runtime),"files":entries,"machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
+            existed[name]=destination.exists()
+            if existed[name]:
+                originals[name]=stage/"originals"/name
+                originals[name].parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(destination,originals[name])
+
+        committed=[]
+        try:
+            for name in entries:
+                os.replace(incoming[name],runtime/name)
+                committed.append(name)
+        except Exception as commit_error:
+            rollback_errors=[]
+            for name in reversed(committed):
+                destination=runtime/name
+                try:
+                    if existed[name]:
+                        rollback_temp=stage/"rollback"/name
+                        rollback_temp.parent.mkdir(parents=True,exist_ok=True)
+                        shutil.copy2(originals[name],rollback_temp)
+                        os.replace(rollback_temp,destination)
+                    elif destination.exists():
+                        destination.unlink()
+                except Exception as rollback_error:
+                    rollback_errors.append(f"{name}: {rollback_error}")
+            if rollback_errors:
+                raise RuntimeError(
+                    f"restore failed ({commit_error}); rollback incomplete: "
+                    + "; ".join(rollback_errors)
+                ) from commit_error
+            raise
+    return {"restored":True,"runtime_dir":str(runtime),"files":entries,
+            "machine_specific_configuration":"deployment-owned","secrets":"deployment-owned"}
