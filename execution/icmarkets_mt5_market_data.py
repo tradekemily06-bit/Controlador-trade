@@ -52,7 +52,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         return self._mt5
 
     def _timeframe(self, timeframe: str) -> Any:
-        key = timeframe.strip().lower()
+        key = timeframe.strip().lower().removeprefix("period_")
         constant_name = self._TIMEFRAMES.get(key)
         if constant_name is None:
             raise ValueError(f"timeframe não suportado: {timeframe}")
