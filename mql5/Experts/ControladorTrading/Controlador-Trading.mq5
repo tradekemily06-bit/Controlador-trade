@@ -214,7 +214,7 @@ void Panel(){
    SetLabel(Obj("SYML"),"ATIVO",20,236,8,C'130,145,165');
    SetEdit(Obj("SYM"),_Symbol,20,249,150,25);
    SetLabel(Obj("TFL"),"TIMEFRAME",184,236,8,C'130,145,165');
-   SetEdit(Obj("TF"),EnumToString((ENUM_TIMEFRAMES)_Period),184,249,195,25);
+   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,249,195,25);
    SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
 
    SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,294,172,30);
@@ -278,6 +278,20 @@ bool Http(string method,string path,string body,string &response,int &code){
    }
    response=CharArrayToString(result,0,-1,CP_UTF8);
    return code>=200 && code<300;
+}
+string NormalizeTimeframe(string tf){
+   StringTrimLeft(tf);
+   StringTrimRight(tf);
+   StringReplace(tf,"PERIOD_","");
+   StringToUpper(tf);
+   if(tf=="M1" || tf=="1M") return "1m";
+   if(tf=="M5" || tf=="5M") return "5m";
+   if(tf=="M15" || tf=="15M") return "15m";
+   if(tf=="M30" || tf=="30M") return "30m";
+   if(tf=="H1" || tf=="1H") return "1h";
+   if(tf=="H4" || tf=="4H") return "4h";
+   if(tf=="D1" || tf=="1D") return "1d";
+   return tf;
 }
 string JsonEscape(string s){
    StringReplace(s,"\\","\\\\");
@@ -470,7 +484,8 @@ void SaveConfig(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
-   if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
+   if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   tf=NormalizeTimeframe(tf);
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code))
@@ -480,7 +495,7 @@ void SaveConfig(){
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
-   string tf=EnumToString((ENUM_TIMEFRAMES)_Period);
+   string tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    if(ObjectFind(0,Obj("SYM"))>=0){
       string configured_symbol=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
       if(configured_symbol!="") sym=configured_symbol;
@@ -489,8 +504,7 @@ void Analyze(bool render=true){
       string configured_timeframe=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
       if(configured_timeframe!="") tf=configured_timeframe;
    }
-   StringReplace(tf,"PERIOD_","");
-   StringToUpper(tf);
+   tf=NormalizeTimeframe(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
@@ -515,9 +529,8 @@ void RunCycle(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
-   if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
-   StringReplace(tf,"PERIOD_","");
-   StringToUpper(tf);
+   if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
+   tf=NormalizeTimeframe(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
