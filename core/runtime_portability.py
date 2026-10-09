@@ -76,6 +76,8 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             with zipfile.ZipFile(temporary,"w",compression=zipfile.ZIP_DEFLATED) as archive:
                 archive.write(stage/"manifest.json","manifest.json")
                 for name,path in staged: archive.write(path,name)
+            # Never publish a backup until the exact archive on disk passes verification.
+            verify_backup(temporary)
             os.replace(temporary,output)
         finally:
             temporary.unlink(missing_ok=True)
