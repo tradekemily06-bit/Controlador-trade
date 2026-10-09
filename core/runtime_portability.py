@@ -43,11 +43,16 @@ def _copy_archive_member(archive: zipfile.ZipFile, member: str, target: Path, ex
 
 def _sqlite_snapshot(source: Path, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    source_db=sqlite3.connect(source); target_db=sqlite3.connect(target)
+    source_db = sqlite3.connect(source)
     try:
-        with target_db: source_db.backup(target_db)
+        target_db = sqlite3.connect(target)
+        try:
+            with target_db:
+                source_db.backup(target_db)
+        finally:
+            target_db.close()
     finally:
-        target_db.close(); source_db.close()
+        source_db.close()
 
 def _copy_state(source: Path, target: Path) -> None:
     if source.suffix.lower()==".sqlite": _sqlite_snapshot(source,target)
@@ -121,7 +126,14 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
             raise ValueError("backup manifest is invalid") from exc
         if not isinstance(manifest,dict):
             raise ValueError("backup manifest is invalid")
-        if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION:
+        version = manifest.get("version")
+        # bool is a subclass of int in Python (True == 1); reject it explicitly
+        # so a malformed manifest cannot pass the format-version gate.
+        if (
+            manifest.get("format") != "controlador-runtime-portable"
+            or type(version) is not int
+            or version != PORTABILITY_VERSION
+        ):
             raise ValueError("unsupported backup format or version")
         entries=manifest.get("files")
         if not isinstance(entries,list):
