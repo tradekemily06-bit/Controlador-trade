@@ -248,6 +248,7 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
         incoming={}
         originals={}
         existed={}
+        original_identity={}
         for name in entries:
             incoming[name]=stage/"incoming"/name
             digest,size=expected[name]
@@ -255,11 +256,19 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
             destination=runtime/name
             existed[name]=destination.exists()
             if existed[name]:
-                if not destination.is_file():
+                if destination.is_symlink() or not destination.is_file():
                     raise ValueError(f"restore refuses non-file destination: {name}")
+                before=destination.stat()
                 originals[name]=stage/"originals"/name
                 originals[name].parent.mkdir(parents=True,exist_ok=True)
                 shutil.copy2(destination,originals[name])
+                after=destination.stat()
+                identity=lambda info: (info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns)
+                if identity(before) != identity(after) or _sha256(destination) != _sha256(originals[name]):
+                    raise RuntimeError(
+                        f"restore destination changed while staging: {name}"
+                    )
+                original_identity[name]=identity(after)
 
         committed=[]
         witnesses={}
@@ -270,7 +279,7 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
                     raise ValueError(
                         f"restore refuses symbolic-link destination at commit: {name}"
                     )
-                if not replace:
+                if not replace or not existed[name]:
                     # os.replace() overwrites on POSIX and can race with a
                     # concurrent creator even after an exists() check.
                     # A same-filesystem hard link is an atomic no-clobber
@@ -286,6 +295,20 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
                     witnesses[name] = incoming[name]
                     committed.append(name)
                     continue
+
+                # In explicit replacement mode, only replace the exact
+                # pre-existing file observed during staging; reject a file
+                # that disappeared, became a symlink, or changed meanwhile.
+                current_identity = None
+                if destination.exists() and not destination.is_symlink():
+                    current_identity = identity(destination.stat())
+                if (
+                    current_identity != original_identity[name]
+                    or _sha256(destination) != _sha256(originals[name])
+                ):
+                    raise FileExistsError(
+                        f"restore destination changed during staging: {name}"
+                    )
 
                 # Keep a hard-link witness to the exact bytes installed. If
                 # another process replaces or edits the destination before
