@@ -55,7 +55,7 @@ try {
 
     $mt5Healthy = $false
     try {
-        & $PythonExe -c "import MetaTrader5 as mt5; ok=mt5.initialize(); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); h=ok and t is not None and bool(getattr(t,'connected',False)) and a is not None and d is not None and getattr(a,'trade_mode',None)==d; print('MT5_HEALTH='+str(h)); mt5.shutdown(); raise SystemExit(0 if h else 1)" | Out-Null
+        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; ok=mt5.initialize(path=sys.argv[1]); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(sys.argv[1])); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(sys.argv[1])))) if t else ''; h=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); print('MT5_HEALTH='+str(h)); mt5.shutdown(); raise SystemExit(0 if h else 1)" $Mt5TerminalPath | Out-Null
         $mt5Healthy = $LASTEXITCODE -eq 0
     } catch {}
     Add-Check 'mt5-demo-health' $mt5Healthy 'terminal conectado + conta DEMO; disponibilidade de mercado é verificada separadamente.'
