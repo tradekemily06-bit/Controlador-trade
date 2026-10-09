@@ -301,6 +301,23 @@ def test_restore_refuses_symbolic_link_destination_without_touching_target(tmp_p
     assert link.is_symlink()
 
 
+def test_verify_backup_rejects_empty_manifest(tmp_path: Path):
+    import json
+    import zipfile
+
+    backup = tmp_path / "empty-manifest.zip"
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": portability.PORTABILITY_VERSION,
+        "files": [],
+    }
+    with zipfile.ZipFile(backup, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+
+    with pytest.raises(ValueError, match="files are invalid or empty"):
+        portability.verify_backup(backup)
+
+
 def test_verify_backup_rejects_unsafe_archive_member(tmp_path: Path):
     import hashlib
     import json
