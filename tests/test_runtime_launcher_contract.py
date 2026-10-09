@@ -50,6 +50,9 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
+    assert "mt5.initialize(path=sys.argv[1])" in text
+    assert "actual==expected" in text
+    assert "$Mt5TerminalPath 2>$null" in text
 
 
 def test_controller_health_gate_uses_current_safe_health_contract():
