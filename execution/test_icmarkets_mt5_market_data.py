@@ -99,6 +99,19 @@ def test_real_account_is_blocked_for_market_data(rates):
     assert mt5.shutdown_called is True
 
 
+@pytest.mark.parametrize("timeframe", ["M5", "m5", "PERIOD_M5"])
+def test_native_mt5_timeframe_aliases_are_accepted(timeframe, rates):
+    mt5 = FakeMT5(rates=rates)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+
+    candles = adapter.fetch_market_data(
+        BrokerMarketDataRequest(symbol="BTCUSD", timeframe=timeframe, limit=2)
+    )
+
+    assert len(candles) == 2
+    assert mt5.shutdown_called is True
+
+
 def test_unsupported_timeframe_is_rejected():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
