@@ -62,10 +62,13 @@ def _copy_state(source: Path, target: Path) -> None:
 def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]:
     # Do not resolve an existing output symlink: that would silently redirect
     # publication to another file and defeat the caller's chosen destination.
+    requested_runtime=Path(runtime_dir).expanduser()
+    if requested_runtime.is_symlink():
+        raise ValueError(f"runtime backup refuses symbolic-link source directory: {requested_runtime}")
     requested_output=Path(output_file).expanduser()
     if requested_output.is_symlink():
         raise ValueError(f"backup output refuses symbolic-link destination: {requested_output}")
-    runtime=Path(runtime_dir).resolve(); output=requested_output.resolve()
+    runtime=requested_runtime.resolve(); output=requested_output.resolve()
     if not runtime.is_dir(): raise FileNotFoundError(f"runtime directory not found: {runtime}")
     if output in {runtime/name for name in PORTABLE_FILES}:
         raise ValueError("backup output must not overwrite a portable runtime state file")
@@ -195,8 +198,11 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
     backup=requested_backup.resolve()
     if not backup.is_file():
         raise FileNotFoundError(f"runtime backup not found: {backup}")
+    requested_runtime=Path(runtime_dir).expanduser()
+    if requested_runtime.is_symlink():
+        raise ValueError(f"restore refuses symbolic-link runtime directory: {requested_runtime}")
     manifest=verify_backup(backup)
-    runtime=Path(runtime_dir).resolve()
+    runtime=requested_runtime.resolve()
     runtime.mkdir(parents=True,exist_ok=True)
     entries=[_safe_member(item["path"]) for item in manifest.get("files",[])]
     expected={item["path"]:(item["sha256"].lower(),item["size"]) for item in manifest.get("files",[])}
