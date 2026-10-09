@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -19,10 +20,17 @@ class FakeMT5:
         self.initialized = False
         self.shutdown_called = False
         self.selected = []
+        self.initialize_path = None
+        self.active_path = None
 
-    def initialize(self):
+    def initialize(self, path=None):
         self.initialized = True
+        self.initialize_path = path
+        self.active_path = path
         return True
+
+    def terminal_info(self):
+        return SimpleNamespace(path=os.path.dirname(self.active_path), connected=True)
 
     def shutdown(self):
         self.shutdown_called = True
@@ -141,4 +149,33 @@ def test_adapter_implements_generic_market_data_feed_contract(rates):
     assert len(result.candles) == 2
     assert result.source == "IC Markets MT5 DEMO"
     assert result.candles[-1].close == 104.0
+    assert mt5.shutdown_called is True
+
+
+
+def test_adapter_initializes_only_the_configured_mt5_terminal(rates, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    mt5 = FakeMT5(rates=rates)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5, terminal_path=terminal_path)
+
+    candles = adapter.fetch_market_data(
+        BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
+    )
+
+    assert len(candles) == 2
+    assert mt5.initialize_path == terminal_path
+    assert mt5.shutdown_called is True
+
+
+def test_adapter_rejects_a_different_connected_terminal(rates, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    mt5 = FakeMT5(rates=rates)
+    mt5.terminal_info = lambda: SimpleNamespace(path=str(tmp_path / "other-install"), connected=True)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5, terminal_path=terminal_path)
+
+    with pytest.raises(MT5MarketDataError, match="não corresponde ao caminho configurado"):
+        adapter.fetch_market_data(
+            BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
+        )
+
     assert mt5.shutdown_called is True
