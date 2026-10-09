@@ -426,6 +426,8 @@ def test_restore_missing_backup_has_clear_error(tmp_path: Path):
 
 
 def test_verify_backup_rejects_duplicate_manifest_json_keys(tmp_path: Path):
+    import zipfile
+
     backup = tmp_path / "duplicate-json-key.zip"
     manifest = '{"format":"controlador-runtime-portable","version":1,"version":2,"files":[]}'
     with zipfile.ZipFile(backup, "w") as archive:
