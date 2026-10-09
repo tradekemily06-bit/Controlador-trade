@@ -101,6 +101,8 @@ def test_mt5_supervisor_pins_health_and_process_management_to_configured_termina
     assert "$Mt5TerminalPath" in text
     assert "function Get-ConfiguredMt5Process" in text
     assert "Mais de uma instância corresponde" in text
+    assert "function Get-Mt5AccountSafetyState" in text
+    assert "$accountSafetyState -ne 'DEMO'" in text
     assert "Get-Process -Name $processName" not in text
 
 
