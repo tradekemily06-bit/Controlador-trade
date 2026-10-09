@@ -476,7 +476,7 @@ def test_verify_backup_rejects_non_utf8_manifest(tmp_path: Path):
 
     backup = tmp_path / "non-utf8-manifest.zip"
     with zipfile.ZipFile(backup, "w") as archive:
-        archive.writestr("manifest.json", b"\\xff\\xfe\\xfa")
+        archive.writestr("manifest.json", b"\xff\xfe\xfa")
 
     with pytest.raises(ValueError, match="backup manifest is invalid"):
         portability.verify_backup(backup)
