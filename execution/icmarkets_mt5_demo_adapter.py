@@ -38,7 +38,13 @@ class ICMarketsMT5DemoAdapter:
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
         try:
-            self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
+            # UTC has no daylight-saving rules and is available directly from
+            # the standard library. Keep the default runtime independent of
+            # the external tzdata package, which can be incomplete on Windows.
+            if self.config.risk_day_timezone == "UTC":
+                self._risk_day_zone = timezone.utc
+            else:
+                self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("risk_day_timezone deve ser um timezone IANA válido.")
         self._mt5 = mt5_module

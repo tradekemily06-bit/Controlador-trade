@@ -192,6 +192,20 @@ def test_risk_day_timezone_is_explicit_and_converted_to_utc():
     assert end.utcoffset().total_seconds() == 0
 
 
+def test_utc_timezone_does_not_depend_on_tzdata(monkeypatch):
+    import execution.icmarkets_mt5_demo_adapter as adapter_module
+    from zoneinfo import ZoneInfoNotFoundError
+    from datetime import timezone
+
+    def missing_timezone_database(_key):
+        raise ZoneInfoNotFoundError("simulated missing tzdata")
+
+    monkeypatch.setattr(adapter_module, "ZoneInfo", missing_timezone_database)
+    adapter = ICMarketsMT5DemoAdapter(mt5_module=FakeMT5())
+
+    assert adapter._risk_day_zone is timezone.utc
+
+
 def test_invalid_risk_day_timezone_is_rejected():
     with __import__("pytest").raises(ValueError, match="timezone IANA"):
         ICMarketsMT5DemoAdapter(config=__import__("execution.icmarkets_mt5_demo_adapter", fromlist=["ICMarketsMT5DemoConfig"]).ICMarketsMT5DemoConfig(risk_day_timezone="Not/AZone"), mt5_module=FakeMT5())
