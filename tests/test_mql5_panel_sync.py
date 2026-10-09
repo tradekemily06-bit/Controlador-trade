@@ -160,3 +160,9 @@ def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
     assert 'class="watermark-mark"' in web
     assert "transform:rotate(-18deg)" not in web
     assert "opacity:.035" in web
+
+def test_mql5_sync_parses_numeric_error_and_warning_counts():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert r"(?i)(\d+)\s+(errors?|erros?)" in text
+    assert r"(?i)(\d+)\s+(warnings?|avisos?)" in text
+    assert r"(?i)(\\d+)\\s+" not in text
