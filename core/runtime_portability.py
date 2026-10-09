@@ -122,8 +122,8 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         if manifest.get("format")!="controlador-runtime-portable" or manifest.get("version")!=PORTABILITY_VERSION:
             raise ValueError("unsupported backup format or version")
         entries=manifest.get("files")
-        if not isinstance(entries,list):
-            raise ValueError("backup manifest files are invalid")
+        if not isinstance(entries,list) or not entries:
+            raise ValueError("backup manifest files are invalid or empty")
         expected={}
         for item in entries:
             if not isinstance(item,dict) or set(item) != {"path","sha256","size"}:
