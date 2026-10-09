@@ -130,8 +130,11 @@ function Get-ConfiguredMt5Process {
         if ($null -eq $candidate) { return $null }
         return Get-Process -Id $candidate.ProcessId -ErrorAction Stop
     } catch {
-        Write-SupervisorLog "Não foi possível identificar com segurança o processo do terminal configurado: $($_.Exception.Message)"
-        return $null
+        $message = "Não foi possível identificar com segurança o processo do terminal configurado: $($_.Exception.Message)"
+        Write-SupervisorLog $message
+        # Fail closed: an unknown process state must not be treated as "MT5 absent",
+        # otherwise the supervisor could launch a duplicate terminal.
+        throw $message
     }
 }
 
