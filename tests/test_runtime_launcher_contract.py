@@ -109,3 +109,14 @@ def test_mt5_supervisor_only_tracks_process_matching_configured_executable():
     assert "[System.IO.Path]::GetFullPath($_.ExecutablePath)" in text
     assert "Get-ConfiguredMt5Process" in text
     assert "Get-Process -Name $processName" not in text
+
+
+
+def test_portability_scripts_pass_paths_as_arguments_and_keep_restore_safe_by_default():
+    backup = _read("deployment/backup_runtime.ps1")
+    restore = _read("deployment/restore_runtime.ps1")
+    assert "create_backup(sys.argv[1], sys.argv[2])" in backup
+    assert "r'$RuntimeDir'" not in backup
+    assert "[switch]$Replace" in restore
+    assert "restore_backup(sys.argv[1], sys.argv[2], replace=(sys.argv[3] == 'true'))" in restore
+    assert "r'$BackupFile'" not in restore
