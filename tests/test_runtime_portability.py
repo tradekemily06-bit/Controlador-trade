@@ -133,7 +133,7 @@ def test_create_backup_refuses_empty_runtime_without_publishing_archive(tmp_path
     assert not output.exists()
 
 
-def test_create_backup_skips_symlinked_portable_state(tmp_path: Path):
+def test_create_backup_refuses_symlinked_portable_state(tmp_path: Path):
     source = tmp_path / "source"
     source.mkdir()
     outside = tmp_path / "outside.json"
@@ -145,7 +145,7 @@ def test_create_backup_skips_symlinked_portable_state(tmp_path: Path):
         pytest.skip("symbolic links are not available for this user/platform")
 
     backup = tmp_path / "runtime.zip"
-    with pytest.raises(ValueError, match="no portable state files"):
+    with pytest.raises(ValueError, match="symbolic-link state file"):
         portability.create_backup(source, backup)
 
     assert not backup.exists()
