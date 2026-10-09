@@ -303,7 +303,7 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
                 destination=runtime/name
                 witness=witnesses[name]
                 try:
-                    if not destination.exists() or not os.path.samefile(destination, witness):
+                    if destination.is_symlink() or not destination.exists() or not os.path.samefile(destination, witness):
                         rollback_errors.append(
                             f"{name}: destination changed concurrently; preserved"
                         )
