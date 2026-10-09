@@ -84,3 +84,27 @@ def test_backup_rejects_duplicate_manifest(tmp_path: Path):
             archive.writestr("manifest.json", '{"format":"controlador-runtime-portable","version":1,"files":[]}')
     with pytest.raises(ValueError, match="manifest is missing or duplicated"):
         verify_backup(bad)
+
+
+def test_backup_rejects_duplicate_manifest_json_keys(tmp_path: Path):
+    bad = tmp_path / "duplicate-json-key.zip"
+    manifest = (
+        '{"format":"controlador-runtime-portable","version":1,"version":2,"files":[]}'
+    )
+    with zipfile.ZipFile(bad, "w") as archive:
+        archive.writestr("manifest.json", manifest)
+    with pytest.raises(ValueError, match="manifest is invalid"):
+        verify_backup(bad)
+
+
+def test_backup_refuses_symlink_runtime_state(tmp_path: Path):
+    runtime = tmp_path / "runtime"; runtime.mkdir()
+    outside = tmp_path / "outside.json"; outside.write_text("sensitive", encoding="utf-8")
+    linked = runtime / "operation-memory.json"
+    try:
+        linked.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable for this account/platform")
+    with pytest.raises(ValueError, match="symbolic-link state file"):
+        create_backup(runtime, tmp_path / "state.zip")
+    assert not (tmp_path / "state.zip").exists()
