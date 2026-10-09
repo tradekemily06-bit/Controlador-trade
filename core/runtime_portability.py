@@ -69,6 +69,8 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
             source=runtime/name
             if source.is_file() and not source.is_symlink():
                 dest=stage/name; _copy_state(source,dest); staged.append((name,dest))
+        if not staged:
+            raise ValueError("runtime backup refused: no portable state files were found")
         manifest={"format":"controlador-runtime-portable","version":PORTABILITY_VERSION,"created_at":datetime.now(timezone.utc).isoformat(),"runtime_identity":"portable-runtime-state","machine_specific_configuration":"excluded","secrets":"excluded","files":[{"path":n,"sha256":_sha256(p),"size":p.stat().st_size} for n,p in staged]}
         (stage/"manifest.json").write_text(json.dumps(manifest,ensure_ascii=False,indent=2,sort_keys=True),encoding="utf-8")
         # Unique temp file beside destination: concurrent backups cannot share it.
