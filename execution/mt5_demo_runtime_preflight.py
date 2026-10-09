@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,11 +17,35 @@ class MT5RuntimePreflight:
     message: str
 
 
-def run_preflight(mt5: Any, symbol: str = "EURUSD") -> MT5RuntimePreflight:
-    """Read-only MT5 runtime validation; never calls order_check/order_send."""
+def run_preflight(
+    mt5: Any,
+    symbol: str = "EURUSD",
+    terminal_path: str | None = None,
+) -> MT5RuntimePreflight:
+    """Read-only MT5 validation, pinned to the configured terminal when supplied."""
+    configured_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
     try:
-        if not mt5.initialize():
+        initialized = bool(mt5.initialize(path=configured_path) if configured_path else mt5.initialize())
+        if not initialized:
             return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"MT5 indisponível: {mt5.last_error()}")
+
+        if configured_path:
+            terminal = mt5.terminal_info()
+            expected = os.path.normcase(os.path.realpath(configured_path))
+            actual = (
+                os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(getattr(terminal, "path", ""), os.path.basename(configured_path))
+                    )
+                )
+                if terminal is not None
+                else ""
+            )
+            if actual != expected:
+                return MT5RuntimePreflight(
+                    False, False, symbol, None, None, None, None,
+                    "terminal MT5 conectado não corresponde ao caminho configurado",
+                )
 
         account = mt5.account_info()
         demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)

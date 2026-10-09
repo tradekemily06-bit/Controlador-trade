@@ -83,17 +83,93 @@ function Test-Mt5TerminalHealth {
             "$ProjectRoot;$($env:PYTHONPATH)"
         }
         Set-Location $ProjectRoot
-        & $PythonExe -c "import MetaTrader5 as mt5; ok=mt5.initialize(); terminal=mt5.terminal_info() if ok else None; account=mt5.account_info() if ok else None; demo_mode=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); healthy=ok and terminal is not None and bool(getattr(terminal,'connected',False)) and account is not None and demo_mode is not None and getattr(account,'trade_mode',None)==demo_mode; mt5.shutdown(); raise SystemExit(0 if healthy else 1)"
+        $healthCheckCode = @'
+import MetaTrader5 as mt5, os, sys
+path = sys.argv[1]
+ok = mt5.initialize(path=path)
+terminal = mt5.terminal_info() if ok else None
+account = mt5.account_info() if ok else None
+demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+expected = os.path.normcase(os.path.realpath(path))
+actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+healthy = bool(ok and terminal is not None and getattr(terminal, "connected", False) and actual == expected and account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode)
+mt5.shutdown()
+raise SystemExit(0 if healthy else 1)
+'@
+        $encodedHealthCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($healthCheckCode))
+        $oneLineHealthCode = "import base64;exec(compile(base64.b64decode('$encodedHealthCode'),'<mt5-health>','exec'))"
+        & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
 }
 
+function Get-ConfiguredMt5Process {
+    # Fail closed if multiple matching instances make ownership ambiguous.
+    $configuredPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
+    $candidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq ([System.IO.Path]::GetFileName($configuredPath)) -and
+            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+            [string]::Equals(
+                [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                $configuredPath,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        })
+    if ($candidates.Count -gt 1) {
+        $reason = 'Mais de uma instância corresponde ao terminal MT5 configurado; estado ambíguo, nenhuma instância será encerrada.'
+        Write-SupervisorStatus 'FAILED' $reason
+        throw $reason
+    }
+    if ($candidates.Count -eq 0) { return $null }
+    return Get-Process -Id $candidates[0].ProcessId -ErrorAction SilentlyContinue
+}
+
+function Get-Mt5AccountSafetyState {
+    # A terminal may be stopped automatically only when its configured account is explicitly confirmed DEMO.
+    try {
+        $accountCheckCode = @'
+import MetaTrader5 as mt5, os, sys
+path = sys.argv[1]
+state = "UNKNOWN"
+try:
+    ok = mt5.initialize(path=path)
+    terminal = mt5.terminal_info() if ok else None
+    account = mt5.account_info() if ok else None
+    demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+    expected = os.path.normcase(os.path.realpath(path))
+    actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+    if ok and terminal is not None and actual == expected and account is not None and demo_mode is not None:
+        state = "DEMO" if getattr(account, "trade_mode", None) == demo_mode else "NON_DEMO"
+finally:
+    mt5.shutdown()
+print(state)
+'@
+        $encodedAccountCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($accountCheckCode))
+        $oneLineAccountCode = "import base64;exec(compile(base64.b64decode('$encodedAccountCode'),'<mt5-account-safety>','exec'))"
+        $result = & $PythonExe -c $oneLineAccountCode $Mt5TerminalPath 2>$null
+        if ($LASTEXITCODE -ne 0) { return 'UNKNOWN' }
+        $state = [string]($result | Select-Object -Last 1)
+        if ($state.Trim() -in @('DEMO', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
+        return 'UNKNOWN'
+    } catch {
+        return 'UNKNOWN'
+    }
+}
+
 function Stop-Mt5Process {
     param([System.Diagnostics.Process]$Process)
     if ($null -eq $Process -or $Process.HasExited) { return }
-    Write-SupervisorLog "MT5 não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
+    $accountSafetyState = Get-Mt5AccountSafetyState
+    if ($accountSafetyState -ne 'DEMO') {
+        $reason = "MT5 não será encerrado automaticamente: conta/caminho não confirmados como DEMO (estado=$accountSafetyState)."
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'FAILED' $reason
+        throw $reason
+    }
+    Write-SupervisorLog "MT5 DEMO não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 3
 }
@@ -119,7 +195,7 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
-    $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $process = Get-ConfiguredMt5Process
 
     if ($null -ne $process) {
         Write-SupervisorStatus 'STARTING' 'Processo MT5 encontrado; validando conexão do terminal e conta DEMO.'
@@ -190,7 +266,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         Write-SupervisorLog 'MT5 saudável: terminal conectado e conta DEMO confirmada.'
         Write-SupervisorStatus 'HEALTHY' 'MT5 em execução, terminal conectado e conta DEMO confirmada.'
         $healthFailures = 0
-        $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+        $processAfterStart = Get-ConfiguredMt5Process
         while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
@@ -209,13 +285,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
-            $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $processAfterStart = Get-ConfiguredMt5Process
         }
         if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
         if ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) { continue }
     }
 
-    $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
         Stop-Mt5Process -Process $processAfterStart
     }

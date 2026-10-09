@@ -50,6 +50,8 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
+    assert "mt5.initialize(path=p)" in text
+    assert "$Mt5TerminalPath | Out-Null" in text
 
 
 def test_controller_health_gate_uses_current_safe_health_contract():
@@ -76,6 +78,7 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         "$env:CONTROLADOR_BIND_HOST = '127.0.0.1'",
         "$env:PORT = '8000'",
         "$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'",
+        "$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath",
         "$env:CONTROLADOR_RUNTIME_DIR = $RuntimeDir",
         "$env:CONTROLADOR_SECURITY_AUDIT_DB = Join-Path $RuntimeDir 'security-audit.sqlite'",
         "$env:CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'",
@@ -89,3 +92,35 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         "$env:CONTROLADOR_REAL_ADMISSION_ID = ''",
     ):
         assert required in text
+
+
+
+def test_mt5_supervisor_pins_health_and_process_management_to_configured_terminal():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "mt5.initialize(path=path)" in text
+    assert "$Mt5TerminalPath" in text
+    assert "function Get-ConfiguredMt5Process" in text
+    assert "Mais de uma instância corresponde" in text
+    assert "function Get-Mt5AccountSafetyState" in text
+    assert "$accountSafetyState -ne 'DEMO'" in text
+    assert "Get-Process -Name $processName" not in text
+
+
+def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
+    controller = _read("deployment/start_controlador_runtime.ps1")
+    installer = _read("deployment/install_windows_autostart.ps1")
+    assert "$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in controller
+    bootstrap = _read("deployment/bootstrap_windows_runtime.ps1")
+    assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
+    assert "run_preflight(mt5)" in controller
+    assert "-Mt5TerminalPath $Mt5TerminalPath" in controller
+    assert "-Mt5TerminalPath \"' + $Mt5TerminalPath + '\"" in installer
+
+
+def test_market_data_adapter_and_preflight_honor_configured_terminal():
+    adapter = _read("execution/icmarkets_mt5_market_data.py")
+    preflight = _read("execution/mt5_demo_runtime_preflight.py")
+    assert "CONTROLADOR_MT5_TERMINAL_PATH" in adapter
+    assert "mt5.initialize(path=self._terminal_path)" in adapter
+    assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
+    assert "mt5.initialize(path=configured_path)" in preflight
