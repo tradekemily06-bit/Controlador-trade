@@ -121,6 +121,17 @@ def test_restore_reports_incomplete_rollback_instead_of_hiding_it(tmp_path: Path
         portability.restore_backup(backup, runtime, replace=True)
 
 
+def test_create_backup_refuses_empty_runtime_without_publishing_archive(tmp_path: Path):
+    source = tmp_path / "empty-runtime"
+    source.mkdir()
+    output = tmp_path / "runtime.zip"
+
+    with pytest.raises(ValueError, match="no portable state files"):
+        portability.create_backup(source, output)
+
+    assert not output.exists()
+
+
 def test_create_backup_skips_symlinked_portable_state(tmp_path: Path):
     source = tmp_path / "source"
     source.mkdir()
