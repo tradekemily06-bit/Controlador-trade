@@ -161,6 +161,25 @@ def test_create_backup_preserves_previous_archive_and_cleans_temp_on_write_failu
 
 
 
+
+def test_create_backup_does_not_publish_archive_when_verification_fails(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    output = tmp_path / "runtime.zip"
+    output.write_bytes(b"previous-backup")
+
+    def reject_archive(_path):
+        raise ValueError("simulated on-disk archive verification failure")
+
+    monkeypatch.setattr(portability, "verify_backup", reject_archive)
+
+    with pytest.raises(ValueError, match="on-disk archive verification failure"):
+        portability.create_backup(source, output)
+
+    assert output.read_bytes() == b"previous-backup"
+    assert list(tmp_path.glob(".runtime.zip.*.tmp")) == []
+
 def test_verify_backup_rejects_payload_changed_without_manifest_update(tmp_path: Path):
     import json
     import zipfile
