@@ -130,3 +130,13 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     assert "mt5.initialize(path=self._terminal_path)" in adapter
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
     assert "mt5.initialize(path=configured_path)" in preflight
+
+def test_controller_supervisor_preserves_mql5_sync_failure_details():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "$syncOutput = & powershell.exe" in text
+    assert " -Mt5TerminalPath $Mt5TerminalPath 2>&1" in text
+    assert "$syncExitCode = $LASTEXITCODE" in text
+    assert 'Write-StartupLog "Sincronização MQL5: $message"' in text
+    assert "terminou com código $syncExitCode" in text
+
+
