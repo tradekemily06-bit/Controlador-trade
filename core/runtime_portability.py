@@ -79,16 +79,25 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
     output.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="controlador-portability-") as tmp:
         stage=Path(tmp); staged=[]
+        staged_total = 0
         for name in PORTABLE_FILES:
             source=runtime/name
             if source.is_symlink():
                 raise ValueError(f"runtime backup refuses symbolic-link state file: {name}")
             if source.is_file():
-                if source.stat().st_size > MAX_PORTABLE_FILE_BYTES:
+                source_size = source.stat().st_size
+                if source_size > MAX_PORTABLE_FILE_BYTES:
                     raise ValueError(f"runtime state file exceeds portability size limit: {name}")
+                staged_total += source_size
+                if staged_total > MAX_PORTABLE_TOTAL_BYTES:
+                    raise ValueError("runtime state exceeds portability total size limit")
                 dest=stage/name; _copy_state(source,dest)
-                if dest.stat().st_size > MAX_PORTABLE_FILE_BYTES:
+                dest_size = dest.stat().st_size
+                if dest_size > MAX_PORTABLE_FILE_BYTES:
                     raise ValueError(f"runtime state file exceeds portability size limit: {name}")
+                staged_total += dest_size - source_size
+                if staged_total > MAX_PORTABLE_TOTAL_BYTES:
+                    raise ValueError("runtime state exceeds portability total size limit")
                 staged.append((name,dest))
         if sum(path.stat().st_size for _, path in staged) > MAX_PORTABLE_TOTAL_BYTES:
             raise ValueError("runtime state exceeds portability total size limit")
