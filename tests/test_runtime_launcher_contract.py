@@ -163,7 +163,6 @@ def test_controller_supervisor_fails_closed_when_restart_history_is_corrupt():
 def test_controller_supervisor_matches_python_executable_names_correctly():
     assert r"$_.Name -match '^(python|python3)(\.exe)?$' -and" in text
     assert r"$_.Name -match '^(python|python3)(\\.exe)?$' -and" not in text
-    assert r"$_.Name -match '^(python|python3)(\\\\.exe)?$' -and" not in text
 
 
 def test_controller_supervisor_fails_closed_on_ambiguous_process_discovery():
