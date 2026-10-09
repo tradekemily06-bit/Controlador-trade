@@ -2,6 +2,7 @@ param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$PythonExe = 'python',
     [string]$MetaEditorPath = '',
+    [string]$Mt5TerminalPath = '',
     [switch]$Force
 )
 
@@ -33,26 +34,37 @@ if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
 }
 
 function Get-Mt5Paths {
+    param([string]$TerminalPath)
     $code = @'
 import json
+import os
+import sys
 import MetaTrader5 as mt5
-if not mt5.initialize():
+requested = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
+if not mt5.initialize(path=requested or None):
     raise SystemExit("MT5_INIT_FAILED:" + str(mt5.last_error()))
 info = mt5.terminal_info()
 if info is None:
+    mt5.shutdown()
     raise SystemExit("MT5_TERMINAL_INFO_FAILED")
+if requested:
+    expected = os.path.normcase(os.path.realpath(requested))
+    actual = os.path.normcase(os.path.realpath(os.path.join(getattr(info, "path", ""), os.path.basename(requested))))
+    if actual != expected:
+        mt5.shutdown()
+        raise SystemExit("MT5_CONFIGURED_PATH_MISMATCH")
 print(json.dumps({
     "path": getattr(info, "path", ""),
     "data_path": getattr(info, "data_path", "")
 }))
 mt5.shutdown()
 '@
-    $result = & $PythonExe -c $code 2>$null
+    $result = & $PythonExe -c $code $TerminalPath 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $result) { return $null }
     try { return ($result | ConvertFrom-Json) } catch { return $null }
 }
 
-$paths = Get-Mt5Paths
+$paths = Get-Mt5Paths -TerminalPath $Mt5TerminalPath
 if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
     throw 'Não foi possível obter o data_path do MT5 conectado.'
 }
