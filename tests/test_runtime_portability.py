@@ -172,3 +172,52 @@ def test_verify_backup_rejects_oversized_manifest(tmp_path: Path):
 
     with pytest.raises(ValueError, match="backup manifest is too large"):
         portability.verify_backup(backup)
+
+
+
+def test_restore_refuses_symbolic_link_destination_without_touching_target(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"backup":true}', encoding="utf-8")
+    backup = tmp_path / "runtime.zip"
+    portability.create_backup(source, backup)
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"keep":true}', encoding="utf-8")
+    link = runtime / "operation-memory.json"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    with pytest.raises(ValueError, match="symbolic-link destinations"):
+        portability.restore_backup(backup, runtime, replace=True)
+
+    assert outside.read_text(encoding="utf-8") == '{"keep":true}'
+    assert link.is_symlink()
+
+
+def test_verify_backup_rejects_unsafe_archive_member(tmp_path: Path):
+    import hashlib
+    import json
+    import zipfile
+
+    payload = b"do not extract"
+    manifest = {
+        "format": "controlador-runtime-portable",
+        "version": portability.PORTABILITY_VERSION,
+        "files": [{
+            "path": "../outside.json",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size": len(payload),
+        }],
+    }
+    backup = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(backup, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("../outside.json", payload)
+
+    with pytest.raises(ValueError, match="unsafe path"):
+        portability.verify_backup(backup)
