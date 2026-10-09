@@ -160,3 +160,12 @@ def test_controller_supervisor_fails_closed_when_restart_history_is_corrupt():
     assert "$restartTimes.Clear()" in loader
     assert text.index("function Write-SupervisorStatus") < text.index("\nLoad-RestartHistory\n")
 \n
+
+def test_controller_supervisor_fails_closed_on_ambiguous_process_discovery():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "Get-CimInstance Win32_Process -ErrorAction Stop" in text
+    assert "$existingControllers.Count -gt 1" in text
+    assert "PROCESS_DISCOVERY_FAILED" in text
+    assert "DUPLICATE_CONTROLLER_PROCESSES" in text
+    assert "Select-Object -First 1" not in text
+
