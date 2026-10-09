@@ -61,28 +61,21 @@ try {
     Add-Check 'mt5-demo-health' $mt5Healthy 'terminal conectado + conta DEMO; disponibilidade de mercado é verificada separadamente.'
 } finally { Pop-Location }
 
-# Read-only end-to-end probe: this asks the existing analysis API for completed
-# DEMO candles. It does not run a cycle, place an order, or enable REAL.
+# Read-only market probe: query completed candles directly from the exact configured
+# MT5 terminal. Avoid POST /api/runtime/analysis here because normal analysis also
+# updates the ecosystem market snapshot and decision memory.
 $marketDataHealthy = $false
+$candleCount = 0
 try {
-    $analysisBody = @{ symbol = 'EURUSD'; timeframe = '5m'; limit = 100 } | ConvertTo-Json -Compress
-    $analysisResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:8000/api/runtime/analysis' -ContentType 'application/json' -Body $analysisBody -TimeoutSec 20 -ErrorAction Stop
-    $analysisPayload = $analysisResponse.Content | ConvertFrom-Json
-    $candleCount = 0
-    if ($null -ne $analysisPayload.market_data -and $null -ne $analysisPayload.market_data.candles) {
-        $candleCount = [int]$analysisPayload.market_data.candles
-    }
-    $marketSource = [string]$analysisPayload.market_data.source
-    $marketDataHealthy = (
-        $analysisResponse.StatusCode -ge 200 -and
-        $analysisResponse.StatusCode -lt 300 -and
-        $candleCount -gt 0 -and
-        $marketSource -match 'MT5 DEMO' -and
-        $analysisPayload.execution_allowed -eq $false
-    )
-    Add-Check 'market-data-candles-read-only' $marketDataHealthy "HTTP=$($analysisResponse.StatusCode); source=$marketSource; candles=$candleCount; execution_allowed=$($analysisPayload.execution_allowed)"
+    $marketProbe = & $PythonExe -c "import MetaTrader5 as mt5, os, sys; p=sys.argv[1]; ok=mt5.initialize(path=p); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(p)))) if t else ''; demo=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); rates=mt5.copy_rates_from_pos('EURUSD',mt5.TIMEFRAME_M5,1,100) if demo else None; count=len(rates) if rates is not None else 0; print('MT5_DEMO_MARKET=' + str(demo)); print('CANDLES=' + str(count)); mt5.shutdown(); raise SystemExit(0 if demo and count>0 else 1)" $Mt5TerminalPath
+    $probeExitCode = $LASTEXITCODE
+    $demoLine = $marketProbe | Where-Object { $_ -match '^MT5_DEMO_MARKET=' } | Select-Object -Last 1
+    $countLine = $marketProbe | Where-Object { $_ -match '^CANDLES=' } | Select-Object -Last 1
+    if ($countLine) { $candleCount = [int](($countLine -split '=', 2)[1]) }
+    $marketDataHealthy = ($probeExitCode -eq 0 -and $demoLine -eq 'MT5_DEMO_MARKET=True' -and $candleCount -gt 0)
+    Add-Check 'market-data-candles-read-only' $marketDataHealthy "terminal=$demoLine; candles=$candleCount; source=MT5 DEMO; orders=not requested"
 } catch {
-    Add-Check 'market-data-candles-read-only' $false "Análise DEMO não confirmou candles reais e execução bloqueada: $($_.Exception.Message)"
+    Add-Check 'market-data-candles-read-only' $false "Consulta direta de candles DEMO falhou: $($_.Exception.Message)"
 }
 
 Add-Check 'mt5-terminal-file' (Has-File $Mt5TerminalPath) $Mt5TerminalPath
