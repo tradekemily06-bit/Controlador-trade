@@ -40,6 +40,8 @@ def test_read_only_windows_validator_covers_deployment_surface():
         "MT5_DEMO_MARKET=True",
         "orders=not requested",
         "scheduled-task:$task",
+        "scheduled-task-enabled:$task",
+        "scheduled-task-running:$task",
         "mql5-source",
         "mql5-ex5-current",
         "$payload.execution_allowed -eq $false",
@@ -56,6 +58,9 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
     assert "mt5.initialize(path=p)" in text
+    assert "mt5-supervisor-status.json" in text
+    assert "controlador-supervisor-status.json" in text
+    assert "$status.state -eq 'HEALTHY'" in text
     assert "$Mt5TerminalPath | Out-Null" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/runtime/analysis" not in text
