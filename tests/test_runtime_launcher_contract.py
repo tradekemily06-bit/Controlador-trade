@@ -142,5 +142,6 @@ def test_supervisors_reject_restart_history_that_is_future_dated_or_out_of_order
         assert "$futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)" in text
         assert "$parsedRestart -gt $futureLimit" in text
         assert "$parsedRestart -lt $previousRestart" in text
+        assert "$json = ConvertTo-Json -InputObject @($values) -Depth 3" in text
         assert "RESTART_HISTORY_INVALID" in text
         assert "supervisor interrompido para preservar o limite de segurança" in text or "supervisor MT5 interrompido para preservar o limite de segurança" in text
