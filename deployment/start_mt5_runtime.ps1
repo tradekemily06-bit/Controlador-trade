@@ -37,23 +37,49 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # A corrupt restart history must not silently reset the restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        $previousRestart = [datetime]::MinValue
+        $futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)
         foreach ($item in @($items)) {
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
+            $parsedRestart = [datetime]::Parse($item).ToUniversalTime()
+            if ($parsedRestart -gt $futureLimit) {
+                throw 'Formato do histórico de reinícios inválido: existe data no futuro.'
+            }
+            if ($parsedRestart -lt $previousRestart) {
+                throw 'Formato do histórico de reinícios inválido: registros fora de ordem cronológica.'
+            }
+            $restartTimes.Add($parsedRestart.ToLocalTime())
+            $previousRestart = $parsedRestart
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor MT5 interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-SupervisorLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
+        throw $message
     }
 }
 
 function Save-RestartHistory {
     $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
-    $tmp = "$restartHistoryPath.tmp"
-    $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($restartHistoryPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        $json = ConvertTo-Json -InputObject @($values) -Depth 3
+        Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -74,6 +100,8 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
+
+Load-RestartHistory
 
 function Test-Mt5TerminalHealth {
     try {
