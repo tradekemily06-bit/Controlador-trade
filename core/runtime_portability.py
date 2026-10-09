@@ -173,7 +173,12 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
     return manifest
 
 def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=False)->dict[str,Any]:
-    backup=Path(backup_file).resolve()
+    requested_backup=Path(backup_file).expanduser()
+    if requested_backup.is_symlink():
+        raise ValueError(f"restore refuses symbolic-link backup source: {requested_backup}")
+    backup=requested_backup.resolve()
+    if not backup.is_file():
+        raise FileNotFoundError(f"runtime backup not found: {backup}")
     manifest=verify_backup(backup)
     runtime=Path(runtime_dir).resolve()
     runtime.mkdir(parents=True,exist_ok=True)
