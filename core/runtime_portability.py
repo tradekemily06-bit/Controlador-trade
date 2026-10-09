@@ -264,7 +264,18 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
         committed=[]
         try:
             for name in entries:
-                os.replace(incoming[name],runtime/name)
+                destination = runtime/name
+                # Recheck no-overwrite mode at commit time too: another process
+                # may create a destination after the initial conflict scan/staging.
+                if not replace and destination.exists():
+                    raise FileExistsError(
+                        f"restore destination appeared during staging: {name}"
+                    )
+                if destination.is_symlink():
+                    raise ValueError(
+                        f"restore refuses symbolic-link destination at commit: {name}"
+                    )
+                os.replace(incoming[name],destination)
                 committed.append(name)
         except Exception as commit_error:
             rollback_errors=[]
