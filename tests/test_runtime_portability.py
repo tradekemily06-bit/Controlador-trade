@@ -8,6 +8,25 @@ import pytest
 from core import runtime_portability as portability
 
 
+def test_create_backup_refuses_symlink_output_without_touching_target(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"new":true}', encoding="utf-8")
+    target = tmp_path / "existing.zip"
+    target.write_bytes(b"keep-this-file")
+    output_link = tmp_path / "backup-link.zip"
+    try:
+        output_link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    with pytest.raises(ValueError, match="symbolic-link destination"):
+        portability.create_backup(source, output_link)
+
+    assert target.read_bytes() == b"keep-this-file"
+    assert output_link.is_symlink()
+
+
 def test_restore_replace_false_refuses_to_overwrite_state(tmp_path: Path):
     source = tmp_path / "source"
     source.mkdir()
