@@ -34,6 +34,12 @@ def test_read_only_windows_validator_covers_deployment_surface():
     for required in (
         "controller-health-safe",
         "mt5-demo-health",
+        "market-data-candles-read-only",
+        "/api/runtime/analysis",
+        "$analysisPayload.market_data.candles",
+        "$candleCount -gt 0",
+        "$marketSource -match 'MT5 DEMO'",
+        "$analysisPayload.execution_allowed -eq $false",
         "scheduled-task:$task",
         "mql5-source",
         "mql5-ex5-current",
@@ -52,24 +58,24 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "Start-Process" not in text
     assert "mt5.initialize(path=p)" in text
     assert "$Mt5TerminalPath | Out-Null" in text
+    assert "Invoke-WebRequest -UseBasicParsing -Method Post" in text
 
 
 def test_controller_health_gate_uses_current_safe_health_contract():
     text = _read("deployment/start_controlador_runtime.ps1")
     for required in (
         "$payload.execution_allowed -ne $false",
-        "$payload.real -ne \"DESABILITADO\"",
+        '$payload.real -ne "DESABILITADO"',
         "$payload.operational_observability.execution",
         "$op.allowed -ne $false",
-        "$op.real -ne \"DISABLED\"",
+        '$op.real -ne "DISABLED"',
         "$payload.real_runtime",
         "$realRuntime.real_execution_allowed -ne $false",
         "$realRuntime.explicitly_enabled -ne $false",
     ):
         assert required in text
-    assert '$payload.execution.allowed' not in text
-    assert '$payload.execution.real' not in text
-
+    assert "$payload.execution.allowed" not in text
+    assert "$payload.execution.real" not in text
 
 
 def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
@@ -92,7 +98,6 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         "$env:CONTROLADOR_REAL_ADMISSION_ID = ''",
     ):
         assert required in text
-
 
 
 def test_mt5_supervisor_pins_health_and_process_management_to_configured_terminal():
