@@ -99,8 +99,22 @@ jobs:
           }
           Write-Host "Parsed $($files.Count) deployment PowerShell scripts without syntax errors."
           
+  windows-runtime-portability:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install test dependency
+        run: python -m pip install --upgrade pip pytest
+      - name: Test portable runtime backup and restore on Windows
+        run: python -m pytest -q core/test_runtime_portability.py tests/test_runtime_launcher_contract.py
+
   test:
-    needs: [CI, windows-powershell-parse]
+    needs: [CI, windows-powershell-parse, windows-runtime-portability]
     runs-on: ubuntu-latest
     steps:
       - name: Protected-branch compatibility check
