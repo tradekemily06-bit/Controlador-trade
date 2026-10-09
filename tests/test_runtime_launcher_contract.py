@@ -109,6 +109,8 @@ def test_mt5_supervisor_only_tracks_process_matching_configured_executable():
     assert "[System.IO.Path]::GetFullPath($_.ExecutablePath)" in text
     assert "Get-ConfiguredMt5Process" in text
     assert "Get-Process -Name $processName" not in text
+    assert "Fail closed: an unknown process state" in text
+    assert "throw $message" in text
 
 
 
