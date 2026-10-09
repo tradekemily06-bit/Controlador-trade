@@ -1,7 +1,8 @@
 param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
-    [string]$RuntimeDir = ''
+    [string]$RuntimeDir = '',
+    [string]$Mt5TerminalPath = 'C:\Program Files\MetaTrader 5\terminal64.exe'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +38,7 @@ $machineSettings = @{
     CONTROLADOR_BIND_HOST = '127.0.0.1'
     PORT = '8000'
     CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
+    CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath
     CONTROLADOR_REMOTE_ACCESS_REQUIRED = 'true'
     # Direct notebook access is allowed only from loopback with an explicitly local Host.
     # Remote/tunnel requests still require the trusted identity header.
