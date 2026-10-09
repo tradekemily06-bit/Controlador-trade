@@ -83,11 +83,29 @@ function Test-Mt5TerminalHealth {
             "$ProjectRoot;$($env:PYTHONPATH)"
         }
         Set-Location $ProjectRoot
-        & $PythonExe -c "import MetaTrader5 as mt5; import sys; ok=mt5.initialize(path=sys.argv[1]); terminal=mt5.terminal_info() if ok else None; account=mt5.account_info() if ok else None; demo_mode=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); healthy=ok and terminal is not None and bool(getattr(terminal,'connected',False)) and account is not None and demo_mode is not None and getattr(account,'trade_mode',None)==demo_mode; mt5.shutdown(); raise SystemExit(0 if healthy else 1)" $Mt5TerminalPath
+        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; ok=False; healthy=False; exec('try:\\n ok=mt5.initialize(path=sys.argv[1])\\n t=mt5.terminal_info() if ok else None\\n a=mt5.account_info() if ok else None\\n d=getattr(mt5,\'ACCOUNT_TRADE_MODE_DEMO\',None)\\n expected=os.path.normcase(os.path.realpath(sys.argv[1]))\\n actual=os.path.normcase(os.path.realpath(getattr(t,\'path\',\'\'))) if t else \'\'\\n healthy=bool(ok and t is not None and getattr(t,\'connected\',False) and actual==expected and a is not None and d is not None and getattr(a,\'trade_mode\',None)==d)\\nfinally:\\n mt5.shutdown()'); raise SystemExit(0 if healthy else 1)" $Mt5TerminalPath
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
+}
+
+function Get-ConfiguredMt5Process {
+    # Não supervisionar nem encerrar outra instalação do terminal com o mesmo nome.
+    $configuredPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
+    $processInfo = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq ([System.IO.Path]::GetFileName($configuredPath)) -and
+            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
+            [string]::Equals(
+                [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                $configuredPath,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        } |
+        Select-Object -First 1
+    if ($null -eq $processInfo) { return $null }
+    return Get-Process -Id $processInfo.ProcessId -ErrorAction SilentlyContinue
 }
 
 function Stop-Mt5Process {
@@ -119,7 +137,7 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
-    $process = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $process = Get-ConfiguredMt5Process
 
     if ($null -ne $process) {
         Write-SupervisorStatus 'STARTING' 'Processo MT5 encontrado; validando conexão do terminal e conta DEMO.'
@@ -175,7 +193,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         Write-SupervisorLog 'MT5 saudável: terminal conectado e conta DEMO confirmada.'
         Write-SupervisorStatus 'HEALTHY' 'MT5 em execução, terminal conectado e conta DEMO confirmada.'
         $healthFailures = 0
-        $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+        $processAfterStart = Get-ConfiguredMt5Process
         while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
@@ -194,13 +212,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
-            $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $processAfterStart = Get-ConfiguredMt5Process
         }
         if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
         if ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) { continue }
     }
 
-    $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
         Stop-Mt5Process -Process $processAfterStart
     }
