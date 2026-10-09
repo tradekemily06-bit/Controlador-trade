@@ -61,6 +61,30 @@ try {
     Add-Check 'mt5-demo-health' $mt5Healthy 'terminal conectado + conta DEMO; disponibilidade de mercado é verificada separadamente.'
 } finally { Pop-Location }
 
+# Read-only end-to-end probe: this asks the existing analysis API for completed
+# DEMO candles. It does not run a cycle, place an order, or enable REAL.
+$marketDataHealthy = $false
+try {
+    $analysisBody = @{ symbol = 'EURUSD'; timeframe = '5m'; limit = 100 } | ConvertTo-Json -Compress
+    $analysisResponse = Invoke-WebRequest -UseBasicParsing -Method Post -Uri 'http://127.0.0.1:8000/api/runtime/analysis' -ContentType 'application/json' -Body $analysisBody -TimeoutSec 20 -ErrorAction Stop
+    $analysisPayload = $analysisResponse.Content | ConvertFrom-Json
+    $candleCount = 0
+    if ($null -ne $analysisPayload.market_data -and $null -ne $analysisPayload.market_data.candles) {
+        $candleCount = [int]$analysisPayload.market_data.candles
+    }
+    $marketSource = [string]$analysisPayload.market_data.source
+    $marketDataHealthy = (
+        $analysisResponse.StatusCode -ge 200 -and
+        $analysisResponse.StatusCode -lt 300 -and
+        $candleCount -gt 0 -and
+        $marketSource -match 'MT5 DEMO' -and
+        $analysisPayload.execution_allowed -eq $false
+    )
+    Add-Check 'market-data-candles-read-only' $marketDataHealthy "HTTP=$($analysisResponse.StatusCode); source=$marketSource; candles=$candleCount; execution_allowed=$($analysisPayload.execution_allowed)"
+} catch {
+    Add-Check 'market-data-candles-read-only' $false "Análise DEMO não confirmou candles reais e execução bloqueada: $($_.Exception.Message)"
+}
+
 Add-Check 'mt5-terminal-file' (Has-File $Mt5TerminalPath) $Mt5TerminalPath
 foreach ($task in @("$TaskPrefix-MT5","$TaskPrefix-Controlador")) {
     $exists = $false
