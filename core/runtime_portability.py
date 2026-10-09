@@ -103,6 +103,16 @@ def _safe_member(name:str)->str:
     if candidate.name not in PORTABLE_FILES: raise ValueError(f"backup contains an unsupported file: {name}")
     return candidate.name
 
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject ambiguous JSON objects instead of silently keeping the last duplicate key."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"backup manifest contains duplicate key: {key}")
+        result[key] = value
+    return result
+
+
 def verify_backup(backup_file:str|Path)->dict[str,Any]:
     with zipfile.ZipFile(backup_file,"r") as archive:
         names=archive.namelist()
@@ -121,8 +131,8 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
                 manifest_bytes=manifest_stream.read(1024 * 1024 + 1)
             if len(manifest_bytes) > 1024 * 1024:
                 raise ValueError("backup manifest is too large")
-            manifest=json.loads(manifest_bytes)
-        except (KeyError, json.JSONDecodeError) as exc:
+            manifest=json.loads(manifest_bytes, object_pairs_hook=_reject_duplicate_json_keys)
+        except (KeyError, json.JSONDecodeError, ValueError) as exc:
             raise ValueError("backup manifest is invalid") from exc
         if not isinstance(manifest,dict):
             raise ValueError("backup manifest is invalid")
