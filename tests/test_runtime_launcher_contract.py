@@ -151,12 +151,12 @@ def test_portability_scripts_pass_paths_as_arguments_and_keep_restore_safe_by_de
 def test_controller_supervisor_fails_closed_when_restart_history_is_corrupt():
     text = _read("deployment/start_controlador_runtime.ps1")
     loader = text.split("function Load-RestartHistory {", 1)[1].split(
-        "\\nfunction Save-RestartHistory", 1
+        "\nfunction Save-RestartHistory", 1
     )[0]
     assert "ConvertFrom-Json" in loader
     assert "Histórico de reinícios inválido" in loader
     assert "Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'" in loader
     assert "throw $message" in loader
     assert "$restartTimes.Clear()" in loader
-    assert text.index("function Write-SupervisorStatus") < text.index("\\nLoad-RestartHistory\\n")
+    assert text.index("function Write-SupervisorStatus") < text.index("\nLoad-RestartHistory\n")
 \n
