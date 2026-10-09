@@ -220,7 +220,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         Write-SupervisorLog 'MT5 saudável: terminal conectado e conta DEMO confirmada.'
         Write-SupervisorStatus 'HEALTHY' 'MT5 em execução, terminal conectado e conta DEMO confirmada.'
         $healthFailures = 0
-        $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+        $processAfterStart = Get-ConfiguredMt5Process
         while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
@@ -239,13 +239,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
-            $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+            $processAfterStart = Get-ConfiguredMt5Process
         }
         if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
         if ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) { continue }
     }
 
-    $processAfterStart = Get-Process -Name $processName -ErrorAction SilentlyContinue | Select-Object -First 1
+    $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
         Stop-Mt5Process -Process $processAfterStart
     }
