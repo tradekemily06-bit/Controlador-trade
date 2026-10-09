@@ -231,7 +231,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         $existingControllers = @(
             Get-CimInstance Win32_Process -ErrorAction Stop |
                 Where-Object {
-                    $_.Name -match '^(python|python3)(\\.exe)?$' -and
+                    $_.Name -match '^(python|python3)(\.exe)?$' -and
                     $_.CommandLine -like "*$ProjectRoot*app.py*"
                 }
         )
