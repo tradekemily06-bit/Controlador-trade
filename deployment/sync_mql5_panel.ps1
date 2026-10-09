@@ -200,14 +200,26 @@ if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
 $destinationHash = if (Test-Path -LiteralPath $destination -PathType Leaf) { (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash } else { '' }
 $binary = [System.IO.Path]::ChangeExtension($destination, '.ex5')
+$provenance = "$binary.provenance.json"
 $sourceWriteTime = (Get-Item -LiteralPath $source).LastWriteTime
 $binaryUsable = $false
-if (Test-Path -LiteralPath $binary -PathType Leaf) {
-    $binaryUsable = (Get-Item -LiteralPath $binary).LastWriteTime -ge $sourceWriteTime
+if ((Test-Path -LiteralPath $binary -PathType Leaf) -and (Test-Path -LiteralPath $provenance -PathType Leaf)) {
+    try {
+        $recordedProvenance = Get-Content -LiteralPath $provenance -Raw | ConvertFrom-Json
+        $currentBinaryHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+        $binaryWriteTime = (Get-Item -LiteralPath $binary).LastWriteTime
+        $binaryUsable = (
+            [string]$recordedProvenance.source_sha256 -eq $sourceHash -and
+            [string]$recordedProvenance.binary_sha256 -eq $currentBinaryHash -and
+            $binaryWriteTime -ge $sourceWriteTime
+        )
+    } catch {
+        $binaryUsable = $false
+    }
 }
 
 if (-not $Force -and $sourceHash -eq $destinationHash -and $binaryUsable) {
-    Write-Host "MQL5 + EX5 já sincronizados: $destination"
+    Write-Host "MQL5 + EX5 já sincronizados; proveniência da compilação confirmada: $destination"
     exit 0
 }
 
@@ -218,10 +230,20 @@ if (-not $Force -and $sourceHash -eq $destinationHash -and -not $binaryUsable) {
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupSource = "$destination.$stamp.bak"
 $backupBinary = [System.IO.Path]::ChangeExtension($destination, '.ex5') + ".$stamp.bak"
+$backupProvenance = "$provenance.$stamp.bak"
 if (Test-Path -LiteralPath $destination) { Copy-WithRetry -Source $destination -Destination $backupSource }
 if (Test-Path -LiteralPath $binary) { Copy-WithRetry -Source $binary -Destination $backupBinary }
+if (Test-Path -LiteralPath $provenance) { Copy-WithRetry -Source $provenance -Destination $backupProvenance }
 
 Copy-WithRetry -Source $source -Destination $destination
+$copiedSourceHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+if ($copiedSourceHash -ne $sourceHash) {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
+    Restore-File -Backup $backupProvenance -Target $provenance
+    throw "A fonte mudou durante a sincronização; destino restaurado: $destination"
+}
 
 $log = [System.IO.Path]::ChangeExtension($destination, '.log')
 if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
@@ -235,6 +257,7 @@ Start-Sleep -Milliseconds 500
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
     throw "MetaEditor não produziu log de compilação: $log"
 }
 
@@ -244,6 +267,7 @@ $warningMatch = [regex]::Match($logText, '(?i)(\d+)\s+(warnings?|avisos?)')
 if (-not $errorMatch.Success -or -not $warningMatch.Success) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
     throw "Log de compilação sem contagem inequívoca de erros/avisos: $log"
 }
 $errors = $errorMatch.Groups[1].Value
@@ -251,12 +275,14 @@ $warnings = $warningMatch.Groups[1].Value
 if ($errors -ne '0' -or $warnings -ne '0') {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
     throw "Compilação MQL5 rejeitada: errors=$errors warnings=$warnings. Log: $log"
 }
 
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
     throw "MetaEditor terminou sem gerar o EX5 esperado: $binary"
 }
 
@@ -265,7 +291,27 @@ $binaryHashAfter = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
 if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
+}
+
+$provenanceTemp = "$provenance.$stamp.tmp"
+$provenancePayload = @{
+    schema_version = 1
+    source_sha256 = $sourceHash
+    binary_sha256 = $binaryHashAfter
+    compiled_at_utc = (Get-Date).ToUniversalTime().ToString('o')
+}
+try {
+    ($provenancePayload | ConvertTo-Json -Compress) |
+        Set-Content -LiteralPath $provenanceTemp -Encoding ASCII
+    Move-Item -LiteralPath $provenanceTemp -Destination $provenance -Force
+} catch {
+    Restore-File -Backup $backupSource -Target $destination
+    Restore-File -Backup $backupBinary -Target $binary
+    Restore-File -Backup $backupProvenance -Target $provenance
+    Remove-Item -LiteralPath $provenanceTemp -Force -ErrorAction SilentlyContinue
+    throw "Não foi possível registrar a proveniência da compilação; arquivos anteriores restaurados. $($_.Exception.Message)"
 }
 
 if ($metaEditorExitCode -ne 0) {
@@ -275,8 +321,10 @@ if ($metaEditorExitCode -ne 0) {
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
+Write-Host "Proveniência: $provenance"
 Write-Host "Fonte: $source"
 Write-Host "Destino: $destination"
 Write-Host "MetaEditor: $MetaEditorPath"
