@@ -124,11 +124,13 @@ jobs:
         env:
           CI_RESULT: ${{ needs.CI.result }}
           TEST_RESULT: ${{ needs.test.result }}
+          WINDOWS_RESULT: ${{ needs.windows-powershell-validation.result }}
           TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         with:
           script: |
             const passed = process.env.CI_RESULT === "success" &&
-              process.env.TEST_RESULT === "success";
+              process.env.TEST_RESULT === "success" &&
+              process.env.WINDOWS_RESULT === "success";
             const state = passed ? "success" : "failure";
             const description = passed
               ? "CI and test jobs completed successfully"
