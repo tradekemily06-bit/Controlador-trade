@@ -262,32 +262,66 @@ def restore_backup(backup_file:str|Path,runtime_dir:str|Path,*,replace:bool=Fals
                 shutil.copy2(destination,originals[name])
 
         committed=[]
+        witnesses={}
         try:
             for name in entries:
                 destination = runtime/name
-                # Recheck no-overwrite mode at commit time too: another process
-                # may create a destination after the initial conflict scan/staging.
-                if not replace and destination.exists():
-                    raise FileExistsError(
-                        f"restore destination appeared during staging: {name}"
-                    )
                 if destination.is_symlink():
                     raise ValueError(
                         f"restore refuses symbolic-link destination at commit: {name}"
                     )
-                os.replace(incoming[name],destination)
+                if not replace:
+                    # os.replace() overwrites on POSIX and can race with a
+                    # concurrent creator even after an exists() check.
+                    # A same-filesystem hard link is an atomic no-clobber
+                    # create on supported Windows/NTFS and POSIX filesystems.
+                    try:
+                        os.link(incoming[name], destination)
+                    except FileExistsError as exc:
+                        raise FileExistsError(
+                            f"restore destination appeared during staging: {name}"
+                        ) from exc
+                    # Keep incoming staged until commit completes. Its inode
+                    # is the ownership witness used during a safe rollback.
+                    witnesses[name] = incoming[name]
+                    committed.append(name)
+                    continue
+
+                # Keep a hard-link witness to the exact bytes installed. If
+                # another process replaces or edits the destination before
+                # rollback, preserve that concurrent change rather than
+                # blindly restoring over it.
+                witness = stage/"committed"/name
+                witness.parent.mkdir(parents=True, exist_ok=True)
+                os.link(incoming[name], witness)
+                witnesses[name] = witness
+                os.replace(incoming[name], destination)
                 committed.append(name)
         except Exception as commit_error:
             rollback_errors=[]
             for name in reversed(committed):
                 destination=runtime/name
+                witness=witnesses[name]
                 try:
+                    if not destination.exists() or not os.path.samefile(destination, witness):
+                        rollback_errors.append(
+                            f"{name}: destination changed concurrently; preserved"
+                        )
+                        continue
+                    # Detect in-place edits too; samefile alone only detects
+                    # replacement of the destination's directory entry.
+                    expected_digest, _ = expected[name]
+                    if _sha256(destination) != expected_digest:
+                        rollback_errors.append(
+                            f"{name}: destination content changed concurrently; preserved"
+                        )
+                        continue
                     if existed[name]:
                         rollback_temp=stage/"rollback"/name
                         rollback_temp.parent.mkdir(parents=True,exist_ok=True)
                         shutil.copy2(originals[name],rollback_temp)
                         os.replace(rollback_temp,destination)
-                    elif destination.exists():
+                    else:
                         destination.unlink()
                 except Exception as rollback_error:
                     rollback_errors.append(f"{name}: {rollback_error}")
