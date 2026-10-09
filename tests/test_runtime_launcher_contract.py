@@ -89,3 +89,12 @@ def test_controller_supervisor_pins_runtime_paths_and_demo_safety_environment():
         "$env:CONTROLADOR_REAL_ADMISSION_ID = ''",
     ):
         assert required in text
+
+
+
+def test_mt5_supervisor_pins_health_check_to_configured_terminal():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "mt5.initialize(path=sys.argv[1])" in text
+    assert "configured_directory" in text
+    assert "actual_directory == configured_directory" in text
+    assert "& $PythonExe -c $healthCheckCode $Mt5TerminalPath" in text
