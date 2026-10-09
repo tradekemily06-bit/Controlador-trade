@@ -193,3 +193,13 @@ def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
     assert "DeletePanel();" in deinit
 
 
+
+def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void Panel()", 1)[1].split("void RenderView()", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
+    assert timer.index("RefreshPanelLayout();") < timer.index("RefreshPanelToggle();")
+    assert "int toggle_x=panel_visible?panel_x:MathMax(12,cw-86);" in panel
+
+
