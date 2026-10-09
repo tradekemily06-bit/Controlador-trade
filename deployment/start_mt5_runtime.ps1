@@ -83,7 +83,31 @@ function Test-Mt5TerminalHealth {
             "$ProjectRoot;$($env:PYTHONPATH)"
         }
         Set-Location $ProjectRoot
-        & $PythonExe -c "import MetaTrader5 as mt5; ok=mt5.initialize(); terminal=mt5.terminal_info() if ok else None; account=mt5.account_info() if ok else None; demo_mode=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); healthy=ok and terminal is not None and bool(getattr(terminal,'connected',False)) and account is not None and demo_mode is not None and getattr(account,'trade_mode',None)==demo_mode; mt5.shutdown(); raise SystemExit(0 if healthy else 1)"
+        $healthCheckCode = @'
+import os
+import sys
+import MetaTrader5 as mt5
+
+configured_terminal = os.path.normcase(os.path.realpath(sys.argv[1]))
+configured_directory = os.path.normcase(os.path.dirname(configured_terminal))
+ok = mt5.initialize(path=sys.argv[1])
+terminal = mt5.terminal_info() if ok else None
+account = mt5.account_info() if ok else None
+demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+actual_directory = os.path.normcase(os.path.realpath(getattr(terminal, "path", ""))) if terminal is not None else ""
+healthy = (
+    ok
+    and terminal is not None
+    and bool(getattr(terminal, "connected", False))
+    and actual_directory == configured_directory
+    and account is not None
+    and demo_mode is not None
+    and getattr(account, "trade_mode", None) == demo_mode
+)
+mt5.shutdown()
+raise SystemExit(0 if healthy else 1)
+'@
+        & $PythonExe -c $healthCheckCode $Mt5TerminalPath
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
