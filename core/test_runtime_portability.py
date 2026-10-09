@@ -336,7 +336,7 @@ def test_restore_rollback_preserves_concurrently_replaced_destination(tmp_path: 
         return original_replace(source_path, destination_path)
 
     monkeypatch.setattr(portability.os, "replace", inject_external_change_then_fail)
-    with pytest.raises(RuntimeError, match="destination changed concurrently; preserved"):
+    with pytest.raises(RuntimeError, match="destination (content )?changed concurrently; preserved"):
         restore_backup(backup, target, replace=True)
 
     assert (target / "operation-memory.json").read_text(encoding="utf-8") == "changed-by-concurrent-process"
