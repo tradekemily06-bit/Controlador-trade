@@ -47,7 +47,10 @@ print(json.dumps({
 }))
 mt5.shutdown()
 '@
-    $result = & $PythonExe -c $code 2>$null
+    # Pass multiline Python through base64 so PowerShell/native argument parsing cannot corrupt it.
+    $encodedCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($code))
+    $oneLineCode = "import base64;exec(compile(base64.b64decode('$encodedCode'),'<mt5-paths>','exec'))"
+    $result = & $PythonExe -c $oneLineCode 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $result) { return $null }
     try { return ($result | ConvertFrom-Json) } catch { return $null }
 }
@@ -110,12 +113,6 @@ $binaryHashBefore = if (Test-Path -LiteralPath $binary -PathType Leaf) { (Get-Fi
 & $MetaEditorPath "/compile:$destination" "/log:$explicitLog" | Out-Null
 $metaEditorExitCode = $LASTEXITCODE
 Start-Sleep -Milliseconds 500
-if ($metaEditorExitCode -ne 0) {
-    Restore-File -Backup $backupSource -Target $destination
-    Restore-File -Backup $backupBinary -Target $binary
-    throw "MetaEditor terminou com código de saída $metaEditorExitCode. Log: $log"
-}
-
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
@@ -150,6 +147,10 @@ if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2)) {
     Restore-File -Backup $backupSource -Target $destination
     Restore-File -Backup $backupBinary -Target $binary
     throw "O EX5 não foi atualizado pela compilação (timestamp anterior à compilação): $binary"
+}
+
+if ($metaEditorExitCode -ne 0) {
+    Write-Warning "MetaEditor retornou código $metaEditorExitCode, mas o log confirmou 0 erros/avisos e o EX5 foi atualizado. Resultado validado pelos artefatos."
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
