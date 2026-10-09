@@ -66,6 +66,59 @@ def test_restore_rolls_back_committed_files_if_a_later_replace_fails(tmp_path: P
     assert second.read_text(encoding="utf-8") == '{"keep":"second"}'
 
 
+
+def test_restore_reports_incomplete_rollback_instead_of_hiding_it(tmp_path: Path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"from":"backup"}', encoding="utf-8")
+    (source / "operational-safety.json").write_text('{"from":"backup"}', encoding="utf-8")
+    backup = tmp_path / "runtime.zip"
+    portability.create_backup(source, backup)
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    first = runtime / "operation-memory.json"
+    second = runtime / "operational-safety.json"
+    first.write_text('{"keep":"first"}', encoding="utf-8")
+    second.write_text('{"keep":"second"}', encoding="utf-8")
+
+    real_replace = os.replace
+    incoming_failure = False
+
+    def fail_commit_and_rollback(src, dst):
+        nonlocal incoming_failure
+        src_path = Path(src)
+        dst_path = Path(dst)
+        if src_path.parent.name == "incoming" and dst_path.name == "operational-safety.json":
+            incoming_failure = True
+            raise OSError("simulated commit failure")
+        if incoming_failure and src_path.parent.name == "rollback" and dst_path.name == "operation-memory.json":
+            raise OSError("simulated rollback failure")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(portability.os, "replace", fail_commit_and_rollback)
+
+    with pytest.raises(RuntimeError, match="rollback incomplete"):
+        portability.restore_backup(backup, runtime, replace=True)
+
+
+def test_create_backup_skips_symlinked_portable_state(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"secret":"outside"}', encoding="utf-8")
+    link = source / "operation-memory.json"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    backup = tmp_path / "runtime.zip"
+    manifest = portability.create_backup(source, backup)
+
+    assert manifest["files"] == []
+    assert portability.verify_backup(backup)["files"] == []
+
 def test_restore_replaces_all_files_after_successful_staging(tmp_path: Path):
     source = tmp_path / "source"
     source.mkdir()
