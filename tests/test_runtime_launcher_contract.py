@@ -196,3 +196,16 @@ def test_supervisors_isolate_restart_history_temp_files():
         assert "Set-Content -LiteralPath $tmp" in saver
         assert "Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force" in saver
         assert "Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue" in saver
+
+
+def test_supervisors_isolate_status_temp_files_and_cleanup_after_write():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        status_writer = text.split("function Write-SupervisorStatus", 1)[1].split("\n}", 1)[0]
+        assert "[guid]::NewGuid().ToString('N')" in status_writer
+        assert "Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8" in status_writer
+        assert "Move-Item -LiteralPath $tmp -Destination $statusPath -Force" in status_writer
+        assert "Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue" in status_writer
