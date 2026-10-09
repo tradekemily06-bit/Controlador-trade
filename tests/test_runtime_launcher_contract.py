@@ -110,6 +110,6 @@ def test_mt5_supervisor_tracks_only_the_configured_terminal_process():
 def test_mt5_health_rejects_wrong_installation_and_non_demo_account():
     text = _read("deployment/start_mt5_runtime.ps1")
     assert "mt5.initialize(path=sys.argv[1])" in text
-    assert "os.path.realpath(getattr(t,'path',''))" in text
+    assert "os.path.join(getattr(t,'path',''),os.path.basename(sys.argv[1]))" in text
     assert "actual==expected" in text
     assert "getattr(a,'trade_mode',None)==d" in text
