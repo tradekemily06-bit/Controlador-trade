@@ -171,7 +171,7 @@ void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
    if(panel_visible){ Panel(); RenderView(); Analyze(true); }
-   else DeletePanel();
+   else DeletePanel(true,true);
    RefreshPanelToggle();
    ChartRedraw();
 }
@@ -234,13 +234,16 @@ void Panel(){
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
    SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
 }
-void DeletePanel(){
+void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
-      if(StringFind(n,P)==0 && n!=Obj("PANEL_TOGGLE")) ObjectDelete(0,n);
+      if(StringFind(n,P)!=0) continue;
+      if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
+      if(preserveWatermark && (n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT"))) continue;
+      ObjectDelete(0,n);
    }
-   RefreshPanelToggle();
+   if(preserveToggle) RefreshPanelToggle();
 }
 string JsonValue(string json,string key){
    string needle="\"" + key + "\":";
@@ -593,6 +596,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
+      ApplyWatermark();
       datetime hidden_bar=iTime(_Symbol,_Period,0);
       if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
          last_analysis_bar=hidden_bar;

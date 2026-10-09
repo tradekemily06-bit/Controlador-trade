@@ -176,3 +176,20 @@ def test_mql5_sync_fails_closed_when_target_terminal_instance_is_ambiguous():
     assert "sincronização cancelada para não atualizar a pasta de dados errada" in text
 
 
+
+def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    delete = panel.split("void DeletePanel(", 1)[1].split("string JsonValue", 1)[0]
+    toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    deinit = panel.split("void OnDeinit(", 1)[1].split("void OnTimer()", 1)[0]
+    hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
+
+    assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
+    assert 'n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT")' in delete
+    assert "if(preserveToggle) RefreshPanelToggle();" in delete
+    assert "else DeletePanel(true,true);" in toggle
+    assert "ApplyWatermark();" in hidden
+    assert "DeletePanel();" in deinit
+
+
