@@ -58,8 +58,18 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # ConvertFrom-Json can accept scalar JSON such as null or a string.
+        # Only the persisted JSON array contract is valid; malformed history
+        # must stop the supervisor rather than silently reset its restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
         foreach ($item in @($items)) {
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
             $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
         }
     } catch {
