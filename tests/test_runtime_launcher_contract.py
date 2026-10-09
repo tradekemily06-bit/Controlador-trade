@@ -190,7 +190,7 @@ def test_supervisors_isolate_restart_history_temp_files():
     ):
         text = _read(name)
         saver = text.split("function Save-RestartHistory {", 1)[1].split(
-            "\\n}", 1
+            "$finalState =", 1
         )[0]
         assert "[guid]::NewGuid().ToString('N')" in saver
         assert "Set-Content -LiteralPath $tmp" in saver
