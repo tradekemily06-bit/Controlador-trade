@@ -96,7 +96,16 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
         if len(member_names) != len(set(member_names)):
             raise ValueError("backup contains duplicate members")
         try:
-            manifest=json.loads(archive.read("manifest.json"))
+            manifest_info=archive.getinfo("manifest.json")
+            # The manifest only describes at most PORTABLE_FILES; bound its
+            # parsing cost instead of trusting a potentially huge ZIP member.
+            if manifest_info.file_size > 1024 * 1024:
+                raise ValueError("backup manifest is too large")
+            with archive.open("manifest.json","r") as manifest_stream:
+                manifest_bytes=manifest_stream.read(1024 * 1024 + 1)
+            if len(manifest_bytes) > 1024 * 1024:
+                raise ValueError("backup manifest is too large")
+            manifest=json.loads(manifest_bytes)
         except (KeyError, json.JSONDecodeError) as exc:
             raise ValueError("backup manifest is invalid") from exc
         if not isinstance(manifest,dict):
