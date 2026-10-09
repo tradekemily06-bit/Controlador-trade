@@ -74,7 +74,9 @@ def create_backup(runtime_dir: str|Path, output_file: str|Path) -> dict[str,Any]
         stage=Path(tmp); staged=[]
         for name in PORTABLE_FILES:
             source=runtime/name
-            if source.is_file() and not source.is_symlink():
+            if source.is_symlink():
+                raise ValueError(f"runtime backup refuses symbolic-link state file: {name}")
+            if source.is_file():
                 dest=stage/name; _copy_state(source,dest); staged.append((name,dest))
         if not staged:
             raise ValueError("runtime backup refused: no portable state files were found")
