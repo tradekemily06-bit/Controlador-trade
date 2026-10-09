@@ -13,6 +13,7 @@ string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
+datetime last_analysis_bar=0;
 bool watermark_enabled=true;
 bool panel_visible=true;
 int panel_x=0;
@@ -169,7 +170,7 @@ void RefreshPanelToggle(){
 void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
-   if(panel_visible){ Panel(); RenderView(); }
+   if(panel_visible){ Panel(); RenderView(); Analyze(true); }
    else DeletePanel();
    RefreshPanelToggle();
    ChartRedraw();
@@ -477,19 +478,27 @@ void SaveConfig(){
    else
       SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
 }
-void Analyze(){
-   string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
-   string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
-   if(sym=="") sym=_Symbol;
-   if(tf=="") tf=EnumToString((ENUM_TIMEFRAMES)_Period);
+void Analyze(bool render=true){
+   string sym=_Symbol;
+   string tf=EnumToString((ENUM_TIMEFRAMES)_Period);
+   if(ObjectFind(0,Obj("SYM"))>=0){
+      string configured_symbol=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
+      if(configured_symbol!="") sym=configured_symbol;
+   }
+   if(ObjectFind(0,Obj("TF"))>=0){
+      string configured_timeframe=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
+      if(configured_timeframe!="") tf=configured_timeframe;
+   }
    StringReplace(tf,"PERIOD_","");
    StringToUpper(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
       return;
    }
+   runtime_ok=true;
+   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
@@ -559,6 +568,9 @@ int OnInit(){
    RefreshHealth();
    RefreshSecondary();
    RefreshMarketAssets();
+   // Prime runtime market-data state immediately, even when the native panel is hidden.
+   Analyze(panel_visible);
+   last_analysis_bar=iTime(_Symbol,_Period,0);
    return(INIT_SUCCEEDED);
 }
 void OnDeinit(const int reason){
@@ -572,6 +584,12 @@ void OnTimer(){
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
+   datetime current_bar=iTime(_Symbol,_Period,0);
+   if(current_bar>0 && current_bar!=last_analysis_bar){
+      last_analysis_bar=current_bar;
+      // Refresh from broker once per new chart bar, not every timer tick.
+      Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
+   }
    ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
