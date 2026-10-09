@@ -434,3 +434,38 @@ def test_verify_backup_rejects_duplicate_manifest_json_keys(tmp_path: Path):
         archive.writestr("manifest.json", manifest)
     with pytest.raises(ValueError, match="backup manifest is invalid"):
         portability.verify_backup(backup)
+
+
+def test_create_backup_refuses_symbolic_link_runtime_directory(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    link = tmp_path / "runtime-link"
+    try:
+        link.symlink_to(source, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    with pytest.raises(ValueError, match="symbolic-link source directory"):
+        portability.create_backup(link, tmp_path / "backup.zip")
+    assert not (tmp_path / "backup.zip").exists()
+
+
+def test_restore_refuses_symbolic_link_runtime_directory(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "operation-memory.json").write_text('{"safe":true}', encoding="utf-8")
+    backup = tmp_path / "backup.zip"
+    portability.create_backup(source, backup)
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    link = tmp_path / "runtime-link"
+    try:
+        link.symlink_to(runtime, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are not available for this user/platform")
+
+    with pytest.raises(ValueError, match="symbolic-link runtime directory"):
+        portability.restore_backup(backup, link)
+    assert list(runtime.iterdir()) == []
