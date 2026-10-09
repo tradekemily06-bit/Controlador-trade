@@ -85,7 +85,7 @@ jobs:
       statuses: write
     steps:
       - name: Mirror required-check results to legacy commit statuses
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           CI_RESULT: ${{ needs.CI.result }}
           TEST_RESULT: ${{ needs.test.result }}
