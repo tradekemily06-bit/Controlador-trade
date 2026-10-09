@@ -2,6 +2,7 @@ param(
     [string]$ProjectRoot = 'C:\Controlador-trade',
     [string]$PythonExe = 'python',
     [string]$RuntimeDir = '',
+    [string]$Mt5TerminalPath = 'C:\\Program Files\\MetaTrader 5\\terminal64.exe',
     [int]$Mt5WaitSeconds = 180,
     [int]$RestartDelaySeconds = 10,
     [int]$MaxRestartsPerHour = 6,
@@ -103,7 +104,7 @@ function Sync-Mt5Panel {
         return
     }
     try {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath
         if ($LASTEXITCODE -eq 0) {
             Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
         } else {
