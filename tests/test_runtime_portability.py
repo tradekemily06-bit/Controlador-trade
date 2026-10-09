@@ -469,3 +469,14 @@ def test_restore_refuses_symbolic_link_runtime_directory(tmp_path: Path):
     with pytest.raises(ValueError, match="symbolic-link runtime directory"):
         portability.restore_backup(backup, link)
     assert list(runtime.iterdir()) == []
+
+
+def test_verify_backup_rejects_non_utf8_manifest(tmp_path: Path):
+    import zipfile
+
+    backup = tmp_path / "non-utf8-manifest.zip"
+    with zipfile.ZipFile(backup, "w") as archive:
+        archive.writestr("manifest.json", b"\\xff\\xfe\\xfa")
+
+    with pytest.raises(ValueError, match="backup manifest is invalid"):
+        portability.verify_backup(backup)
