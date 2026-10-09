@@ -289,7 +289,11 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             if ($remainingSeconds -le 0) { break }
             Start-Sleep -Seconds ([Math]::Min(60, $remainingSeconds))
         }
-        if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
+        if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
+            $finalState = 'STOPPED'
+            $finalReason = 'Parada controlada durante espera de recuperação.'
+            break
+        }
         continue
     }
 
