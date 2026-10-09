@@ -105,11 +105,18 @@ function Sync-Mt5Panel {
         return
     }
     try {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath
-        if ($LASTEXITCODE -eq 0) {
+        $syncOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath 2>&1
+        $syncExitCode = $LASTEXITCODE
+        foreach ($line in @($syncOutput)) {
+            $message = [string]$line
+            if (-not [string]::IsNullOrWhiteSpace($message)) {
+                Write-StartupLog "Sincronização MQL5: $message"
+            }
+        }
+        if ($syncExitCode -eq 0) {
             Write-StartupLog 'Painel MQL5 sincronizado/compilado automaticamente.'
         } else {
-            Write-StartupLog "Sincronização MQL5 terminou com código $LASTEXITCODE; runtime seguirá protegido."
+            Write-StartupLog "Sincronização MQL5 terminou com código $syncExitCode; runtime seguirá protegido."
         }
     } catch {
         Write-StartupLog "Falha na sincronização MQL5: $($_.Exception.Message). Runtime seguirá protegido."

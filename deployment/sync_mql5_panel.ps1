@@ -28,6 +28,55 @@ function Restore-File([string]$Backup, [string]$Target) {
     }
 }
 
+function Resolve-Mt5TerminalPath([string]$RequestedPath) {
+    # The Python MT5 bridge selects a terminal by executable path, not by PID/data folder.
+    # If two running terminals share that executable path, fail closed rather than
+    # copying/compiling the panel into an arbitrary instance's data directory.
+    $processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ieq 'terminal64.exe' })
+    if ($processes.Count -eq 0) {
+        throw 'Nenhum processo terminal64.exe está em execução; não é possível confirmar o terminal de destino do painel.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($RequestedPath)) {
+        if ($processes.Count -gt 1) {
+            $pids = ($processes | ForEach-Object { [string]$_.ProcessId }) -join ', '
+            throw "Mais de uma instância do MT5 está em execução (PID: $pids); informe o terminal correto e deixe apenas uma instância correspondente ativa."
+        }
+        $resolved = [string]$processes[0].ExecutablePath
+        if ([string]::IsNullOrWhiteSpace($resolved)) {
+            throw 'Não foi possível resolver o caminho executável da única instância do MT5.'
+        }
+        return [System.IO.Path]::GetFullPath($resolved)
+    }
+
+    $requested = [System.IO.Path]::GetFullPath($RequestedPath)
+    $matching = @($processes | Where-Object {
+        if (-not [string]::IsNullOrWhiteSpace($_.ExecutablePath)) {
+            [string]::Equals(
+                [System.IO.Path]::GetFullPath($_.ExecutablePath),
+                $requested,
+                [System.StringComparison]::OrdinalIgnoreCase
+            )
+        } elseif (-not [string]::IsNullOrWhiteSpace($_.CommandLine)) {
+            $_.CommandLine.IndexOf($requested, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+        } else {
+            $false
+        }
+    })
+
+    if ($matching.Count -gt 1) {
+        $pids = ($matching | ForEach-Object { [string]$_.ProcessId }) -join ', '
+        throw "Mais de uma instância corresponde ao MT5 configurado (PID: $pids); sincronização cancelada para não atualizar a pasta de dados errada."
+    }
+    if ($matching.Count -eq 0) {
+        throw "Nenhum processo em execução corresponde ao MT5 configurado: $requested"
+    }
+    return $requested
+}
+
+$Mt5TerminalPath = Resolve-Mt5TerminalPath -RequestedPath $Mt5TerminalPath
+
 $source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
     throw "Fonte MQL5 não encontrada: $source"

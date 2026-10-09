@@ -166,3 +166,13 @@ def test_mql5_sync_parses_numeric_error_and_warning_counts():
     assert r"(?i)(\d+)\s+(errors?|erros?)" in text
     assert r"(?i)(\d+)\s+(warnings?|avisos?)" in text
     assert r"(?i)(\\d+)\\s+" not in text
+
+def test_mql5_sync_fails_closed_when_target_terminal_instance_is_ambiguous():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "function Resolve-Mt5TerminalPath" in text
+    assert "Get-CimInstance Win32_Process" in text
+    assert "Mais de uma instância corresponde ao MT5 configurado" in text
+    assert "$Mt5TerminalPath = Resolve-Mt5TerminalPath -RequestedPath $Mt5TerminalPath" in text
+    assert "sincronização cancelada para não atualizar a pasta de dados errada" in text
+
+
