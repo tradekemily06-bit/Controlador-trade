@@ -141,7 +141,7 @@ def verify_backup(backup_file:str|Path)->dict[str,Any]:
             if len(manifest_bytes) > 1024 * 1024:
                 raise ValueError("backup manifest is too large")
             manifest=json.loads(manifest_bytes, object_pairs_hook=_reject_duplicate_json_keys)
-        except (KeyError, json.JSONDecodeError, _DuplicateManifestKeyError) as exc:
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError, _DuplicateManifestKeyError) as exc:
             raise ValueError("backup manifest is invalid") from exc
         if not isinstance(manifest,dict):
             raise ValueError("backup manifest is invalid")
