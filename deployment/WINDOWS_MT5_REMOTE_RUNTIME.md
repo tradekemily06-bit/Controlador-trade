@@ -114,6 +114,8 @@ Essas variáveis são configuração de ambiente/segredo operacional e não deve
 O diretório `CONTROLADOR_RUNTIME_DIR` é o estado portátil do ecossistema. A partir desta versão, a memória de decisões usa por padrão `decision-memory.sqlite` dentro desse diretório, portanto não depende de configuração manual de um caminho externo.
 
 Os artefatos de estado portáveis são:
+
+O pacote impõe limites defensivos de **2 GiB por arquivo** e **4 GiB no total**. Se o estado ultrapassar esses limites, a criação/restauração é recusada; o backup anterior não deve ser substituído por um pacote incompleto.
 - `operation-memory.json`
 - `operational-safety.json`
 - `execution-ledger.json`
