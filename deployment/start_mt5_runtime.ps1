@@ -78,8 +78,6 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
 
-Load-RestartHistory
-
 function Test-Mt5TerminalHealth {
     try {
         $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
@@ -118,6 +116,8 @@ raise SystemExit(0 if healthy else 1)
         return $false
     }
 }
+
+Load-RestartHistory
 
 function Get-ConfiguredMt5Process {
     try {
