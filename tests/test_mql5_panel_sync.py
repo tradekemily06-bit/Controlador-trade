@@ -575,3 +575,6 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert 'string shared=JsonValue(response,"watermark_enabled");' in panel
     assert 'void RefreshSharedWatermarkPreference()' in panel
     assert 'RefreshSharedWatermarkPreference();' in panel
+    load_watermark = panel.split("void LoadWatermark()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    assert 'Http(' not in load_watermark
+    assert 'now-last_watermark_sync<60' in panel
