@@ -114,7 +114,7 @@ def test_statistics_use_distinct_win_loss_colors_and_signed_net_result():
     assert ".stat-win{color:#58d68d}" in WEB
     assert ".stat-loss{color:#ff7676}" in WEB
     assert ".stat-neutral{color:#ffd166}" in WEB
-    assert "n>0?'stat-win':Number(value)<0?'stat-loss':'stat-neutral'" in WEB
+    assert "Number(value)>0?'stat-win':Number(value)<0?'stat-loss':'stat-neutral'" in WEB
 
 
 def test_statistics_do_not_report_zero_win_rate_when_no_closed_outcomes_exist():
