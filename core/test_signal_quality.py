@@ -4,76 +4,99 @@ from core.models import AnalysisResult, Signal
 from core.signal_quality import SignalLevel, evaluate_signal_quality
 
 
-def test_strong_buy_is_strong():
-    result = evaluate_signal_quality(
-        AnalysisResult(
-            signal=Signal.COMPRA,
-            score=100,
-            reason="Sinal forte.",
-            confirmed=True,
-        )
+def _analysis(signal, score, confirmed=True, filters_ok=None):
+    return AnalysisResult(
+        signal=signal,
+        score=score,
+        reason="Teste de qualidade direcional.",
+        confirmed=confirmed,
+        filters_ok=filters_ok,
     )
+
+
+def test_strong_buy_is_strong():
+    result = evaluate_signal_quality(_analysis(Signal.COMPRA, 100))
 
     assert result.actionable is True
     assert result.score == 100
     assert result.level == SignalLevel.FORTE
 
 
-def test_moderate_sell_is_moderate():
-    result = evaluate_signal_quality(
-        AnalysisResult(
-            signal=Signal.VENDA,
-            score=20,
-            reason="Sinal de venda.",
-            confirmed=True,
-        )
-    )
+def test_strong_sell_uses_directional_strength_not_raw_score():
+    result = evaluate_signal_quality(_analysis(Signal.VENDA, 0))
 
     assert result.actionable is True
-    assert result.score == 60
-    assert result.level == SignalLevel.MODERADA
+    assert result.score == 100
+    assert result.level == SignalLevel.FORTE
+
+
+def test_moderate_buy_and_sell_are_symmetric():
+    buy = evaluate_signal_quality(_analysis(Signal.COMPRA, 75))
+    sell = evaluate_signal_quality(_analysis(Signal.VENDA, 25))
+
+    assert buy.actionable is True
+    assert sell.actionable is True
+    assert buy.score == sell.score == 75
+    assert buy.level is sell.level is SignalLevel.MODERADA
+
+
+def test_weak_directional_setup_is_not_actionable():
+    buy = evaluate_signal_quality(_analysis(Signal.COMPRA, 65))
+    sell = evaluate_signal_quality(_analysis(Signal.VENDA, 35))
+
+    for result in (buy, sell):
+        assert result.actionable is False
+        assert result.score == 65
+        assert result.level == SignalLevel.FRACA
 
 
 def test_unconfirmed_signal_is_not_actionable():
-    result = evaluate_signal_quality(
-        AnalysisResult(
-            signal=Signal.COMPRA,
-            score=100,
-            reason="Aguardando fechamento.",
-            confirmed=False,
-        )
-    )
+    result = evaluate_signal_quality(_analysis(Signal.COMPRA, 100, confirmed=False))
 
     assert result.actionable is False
     assert result.score == 0
     assert result.level == SignalLevel.NENHUMA
 
 
-def test_wait_signal_has_no_quality():
-    result = evaluate_signal_quality(
-        AnalysisResult(
-            signal=Signal.AGUARDAR,
-            score=50,
-            reason="Score insuficiente.",
-            confirmed=True,
-        )
-    )
+def test_wait_signal_preserves_weak_candidate_quality_without_becoming_actionable():
+    result = evaluate_signal_quality(_analysis(Signal.AGUARDAR, 50))
+
+    assert result.actionable is False
+    assert result.score == 50
+    assert result.level == SignalLevel.FRACA
+
+
+def test_wait_with_strong_raw_score_is_not_mislabeled_as_a_strong_opportunity():
+    result = evaluate_signal_quality(_analysis(Signal.AGUARDAR, 90))
 
     assert result.actionable is False
     assert result.score == 0
     assert result.level == SignalLevel.NENHUMA
+
+
+def test_wait_preserves_strong_directional_quality_when_a_known_safety_filter_blocks_it():
+    result = evaluate_signal_quality(
+        _analysis(Signal.AGUARDAR, 90, filters_ok=False)
+    )
+
+    assert result.actionable is False
+    assert result.score == 90
+    assert result.level == SignalLevel.FORTE
+
+
+def test_wait_preserves_sell_candidate_quality_when_a_known_safety_filter_blocks_it():
+    result = evaluate_signal_quality(
+        _analysis(Signal.AGUARDAR, 10, filters_ok=False)
+    )
+
+    assert result.actionable is False
+    assert result.score == 90
+    assert result.level == SignalLevel.FORTE
 
 
 def test_invalid_scores_fail_closed():
     for score in (math.nan, math.inf, -math.inf, -1, 101, True):
-        result = evaluate_signal_quality(
-            AnalysisResult(
-                signal=Signal.COMPRA,
-                score=score,
-                reason="Teste.",
-                confirmed=True,
-            )
-        )
+        result = evaluate_signal_quality(_analysis(Signal.COMPRA, score))
 
         assert result.actionable is False
         assert result.score == 0

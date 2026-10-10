@@ -26,6 +26,21 @@ class ICMarketsMT5DemoConfig:
     risk_day_timezone: str = "UTC"
 
 
+@dataclass(frozen=True)
+class MT5DemoTradeOutcome:
+    """Individual result proven by closed DEMO position history only."""
+
+    external_id: str
+    position_id: int | None
+    outcome: str
+    financial_result: float | None
+    observed_at: datetime
+    source: str
+    closed: bool
+    message: str
+    closed_at: datetime | None = None
+
+
 class ICMarketsMT5DemoAdapter:
     """IC Markets MT5 DEMO boundary.
 
@@ -184,20 +199,169 @@ class ICMarketsMT5DemoAdapter:
                 raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
             deal_fn = getattr(mt5, "history_deals_get", None)
             if callable(deal_fn):
-                deals = deal_fn(ticket=ticket)
-                if deals:
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal externo encontrado no histórico MT5")
+                deals = tuple(deal_fn(ticket=ticket) or ())
+                if any(getattr(deal, "magic", None) == self.config.magic for deal in deals):
+                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal do Controlador encontrado no histórico MT5")
             order_fn = getattr(mt5, "history_orders_get", None)
             if callable(order_fn):
-                orders = order_fn(ticket=ticket)
+                orders = tuple(order_fn(ticket=ticket) or ())
                 if orders:
-                    order = tuple(orders)[-1]
+                    order = orders[-1]
+                    if getattr(order, "magic", None) != self.config.magic:
+                        return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket de ordem não pertence ao Controlador; reconciliação bloqueada")
                     state = getattr(order, "state", None)
-                    canceled = {getattr(mt5, "ORDER_STATE_CANCELED", object()), getattr(mt5, "ORDER_STATE_REJECTED", object()), getattr(mt5, "ORDER_STATE_EXPIRED", object())}
+                    filled = {value for value in (
+                        getattr(mt5, "ORDER_STATE_FILLED", None),
+                        getattr(mt5, "ORDER_STATE_PARTIAL", None),
+                    ) if value is not None}
+                    canceled = {value for value in (
+                        getattr(mt5, "ORDER_STATE_CANCELED", None),
+                        getattr(mt5, "ORDER_STATE_REJECTED", None),
+                        getattr(mt5, "ORDER_STATE_EXPIRED", None),
+                    ) if value is not None}
+                    if state in filled:
+                        return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, f"ordem externa executada; state={state}")
                     if state in canceled:
+                        # A canceled order may still have partial fills. Verify its position history
+                        # before declaring it not executed, and never accept deals from another magic.
+                        position_id = getattr(order, "position_id", None)
+                        if position_id is not None and int(position_id) > 0 and callable(deal_fn):
+                            try:
+                                position_deals = deal_fn(position=int(position_id))
+                            except (TypeError, AttributeError):
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "histórico da posição indisponível para validar execução parcial")
+                            if position_deals is None:
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "histórico da posição indisponível para validar execução parcial")
+                            if any(
+                                int(getattr(deal, "position_id", -1)) == int(position_id)
+                                and int(getattr(deal, "order", -1)) == ticket
+                                and getattr(deal, "magic", None) == self.config.magic
+                                for deal in position_deals
+                            ):
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "ordem parcialmente executada confirmada no histórico MT5")
                         return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
                     return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
+        finally:
+            mt5.shutdown()
+
+    def query_trade_outcome(self, external_id: str) -> MT5DemoTradeOutcome:
+        """Attribute net P&L only after the exact owned DEMO position is closed.
+
+        Order acceptance is not a trade result. Missing identity, unavailable
+        history, an open position, or missing exit deals therefore stays UNKNOWN.
+        """
+        observed_at = datetime.now(timezone.utc)
+        unknown = lambda position_id, message: MT5DemoTradeOutcome(
+            external_id=str(external_id), position_id=position_id, outcome="UNKNOWN",
+            financial_result=None, observed_at=observed_at,
+            source="MT5_DEMO_HISTORY", closed=False, message=message,
+        )
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido")
+        mt5 = self._module()
+        if not mt5.initialize():
+            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5AdapterError("conta MT5 não confirmada como DEMO; resultado bloqueado.")
+            try:
+                ticket = int(external_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
+
+            position_id = None
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            if callable(deal_fn):
+                for deal in tuple(deal_fn(ticket=ticket) or ()):
+                    candidate = getattr(deal, "position_id", None)
+                    if (candidate is not None and int(candidate) > 0
+                            and getattr(deal, "magic", None) == self.config.magic):
+                        position_id = int(candidate)
+                        break
+            if position_id is None:
+                order_fn = getattr(mt5, "history_orders_get", None)
+                if callable(order_fn):
+                    for order in tuple(order_fn(ticket=ticket) or ()):
+                        candidate = getattr(order, "position_id", None)
+                        if (candidate is not None and int(candidate) > 0
+                                and getattr(order, "magic", None) == self.config.magic):
+                            position_id = int(candidate)
+                            break
+            if position_id is None:
+                return unknown(None, "ticket não associado de forma verificável a uma posição do Controlador.")
+
+            positions_fn = getattr(mt5, "positions_get", None)
+            positions = positions_fn() if callable(positions_fn) else None
+            if positions is None:
+                return unknown(position_id, "histórico de posições indisponível; fechamento não confirmado.")
+            if any(int(getattr(position, "ticket", -1)) == position_id for position in positions):
+                return unknown(position_id, "posição ainda aberta; resultado final não atribuído.")
+
+            if not callable(deal_fn):
+                return unknown(position_id, "histórico de negócios indisponível.")
+            try:
+                position_deals = tuple(deal_fn(position=position_id) or ())
+            except (TypeError, AttributeError):
+                return unknown(position_id, "consulta de histórico por posição não suportada.")
+            relevant = tuple(
+                deal for deal in position_deals
+                if int(getattr(deal, "position_id", -1)) == position_id
+                and getattr(deal, "magic", None) == self.config.magic
+            )
+            exit_values = {
+                value for value in (
+                    getattr(mt5, "DEAL_ENTRY_OUT", None),
+                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                ) if value is not None
+            }
+            exit_deals = tuple(deal for deal in relevant if getattr(deal, "entry", None) in exit_values)
+            if not relevant or not exit_values or not exit_deals:
+                return unknown(position_id, "não há negócio de saída confirmado para esta posição.")
+            # Period statistics use the final exit timestamp from MT5 history,
+            # not the later time at which an operator/runtime happened to reconcile.
+            close_times = []
+            for deal in exit_deals:
+                raw_msc = getattr(deal, "time_msc", None)
+                raw_seconds = getattr(deal, "time", None)
+                try:
+                    timestamp = float(raw_msc) / 1000.0 if raw_msc not in (None, 0) else float(raw_seconds)
+                    if math.isfinite(timestamp) and timestamp > 0:
+                        close_times.append(datetime.fromtimestamp(timestamp, tz=timezone.utc))
+                except (TypeError, ValueError, OverflowError, OSError):
+                    continue
+            closed_at = max(close_times) if close_times else None
+            entry_in = getattr(mt5, "DEAL_ENTRY_IN", 0)
+            entry_inout = getattr(mt5, "DEAL_ENTRY_INOUT", object())
+            # Netting/reversal positions can combine several orders under one position_id.
+            # Do not assign their aggregate P&L to a single cycle.
+            opening_orders = {
+                int(getattr(deal, "order", -1))
+                for deal in relevant
+                if getattr(deal, "entry", None) == entry_in
+                and getattr(deal, "order", None) is not None
+            }
+            if entry_inout in {getattr(deal, "entry", None) for deal in relevant} or opening_orders != {ticket}:
+                return unknown(position_id, "posição contém identidade de entrada ambígua; resultado não atribuído.")
+
+            net_result = sum(
+                float(getattr(deal, "profit", 0.0) or 0.0)
+                + float(getattr(deal, "commission", 0.0) or 0.0)
+                + float(getattr(deal, "swap", 0.0) or 0.0)
+                + float(getattr(deal, "fee", 0.0) or 0.0)
+                for deal in relevant
+            )
+            if not math.isfinite(net_result):
+                return unknown(position_id, "resultado líquido não finito; atribuição bloqueada.")
+            outcome = "WIN" if net_result > 0 else "LOSS" if net_result < 0 else "DRAW"
+            return MT5DemoTradeOutcome(
+                external_id=external_id, position_id=position_id, outcome=outcome,
+                financial_result=float(net_result), observed_at=observed_at,
+                source="MT5_DEMO_HISTORY", closed=True,
+                message="resultado líquido confirmado no histórico da posição DEMO.",
+                closed_at=closed_at,
+            )
         finally:
             mt5.shutdown()
 
@@ -391,6 +555,10 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
     def _is_demo_account(account: Any, mt5: Any) -> bool:
         real_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", None)
         return real_mode is not None and getattr(account, "trade_mode", None) == real_mode
+
+    def query_trade_outcome(self, external_id: str) -> MT5DemoTradeOutcome:
+        """Never label REAL account history as DEMO statistics."""
+        raise MT5AdapterError("atribuição de resultado MT5_DEMO_HISTORY não está disponível no adapter REAL.")
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.REAL:

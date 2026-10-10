@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 from typing import Any
 from pathlib import Path
 import tempfile
@@ -357,13 +358,134 @@ class ConfiguredEcosystemService(EcosystemService):
         """Reconcile one DEMO external order and close only its factual lifecycle."""
         if self.trading_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
-        return self.trading_runtime.reconcile_external_cycle(
+        snapshot = self.trading_runtime.reconcile_external_cycle(
             cycle_id=cycle_id,
             external_id=external_id,
             query_port=self.mt5_operational_adapter,
             ledger=self.operational_runtime.execution_ledger,
             execution_lifecycle=self.operational_runtime.execution_lifecycle,
         )
+        self._persist_confirmed_demo_outcome(snapshot)
+        return snapshot
+
+    def _persist_confirmed_demo_outcome(self, snapshot: Any) -> None:
+        """Persist only matched, individually attributed DEMO results; idempotent by cycle."""
+        if snapshot is None:
+            return
+        if (
+            getattr(snapshot, "source", None) != "MT5_DEMO_HISTORY"
+            or getattr(getattr(snapshot, "reconciliation_state", None), "value", None) != "MATCHED"
+            or getattr(snapshot, "outcome", None) not in {"WIN", "LOSS", "DRAW"}
+            or getattr(snapshot, "financial_result", None) is None
+            or not isinstance(getattr(snapshot, "observed_at", None), datetime)
+        ):
+            return
+        observed_at = snapshot.observed_at
+        if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+            return
+        closed_at = getattr(snapshot, "closed_at", None)
+        if closed_at is not None:
+            if (not isinstance(closed_at, datetime) or closed_at.tzinfo is None
+                    or closed_at.utcoffset() is None or closed_at > observed_at):
+                return
+            closed_at = closed_at.astimezone(timezone.utc).isoformat()
+        record = {
+            "cycle_id": snapshot.cycle_id,
+            "mode": "DEMO",
+            "source": "MT5_DEMO_HISTORY",
+            "outcome": snapshot.outcome,
+            "financial_result": float(snapshot.financial_result),
+            "observed_at": observed_at.astimezone(timezone.utc).isoformat(),
+            "closed_at": closed_at,
+            "reconciliation_state": "MATCHED",
+        }
+        saved = self.state_store.load("demo_trade_outcomes")
+        records = [item for item in saved if isinstance(item, dict)] if isinstance(saved, list) else []
+        for previous in records:
+            if previous.get("cycle_id") != record["cycle_id"]:
+                continue
+            same_result = (
+                previous.get("mode") == record["mode"]
+                and previous.get("source") == record["source"]
+                and previous.get("outcome") == record["outcome"]
+                and previous.get("financial_result") == record["financial_result"]
+                and previous.get("reconciliation_state") == "MATCHED"
+            )
+            if not same_result:
+                raise RuntimeError("resultado DEMO contraditório para cycle_id já persistido; estatística não atualizada")
+            previous_close = previous.get("closed_at")
+            current_close = record.get("closed_at")
+            if previous_close and current_close and previous_close != current_close:
+                raise RuntimeError("horário de fechamento DEMO contraditório para cycle_id já persistido")
+            if not previous_close and current_close:
+                # A later history read may supply the close timestamp missing in
+                # an earlier, otherwise identical confirmed result.
+                previous["closed_at"] = current_close
+                self.state_store.save("demo_trade_outcomes", records)
+            return
+        records.append(record)
+        self.state_store.save("demo_trade_outcomes", records)
+
+    @staticmethod
+    def _summarize_demo_period(records: list[dict[str, Any]], start: datetime, end: datetime) -> dict[str, Any]:
+        selected = []
+        for record in records:
+            try:
+                close_value = record.get("closed_at")
+                if not isinstance(close_value, str) or not close_value.strip():
+                    continue
+                timestamp = datetime.fromisoformat(close_value.replace("Z", "+00:00"))
+                if timestamp.tzinfo is None:
+                    continue
+                timestamp = timestamp.astimezone(timezone.utc)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if start <= timestamp < end:
+                selected.append(record)
+        wins = sum(record.get("outcome") == "WIN" for record in selected)
+        losses = sum(record.get("outcome") == "LOSS" for record in selected)
+        draws = sum(record.get("outcome") == "DRAW" for record in selected)
+        closed = wins + losses
+        return {
+            "total": len(selected), "wins": wins, "losses": losses, "draws": draws,
+            "net_result": round(sum(float(record["financial_result"]) for record in selected), 8),
+            "win_rate": (wins / closed * 100.0) if closed else 0.0,
+        }
+
+    def statistics(self) -> dict[str, Any]:
+        """Keep study statistics intact and expose separately sourced DEMO results."""
+        result = super().statistics()
+        saved = self.state_store.load("demo_trade_outcomes")
+        records = [item for item in saved if isinstance(item, dict)
+                   and item.get("mode") == "DEMO"
+                   and item.get("source") == "MT5_DEMO_HISTORY"
+                   and item.get("reconciliation_state") == "MATCHED"
+                   and item.get("outcome") in {"WIN", "LOSS", "DRAW"}
+                   and item.get("financial_result") is not None] if isinstance(saved, list) else []
+        now = datetime.now(timezone.utc)
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week = day.replace()
+        from datetime import timedelta
+        week -= timedelta(days=week.weekday())
+        month = day.replace(day=1)
+        next_month = month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
+        wins = sum(item.get("outcome") == "WIN" for item in records)
+        losses = sum(item.get("outcome") == "LOSS" for item in records)
+        draws = sum(item.get("outcome") == "DRAW" for item in records)
+        closed = wins + losses
+        result["demo"] = {
+            "mode": "DEMO", "source": "MT5_DEMO_HISTORY", "reconciliation": "MATCHED_ONLY",
+            "total": len(records), "wins": wins, "losses": losses, "draws": draws,
+            "net_result": round(sum(float(item["financial_result"]) for item in records), 8),
+            "win_rate": (wins / closed * 100.0) if closed else 0.0,
+            "periods": {
+                "daily": self._summarize_demo_period(records, day, day + timedelta(days=1)),
+                "weekly": self._summarize_demo_period(records, week, week + timedelta(days=7)),
+                "monthly": self._summarize_demo_period(records, month, next_month),
+            },
+        }
+        result["study"] = {"source": "MANUAL_STUDY", "mode": "STUDY_ONLY"}
+        return result
 
     def get_preferences(self) -> dict[str, Any]:
         value = self.preferences.preferences

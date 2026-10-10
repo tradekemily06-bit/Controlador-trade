@@ -18,7 +18,7 @@ from core.p46_automation_lifecycle import AutomationLifecycle, AutomationLifecyc
 from integration.controlled_automation_service import ControlledAutomationService
 from core.p47_automation_closure import AutomationClosureBoundary
 from core.p48_automation_outcome import AutomationOutcomeBoundary
-from core.p49_outcome_reconciliation import OutcomeReconciliationBoundary
+from core.p49_outcome_reconciliation import ExternalOutcomeObservation, OutcomeReconciliationBoundary
 from core.p50_automation_result_snapshot import AutomationResultSnapshot, AutomationResultSnapshotBoundary
 from core.p121_external_order_reconciliation import ExternalOrderQueryPort, ExternalOrderReconciliationBoundary, ExternalOrderStatus
 from core.market_data_runtime_state import MarketDataRuntimeState
@@ -183,13 +183,63 @@ class TradingRuntime:
         lifecycle = AutomationLifecycle(cycle_id, AutomationLifecycleState.DISPATCHED)
         lifecycle = AutomationLifecycleBoundary().transition(lifecycle, terminal)
         closure = AutomationClosureBoundary().close(lifecycle, closed_at=observed_at)
+        trade_outcome = None
+        outcome_query = getattr(query_port, "query_trade_outcome", None)
+        if executed and callable(outcome_query):
+            trade_outcome = outcome_query(external_id)
+
+        confirmed_outcome = (
+            trade_outcome is not None
+            and getattr(trade_outcome, "closed", False) is True
+            and getattr(trade_outcome, "source", None) == "MT5_DEMO_HISTORY"
+            and getattr(trade_outcome, "outcome", None) in {"WIN", "LOSS", "DRAW"}
+            and isinstance(getattr(trade_outcome, "financial_result", None), (int, float))
+            and not isinstance(getattr(trade_outcome, "financial_result", None), bool)
+        )
+        outcome_observed_at = observed_at
+        trade_closed_at = None
+        external_observation = None
+        outcome_name = "UNKNOWN"
+        financial_result = None
+        if confirmed_outcome:
+            outcome_observed_at = getattr(trade_outcome, "observed_at", observed_at)
+            if (not isinstance(outcome_observed_at, datetime)
+                    or outcome_observed_at.tzinfo is None
+                    or outcome_observed_at.utcoffset() is None
+                    or outcome_observed_at < closure.closed_at):
+                confirmed_outcome = False
+            else:
+                candidate_closed_at = getattr(trade_outcome, "closed_at", None)
+                if candidate_closed_at is not None:
+                    if (not isinstance(candidate_closed_at, datetime)
+                            or candidate_closed_at.tzinfo is None
+                            or candidate_closed_at.utcoffset() is None
+                            or candidate_closed_at > outcome_observed_at):
+                        confirmed_outcome = False
+                    else:
+                        trade_closed_at = candidate_closed_at
+                if confirmed_outcome:
+                    outcome_name = trade_outcome.outcome
+                    financial_result = float(trade_outcome.financial_result)
+                    external_observation = ExternalOutcomeObservation(
+                        cycle_id=cycle_id,
+                        outcome=outcome_name,
+                        financial_result=financial_result,
+                    )
+        if not confirmed_outcome:
+            outcome_observed_at = observed_at
+            outcome_name = "UNKNOWN"
+            financial_result = None
+
         outcome = AutomationOutcomeBoundary().record(
             closure,
-            observed_at=observed_at,
-            outcome="UNKNOWN",
-            financial_result=None,
+            observed_at=outcome_observed_at,
+            outcome=outcome_name,
+            financial_result=financial_result,
+            source=(getattr(trade_outcome, "source", "UNKNOWN") if confirmed_outcome else "UNKNOWN"),
+            closed_at=(trade_closed_at if confirmed_outcome else None),
         )
-        reconciliation = OutcomeReconciliationBoundary().reconcile(outcome, None)
+        reconciliation = OutcomeReconciliationBoundary().reconcile(outcome, external_observation)
         return AutomationResultSnapshotBoundary().compose(closure, outcome, reconciliation)
 
     def run(

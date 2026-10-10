@@ -6,6 +6,7 @@ def test_configured_service_exposes_safe_preferences_and_notification_summary():
     preferences = service.get_preferences()
     assert preferences["default_symbol"] == "EURUSD"
     assert preferences["candle"]["style"] == "CANDLESTICK"
+    assert preferences["indicators_enabled"] is True
     assert preferences["autonomous_operation_enabled"] is False
     assert preferences["real_execution_enabled"] is False
     assert service.notification_summary()["count"] == 0
@@ -17,6 +18,14 @@ def test_candle_preferences_are_updated_through_service_boundary():
     assert updated["candle"]["style"] == "HOLLOW"
     assert updated["candle"]["color_mode"] == "CUSTOM"
     assert updated["candle"]["bullish_color"] == "#00ff00"
+
+
+def test_indicator_visibility_preference_is_shared_and_does_not_change_execution_authority():
+    service = ConfiguredEcosystemService()
+    updated = service.update_preferences({"indicators_enabled": False})
+    assert updated["indicators_enabled"] is False
+    assert updated["real_execution_enabled"] is False
+    assert updated["autonomous_operation_enabled"] is False
 
 
 def test_ecosystem_update_surfaces_as_important_notification():
@@ -150,3 +159,135 @@ def test_healthy_operational_observability_does_not_create_incident_notification
     }
 
     assert service.notification_summary()["count"] == 0
+
+def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_study():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    now = datetime.now(timezone.utc)
+    snapshot = SimpleNamespace(
+        cycle_id="demo-cycle-001",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        outcome="WIN",
+        financial_result=2.6,
+        observed_at=now,
+        closed_at=now,
+    )
+    service._persist_confirmed_demo_outcome(snapshot)
+    service._persist_confirmed_demo_outcome(snapshot)
+
+    stored = service.state_store.load("demo_trade_outcomes")
+    statistics = service.statistics()
+    assert len(stored) == 1
+    assert stored[0]["cycle_id"] == "demo-cycle-001"
+    assert statistics["total"] == 0
+    assert statistics["study"]["source"] == "MANUAL_STUDY"
+    assert statistics["demo"]["source"] == "MT5_DEMO_HISTORY"
+    assert statistics["demo"]["mode"] == "DEMO"
+    assert statistics["demo"]["total"] == 1
+    assert statistics["demo"]["wins"] == 1
+    assert statistics["demo"]["net_result"] == 2.6
+    assert statistics["demo"]["periods"]["monthly"]["total"] == 1
+
+
+def test_demo_close_time_can_be_enriched_without_duplicate_result():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    observed_at = datetime.now(timezone.utc)
+    closed_at = observed_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    common = dict(
+        cycle_id="close-time-enrichment",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        outcome="WIN",
+        financial_result=3.0,
+        observed_at=observed_at,
+    )
+    service._persist_confirmed_demo_outcome(SimpleNamespace(**common, closed_at=None))
+    service._persist_confirmed_demo_outcome(SimpleNamespace(**common, closed_at=closed_at))
+
+    saved = service.state_store.load("demo_trade_outcomes")
+    assert len(saved) == 1
+    assert saved[0]["closed_at"] == closed_at.isoformat()
+    assert service.statistics()["demo"]["total"] == 1
+
+
+def test_demo_periods_use_trade_close_time_not_reconciliation_time():
+    from datetime import datetime, timezone, timedelta
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    observed_at = datetime.now(timezone.utc)
+    prior_month = observed_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    closed_at = prior_month.replace(hour=12, minute=0, second=0, microsecond=0)
+    service._persist_confirmed_demo_outcome(SimpleNamespace(
+        cycle_id="closed-last-month",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        outcome="WIN",
+        financial_result=4.0,
+        observed_at=observed_at,
+        closed_at=closed_at,
+    ))
+
+    statistics = service.statistics()
+    assert statistics["demo"]["total"] == 1
+    assert statistics["demo"]["wins"] == 1
+    assert statistics["demo"]["periods"]["monthly"]["total"] == 0
+
+
+def test_demo_statistics_ignore_unverified_or_non_history_outcomes():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    base = {
+        "cycle_id": "ignored",
+        "outcome": "WIN",
+        "financial_result": 5.0,
+        "observed_at": datetime.now(timezone.utc),
+    }
+    service._persist_confirmed_demo_outcome(SimpleNamespace(
+        **base, source="MANUAL_STUDY", reconciliation_state=ReconciliationState.MATCHED
+    ))
+    service._persist_confirmed_demo_outcome(SimpleNamespace(
+        **{**base, "cycle_id": "unverified"}, source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.UNVERIFIED
+    ))
+    assert service.statistics()["demo"]["total"] == 0
+
+
+def test_demo_outcome_conflict_for_same_cycle_is_not_overwritten():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    common = dict(
+        cycle_id="demo-cycle-conflict",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        observed_at=datetime.now(timezone.utc),
+    )
+    service._persist_confirmed_demo_outcome(SimpleNamespace(
+        **common, outcome="WIN", financial_result=2.0
+    ))
+    try:
+        service._persist_confirmed_demo_outcome(SimpleNamespace(
+            **common, outcome="LOSS", financial_result=-2.0
+        ))
+    except RuntimeError as exc:
+        assert "contraditório" in str(exc)
+    else:
+        raise AssertionError("a conflicting result must never overwrite a confirmed cycle")
+    assert service.statistics()["demo"]["wins"] == 1
+    assert service.statistics()["demo"]["losses"] == 0
+
