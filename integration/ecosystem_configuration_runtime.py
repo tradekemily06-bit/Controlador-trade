@@ -383,6 +383,12 @@ class ConfiguredEcosystemService(EcosystemService):
         observed_at = snapshot.observed_at
         if observed_at.tzinfo is None or observed_at.utcoffset() is None:
             return
+        closed_at = getattr(snapshot, "closed_at", None)
+        if closed_at is not None:
+            if (not isinstance(closed_at, datetime) or closed_at.tzinfo is None
+                    or closed_at.utcoffset() is None or closed_at > observed_at):
+                return
+            closed_at = closed_at.astimezone(timezone.utc).isoformat()
         record = {
             "cycle_id": snapshot.cycle_id,
             "mode": "DEMO",
@@ -390,6 +396,7 @@ class ConfiguredEcosystemService(EcosystemService):
             "outcome": snapshot.outcome,
             "financial_result": float(snapshot.financial_result),
             "observed_at": observed_at.astimezone(timezone.utc).isoformat(),
+            "closed_at": closed_at,
             "reconciliation_state": "MATCHED",
         }
         saved = self.state_store.load("demo_trade_outcomes")
@@ -415,7 +422,10 @@ class ConfiguredEcosystemService(EcosystemService):
         selected = []
         for record in records:
             try:
-                timestamp = datetime.fromisoformat(str(record["observed_at"]).replace("Z", "+00:00"))
+                close_value = record.get("closed_at")
+                if not isinstance(close_value, str) or not close_value.strip():
+                    continue
+                timestamp = datetime.fromisoformat(close_value.replace("Z", "+00:00"))
                 if timestamp.tzinfo is None:
                     continue
                 timestamp = timestamp.astimezone(timezone.utc)
