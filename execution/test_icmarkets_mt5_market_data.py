@@ -22,15 +22,18 @@ class FakeMT5:
         self.selected = []
         self.initialize_path = None
         self.active_path = None
+        self.initialize_timeout = None
 
-    def initialize(self, path=None):
+    def initialize(self, path=None, timeout=60000):
         self.initialized = True
         self.initialize_path = path
         self.active_path = path
+        self.initialize_timeout = timeout
         return True
 
     def terminal_info(self):
-        return SimpleNamespace(path=os.path.dirname(self.active_path), connected=True)
+        path = os.path.dirname(self.active_path) if self.active_path else os.getcwd()
+        return SimpleNamespace(path=path, connected=True)
 
     def shutdown(self):
         self.shutdown_called = True
@@ -164,6 +167,7 @@ def test_adapter_initializes_only_the_configured_mt5_terminal(rates, tmp_path):
 
     assert len(candles) == 2
     assert mt5.initialize_path == terminal_path
+    assert mt5.initialize_timeout == 15_000
     assert mt5.shutdown_called is True
 
 
@@ -178,4 +182,16 @@ def test_adapter_rejects_a_different_connected_terminal(rates, tmp_path):
             BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
         )
 
+    assert mt5.shutdown_called is True
+
+
+
+def test_market_data_adapter_rejects_disconnected_terminal(rates):
+    mt5 = FakeMT5(rates=rates)
+    mt5.terminal_info = lambda: SimpleNamespace(path=os.getcwd(), connected=False)
+    adapter = ICMarketsMT5DemoMarketDataAdapter(mt5)
+    with pytest.raises(MT5MarketDataError, match="não conectado"):
+        adapter.fetch_market_data(
+            BrokerMarketDataRequest(symbol="BTCUSD", timeframe="5m", limit=2)
+        )
     assert mt5.shutdown_called is True
