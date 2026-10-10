@@ -301,3 +301,9 @@ def test_ci_validates_dashboard_javascript_syntax():
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "Validate dashboard JavaScript syntax" in workflow
     assert "node --check /tmp/controlador-dashboard.js" in workflow
+
+
+def test_startup_runtime_failure_marks_memory_and_news_unavailable():
+    assert "Memória indisponível: runtime sem resposta." in WEB
+    assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
+    assert "Resultados indisponíveis até a API responder." in WEB
