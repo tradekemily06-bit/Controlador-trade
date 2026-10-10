@@ -68,6 +68,13 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size)" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size)" in panel
     assert "wm_scale=MathMin((double)w/1180.0,(double)h/650.0);" in panel
+    assert "MathMin(1.20,wm_scale)" in panel
+    assert "MathRound(36.0*wm_scale)" in panel
+    assert "MathRound(22.0*wm_scale)" in panel
+    assert "MathRound(120.0*wm_scale)" in panel
+    assert "MathRound(45.0*wm_scale)" in panel
+    assert "MathRound(34.0*wm_scale)" not in panel
+    assert "MathRound(46.0*wm_scale)" not in panel
     assert "ObjectSetInteger(0,mark,OBJPROP_ANGLE,wm_angle);" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_ANGLE,wm_angle);" in panel
     assert "double wm_angle=330.0;" in panel
@@ -190,6 +197,16 @@ def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
     assert 'class="watermark-mark"' in web
     assert "transform:rotate(-18deg)" not in web
     assert "opacity:.035" in web
+
+def test_ecosystem_panel_is_responsive_for_phone_and_notebook():
+    web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    assert '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">' in web
+    assert "@media(max-width:719px)" in web
+    assert ".ecosystem-drawer{left:10px;bottom:56px;width:calc(100vw - 20px)" in web
+    assert ".c-toggle{left:10px;bottom:10px" in web
+    assert ".compact-signal{left:60px;bottom:22px;max-width:calc(100vw - 76px)" in web
+    assert "@media(min-width:720px)" in web
+    assert "grid-template-columns:repeat(3,minmax(0,1fr))" in web
 
 def test_mql5_sync_parses_numeric_error_and_warning_counts():
     text = SCRIPT.read_text(encoding="utf-8")
