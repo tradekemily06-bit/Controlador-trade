@@ -17,6 +17,8 @@ string active_nav="N1";
 string current_signal="AGUARDAR";
 string current_quality_score="";
 string current_quality_level="";
+string current_indicator_summary="AGUARDANDO";
+string current_external_indicator_status="NOT_CONFIGURED";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
@@ -571,7 +573,8 @@ void RenderView(bool refresh_data=true){
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),180,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",180,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",180,441,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48),180,441,9,C'205,215,230');
+      SetLabel(Obj("INFO6"),"Fonte externa: "+StringSubstr(current_external_indicator_status,0,42),180,459,8,C'145,160,180');
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",180,284,110,30);
@@ -787,6 +790,8 @@ void Analyze(bool render=true){
       current_signal="AGUARDAR";
       current_quality_score="";
       current_quality_level="";
+      current_indicator_summary="INDISPONIVEIS";
+      current_external_indicator_status="INDISPONIVEL";
       RefreshPanelToggle();
       if(render){
          SetLabel(Obj("SIGNAL"),current_signal,180,154,22,C'255,209,102');
@@ -804,6 +809,29 @@ void Analyze(bool render=true){
    string quality_level=JsonValue(quality,"level");
    current_quality_score=quality_score;
    current_quality_level=quality_level;
+   string indicator_data=JsonObjectValue(r,"indicators");
+   string indicator_enabled=JsonValue(indicator_data,"enabled");
+   string indicator_available=JsonValue(indicator_data,"available");
+   string indicator_reason=JsonValue(indicator_data,"reason");
+   if(indicator_enabled=="false")
+      current_indicator_summary="DESATIVADOS";
+   else if(indicator_available=="true"){
+      string rsi=JsonValue(indicator_data,"rsi_14");
+      string ema_fast=JsonValue(indicator_data,"ema_fast");
+      string ema_slow=JsonValue(indicator_data,"ema_slow");
+      string macd=JsonValue(indicator_data,"macd");
+      string macd_signal=JsonValue(indicator_data,"macd_signal");
+      string atr=JsonValue(indicator_data,"atr_14");
+      string ema_bias=StringToDouble(ema_fast)>StringToDouble(ema_slow)?"ALTA":StringToDouble(ema_fast)<StringToDouble(ema_slow)?"BAIXA":"NEUTRA";
+      string macd_bias=StringToDouble(macd)>StringToDouble(macd_signal)?"ALTA":StringToDouble(macd)<StringToDouble(macd_signal)?"BAIXA":"NEUTRA";
+      current_indicator_summary="RSI "+rsi+" • EMA "+ema_bias+" • MACD "+macd_bias+" • ATR "+atr;
+   }else
+      current_indicator_summary=StringSubstr(indicator_reason==""?"HISTORICO INSUFICIENTE":indicator_reason,0,56);
+   string external_data=JsonObjectValue(r,"external_indicators");
+   current_external_indicator_status=JsonValue(external_data,"status");
+   if(current_external_indicator_status=="") current_external_indicator_status="NOT_CONFIGURED";
+   if(JsonValue(external_data,"available")=="true")
+      current_external_indicator_status="DISPONIVEL: "+JsonValue(external_data,"provider");
    // Keep the compact C signal current even when the full panel is hidden.
    RefreshPanelToggle();
    if(!render) return;
