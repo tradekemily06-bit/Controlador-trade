@@ -40,6 +40,8 @@ def test_read_only_windows_validator_covers_deployment_surface():
         "MT5_DEMO_MARKET=True",
         "orders=not requested",
         "scheduled-task:$task",
+        "scheduled-task-enabled:$task",
+        "scheduled-task-running:$task",
         "mql5-source",
         "mql5-ex5-current",
         "$payload.execution_allowed -eq $false",
@@ -56,6 +58,9 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
     assert "mt5.initialize(path=p)" in text
+    assert "mt5-supervisor-status.json" in text
+    assert "controlador-supervisor-status.json" in text
+    assert "$status.state -eq 'HEALTHY'" in text
     assert "$Mt5TerminalPath | Out-Null" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/runtime/analysis" not in text
@@ -150,4 +155,16 @@ def test_controller_supervisor_preserves_mql5_sync_failure_details():
     assert 'Write-StartupLog "Sincronização MQL5: $message"' in text
     assert "terminou com código $syncExitCode" in text
 
+def test_supervisors_reject_restart_history_that_is_future_dated_or_out_of_order():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        assert "$futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)" in text
+        assert "$parsedRestart -gt $futureLimit" in text
+        assert "$parsedRestart -lt $previousRestart" in text
+        assert "$json = ConvertTo-Json -InputObject @($values) -Depth 3" in text
+        assert "RESTART_HISTORY_INVALID" in text
+        assert "supervisor interrompido para preservar o limite de segurança" in text or "supervisor MT5 interrompido para preservar o limite de segurança" in text
 
