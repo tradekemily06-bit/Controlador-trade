@@ -340,3 +340,13 @@ def test_mql5_vertical_navigation_highlights_the_selected_module():
     for nav in range(1, 10):
         assert f'active_nav="N{nav}"' in panel
     assert panel.index("RefreshNavigation();", panel.index("void Panel()")) < panel.index("void DeletePanel(")
+
+def test_mql5_memory_refresh_button_survives_view_cleanup_and_does_not_save_preferences():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert 'SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);' in render
+    assert 'if(active_view!="CONFIG" && active_view!="MEMORIA")' in render
+    assert 'if(active_view=="MEMORIA") RefreshSecondary();' in event
+    assert 'else if(active_view=="CONFIG") SaveConfig();' in event
+
