@@ -273,3 +273,39 @@ def test_compact_signal_waits_when_technical_candidate_fails_final_runtime_gates
     assert payload["quality"]["technical_actionable"] is True
     assert payload["quality"]["decision_approved"] is False
     assert payload["reason"] == "Contexto de mercado não favorável para execução."
+
+
+def test_weak_confirmed_candidate_keeps_fraca_quality_while_displaying_wait():
+    fake = SimpleNamespace(
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="AGUARDAR"),
+            score=50.0,
+            reason="Score insuficiente para entrada.",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(
+            score=50.0,
+            level=SimpleNamespace(value="FRACA"),
+            actionable=False,
+        ),
+        decision=SimpleNamespace(
+            decision="AGUARDAR",
+            reason="Score insuficiente para entrada.",
+        ),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "symbol": "EURUSD"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=()),
+    )
+    with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake):
+        status, _, payload = ApiContractTests().request(
+            "/api/runtime/analysis",
+            method="POST",
+            payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+        )
+    assert status == "200 OK"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["quality"]["score"] == 50.0
+    assert payload["quality"]["level"] == "FRACA"
+    assert payload["quality"]["actionable"] is False
+    assert payload["quality"]["technical_actionable"] is False
