@@ -578,6 +578,8 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
+      // A failed analysis invalidates the last analysis health state as well as its signal.
+      runtime_ok=false;
       // Never leave a stale BUY/SELL visible when the latest analysis failed.
       current_signal="AGUARDAR";
       RefreshPanelToggle();
