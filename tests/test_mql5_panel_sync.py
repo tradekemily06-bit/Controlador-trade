@@ -60,20 +60,34 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 
 def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"Controlador-Trading"' in panel
-    assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
+    assert '#property description "Controlador Trading' in panel
+    assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
-    assert "InpPanelWidth = 280" in panel
-    assert "InpPanelHeight = 380" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.22)" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size)" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size)" in panel
+    assert "wm_scale=MathMin((double)w/1180.0,(double)h/650.0);" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_ANGLE,wm_angle);" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_ANGLE,wm_angle);" in panel
+    assert "double wm_angle=330.0;" in panel
+    assert "C'36,150,190'" in panel
+    assert "C'35,135,175'" in panel
+    assert "InpPanelWidth = 440" in panel
+    assert "InpPanelHeight = 440" in panel
+    assert "panel_x=12;" in panel
+    assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
+    assert "int center_x=w/2;" in panel
+    assert "MathRound(h*0.52)" in panel
+    assert "panel_sx=(double)panel_width/540.0;" in panel
+    assert "MathMax(440,InpPanelWidth)" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
+    # Watermark toggle is inside C > Configurações; no extra chart button.
+    assert 'if(panel_visible && active_view=="CONFIG" && ObjectFind(0,Obj("CYCLE"))>=0)' in panel
+    assert 'watermark_enabled?"MARCA: ON":"MARCA: OFF"' in panel
+    assert 'else if(sparam==Obj("WM"))' not in panel
 
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
@@ -140,6 +154,8 @@ def test_mql5_panel_off_does_not_render_on_init():
     assert "RenderView();" in init
     assert "}else{" in init
     assert "RefreshPanelToggle();" in init
+    assert "if(panel_visible){\n      RefreshHealth();\n      RefreshSecondary();\n      RefreshMarketAssets();\n   }" in init
+    assert "Analyze(panel_visible);" in init
 
 
 def test_web_dashboard_uses_compact_separate_workspaces_without_runtime_view_persistence():
@@ -204,7 +220,9 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
+    assert "int toggle_x=12;" in panel
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in panel
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
@@ -218,3 +236,389 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in toggle
+    assert 'controller_canvas.FillCircle(center,center,inner_radius' in toggle
+    assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
+    assert 'Obj("PANEL_SIGNAL")' in toggle
+    assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
+    assert 'signal=="VENDA" || signal=="VENDER"' in toggle
+    assert 'signal="AGUARDAR"' in toggle
+    assert "int toggle_x=12;" in toggle
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in toggle
+    assert '"CONTROLADOR TRADING"' in panel
+    assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
+    assert '"Integrado"' not in panel
+
+
+def test_mql5_panel_preserves_dynamic_signal_when_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'string current_signal="AGUARDAR";' in panel
+    assert 'string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";' in toggle
+    assert 'signal="COMPRAR"' in toggle
+    assert 'signal="VENDER"' in toggle
+    assert 'signal="AGUARDAR"' in toggle
+    assert "current_signal=(signal==" in panel
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in toggle
+    assert 'controller_canvas.FillCircle(center,center,inner_radius' in toggle
+    assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
+
+
+def test_mql5_demo_cycle_updates_closed_c_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'current_signal=(signal=="COMPRA" || signal=="COMPRAR")?' in cycle
+    assert 'SetLabel(Obj("SIGNAL"),current_signal' in cycle
+    assert "RefreshPanelToggle();" in cycle
+
+
+def test_mql5_hidden_analysis_updates_c_signal_before_render_guard():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert analyze.index('string signal=JsonValue(r,"signal");') < analyze.index("if(!render) return;")
+    assert analyze.index("current_signal=(signal==") < analyze.index("if(!render) return;")
+    assert analyze.index("RefreshPanelToggle();") < analyze.index("if(!render) return;")
+    assert "color c=current_signal==\"COMPRAR\"?" in analyze
+
+
+def test_mql5_failed_analysis_clears_stale_signal_to_wait():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    failure = analyze.split('if(!Http("POST","/api/runtime/analysis",body,r,code)){', 1)[1].split("   }", 1)[0]
+    assert 'runtime_ok=false;' in failure
+    assert 'current_signal="AGUARDAR";' in failure
+    assert "RefreshPanelToggle();" in failure
+    assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
+    assert "Analise indisponivel" in failure
+
+def test_mql5_win_loss_view_refreshes_runtime_statistics_after_placeholders():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split('}else if(active_view=="MEMORIA"){', 1)[1].split('}else if(active_view=="LAB"){', 1)[0]
+    assert render.index('"INFO4"),"Estatisticas: /api/statistics"') < render.index("if(refresh_data) RefreshSecondary();")
+    assert 'string rate=JsonValue(r,"win_rate");' in panel
+    assert 'SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%"' in panel
+    assert 'if(active_nav=="N7")' in panel
+    assert 'string periods=JsonObjectValue(r,"periods");' in panel
+    assert 'string daily=JsonObjectValue(periods,"daily");' in panel
+    assert 'string weekly=JsonObjectValue(periods,"weekly");' in panel
+    assert 'string monthly=JsonObjectValue(periods,"monthly");' in panel
+
+
+def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert '"/api/memory?limit=1"' in secondary
+    assert '"Memoria: resposta recebida do runtime"' in secondary
+    assert '"disponiveis"' not in secondary
+    memory_block = secondary.split('if(Http("GET","/api/memory?limit=1","",r,code)){', 1)[1]
+    memory_block = memory_block.split('}else SetLabel(Obj("INFO3")', 1)[0]
+    assert 'JsonValue(r,"total")' not in memory_block
+    assert 'JsonValue(r,"count")' not in memory_block
+
+
+def test_mql5_cycle_status_does_not_mislabel_execution_acceptance_as_authorization():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "execucao aceita=" in cycle
+    assert "autorizado=" not in cycle
+    assert 'allowed=="true"?' in cycle
+
+
+def test_mql5_close_cycle_requires_runtime_closed_true_before_clearing_identity():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'string closed=JsonValue(r,"closed");' in close
+    assert 'if(closed=="true")' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert close.index('if(closed=="true")') < close.index('last_cycle_id=""; last_external_id="";')
+    assert "Fechamento nao confirmado" in close
+    assert "Fechamento DEMO confirmado" in close
+
+
+def test_mql5_learning_view_is_named_estudo_in_user_facing_copy():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert '"ESTUDO • aprendizado separado da autorizacao operacional"' in panel
+    assert '"ATUALIZAR ESTUDO"' in panel
+    assert '"Estudo: "' in panel
+    assert 'active_view=="ENSINO"' in panel  # Internal routing remains stable.
+
+
+def test_mql5_panel_has_vertical_navigation_for_requested_modules():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    for label in ("COCKPIT", "ANALISE", "ESTUDO", "LABORATORIO", "REPLAY", "MEMORIA", "WIN/LOSS", "ALAVANCAGEM", "CONFIGURACOES"):
+        assert label in panel
+    for nav in range(1, 10):
+        assert f'Obj("N{nav}")' in panel
+    assert 'if(sparam==Obj("N1"))' in panel
+    assert 'else if(sparam==Obj("N9"))' in panel
+    assert 'active_view="REPLAY"' in panel
+    assert 'active_view="ALAVANCAGEM"' in panel
+
+
+def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "REPLAY • ligacao nativa ainda nao confirmada" in panel
+    assert "Replay nao tem tela nativa ligada neste EA." in panel
+    assert "ALAVANCAGEM • modulo web nao ligado ao EA nativo" in panel
+    assert "Integracao nativa nao confirmada." in panel
+    assert "Execucao autorizada: false." in panel
+    assert "REAL: BLOQUEADO" in panel
+    assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
+
+
+def test_mql5_laboratory_does_not_claim_unverified_replay_endpoint():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'Replay: endpoint nativo ainda nao validado' in panel
+    assert 'Replay: endpoint /api/replay disponivel no runtime' not in panel
+
+
+def test_mql5_navigation_selection_and_layout_refresh_after_chart_change():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "RefreshNavigation();" in render
+    assert "if(id==CHARTEVENT_CHART_CHANGE)" in event
+    assert "if(panel_visible){ Panel(); RenderView(false); }" in event
+    assert "RefreshPanelToggle();" in event
+    assert "ApplyWatermark();" in event
+
+
+def test_mql5_navigation_dispatch_has_no_duplicated_else_tokens():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "else else if" not in panel
+    for nav in range(1, 10):
+        assert f'sparam==Obj("N{nav}")' in panel
+
+
+def test_mql5_vertical_navigation_highlights_the_selected_module():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'string active_nav="N1";' in panel
+    assert "void RefreshNavigation()" in panel
+    assert 'OBJPROP_BGCOLOR,selected?C\'14,73,96\':C\'24,32,44\'' in panel
+    assert 'OBJPROP_BORDER_COLOR,selected?C\'38,210,242\':C\'55,72,92\'' in panel
+    for nav in range(1, 10):
+        assert f'active_nav="N{nav}"' in panel
+    assert panel.index("RefreshNavigation();", panel.index("void Panel()")) < panel.index("void DeletePanel(")
+
+def test_mql5_memory_refresh_button_survives_view_cleanup_and_does_not_save_preferences():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert 'SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",180,320,110,28);' in render
+    assert 'if(active_view!="CONFIG" && active_view!="MEMORIA")' in render
+    assert 'if(active_view=="MEMORIA") RefreshSecondary();' in event
+    assert 'else if(active_view=="CONFIG") SaveConfig();' in event
+
+
+
+def test_mql5_demo_cycle_fails_closed_without_explicit_confirmation_and_filter_checks():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "no explicit closed-candle confirmation or filter checklist UI" in cycle
+    assert '\\"confirmed\\":false' in cycle
+    assert '\\"filters_ok\\":false' in cycle
+    assert '\\"confirmed\\":true' not in cycle
+    assert '\\"filters_ok\\":true' not in cycle
+
+
+def test_mql5_replay_informational_view_removes_cycle_close_and_save_buttons():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    replay = panel.split('}else if(active_view=="REPLAY"){', 1)[1].split('}else if(active_view=="ALAVANCAGEM"){', 1)[0]
+    assert 'if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));' in replay
+    assert 'if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));' in replay
+    assert 'if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));' in replay
+
+
+def test_mql5_chart_resize_rerenders_layout_without_requerying_runtime():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "if(refresh_data) RefreshSecondary();" in render
+    assert "if(refresh_data) Analyze();" in render
+    assert "if(refresh_data){ RefreshHealth(); RefreshSecondary(); }" in render
+    assert "if(refresh_data) RefreshLearning();" in render
+    assert "if(refresh_data) RefreshNotifications();" in render
+    assert "if(refresh_data) RefreshPreferences();" in render
+    assert "if(panel_visible){ Panel(); RenderView(false); }" in event
+
+
+def test_mql5_market_asset_count_uses_api_count_contract():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assets = panel.split("void RefreshMarketAssets()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    assert 'string total=JsonValue(r,"count");' in assets
+    assert 'string source=JsonValue(r,"source");' in assets
+    assert 'StringFind(r,"\\\"symbol\\\":",p)' not in assets
+    assert 'if(total=="") total="—";' in assets
+
+
+def test_mql5_json_value_accepts_standard_json_whitespace_around_keys():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    parser = panel.split("string JsonValue(string json,string key)", 1)[1].split("bool Http(", 1)[0]
+    assert "StringGetCharacter(json,p)!=':'" in parser
+    assert "StringGetCharacter(json,p)=='\\t'" in parser
+    assert "StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n'" in parser
+
+
+def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rates():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert "string JsonObjectValue(string json,string key)" in panel
+    assert 'string periods=JsonObjectValue(r,"periods");' in secondary
+    assert 'string daily=JsonObjectValue(periods,"daily");' in secondary
+    assert 'string weekly=JsonObjectValue(periods,"weekly");' in secondary
+    assert 'string monthly=JsonObjectValue(periods,"monthly");' in secondary
+    assert 'JsonValue(r,"wins")' in secondary
+    assert 'JsonValue(r,"losses")' in secondary
+    assert '"Estudo • WIN: "+(wins==""?"—":wins)' in secondary
+    assert '"Estudo • LOSS: "+(losses==""?"—":losses)' in secondary
+    assert "SetLabel(Obj(\"INFO1\"),\"Estudo • WIN: \"+(wins==\"\"?\"—\":wins),180,361,9,C'88,214,141')" in secondary
+    assert "SetLabel(Obj(\"INFO2\"),\"Estudo • LOSS: \"+(losses==\"\"?\"—\":losses),180,381,9,C'255,118,118')" in secondary
+    assert 'JsonValue(daily,"wins")' in secondary
+    assert 'JsonValue(weekly,"losses")' in secondary
+    assert 'JsonValue(monthly,"wins")' in secondary
+    assert 'closed=="0"?"—"' in secondary
+    assert 'd_closed=="0"?"—"' in secondary
+    assert '"Estudo • Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")' in secondary
+    assert '("+d_closed+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+w_closed+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+m_closed+")"' in secondary
+    assert 'if(active_nav=="N7")' in secondary
+    assert 'Estudo • taxa:' in secondary
+    assert 'SetLabel(Obj("INFO3"),"Estudo • DRAW: "+(draws==""?"—":draws)+" • P&L: nao registrado"' in secondary
+    assert 'string demo=JsonObjectValue(r,"demo");' in secondary
+    assert 'JsonValue(demo,"wins")' in secondary
+    assert 'JsonValue(demo,"losses")' in secondary
+    assert 'JsonValue(demo,"net_result")' in secondary
+    assert 'string demo_periods=JsonObjectValue(demo,"periods");' in secondary
+    assert 'SetLabel(Obj("INFO6"),"DEMO • WIN: "+(demo_wins==""?"—":demo_wins),180,461,9,C\'88,214,141\')' in secondary
+    assert 'SetLabel(Obj("INFO7"),"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses),180,481,9,C\'255,118,118\')' in secondary
+    assert 'SetLabel(Obj("INFO10"),"DEMO • Dia "+' in secondary
+    assert "Never infer profitability from WIN/LOSS alone." in secondary
+
+
+def test_mql5_study_statistics_use_panel_semantic_colors_and_keep_pnl_separate():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert '"Estudo • WIN: "+(wins==""?"—":wins)' in secondary
+    assert '"Estudo • LOSS: "+(losses==""?"—":losses)' in secondary
+    assert 'C\'88,214,141\');' in secondary
+    assert 'C\'255,118,118\');' in secondary
+    assert 'C\'100,235,255\');' in secondary
+    assert '"DEMO • WIN: "+(demo_wins==""?"—":demo_wins)' in secondary
+    assert '"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses)' in secondary
+    assert 'C\'88,214,141\');' in secondary
+    assert 'C\'255,118,118\');' in secondary
+    assert 'P&L liquido:' in secondary
+    assert 'DEMO • Dia ' in secondary
+    assert 'P&L: nao registrado' in secondary
+
+def test_mql5_controller_c_is_a_real_pixel_circle_with_clickable_canvas():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    event = panel.split("void OnChartEvent", 1)[1]
+    assert '#include <Canvas\\Canvas.mqh>' in panel
+    assert "CCanvas controller_canvas;" in panel
+    assert "CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)" in toggle
+    assert "controller_canvas.FillCircle(center,center,outer_radius" in toggle
+    assert "controller_canvas.FillCircle(center,center,inner_radius" in toggle
+    assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
+    assert "controller_canvas.Update();" in toggle
+    assert 'sparam==Obj("PANEL_TOGGLE")' in event
+    assert "ObjectCreate(0,name,OBJ_ELLIPSE" not in toggle
+    assert "controller_canvas.Destroy();" in panel
+
+def test_mql5_navigation_rail_stays_left_of_panel_content():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    navigation = panel.split("// Navegacao vertical no trilho esquerdo", 1)[1].split("RefreshNavigation();", 1)[0]
+    assert 'SetButton(Obj("N1"),"COCKPIT",20,82,145,29)' in navigation
+    assert 'SetButton(Obj("N7"),"WIN/LOSS",20,298,145,29)' in navigation
+    assert 'SetButton(Obj("N9"),"CONFIGURACOES",20,370,145,29)' in navigation
+    assert 'SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27' in panel
+    assert 'SetLabel(Obj("SIGNAL"),current_signal,180,154' in panel
+
+
+def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel", 1)[0]
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    visibility = panel.split("void LoadPanelVisibility()", 1)[1].split("void RefreshNavigation()", 1)[0]
+    assert "panel_visible=false;" in visibility
+    assert "GlobalVariableSet(PanelVisibilityKey(),0.0);" in visibility
+    assert "MathRound(cw*0.42)" in layout
+    assert "MathRound(ch*0.44)" in layout
+    assert "int toggle_x=12;" in toggle
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in toggle
+    assert 'string quality=JsonObjectValue(r,"quality");' in analyze
+    assert 'current_quality_score=quality_score;' in analyze
+    assert 'current_quality_level=quality_level;' in analyze
+    assert 'double quality_value=StringToDouble(current_quality_score);' in toggle
+    assert 'signal+=" "+quality_display+"% "+current_quality_level;' in toggle
+    assert 'current_quality_actionable=JsonValue(quality,"actionable");' in analyze
+    assert 'if(current_quality_actionable!="true") current_signal="AGUARDAR";' in analyze
+    assert 'string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";' in toggle
+    assert 'current_quality_actionable=JsonValue(quality,"actionable");' in cycle
+    assert 'current_quality_technical_actionable=JsonValue(quality,"technical_actionable");' in cycle
+    assert 'if(current_quality_actionable!="true") current_signal="AGUARDAR";' in cycle
+    assert 'signal+=" "+quality_display+"% "+current_quality_level;' in toggle
+    assert 'Quality is an independently measured index' in toggle
+    assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
+    assert 'else if(sparam==Obj("WM"))' not in panel
+    assert 'if(active_view=="CONFIG") ToggleWatermark();' in panel
+    assert 'if(active_view=="CONFIG") ToggleIndicators();' in panel
+    assert 'bool desired=!indicators_enabled;' in panel
+    assert 'Http("POST","/api/preferences",body,response,code)' in panel
+    assert 'SetButton(Obj("CLOSE"),indicators_enabled?"INDIC: ON":"INDIC: OFF",296,320,114,28);' in panel
+    assert 'string indicator_data=JsonObjectValue(r,"indicators");' in panel
+    assert 'current_indicator_summary="DESATIVADOS";' in panel
+    assert 'current_external_indicator_status=JsonValue(external_data,"status");' in panel
+    assert 'string external_reading=JsonObjectValue(external_data,"reading");' in panel
+    assert 'SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48)' in panel
+    assert 'bool synced=Http("POST","/api/preferences",body,response,code);' in panel
+    assert 'string shared=JsonValue(response,"watermark_enabled");' in panel
+    assert 'void RefreshSharedWatermarkPreference()' in panel
+    assert 'RefreshSharedWatermarkPreference();' in panel
+    load_watermark = panel.split("void LoadWatermark()", 1)[1].split("void RefreshSharedWatermarkPreference()", 1)[0]
+    assert 'Http(' not in load_watermark
+    assert 'now-last_watermark_sync<60' in panel
+
+
+def test_mql5_runtime_cycle_parses_nested_runtime_payload_and_never_uses_decision_as_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'string runtime=JsonObjectValue(r,"runtime");' in cycle
+    assert 'string signal=JsonValue(runtime,"signal");' in cycle
+    assert 'string quality=JsonObjectValue(runtime,"quality");' in cycle
+    assert 'string cid=JsonValue(runtime,"cycle_id");' in cycle
+    assert 'string eid=JsonValue(runtime,"external_id");' in cycle
+    assert 'string allowed=JsonValue(r,"execution_allowed");' in cycle
+    assert 'if(signal=="") signal=JsonValue(r,"decision");' not in cycle
+    assert 'Resposta do ciclo sem objeto runtime; operacao bloqueada.' in cycle
+
+
+def test_mql5_demo_net_result_is_colored_by_real_value_and_missing_is_dash():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'string demo_net_display=(demo_net=="" || demo_net=="null" || demo_total=="0")?"—":demo_net;' in panel
+    assert "if(demo_net_value>0) demo_net_color=C'88,214,141';" in panel
+    assert "else if(demo_net_value<0) demo_net_color=C'255,118,118';" in panel
+    assert 'SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+demo_net_display,180,501,9,demo_net_color);' in panel
+
+
+def test_mql5_analysis_never_treats_runtime_decision_as_market_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'string signal=JsonValue(r,"signal");' in analyze
+    assert 'if(signal=="") signal="AGUARDAR";' in analyze
+    assert 'if(signal=="") signal=JsonValue(r,"decision");' not in analyze
+
+
+def test_mql5_hides_unavailable_quality_instead_of_showing_null_or_zero():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'if(current_quality_level=="NENHUMA" || current_quality_score=="null")' in analyze
+    assert 'if(score=="null") score="";' in analyze
+    assert "color quality_color=current_quality_level==\"FORTE\"?C'88,214,141'" in analyze
