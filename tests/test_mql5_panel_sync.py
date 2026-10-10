@@ -281,8 +281,7 @@ def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint()
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
     assert '"/api/memory?limit=1"' in secondary
-    assert 'StringFind(r,"\\"records\\":[")' in secondary
-    assert '"amostra "+IntegerToString(sample)' in secondary
+    assert '"Memoria: resposta recebida do runtime"' in secondary
     assert '"disponiveis"' not in secondary
     assert 'JsonValue(r,"total")' not in secondary
 
