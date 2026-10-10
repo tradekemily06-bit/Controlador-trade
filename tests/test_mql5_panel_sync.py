@@ -463,7 +463,12 @@ def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rat
     assert 'JsonValue(r,"wins")' in secondary
     assert 'JsonValue(r,"losses")' in secondary
     assert '"Resultados fechados: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS"' in secondary
-    assert '"Dia "+(d_rate==""?"—":d_rate)+"% ("+(d_total==""?"—":d_total)+") | Sem "' in secondary
+    assert 'JsonValue(daily,"wins")' in secondary
+    assert 'JsonValue(weekly,"losses")' in secondary
+    assert 'JsonValue(monthly,"wins")' in secondary
+    assert 'closed=="0"?"—"' in secondary
+    assert 'd_closed=="0"?"—"' in secondary
+    assert '"Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")' in secondary
     assert 'if(active_nav=="N7")' in secondary
     assert 'SetLabel(Obj("INFO3"),"Rentabilidade: — • P&L financeiro nao registrado"' in secondary
     assert "Never infer profitability from WIN/LOSS alone." in secondary
