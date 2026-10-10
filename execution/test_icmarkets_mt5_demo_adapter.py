@@ -176,31 +176,39 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
 
 
 class FakeOutcomeMT5(FakeMT5):
-    def __init__(self, *, open_position=False, wrong_magic=False, missing_exit=False):
+    def __init__(self, *, open_position=False, wrong_magic=False, missing_exit=False, ambiguous_position=False):
         super().__init__()
         self.open_position = open_position
         self.wrong_magic = wrong_magic
         self.missing_exit = missing_exit
+        self.ambiguous_position = ambiguous_position
 
     def history_deals_get(self, *args, **kwargs):
         self.calls.append(("history_deals_get", args, kwargs))
         if kwargs.get("ticket") == 123:
             return (SimpleNamespace(
-                ticket=123, position_id=900, magic=0 if self.wrong_magic else 2609001,
+                ticket=123, order=123, position_id=900, magic=0 if self.wrong_magic else 2609001,
                 entry=0, profit=0.0, commission=-1.0, swap=0.0, fee=0.0,
             ),)
         if kwargs.get("position") == 900:
             opening = SimpleNamespace(
-                ticket=123, position_id=900, magic=2609001, entry=0,
+                ticket=123, order=123, position_id=900, magic=2609001, entry=0,
                 profit=0.0, commission=-1.0, swap=0.0, fee=0.0,
             )
             if self.missing_exit:
                 return (opening,)
+            if self.ambiguous_position:
+                second_entry = SimpleNamespace(
+                    ticket=125, order=777, position_id=900, magic=2609001, entry=0,
+                    profit=0.0, commission=-0.5, swap=0.0, fee=0.0,
+                )
+            else:
+                second_entry = None
             closing = SimpleNamespace(
-                ticket=124, position_id=900, magic=2609001, entry=self.DEAL_ENTRY_OUT,
+                ticket=124, order=124, position_id=900, magic=2609001, entry=self.DEAL_ENTRY_OUT,
                 profit=5.0, commission=-1.5, swap=0.1, fee=0.0,
             )
-            return (opening, closing)
+            return (opening, closing) if second_entry is None else (opening, second_entry, closing)
         return ()
 
     def history_orders_get(self, *args, **kwargs):
@@ -241,6 +249,9 @@ def test_query_trade_outcome_rejects_unowned_or_missing_exit_history():
     assert unowned.financial_result is None
     assert missing_exit.outcome == "UNKNOWN"
     assert missing_exit.financial_result is None
+    ambiguous = ICMarketsMT5DemoAdapter(mt5_module=FakeOutcomeMT5(ambiguous_position=True)).query_trade_outcome("123")
+    assert ambiguous.outcome == "UNKNOWN"
+    assert ambiguous.financial_result is None
 
 
 def test_risk_day_timezone_is_explicit_and_converted_to_utc():
