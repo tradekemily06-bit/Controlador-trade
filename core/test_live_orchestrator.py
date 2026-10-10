@@ -232,3 +232,42 @@ def test_orchestrator_rejects_external_indicator_symbol_mismatch():
     )
     assert result.external_indicator_status == "REJECTED_SYMBOL_OR_TIMEFRAME_MISMATCH"
     assert result.external_indicator_reading is None
+
+
+def test_disabled_indicator_preference_skips_calculation_and_external_provider():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    candles = []
+    for index in range(40):
+        close = 100.0 + index * 0.25
+        previous = 100.0 + max(0, index - 1) * 0.25
+        candles.append(Candle(
+            base.replace(minute=index),
+            previous,
+            max(previous, close) + 0.5,
+            min(previous, close) - 0.5,
+            close,
+            100.0,
+        ))
+
+    class MustNotReadIndicators:
+        def read(self, *, symbol, timeframe, now=None):
+            raise AssertionError("indicator provider must not run while disabled")
+
+    orchestrator = TradingOrchestrator(
+        feed=MarketDataFeed(Provider(candles), source="test"),
+        pipeline=StrategyPipeline(),
+        decision_engine=DecisionEngine(RiskManager()),
+        quality_evaluator=SignalQualityEvaluator(),
+        indicator_provider=MustNotReadIndicators(),
+    )
+    result = orchestrator.evaluate(
+        MarketDataRequest("TEST", "1m", 40),
+        operational_state=state(),
+        market_context=favorable(),
+        indicators_enabled=False,
+    )
+
+    assert result.indicators_enabled is False
+    assert result.indicator_evidence is None
+    assert result.external_indicator_reading is None
+    assert result.external_indicator_status == "DISABLED_BY_PREFERENCE"
