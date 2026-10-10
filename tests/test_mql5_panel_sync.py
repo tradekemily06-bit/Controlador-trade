@@ -220,7 +220,8 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;" in panel
+    assert "int toggle_x=12;" in panel
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in panel
     assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in panel
 
 
