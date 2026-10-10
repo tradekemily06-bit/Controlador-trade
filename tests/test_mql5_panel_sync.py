@@ -67,12 +67,13 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"WATERMARK_MARK"' in panel
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16)" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10)" in panel
-    assert "InpPanelWidth = 280" in panel
-    assert "InpPanelHeight = 380" in panel
+    assert "InpPanelWidth = 440" in panel
+    assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
     assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
-    assert "MathRound(cw*0.30)" in panel
-    assert "MathRound(ch*0.44)" in panel
+    assert "MathRound(cw*0.42)" in panel
+    assert "MathRound(ch*0.48)" in panel
+    assert "panel_sx=(double)panel_width/600.0;" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
@@ -281,3 +282,25 @@ def test_mql5_learning_view_is_named_estudo_in_user_facing_copy():
     assert '"ATUALIZAR ESTUDO"' in panel
     assert '"Estudo: "' in panel
     assert 'active_view=="ENSINO"' in panel  # Internal routing remains stable.
+
+
+def test_mql5_panel_has_vertical_navigation_for_requested_modules():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    for label in ("COCKPIT", "ANALISE", "ESTUDO", "LABORATORIO", "REPLAY", "MEMORIA", "WIN/LOSS", "ALAVANCAGEM", "CONFIGURACOES"):
+        assert label in panel
+    for nav in range(1, 10):
+        assert f'Obj("N{nav}")' in panel
+    assert 'if(sparam==Obj("N1"))' in panel
+    assert 'else if(sparam==Obj("N9"))' in panel
+    assert 'active_view="REPLAY"' in panel
+    assert 'active_view="ALAVANCAGEM"' in panel
+
+
+def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "REPLAY • ligacao nativa ainda nao confirmada" in panel
+    assert "Replay nao tem tela nativa ligada neste EA." in panel
+    assert "ALAVANCAGEM • modulo web nao ligado ao EA nativo" in panel
+    assert "Integracao nativa nao confirmada." in panel
+    assert "Execucao autorizada: false." in panel
+    assert "REAL: BLOQUEADO" in panel
