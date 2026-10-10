@@ -82,3 +82,17 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
     assert "if(id!=CHARTEVENT_OBJECT_CLICK) return;" in handler
     for button in required_buttons:
         assert f'Obj("{button}")' in handler, f"MQL5 button has no click dispatch: {button}"
+
+
+def test_compact_signal_shows_score_percent_and_level_only_for_actionable_quality():
+    render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
+    assert "const actionable=q.actionable===true&&(isBuy||isSell);" in render
+    assert "const signal=actionable?" in render
+    assert "qs+'/100 · '+qs+'% '+ql" in render
+    assert "if(actionable&&qs&&ql&&ql!=='NENHUMA')" in render
+
+
+def test_compact_signal_does_not_promote_weak_or_unconfirmed_analysis():
+    render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
+    assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
+    assert "if(actionable&&qs&&ql&&ql!=='NENHUMA')" in render
