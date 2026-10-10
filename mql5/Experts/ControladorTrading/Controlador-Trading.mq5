@@ -366,13 +366,13 @@ void RefreshLearning(){
    if(Http("GET","/api/learning","",r,code)){
       string progress=JsonValue(r,"progress");
       string active=JsonValue(r,"active_module");
-      SetLabel(Obj("INFO1"),"Ensino: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Estudo: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Estudo: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
    }
 }
 void RenderView(){
@@ -425,8 +425,8 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
-      SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
+      SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
