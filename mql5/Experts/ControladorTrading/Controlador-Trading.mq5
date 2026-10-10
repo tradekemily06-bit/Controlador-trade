@@ -127,13 +127,15 @@ void ApplyWatermark(){
    // Marca d'agua diagonal e responsiva, alinhada ao brilho azul/ciano do ecossistema.
    // Mantida no fundo e dimensionada pela area real do grafico para desktop e janelas menores.
    double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);
-   wm_scale=MathMax(0.72,MathMin(1.42,wm_scale));
-   int wm_icon_size=(int)MathRound(46.0*wm_scale);
-   int wm_text_size=(int)MathRound(34.0*wm_scale);
+   // Um pouco maior que a versao discreta anterior, sem dominar o grafico.
+   wm_scale=MathMax(0.72,MathMin(1.20,wm_scale));
+   int wm_icon_size=(int)MathRound(36.0*wm_scale);
+   int wm_text_size=(int)MathRound(22.0*wm_scale);
    int center_x=w/2;
    int center_y=(int)MathRound(h*0.52);
-   int icon_x=MathMax(18,center_x-(int)MathRound(245.0*wm_scale));
-   int text_x=MathMin(w-18,center_x+(int)MathRound(105.0*wm_scale));
+   // Keep the mark and wordmark together and centered, including narrow phone-sized charts.
+   int icon_x=MathMax(18,center_x-(int)MathRound(120.0*wm_scale));
+   int text_x=MathMin(w-18,center_x+(int)MathRound(45.0*wm_scale));
    // ANGLE is applied to both elements so the icon and full wordmark share one diagonal.
    double wm_angle=330.0;
 
