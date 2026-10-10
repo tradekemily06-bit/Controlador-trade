@@ -72,7 +72,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
     assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
-    assert "MathRound(w*0.52)" in panel
+    assert "int center_x=w/2;" in panel
     assert "MathRound(h*0.52)" in panel
     assert "panel_sx=(double)panel_width/440.0;" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
@@ -233,7 +233,7 @@ def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
     assert 'signal=="VENDA" || signal=="VENDER"' in toggle
     assert 'signal="AGUARDAR"' in toggle
-    assert "panel_visible?panel_x+panel_width-42:12" in toggle
+    assert "panel_visible?panel_x+panel_width-c_size-8:12" in toggle
     assert '"CONTROLADOR TRADING"' in panel
     assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
     assert '"Integrado"' not in panel
@@ -248,7 +248,7 @@ def test_mql5_panel_preserves_dynamic_signal_when_closed():
     assert 'signal="VENDER"' in toggle
     assert 'signal="AGUARDAR"' in toggle
     assert "current_signal=(signal==" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in toggle
 
 
 def test_mql5_demo_cycle_updates_closed_c_signal():
