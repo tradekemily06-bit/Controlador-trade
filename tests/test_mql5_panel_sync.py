@@ -284,6 +284,14 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
     assert "Analise indisponivel" in failure
 
+def test_mql5_win_loss_view_refreshes_runtime_statistics_after_placeholders():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split('}else if(active_view=="MEMORIA"){', 1)[1].split('}else if(active_view=="LAB"){', 1)[0]
+    assert render.index('"INFO4"),"Estatisticas: /api/statistics"') < render.index("if(refresh_data) RefreshSecondary();")
+    assert 'string rate=JsonValue(r,"win_rate");' in panel
+    assert 'SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate)' in panel
+
+
 def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
