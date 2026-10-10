@@ -156,13 +156,28 @@ function Sync-Mt5Panel {
 function Test-Mt5Demo {
     param([int]$WaitSeconds)
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $attempt = 0
     while ((Get-Date) -lt $deadline) {
+        $attempt++
         try {
-            & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); raise SystemExit(0 if r.available and r.demo else 1)"
-            if ($LASTEXITCODE -eq 0) { return $true }
-        } catch {}
+            $preflightOutput = @(& $PythonExe -c "import json, MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5, initialize_timeout_ms=15000); print('MT5_PREFLIGHT=' + json.dumps({'available':r.available,'demo':r.demo,'symbol':r.symbol,'bid':r.bid,'ask':r.ask,'volume_min':r.volume_min,'volume_step':r.volume_step,'message':r.message}, ensure_ascii=False)); raise SystemExit(0 if r.available and r.demo else 1)" 2>&1)
+            $preflightExitCode = $LASTEXITCODE
+            foreach ($line in $preflightOutput) {
+                $message = ([string]$line).Trim()
+                if (-not [string]::IsNullOrWhiteSpace($message)) {
+                    Write-StartupLog "MT5 DEMO preflight tentativa $attempt (exit=$preflightExitCode): $message"
+                }
+            }
+            if ($preflightExitCode -eq 0) { return $true }
+            if (-not $preflightOutput -or $preflightOutput.Count -eq 0) {
+                Write-StartupLog "MT5 DEMO preflight tentativa $attempt falhou sem saída (exit=$preflightExitCode)."
+            }
+        } catch {
+            Write-StartupLog "MT5 DEMO preflight tentativa $attempt lançou exceção: $($_.Exception.Message)"
+        }
         Start-Sleep -Seconds 5
     }
+    Write-StartupLog "MT5 DEMO preflight não foi confirmado dentro de $WaitSeconds s; runtime permanecerá bloqueado para execução."
     return $false
 }
 
