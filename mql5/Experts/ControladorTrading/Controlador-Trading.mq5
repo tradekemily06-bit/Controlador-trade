@@ -391,7 +391,7 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Estudo: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
    }
 }
-void RenderView(){
+void RenderView(bool refresh_data=true){
    RefreshNavigation();
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
@@ -404,14 +404,14 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshSecondary();
+      if(refresh_data) RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      Analyze();
+      if(refresh_data) Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
@@ -422,7 +422,7 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshSecondary();
+      if(refresh_data) RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
@@ -434,8 +434,7 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshHealth();
-      RefreshSecondary();
+      if(refresh_data){ RefreshHealth(); RefreshSecondary(); }
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",20,401,9,C'255,209,102');
@@ -470,21 +469,21 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshLearning();
+      if(refresh_data) RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshNotifications();
+      if(refresh_data) RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshPreferences();
+      if(refresh_data) RefreshPreferences();
    }
    if(active_view!="CONFIG" && active_view!="MEMORIA"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
@@ -713,7 +712,7 @@ void OnTimer(){
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id==CHARTEVENT_CHART_CHANGE){
-      if(panel_visible){ Panel(); RenderView(); }
+      if(panel_visible){ Panel(); RenderView(false); }
       RefreshPanelToggle();
       ApplyWatermark();
       ChartRedraw();
