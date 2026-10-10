@@ -58,6 +58,7 @@ def test_dashboard_actions_have_matching_runtime_api_routes():
         "/api/learning/activities",
         "/api/learning/attempts",
         "/api/learning/resources",
+        "/api/learning/observations",
         "/api/status",
     )
     for route in required_routes:
@@ -210,3 +211,12 @@ def test_signal_quality_level_has_its_own_color_without_recoloring_wait_signal()
     assert ".quality-moderate{color:#ffd166}" in WEB
     assert ".quality-weak{color:#ff7676}" in WEB
     assert "$('compactSignal').innerHTML=esc(signal)+(hasQuality?" in WEB
+
+
+def test_material_module_registers_reviewed_observations_without_claiming_auto_analysis():
+    assert 'id="recordStudyObservation"' in WEB
+    assert "$('recordStudyObservation').onclick=async()" in WEB
+    assert "'/api/learning/observations'" in WEB
+    assert "validated:false" in WEB
+    assert "REGISTRAR OBSERVAÇÃO" in WEB
+    assert "não finge que extraiu conteúdo de URL ou vídeo" in WEB
