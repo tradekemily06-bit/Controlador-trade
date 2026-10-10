@@ -291,7 +291,10 @@ def test_mql5_win_loss_view_refreshes_runtime_statistics_after_placeholders():
     assert 'string rate=JsonValue(r,"win_rate");' in panel
     assert 'SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%"' in panel
     assert 'if(active_nav=="N7")' in panel
-    assert 'string daily=JsonObjectValue(r,"daily");' in panel
+    assert 'string periods=JsonObjectValue(r,"periods");' in panel
+    assert 'string daily=JsonObjectValue(periods,"daily");' in panel
+    assert 'string weekly=JsonObjectValue(periods,"weekly");' in panel
+    assert 'string monthly=JsonObjectValue(periods,"monthly");' in panel
 
 
 def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint():
