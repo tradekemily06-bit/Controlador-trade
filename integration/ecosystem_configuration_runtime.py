@@ -413,6 +413,15 @@ class ConfiguredEcosystemService(EcosystemService):
             )
             if not same_result:
                 raise RuntimeError("resultado DEMO contraditório para cycle_id já persistido; estatística não atualizada")
+            previous_close = previous.get("closed_at")
+            current_close = record.get("closed_at")
+            if previous_close and current_close and previous_close != current_close:
+                raise RuntimeError("horário de fechamento DEMO contraditório para cycle_id já persistido")
+            if not previous_close and current_close:
+                # A later history read may supply the close timestamp missing in
+                # an earlier, otherwise identical confirmed result.
+                previous["closed_at"] = current_close
+                self.state_store.save("demo_trade_outcomes", records)
             return
         records.append(record)
         self.state_store.save("demo_trade_outcomes", records)
