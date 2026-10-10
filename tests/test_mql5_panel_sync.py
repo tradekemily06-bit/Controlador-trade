@@ -148,6 +148,8 @@ def test_mql5_panel_off_does_not_render_on_init():
     assert "RenderView();" in init
     assert "}else{" in init
     assert "RefreshPanelToggle();" in init
+    assert "if(panel_visible){\n      RefreshHealth();\n      RefreshSecondary();\n      RefreshMarketAssets();\n   }" in init
+    assert "Analyze(panel_visible);" in init
 
 
 def test_web_dashboard_uses_compact_separate_workspaces_without_runtime_view_persistence():
