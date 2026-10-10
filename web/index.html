@@ -159,6 +159,6 @@ applyDefaultView((location.hash||'#painel').slice(1));
  // observability. Refresh status only afterward so the panel shows that same
  // verified state instead of racing an empty startup snapshot.
  await refreshMarketChart().catch(()=>{});
- await refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('compactSignal').textContent='AGUARDAR';$('compactSignal').className='compact-signal wait';$('executionState').textContent='BLOQUEADA';});
+ await refresh().catch(e=>{$('reason').textContent='Falha ao carregar o ecossistema: '+e.message;$('engineStatus').textContent='Falha de conexão';$('headline').textContent='AGUARDAR';$('headline').className='signal wait';$('compactSignal').textContent='AGUARDAR';$('compactSignal').className='compact-signal wait';$('executionState').textContent='BLOQUEADA';$('memory').innerHTML='<div class="muted">Memória indisponível: runtime sem resposta.</div>';$('outcomeResult').innerHTML='<div class="muted">Resultados indisponíveis até a API responder.</div>';$('newsLive').textContent='OFFLINE';$('newsLive').className='danger';$('newsItems').innerHTML='<div class="muted">Fonte de notícias indisponível; nenhum dado foi inventado.</div>';});
 })();
 </script></body></html>
