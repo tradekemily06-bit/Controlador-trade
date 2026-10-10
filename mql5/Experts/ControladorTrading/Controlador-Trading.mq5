@@ -619,10 +619,12 @@ void RefreshSecondary(){
       }
    }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",180,421,9,C'255,118,118');
 
-   if(Http("GET","/api/news?limit=1","",r,code)){
-      string live=JsonValue(r,"live");
-      SetLabel(Obj("INFO5"),"Noticias: "+(live=="true"?"ONLINE":"OFFLINE")+" • sem fonte nao interfere na decisao",180,441,9,C'205,215,230');
-   }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",180,441,9,C'255,118,118');
+   if(active_nav!="N7"){
+      if(Http("GET","/api/news?limit=1","",r,code)){
+         string live=JsonValue(r,"live");
+         SetLabel(Obj("INFO5"),"Noticias: "+(live=="true"?"ONLINE":"OFFLINE")+" • sem fonte nao interfere na decisao",180,441,9,C'205,215,230');
+      }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",180,441,9,C'255,118,118');
+   }
 
    if(Http("GET","/api/memory?limit=1","",r,code)){
       // The endpoint returns a limited records array; it does not promise a total count.
