@@ -351,7 +351,7 @@ def test_mql5_navigation_selection_and_layout_refresh_after_chart_change():
     event = panel.split("void OnChartEvent(", 1)[1]
     assert "RefreshNavigation();" in render
     assert "if(id==CHARTEVENT_CHART_CHANGE)" in event
-    assert "if(panel_visible){ Panel(); RenderView(); }" in event
+    assert "if(panel_visible){ Panel(); RenderView(false); }" in event
     assert "RefreshPanelToggle();" in event
     assert "ApplyWatermark();" in event
 
