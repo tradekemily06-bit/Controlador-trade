@@ -545,6 +545,7 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel", 1)[0]
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     visibility = panel.split("void LoadPanelVisibility()", 1)[1].split("void RefreshNavigation()", 1)[0]
     assert "panel_visible=false;" in visibility
     assert "GlobalVariableSet(PanelVisibilityKey(),0.0);" in visibility
@@ -560,6 +561,8 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert 'current_quality_actionable=JsonValue(quality,"actionable");' in analyze
     assert 'if(current_quality_actionable!="true") current_signal="AGUARDAR";' in analyze
     assert 'string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";' in toggle
+    assert 'current_quality_actionable=JsonValue(quality,"actionable");' in cycle
+    assert 'if(current_quality_actionable!="true") current_signal="AGUARDAR";' in cycle
     assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
     assert 'else if(sparam==Obj("WM"))' not in panel
     assert 'if(active_view=="CONFIG") ToggleWatermark();' in panel
