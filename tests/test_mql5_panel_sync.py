@@ -172,6 +172,18 @@ def test_web_dashboard_uses_compact_separate_workspaces_without_runtime_view_per
     assert "default_view" not in web
 
 
+def test_replay_stays_blocked_until_real_historical_candles_are_connected():
+    web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    replay = web[web.index('id="replayBtn"') - 500:web.index('id="replayBtn"') + 900]
+    assert 'disabled aria-disabled="true"' in replay
+    assert "candles históricos reais" in replay
+    assert "Nenhum resultado fictício será exibido." in replay
+    assert "score:85,confirmed:true" not in web
+    assert "score:55,confirmed:true" not in web
+    assert "score:20,confirmed:true" not in web
+    assert "RODAR REPLAY" not in replay
+
+
 def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
     web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
     assert '<div class="watermark-brand">' in web
