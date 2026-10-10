@@ -462,6 +462,12 @@ void RefreshLearning(){
 }
 void RenderView(bool refresh_data=true){
    RefreshNavigation();
+   if(active_nav!="N7"){
+      for(int i=6;i<=10;i++){
+         string extra=Obj("INFO"+IntegerToString(i));
+         if(ObjectFind(0,extra)>=0) ObjectDelete(0,extra);
+      }
+   }
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",180,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Motor de decisao: runtime",180,361,9,C'205,215,230');
@@ -605,24 +611,48 @@ void RefreshSecondary(){
       if(active_nav=="N7"){
          string wins=JsonValue(r,"wins");
          string losses=JsonValue(r,"losses");
-         // API contract: period summaries are nested under "periods".
+         string draws=JsonValue(r,"draws");
+         // Estudo usa somente os registros MANUAL_STUDY; não representa P&L.
          string periods=JsonObjectValue(r,"periods");
          string daily=JsonObjectValue(periods,"daily");
          string weekly=JsonObjectValue(periods,"weekly");
          string monthly=JsonObjectValue(periods,"monthly");
-         string d_total=JsonValue(daily,"total"), d_rate=JsonValue(daily,"win_rate");
-         string w_total=JsonValue(weekly,"total"), w_rate=JsonValue(weekly,"win_rate");
-         string m_total=JsonValue(monthly,"total"), m_rate=JsonValue(monthly,"win_rate");
+         string d_rate=JsonValue(daily,"win_rate");
+         string w_rate=JsonValue(weekly,"win_rate");
+         string m_rate=JsonValue(monthly,"win_rate");
          string d_closed=IntegerToString((int)StringToInteger(JsonValue(daily,"wins"))+(int)StringToInteger(JsonValue(daily,"losses")));
          string w_closed=IntegerToString((int)StringToInteger(JsonValue(weekly,"wins"))+(int)StringToInteger(JsonValue(weekly,"losses")));
          string m_closed=IntegerToString((int)StringToInteger(JsonValue(monthly,"wins"))+(int)StringToInteger(JsonValue(monthly,"losses")));
          string closed=IntegerToString((int)StringToInteger(wins)+(int)StringToInteger(losses));
-         // Cores semanticas alinhadas ao painel: WIN verde, LOSS vermelho.
-         // Mantem explicitamente os resultados como registros de estudo, nunca como P&L.
          SetLabel(Obj("INFO1"),"Estudo • WIN: "+(wins==""?"—":wins),180,361,9,C'88,214,141');
          SetLabel(Obj("INFO2"),"Estudo • LOSS: "+(losses==""?"—":losses),180,381,9,C'255,118,118');
-         SetLabel(Obj("INFO4"),"Taxa WIN/LOSS registrada: "+(closed=="0"?"—":(rate==""?"—":rate)+"%")+" • registros: "+(total==""?"—":total),180,421,9,C'100,235,255');
-         SetLabel(Obj("INFO5"),"Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")+" ("+d_closed+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+w_closed+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+m_closed+")",180,441,8,C'100,235,255');
+         SetLabel(Obj("INFO3"),"Estudo • DRAW: "+(draws==""?"—":draws)+" • P&L: nao registrado",180,401,9,C'255,209,102');
+         SetLabel(Obj("INFO4"),"Estudo • taxa: "+(closed=="0"?"—":(rate==""?"—":rate)+"%")+" • registros: "+(total==""?"—":total),180,421,9,C'100,235,255');
+         SetLabel(Obj("INFO5"),"Estudo • Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")+" ("+d_closed+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+w_closed+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+m_closed+")",180,441,8,C'100,235,255');
+
+         // DEMO only counts a closed individual position whose MT5 history was reconciled.
+         string demo=JsonObjectValue(r,"demo");
+         string demo_wins=JsonValue(demo,"wins");
+         string demo_losses=JsonValue(demo,"losses");
+         string demo_draws=JsonValue(demo,"draws");
+         string demo_total=JsonValue(demo,"total");
+         string demo_rate=JsonValue(demo,"win_rate");
+         string demo_net=JsonValue(demo,"net_result");
+         string demo_periods=JsonObjectValue(demo,"periods");
+         string demo_daily=JsonObjectValue(demo_periods,"daily");
+         string demo_weekly=JsonObjectValue(demo_periods,"weekly");
+         string demo_monthly=JsonObjectValue(demo_periods,"monthly");
+         string demo_d_rate=JsonValue(demo_daily,"win_rate");
+         string demo_w_rate=JsonValue(demo_weekly,"win_rate");
+         string demo_m_rate=JsonValue(demo_monthly,"win_rate");
+         string demo_d_closed=IntegerToString((int)StringToInteger(JsonValue(demo_daily,"wins"))+(int)StringToInteger(JsonValue(demo_daily,"losses")));
+         string demo_w_closed=IntegerToString((int)StringToInteger(JsonValue(demo_weekly,"wins"))+(int)StringToInteger(JsonValue(demo_weekly,"losses")));
+         string demo_m_closed=IntegerToString((int)StringToInteger(JsonValue(demo_monthly,"wins"))+(int)StringToInteger(JsonValue(demo_monthly,"losses")));
+         SetLabel(Obj("INFO6"),"DEMO • WIN: "+(demo_wins==""?"—":demo_wins),180,461,9,C'88,214,141');
+         SetLabel(Obj("INFO7"),"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses),180,481,9,C'255,118,118');
+         SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+(demo_net==""?"—":demo_net),180,501,9,C'255,209,102');
+         SetLabel(Obj("INFO9"),"DEMO • taxa: "+(demo_total=="0"?"—":(demo_rate==""?"—":demo_rate)+"%")+" • fechadas: "+(demo_total==""?"—":demo_total),180,521,9,C'100,235,255');
+         SetLabel(Obj("INFO10"),"DEMO • Dia "+(demo_d_closed=="0"?"—":(demo_d_rate==""?"—":demo_d_rate)+"%")+" ("+demo_d_closed+") | Sem "+(demo_w_closed=="0"?"—":(demo_w_rate==""?"—":demo_w_rate)+"%")+" ("+demo_w_closed+") | Mes "+(demo_m_closed=="0"?"—":(demo_m_rate==""?"—":demo_m_rate)+"%")+" ("+demo_m_closed+")",180,541,8,C'100,235,255');
       }else{
          SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%",180,421,9,C'205,215,230');
       }
