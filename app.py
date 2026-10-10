@@ -311,20 +311,42 @@ def application(environ, start_response):
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            orchestration = cycle.orchestration
+            quality = orchestration.quality
+            quality_level = getattr(quality.level, "value", quality.level)
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            raw_signal = orchestration.analysis.signal.value
+            technical_actionable = bool(quality.actionable)
+            decision_approved = decision_value == "EXECUTAR"
+            display_actionable = technical_actionable and decision_approved and raw_signal in {"COMPRA", "COMPRAR", "VENDA", "VENDER"}
+            display_signal = raw_signal if display_actionable else "AGUARDAR"
+            quality_score = quality.score if quality_level != "NENHUMA" else None
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
-                "decision": cycle.orchestration.decision.decision,
-                "signal": cycle.orchestration.analysis.signal.value,
-                "score": cycle.orchestration.analysis.score,
-                "reason": cycle.orchestration.decision.reason,
-                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
-                "market_data_source": cycle.orchestration.market_data.source,
-                "candles": len(cycle.orchestration.market_data.candles),
+                "decision": decision_value,
+                "signal": display_signal,
+                "score": quality_score,
+                "reason": orchestration.decision.reason,
+                "quality": {
+                    "score": quality_score,
+                    "level": quality_level,
+                    "actionable": display_actionable,
+                    "technical_actionable": technical_actionable,
+                    "decision_approved": decision_approved,
+                },
+                "analysis": {
+                    "signal": raw_signal,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                },
+                "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+                "market_data_source": orchestration.market_data.source,
+                "candles": len(orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
                 "cycle_id": (
-                    cycle.orchestration.senior_context.cycle_id
-                    if cycle.orchestration.senior_context is not None
+                    orchestration.senior_context.cycle_id
+                    if orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
                 "external_id": execution.external_id if execution else None,
