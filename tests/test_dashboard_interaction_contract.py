@@ -234,3 +234,24 @@ def test_web_runtime_cycle_displays_market_signal_decision_and_quality_separatel
     assert "const q=x.quality||{}" in WEB
     assert "esc(qScore+'/100 · '+qScore+'% '+qLevel)" in WEB
     assert "esc(x.decision||x.signal||'AGUARDAR')" not in WEB
+
+
+def test_visible_ecosystem_actions_are_bound_to_real_handlers():
+    for control in (
+        "refreshChart",
+        "saveOperationMode",
+        "realPrepare",
+        "runtimeCycle",
+        "analyze",
+        "replayBtn",
+        "createStudyActivity",
+        "registerStudyResource",
+        "recordStudyObservation",
+        "savePrefs",
+    ):
+        assert "$('" + control + "').onclick" in WEB
+    assert "cToggle.onclick=" in WEB
+    assert "$('realConfirm').onclick=async()" in WEB
+    assert "$('closeRuntimeCycle').onclick=" in WEB
+    assert "document.querySelectorAll('[data-outcome]').forEach(b=>b.onclick" in WEB
+    assert "document.querySelectorAll('[data-learning-attempt]').forEach(b=>b.onclick" in WEB
