@@ -109,7 +109,8 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   // Input fields must be selectable so users can focus and edit symbol/timeframe.
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void ApplyWatermark(){
