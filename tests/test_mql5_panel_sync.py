@@ -93,6 +93,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
+    shared_sync = panel.split("void RefreshSharedWatermarkPreference()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    assert "datetime now=TimeLocal();" in shared_sync
+    assert "datetime now=TimeCurrent();" not in shared_sync
     # Watermark toggle is inside C > Configurações; no extra chart button.
     assert 'if(panel_visible && active_view=="CONFIG" && ObjectFind(0,Obj("CYCLE"))>=0)' in panel
     assert 'watermark_enabled?"MARCA: ON":"MARCA: OFF"' in panel
