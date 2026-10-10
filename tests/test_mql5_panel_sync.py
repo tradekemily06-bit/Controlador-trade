@@ -422,3 +422,11 @@ def test_mql5_market_asset_count_uses_api_count_contract():
     assert 'string source=JsonValue(r,"source");' in assets
     assert 'StringFind(r,"\\\"symbol\\\":",p)' not in assets
     assert 'if(total=="") total="—";' in assets
+
+
+def test_mql5_json_value_accepts_standard_json_whitespace_around_keys():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    parser = panel.split("string JsonValue(string json,string key)", 1)[1].split("bool Http(", 1)[0]
+    assert "StringGetCharacter(json,p)!=':'" in parser
+    assert "StringGetCharacter(json,p)=='\\\\t'" in parser
+    assert "StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\\\n'" in parser
