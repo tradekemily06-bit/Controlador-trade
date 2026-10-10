@@ -198,14 +198,14 @@ class ICMarketsMT5DemoAdapter:
                 raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
             deal_fn = getattr(mt5, "history_deals_get", None)
             if callable(deal_fn):
-                deals = deal_fn(ticket=ticket)
-                if deals:
-                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal externo encontrado no histórico MT5")
+                deals = tuple(deal_fn(ticket=ticket) or ())
+                if any(getattr(deal, "magic", None) == self.config.magic for deal in deals):
+                    return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "deal do Controlador encontrado no histórico MT5")
             order_fn = getattr(mt5, "history_orders_get", None)
             if callable(order_fn):
-                orders = order_fn(ticket=ticket)
+                orders = tuple(order_fn(ticket=ticket) or ())
                 if orders:
-                    order = tuple(orders)[-1]
+                    order = orders[-1]
                     state = getattr(order, "state", None)
                     filled = {value for value in (
                         getattr(mt5, "ORDER_STATE_FILLED", None),
@@ -219,6 +219,23 @@ class ICMarketsMT5DemoAdapter:
                     if state in filled:
                         return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, f"ordem externa executada; state={state}")
                     if state in canceled:
+                        # A canceled order may still have partial fills. Verify its position history
+                        # before declaring it not executed, and never accept deals from another magic.
+                        position_id = getattr(order, "position_id", None)
+                        if position_id is not None and int(position_id) > 0 and callable(deal_fn):
+                            try:
+                                position_deals = deal_fn(position=int(position_id))
+                            except (TypeError, AttributeError):
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "histórico da posição indisponível para validar execução parcial")
+                            if position_deals is None:
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "histórico da posição indisponível para validar execução parcial")
+                            if any(
+                                int(getattr(deal, "position_id", -1)) == int(position_id)
+                                and int(getattr(deal, "order", -1)) == ticket
+                                and getattr(deal, "magic", None) == self.config.magic
+                                for deal in position_deals
+                            ):
+                                return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, "ordem parcialmente executada confirmada no histórico MT5")
                         return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
                     return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
