@@ -196,11 +196,11 @@ def test_replay_stays_blocked_until_real_historical_candles_are_connected():
     assert "RODAR REPLAY" not in replay
 
 
-def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
+def test_web_watermark_is_diagonal_and_includes_brand_mark():
     web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
     assert '<div class="watermark-brand">' in web
     assert 'class="watermark-mark"' in web
-    assert "transform:rotate(-18deg)" not in web
+    assert "transform:rotate(-18deg)" in web
     assert "opacity:.035" in web
 
 def test_ecosystem_panel_is_responsive_for_phone_and_notebook():
