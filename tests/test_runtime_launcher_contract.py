@@ -134,7 +134,7 @@ def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
     assert "$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in controller
     bootstrap = _read("deployment/bootstrap_windows_runtime.ps1")
     assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
-    assert "run_preflight(mt5)" in controller
+    assert "run_preflight(mt5, initialize_timeout_ms=15000)" in controller
     assert "-Mt5TerminalPath $Mt5TerminalPath" in controller
     assert "-Mt5TerminalPath \"' + $Mt5TerminalPath + '\"" in installer
 
@@ -145,7 +145,7 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in adapter
     assert "mt5.initialize(path=self._terminal_path)" in adapter
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
-    assert "mt5.initialize(path=configured_path)" in preflight
+    assert "mt5.initialize(path=configured_path, timeout=initialize_timeout_ms)" in preflight
 
 def test_controller_supervisor_preserves_mql5_sync_failure_details():
     text = _read("deployment/start_controlador_runtime.ps1")
@@ -168,3 +168,16 @@ def test_supervisors_reject_restart_history_that_is_future_dated_or_out_of_order
         assert "RESTART_HISTORY_INVALID" in text
         assert "supervisor interrompido para preservar o limite de segurança" in text or "supervisor MT5 interrompido para preservar o limite de segurança" in text
 
+
+
+
+def test_controller_supervisor_bounds_and_logs_mt5_preflight_failures():
+    controller = _read("deployment/start_controlador_runtime.ps1")
+    preflight = _read("execution/mt5_demo_runtime_preflight.py")
+    assert "initialize_timeout_ms=15000" in controller
+    assert "MT5_PREFLIGHT=" in controller
+    assert "MT5 DEMO preflight tentativa" in controller
+    assert "não foi confirmado dentro de" in controller
+    assert "initialize_timeout_ms: int = 15_000" in preflight
+    assert "terminal MT5 não conectado após initialize" in preflight
+    assert "cotação ou limites de volume inválidos" in preflight
