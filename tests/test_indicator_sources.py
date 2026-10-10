@@ -21,6 +21,9 @@ def reading(**overrides):
         values={"rsi_14": 53.2, "macd": 0.001},
     )
     values.update(overrides)
+    # Keep the candle time before observation time even when testing old observations.
+    if "observed_at" in overrides and "candle_timestamp" not in overrides:
+        values["candle_timestamp"] = overrides["observed_at"] - timedelta(minutes=5)
     return ExternalIndicatorReading(**values)
 
 
