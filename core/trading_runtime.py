@@ -225,6 +225,7 @@ class TradingRuntime:
             observed_at=outcome_observed_at,
             outcome=outcome_name,
             financial_result=financial_result,
+            source=(getattr(trade_outcome, "source", "UNKNOWN") if confirmed_outcome else "UNKNOWN"),
         )
         reconciliation = OutcomeReconciliationBoundary().reconcile(outcome, external_observation)
         return AutomationResultSnapshotBoundary().compose(closure, outcome, reconciliation)
