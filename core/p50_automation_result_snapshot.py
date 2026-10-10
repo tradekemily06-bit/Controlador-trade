@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.p47_automation_closure import AutomationClosure
 from core.p48_automation_outcome import AutomationOutcome
@@ -14,6 +15,8 @@ class AutomationResultSnapshot:
     outcome: str
     financial_result: float | None
     reconciliation_state: ReconciliationState
+    observed_at: datetime | None = None
+    source: str = "UNKNOWN"
 
 
 class AutomationResultSnapshotBoundary:
@@ -44,4 +47,6 @@ class AutomationResultSnapshotBoundary:
             outcome=outcome.outcome,
             financial_result=outcome.financial_result,
             reconciliation_state=reconciliation.state,
+            observed_at=outcome.observed_at,
+            source=outcome.source,
         )
