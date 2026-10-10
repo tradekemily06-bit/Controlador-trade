@@ -45,17 +45,18 @@ class SignalQualityEvaluator:
         ):
             return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
-        if analysis.signal not in (Signal.COMPRA, Signal.VENDA):
-            return SignalQuality(0.0, SignalLevel.NENHUMA, False)
-
         if analysis.confirmed is not True:
             return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
-        # Convert the shared directional score into strength in the chosen
-        # direction. Never apply the buy-side score directly to a sell signal.
-        directional_score = (
-            float(score) if analysis.signal is Signal.COMPRA else 100.0 - float(score)
-        )
+        # High raw scores favor COMPRA; low raw scores favor VENDA. For an
+        # AGUARDAR result, preserve the measured strength of the best
+        # directional candidate without promoting it to a trading signal.
+        if analysis.signal is Signal.COMPRA:
+            directional_score = float(score)
+        elif analysis.signal is Signal.VENDA:
+            directional_score = 100.0 - float(score)
+        else:
+            directional_score = float(score) if float(score) >= 50.0 else 100.0 - float(score)
 
         if directional_score < self.MIN_ACTIONABLE_SCORE:
             return SignalQuality(directional_score, SignalLevel.FRACA, False)
@@ -65,7 +66,8 @@ class SignalQualityEvaluator:
             if directional_score >= self.STRONG_SCORE
             else SignalLevel.MODERADA
         )
-        return SignalQuality(directional_score, level, True)
+        actionable = analysis.signal in (Signal.COMPRA, Signal.VENDA)
+        return SignalQuality(directional_score, level, actionable)
 
 
 def evaluate_signal_quality(analysis: AnalysisResult) -> SignalQuality:
