@@ -284,8 +284,16 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
-        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        # A preference saying that closed candles/filters are required is policy,
+        # not proof that the current candle is closed or that filters passed.
+        # When the caller supplies no evidence, fail closed rather than turning
+        # the requirement itself into a successful confirmation.
+        effective_confirmed = (
+            (not prefs.require_closed_candle) if confirmed is None else bool(confirmed)
+        )
+        effective_filters = (
+            (not prefs.require_filters) if filters_ok is None else bool(filters_ok)
+        )
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         operational_state = self.mt5_operational_adapter.read_operational_state()
         orchestration = self.trading_runtime.orchestrator.evaluate(
