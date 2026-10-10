@@ -16,7 +16,9 @@ class FakeMT5:
     TRADE_RETCODE_DONE = 10009
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
-    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_CANCELED = 2
+    ORDER_STATE_PARTIAL = 3
+    ORDER_STATE_FILLED = 4
     ORDER_STATE_REJECTED = 5
     ORDER_STATE_EXPIRED = 6
     POSITION_TYPE_BUY = 0
@@ -173,6 +175,24 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
     adapter = ICMarketsMT5DemoAdapter(mt5_module=mt5)
     observation = adapter.query_order("456")
     assert observation.status.value == "NOT_EXECUTED"
+
+
+class FakeFilledOrderMT5(FakeMT5):
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(ticket=123, state=self.ORDER_STATE_FILLED),)
+        return ()
+
+
+def test_query_order_recognizes_filled_order_when_deal_ticket_differs():
+    mt5 = FakeFilledOrderMT5()
+    observation = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_order("123")
+    assert observation.status.value == "EXECUTED"
 
 
 class FakeOutcomeMT5(FakeMT5):
