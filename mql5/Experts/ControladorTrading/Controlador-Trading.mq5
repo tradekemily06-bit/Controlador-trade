@@ -109,16 +109,24 @@ void ApplyWatermark(){
    }
    int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int center_y=MathMax(120,h/2);
+   // Marca d'agua responsiva: permanece no fundo do grafico, independente do painel.
+   // O tamanho cresce em telas grandes e reduz em janelas pequenas para evitar cortes.
+   double wm_scale=MathMin((double)w/1360.0,(double)h/760.0);
+   wm_scale=MathMax(0.62,MathMin(1.55,wm_scale));
+   int wm_icon_size=(int)MathRound(48.0*wm_scale);
+   int wm_text_size=(int)MathRound(25.0*wm_scale);
+   int center_x=w/2;
+   int center_y=(int)MathRound(h*0.52);
+   int icon_x=MathMax(12,center_x-(int)MathRound(245.0*wm_scale));
+   int text_x=MathMin(w-12,center_x+(int)MathRound(105.0*wm_scale));
 
-   // Marca horizontal, discreta e centralizada para não competir com os candles.
    if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
+   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,icon_x);
    ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'35,48,68');
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size);
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'36,91,125');
    ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
    ObjectSetInteger(0,mark,OBJPROP_BACK,true);
@@ -128,10 +136,10 @@ void ApplyWatermark(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,text_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'38,46,60');
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'42,75,98');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
@@ -161,13 +169,16 @@ void RefreshPanelToggle(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int toggle_x=panel_visible?panel_x+panel_width-42:12;
-   int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-48);
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   double c_scale=MathMax(0.90,MathMin(1.20,MathMin((double)cw/1100.0,(double)ch/650.0)));
+   int c_size=(int)MathRound(38.0*c_scale);
+   int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;
+   int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-c_size-12);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,toggle_y);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,32);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,32);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,17);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,c_size);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,c_size);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,(int)MathRound(19.0*c_scale));
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'63,224,255');
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,24,37');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,210,242');
