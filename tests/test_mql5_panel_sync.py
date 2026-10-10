@@ -445,3 +445,18 @@ def test_mql5_json_value_accepts_standard_json_whitespace_around_keys():
     assert "StringGetCharacter(json,p)!=':'" in parser
     assert "StringGetCharacter(json,p)=='\\t'" in parser
     assert "StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n'" in parser
+
+
+def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rates():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert "string JsonObjectValue(string json,string key)" in panel
+    assert 'string daily=JsonObjectValue(r,"daily");' in secondary
+    assert 'string weekly=JsonObjectValue(r,"weekly");' in secondary
+    assert 'string monthly=JsonObjectValue(r,"monthly");' in secondary
+    assert 'JsonValue(r,"wins")' in secondary
+    assert 'JsonValue(r,"losses")' in secondary
+    assert '"Resultados fechados: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS"' in secondary
+    assert '"Dia "+(d_rate==""?"—":d_rate)+"% ("+(d_total==""?"—":d_total)+") | Sem "' in secondary
+    assert 'if(active_nav=="N7")' in secondary
+    assert "rentabilidade" not in secondary.lower()
