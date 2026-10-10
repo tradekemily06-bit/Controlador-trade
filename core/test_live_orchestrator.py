@@ -11,6 +11,7 @@ from core.risk_manager import RiskManager
 from data.feed import MarketDataFeed, MarketDataRequest
 from data.models import Candle
 from core.live_orchestrator import TradingOrchestrator
+from core.indicator_sources import ExternalIndicatorReading, IndicatorSourceKind
 
 
 class Provider:
@@ -168,3 +169,66 @@ def test_orchestrator_reports_indicators_unavailable_when_history_is_short():
         market_context=favorable(),
     )
     assert result.indicator_evidence is None
+
+
+
+def test_orchestrator_accepts_fresh_external_indicator_evidence_without_changing_decision():
+    class ProviderWithIndicators:
+        def read(self, *, symbol, timeframe, now=None):
+            return ExternalIndicatorReading(
+                provider="MT5 native indicator bridge",
+                source_kind=IndicatorSourceKind.MT5_NATIVE,
+                symbol=symbol,
+                timeframe=timeframe,
+                observed_at=now,
+                candle_timestamp=now.replace(second=0, microsecond=0),
+                values={"rsi_14": 58.0, "macd": 0.001},
+                bias="BULLISH",
+            )
+
+    orchestrator = TradingOrchestrator(
+        feed=MarketDataFeed(Provider(make_candles()), source="test"),
+        pipeline=StrategyPipeline(),
+        decision_engine=DecisionEngine(RiskManager()),
+        quality_evaluator=SignalQualityEvaluator(),
+        indicator_provider=ProviderWithIndicators(),
+    )
+    result = orchestrator.evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+    )
+
+    assert result.external_indicator_status == "AVAILABLE_EVIDENCE_ONLY"
+    assert result.external_indicator_reading is not None
+    assert result.external_indicator_reading.values["rsi_14"] == 58.0
+    assert result.snapshot.decision == result.decision.decision
+
+
+def test_orchestrator_rejects_external_indicator_symbol_mismatch():
+    class MismatchedProvider:
+        def read(self, *, symbol, timeframe, now=None):
+            return ExternalIndicatorReading(
+                provider="external site",
+                source_kind=IndicatorSourceKind.EXTERNAL_SITE,
+                symbol="GBPUSD",
+                timeframe=timeframe,
+                observed_at=now,
+                candle_timestamp=now.replace(second=0, microsecond=0),
+                values={"rsi_14": 58.0},
+            )
+
+    orchestrator = TradingOrchestrator(
+        feed=MarketDataFeed(Provider(make_candles()), source="test"),
+        pipeline=StrategyPipeline(),
+        decision_engine=DecisionEngine(RiskManager()),
+        quality_evaluator=SignalQualityEvaluator(),
+        indicator_provider=MismatchedProvider(),
+    )
+    result = orchestrator.evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+    )
+    assert result.external_indicator_status == "REJECTED_SYMBOL_OR_TIMEFRAME_MISMATCH"
+    assert result.external_indicator_reading is None
