@@ -69,8 +69,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
     assert "InpPanelWidth = 280" in panel
     assert "InpPanelHeight = 380" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.22)" in panel
+    assert "panel_x=12;" in panel
+    assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
+    assert "MathRound(cw*0.30)" in panel
+    assert "MathRound(ch*0.44)" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
@@ -204,7 +206,8 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
+    assert "int toggle_x=panel_visible?panel_x+panel_width-42:12;" in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
@@ -218,3 +221,17 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
+    assert 'Obj("PANEL_SIGNAL")' in toggle
+    assert 'StringFind(signal,"COMPRAR")' in toggle
+    assert 'StringFind(signal,"VENDER")' in toggle
+    assert 'signal="AGUARDAR"' in toggle
+    assert "panel_visible?panel_x+panel_width-42:12" in toggle
+    assert '"CONTROLADOR TRADING"' in panel
+    assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
+    assert '"Integrado"' not in panel
