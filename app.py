@@ -398,6 +398,7 @@ def application(environ, start_response):
                 },
                 "indicators": (
                     {
+                        "enabled": getattr(orchestration, "indicators_enabled", True),
                         "available": True,
                         "source": indicator_evidence.source,
                         "candle_timestamp": indicator_evidence.candle_timestamp.isoformat(),
@@ -415,7 +416,15 @@ def application(environ, start_response):
                         "authorizes_execution": False,
                     }
                     if indicator_evidence is not None
-                    else {"available": False, "reason": "Histórico insuficiente: são necessários pelo menos 35 candles."}
+                    else {
+                        "enabled": getattr(orchestration, "indicators_enabled", True),
+                        "available": False,
+                        "reason": (
+                            "Indicadores desativados nas preferências do ecossistema."
+                            if not getattr(orchestration, "indicators_enabled", True)
+                            else "Histórico insuficiente: são necessários pelo menos 35 candles."
+                        ),
+                    }
                 ),
                 "market_data": {
                     "source": orchestration.market_data.source,
