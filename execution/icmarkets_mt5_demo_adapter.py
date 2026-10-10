@@ -26,6 +26,20 @@ class ICMarketsMT5DemoConfig:
     risk_day_timezone: str = "UTC"
 
 
+@dataclass(frozen=True)
+class MT5DemoTradeOutcome:
+    """Individual result proven by closed DEMO position history only."""
+
+    external_id: str
+    position_id: int | None
+    outcome: str
+    financial_result: float | None
+    observed_at: datetime
+    source: str
+    closed: bool
+    message: str
+
+
 class ICMarketsMT5DemoAdapter:
     """IC Markets MT5 DEMO boundary.
 
@@ -198,6 +212,99 @@ class ICMarketsMT5DemoAdapter:
                         return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
                     return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
             return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket externo não encontrado no histórico MT5")
+        finally:
+            mt5.shutdown()
+
+    def query_trade_outcome(self, external_id: str) -> MT5DemoTradeOutcome:
+        """Attribute net P&L only after the exact owned DEMO position is closed.
+
+        Order acceptance is not a trade result. Missing identity, unavailable
+        history, an open position, or missing exit deals therefore stays UNKNOWN.
+        """
+        observed_at = datetime.now(timezone.utc)
+        unknown = lambda position_id, message: MT5DemoTradeOutcome(
+            external_id=str(external_id), position_id=position_id, outcome="UNKNOWN",
+            financial_result=None, observed_at=observed_at,
+            source="MT5_DEMO_HISTORY", closed=False, message=message,
+        )
+        if not isinstance(external_id, str) or not external_id.strip():
+            raise ValueError("external_id inválido")
+        mt5 = self._module()
+        if not mt5.initialize():
+            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5AdapterError("conta MT5 não confirmada como DEMO; resultado bloqueado.")
+            try:
+                ticket = int(external_id)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("external_id deve ser um ticket MT5 numérico") from exc
+
+            position_id = None
+            deal_fn = getattr(mt5, "history_deals_get", None)
+            if callable(deal_fn):
+                for deal in tuple(deal_fn(ticket=ticket) or ()):
+                    candidate = getattr(deal, "position_id", None)
+                    if (candidate is not None and int(candidate) > 0
+                            and getattr(deal, "magic", None) == self.config.magic):
+                        position_id = int(candidate)
+                        break
+            if position_id is None:
+                order_fn = getattr(mt5, "history_orders_get", None)
+                if callable(order_fn):
+                    for order in tuple(order_fn(ticket=ticket) or ()):
+                        candidate = getattr(order, "position_id", None)
+                        if (candidate is not None and int(candidate) > 0
+                                and getattr(order, "magic", None) == self.config.magic):
+                            position_id = int(candidate)
+                            break
+            if position_id is None:
+                return unknown(None, "ticket não associado de forma verificável a uma posição do Controlador.")
+
+            positions_fn = getattr(mt5, "positions_get", None)
+            positions = positions_fn() if callable(positions_fn) else None
+            if positions is None:
+                return unknown(position_id, "histórico de posições indisponível; fechamento não confirmado.")
+            if any(int(getattr(position, "ticket", -1)) == position_id for position in positions):
+                return unknown(position_id, "posição ainda aberta; resultado final não atribuído.")
+
+            if not callable(deal_fn):
+                return unknown(position_id, "histórico de negócios indisponível.")
+            try:
+                position_deals = tuple(deal_fn(position=position_id) or ())
+            except (TypeError, AttributeError):
+                return unknown(position_id, "consulta de histórico por posição não suportada.")
+            relevant = tuple(
+                deal for deal in position_deals
+                if int(getattr(deal, "position_id", -1)) == position_id
+                and getattr(deal, "magic", None) == self.config.magic
+            )
+            exit_values = {
+                value for value in (
+                    getattr(mt5, "DEAL_ENTRY_OUT", None),
+                    getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
+                ) if value is not None
+            }
+            if not relevant or not exit_values or not any(getattr(deal, "entry", None) in exit_values for deal in relevant):
+                return unknown(position_id, "não há negócio de saída confirmado para esta posição.")
+
+            net_result = sum(
+                float(getattr(deal, "profit", 0.0) or 0.0)
+                + float(getattr(deal, "commission", 0.0) or 0.0)
+                + float(getattr(deal, "swap", 0.0) or 0.0)
+                + float(getattr(deal, "fee", 0.0) or 0.0)
+                for deal in relevant
+            )
+            if not math.isfinite(net_result):
+                return unknown(position_id, "resultado líquido não finito; atribuição bloqueada.")
+            outcome = "WIN" if net_result > 0 else "LOSS" if net_result < 0 else "DRAW"
+            return MT5DemoTradeOutcome(
+                external_id=external_id, position_id=position_id, outcome=outcome,
+                financial_result=float(net_result), observed_at=observed_at,
+                source="MT5_DEMO_HISTORY", closed=True,
+                message="resultado líquido confirmado no histórico da posição DEMO.",
+            )
         finally:
             mt5.shutdown()
 
