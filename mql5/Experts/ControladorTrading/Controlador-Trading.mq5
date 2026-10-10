@@ -461,12 +461,13 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
-      if(refresh_data) RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",180,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",180,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Historico: /api/memory",180,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
+      // Refresh last so actual runtime statistics are not overwritten by placeholder labels.
+      if(refresh_data) RefreshSecondary();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",180,284,110,30);
