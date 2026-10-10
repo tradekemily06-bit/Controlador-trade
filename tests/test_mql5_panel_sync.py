@@ -235,3 +235,15 @@ def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     assert '"CONTROLADOR TRADING"' in panel
     assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
     assert '"Integrado"' not in panel
+
+
+def test_mql5_panel_preserves_dynamic_signal_when_closed():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'string current_signal="AGUARDAR";' in panel
+    assert "string signal=current_signal;" in toggle
+    assert 'signal="COMPRAR"' in toggle
+    assert 'signal="VENDER"' in toggle
+    assert 'signal="AGUARDAR"' in toggle
+    assert "current_signal=(signal==" in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
