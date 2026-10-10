@@ -149,12 +149,28 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RefreshWatermarkControl(){
-   if(panel_visible){
-      SetButton(Obj("WM"),watermark_enabled?"MARCA ON":"MARCA OFF",panel_x+panel_width-118,panel_y+42,106,25);
-   }else{
-      int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-      SetButton(Obj("WM"),watermark_enabled?"WM ON":"WM OFF",58,MathMax(12,ch-48),72,28);
-   }
+   string name=Obj("WM");
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int x=panel_visible?panel_x+panel_width-118:58;
+   int y=panel_visible?panel_y+42:MathMax(12,ch-48);
+   int w=panel_visible?106:72;
+   int h=panel_visible?25:28;
+   // This control uses screen coordinates directly, so it remains reachable when the panel is hidden.
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMax(4,MathMin(x,MathMax(4,cw-w-4))));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,MathMax(4,MathMin(y,MathMax(4,ch-h-4))));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,w);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,watermark_enabled?C'100,235,255':C'160,170,185');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'16,27,40');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,115,145');
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?(watermark_enabled?"MARCA ON":"MARCA OFF"):(watermark_enabled?"WM ON":"WM OFF"));
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    ApplyWatermark();
 }
 void ToggleWatermark(){
@@ -294,7 +310,6 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execucao: —",180,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",180,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",180,520,8,C'255,155,155');
-   SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
 }
 void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
