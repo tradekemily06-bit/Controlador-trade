@@ -103,6 +103,8 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
 
 Load-RestartHistory
 
+$script:LastMt5HealthDiagnostic = 'health_check_not_run'
+
 function Test-Mt5TerminalHealth {
     try {
         $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
@@ -112,7 +114,7 @@ function Test-Mt5TerminalHealth {
         }
         Set-Location $ProjectRoot
         $healthCheckCode = @'
-import MetaTrader5 as mt5, os, sys
+import json, MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
 ok = mt5.initialize(path=path)
 terminal = mt5.terminal_info() if ok else None
@@ -120,15 +122,46 @@ account = mt5.account_info() if ok else None
 demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
 expected = os.path.normcase(os.path.realpath(path))
 actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
-healthy = bool(ok and terminal is not None and getattr(terminal, "connected", False) and actual == expected and account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode)
+connected = bool(terminal is not None and getattr(terminal, "connected", False))
+path_mismatch = bool(terminal is not None and actual != expected)
+demo_confirmed = bool(account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode)
+healthy = bool(ok and terminal is not None and connected and not path_mismatch and demo_confirmed)
+diagnostic = {
+    "initialize": bool(ok),
+    "last_error": repr(mt5.last_error()),
+    "terminal_connected": connected,
+    "configured_terminal_path_mismatch": path_mismatch,
+    "account_not_confirmed_demo": not demo_confirmed,
+    "expected_terminal_path": expected,
+    "actual_terminal_path": actual,
+    "account_info_present": account is not None,
+    "healthy": healthy,
+}
+print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True))
 mt5.shutdown()
 raise SystemExit(0 if healthy else 1)
 '@
         $encodedHealthCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($healthCheckCode))
         $oneLineHealthCode = "import base64;exec(compile(base64.b64decode('$encodedHealthCode'),'<mt5-health>','exec'))"
-        & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath
-        return ($LASTEXITCODE -eq 0)
+        $healthOutput = @(& $PythonExe -c $oneLineHealthCode $Mt5TerminalPath 2>&1)
+        $healthExitCode = $LASTEXITCODE
+        foreach ($line in $healthOutput) {
+            $text = [string]$line
+            if ($text -like 'MT5_HEALTH_DIAGNOSTIC=*') {
+                $script:LastMt5HealthDiagnostic = $text
+                Write-SupervisorLog $text
+            } elseif (-not [string]::IsNullOrWhiteSpace($text)) {
+                Write-SupervisorLog "Diagnóstico do health gate MT5: $text"
+            }
+        }
+        if ($healthExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+            $script:LastMt5HealthDiagnostic = "MT5_HEALTH_DIAGNOSTIC={\"healthy\":false,\"reason\":\"python_health_check_failed\",\"exit_code\":$healthExitCode}"
+            Write-SupervisorLog $script:LastMt5HealthDiagnostic
+        }
+        return ($healthExitCode -eq 0)
     } catch {
+        $script:LastMt5HealthDiagnostic = "MT5_HEALTH_DIAGNOSTIC={\"healthy\":false,\"reason\":\"powershell_exception\",\"detail\":\"$($_.Exception.Message -replace '[\r\n]', ' ')\"}"
+        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
         return $false
     }
 }
