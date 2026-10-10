@@ -323,6 +323,37 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    }
    if(preserveToggle) RefreshPanelToggle();
 }
+
+string JsonObjectValue(string json,string key){
+   string needle="\\\""+key+"\\\"";
+   int p=StringFind(json,needle);
+   if(p<0) return "";
+   p+=StringLen(needle);
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n' || StringGetCharacter(json,p)=='\\r' || StringGetCharacter(json,p)=='\\t')) p++;
+   if(p>=StringLen(json) || StringGetCharacter(json,p)!=':') return "";
+   p++;
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n' || StringGetCharacter(json,p)=='\\r' || StringGetCharacter(json,p)=='\\t')) p++;
+   if(p>=StringLen(json) || StringGetCharacter(json,p)!='{') return "";
+   int start=p, depth=0;
+   bool in_string=false, escaped=false;
+   for(int i=p;i<StringLen(json);i++){
+      ushort c=StringGetCharacter(json,i);
+      if(in_string){
+         if(escaped) escaped=false;
+         else if(c=='\\\\') escaped=true;
+         else if(c=='\\\"') in_string=false;
+         continue;
+      }
+      if(c=='\\\"'){ in_string=true; continue; }
+      if(c=='{') depth++;
+      else if(c=='}'){
+         depth--;
+         if(depth==0) return StringSubstr(json,start,i-start+1);
+      }
+   }
+   return "";
+}
+
 string JsonValue(string json,string key){
    string needle="\"" + key + "\"";
    int p=StringFind(json,needle);
@@ -572,7 +603,21 @@ void RefreshSecondary(){
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
-      SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate),180,421,9,C'205,215,230');
+      if(active_nav=="N7"){
+         string wins=JsonValue(r,"wins");
+         string losses=JsonValue(r,"losses");
+         string daily=JsonObjectValue(r,"daily");
+         string weekly=JsonObjectValue(r,"weekly");
+         string monthly=JsonObjectValue(r,"monthly");
+         string d_total=JsonValue(daily,"total"), d_rate=JsonValue(daily,"win_rate");
+         string w_total=JsonValue(weekly,"total"), w_rate=JsonValue(weekly,"win_rate");
+         string m_total=JsonValue(monthly,"total"), m_rate=JsonValue(monthly,"win_rate");
+         SetLabel(Obj("INFO1"),"Resultados fechados: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS",180,361,9,C'205,215,230');
+         SetLabel(Obj("INFO4"),"Acerto: "+(rate==""?"—":rate)+"% • total decisoes: "+(total==""?"—":total),180,421,9,C'205,215,230');
+         SetLabel(Obj("INFO5"),"Dia "+(d_rate==""?"—":d_rate)+"% ("+(d_total==""?"—":d_total)+") | Sem "+(w_rate==""?"—":w_rate)+"% ("+(w_total==""?"—":w_total)+") | Mes "+(m_rate==""?"—":m_rate)+"% ("+(m_total==""?"—":m_total)+")",180,441,8,C'205,215,230');
+      }else{
+         SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%",180,421,9,C'205,215,230');
+      }
    }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",180,421,9,C'255,118,118');
 
    if(Http("GET","/api/news?limit=1","",r,code)){
