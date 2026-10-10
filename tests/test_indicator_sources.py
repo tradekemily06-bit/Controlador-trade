@@ -69,4 +69,6 @@ def test_indicator_visibility_toggle_is_saved_in_shared_ecosystem_preferences():
     assert 'body:JSON.stringify({indicators_enabled:$(\'indicatorsDefault\').checked})' in html
     assert "Indicadores ocultos nas preferências do ecossistema." in html
     assert "@media(max-width:719px)" in html
+    assert ".grid{grid-template-columns:minmax(0,1fr)" in html
+    assert ".chart-svg{height:65vw;min-height:220px}" in html
     assert "localStorage" not in html
