@@ -95,6 +95,46 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
 
 
 
+
+def test_runtime_cycle_keeps_strong_sell_quality_visible_when_final_decision_waits(monkeypatch):
+    import app
+
+    execution = SimpleNamespace(accepted=False, status=SimpleNamespace(value="BLOCKED"), message="context blocked", external_id=None)
+    orchestration = SimpleNamespace(
+        decision=SimpleNamespace(decision="AGUARDAR", reason="Contexto não aprovado."),
+        analysis=SimpleNamespace(signal=SimpleNamespace(value="VENDA"), score=20, reason="Score bruto favorece venda."),
+        quality=SimpleNamespace(score=80, level=SimpleNamespace(value="FORTE"), actionable=True),
+        snapshot=SimpleNamespace(market_context=None),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=(1, 2, 3)),
+        senior_context=SimpleNamespace(cycle_id="senior-cycle-sell-001"),
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=execution,
+        plan=SimpleNamespace(request_id="req-sell-001"),
+        automation_lifecycle=None,
+    )
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,)))
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "limit": 3, "amount": 0.01, "duration_seconds": 60},
+    )
+
+    assert status.startswith("200")
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["decision"] == "AGUARDAR"
+    assert data["runtime"]["score"] == 80
+    assert data["runtime"]["quality"]["score"] == 80
+    assert data["runtime"]["quality"]["level"] == "FORTE"
+    assert data["runtime"]["quality"]["technical_actionable"] is True
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert data["runtime"]["analysis"]["signal"] == "VENDA"
+    assert data["runtime"]["analysis"]["score"] == 20
+    assert data["execution_allowed"] is False
+
+
 def test_runtime_close_validates_cycle_before_mt5_side_effect(monkeypatch):
     import app
 
