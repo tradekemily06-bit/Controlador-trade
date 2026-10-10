@@ -639,3 +639,18 @@ def test_native_indicator_toggle_refreshes_runtime_analysis_without_rendering_st
     assert "indicators_enabled=desired;" in toggle
     assert "Analyze(false);" in toggle
     assert toggle.index("indicators_enabled=desired;") < toggle.index("Analyze(false);")
+
+def test_native_panel_does_not_show_runtime_online_from_http_200_alone():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    for contract in (
+        'JsonValue(r,"ok")',
+        'JsonValue(r,"execution_allowed")',
+        'JsonObjectValue(r,"operational_observability")',
+        'JsonObjectValue(r,"real_runtime")',
+        'operational_allowed!="false"',
+        'real_allowed!="false"',
+        'SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO',
+    ):
+        assert contract in health
+    assert health.index('if(health_ok!="true"') < health.index('SetLabel(Obj("RUNTIME"),"Runtime: ONLINE')
