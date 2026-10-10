@@ -128,7 +128,7 @@ def test_manual_outcome_controls_are_visually_study_only_and_color_coded():
     assert "Estudo por timeframe" in WEB
     assert "Últimas decisões de estudo" in WEB
     assert "Resultado do estudo (registro manual)" in WEB
-    assert "não altera os resultados financeiros DEMO" in WEB
+    assert "nem altera os resultados financeiros DEMO" in WEB
     assert 'button[data-outcome="WIN"]' in WEB
     assert 'button[data-outcome="LOSS"]' in WEB
 
