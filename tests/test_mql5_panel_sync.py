@@ -84,9 +84,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
-    # In collapsed mode the watermark switch stays top-right, clear of C and its signal.
-    assert "int x=panel_visible?panel_x+panel_width-118:MathMax(4,cw-80);" in panel
-    assert "int y=panel_visible?panel_y+42:12;" in panel
+    # Watermark toggle is inside C > Configurações; no extra chart button.
+    assert 'if(panel_visible && active_view=="CONFIG" && ObjectFind(0,Obj("CYCLE"))>=0)' in panel
+    assert 'watermark_enabled?"MARCA: ON":"MARCA: OFF"' in panel
+    assert 'else if(sparam==Obj("WM"))' not in panel
 
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
@@ -246,7 +247,8 @@ def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
     assert 'signal=="VENDA" || signal=="VENDER"' in toggle
     assert 'signal="AGUARDAR"' in toggle
-    assert "panel_visible?panel_x+panel_width-c_size-8:12" in toggle
+    assert "int toggle_x=12;" in toggle
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in toggle
     assert '"CONTROLADOR TRADING"' in panel
     assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
     assert '"Integrado"' not in panel
@@ -535,3 +537,25 @@ def test_mql5_navigation_rail_stays_left_of_panel_content():
     assert 'SetButton(Obj("N9"),"CONFIGURACOES",20,370,145,29)' in navigation
     assert 'SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27' in panel
     assert 'SetLabel(Obj("SIGNAL"),current_signal,180,154' in panel
+
+
+def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel", 1)[0]
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    visibility = panel.split("void LoadPanelVisibility()", 1)[1].split("void RefreshNavigation()", 1)[0]
+    assert "panel_visible=false;" in visibility
+    assert "GlobalVariableSet(PanelVisibilityKey(),0.0);" in visibility
+    assert "MathRound(cw*0.42)" in layout
+    assert "MathRound(ch*0.44)" in layout
+    assert "int toggle_x=12;" in toggle
+    assert "int toggle_y=MathMax(12,ch-c_size-12);" in toggle
+    assert 'string quality=JsonObjectValue(r,"quality");' in analyze
+    assert 'current_quality_score=quality_score;' in analyze
+    assert 'current_quality_level=quality_level;' in analyze
+    assert 'if(current_quality_score!="") signal+=" "+current_quality_score+"%";' in toggle
+    assert 'if(current_quality_level!="") signal+=" "+current_quality_level;' in toggle
+    assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
+    assert 'else if(sparam==Obj("WM"))' not in panel
+    assert 'if(active_view=="CONFIG") ToggleWatermark();' in panel
