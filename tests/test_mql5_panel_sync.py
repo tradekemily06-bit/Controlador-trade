@@ -65,8 +65,8 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16)" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10)" in panel
     assert "InpPanelWidth = 280" in panel
     assert "InpPanelHeight = 380" in panel
     assert "panel_x=12;" in panel
