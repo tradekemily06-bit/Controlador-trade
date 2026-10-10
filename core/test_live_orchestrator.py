@@ -129,3 +129,42 @@ def test_orchestrator_builds_senior_context_from_same_fetched_candles():
     assert len(captured) == 1
     assert captured[0][0] == result.market_data.candles
     assert captured[0][1] == state()
+
+
+
+def test_orchestrator_exposes_indicator_evidence_from_same_candle_snapshot():
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    candles = []
+    for index in range(40):
+        close = 100.0 + index * 0.25
+        previous = 100.0 + max(0, index - 1) * 0.25
+        candles.append(Candle(
+            base.replace(minute=index),
+            previous,
+            max(previous, close) + 0.5,
+            min(previous, close) - 0.5,
+            close,
+            100.0,
+        ))
+    result = make_orchestrator(candles).evaluate(
+        MarketDataRequest("TEST", "1m", 40),
+        operational_state=state(),
+        market_context=favorable(),
+        confirmed=True,
+    )
+
+    assert result.indicator_evidence is not None
+    assert result.indicator_evidence.candles_used == 40
+    assert result.indicator_evidence.candle_timestamp == result.market_data.candles[-1].timestamp
+    assert result.indicator_evidence.source == "test:CONTROLADOR_CALCULADO"
+    # Evidence remains descriptive and cannot silently change the decision pipeline.
+    assert result.snapshot.decision == result.decision.decision
+
+
+def test_orchestrator_reports_indicators_unavailable_when_history_is_short():
+    result = make_orchestrator(make_candles()).evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+    )
+    assert result.indicator_evidence is None
