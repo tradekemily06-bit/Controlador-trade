@@ -307,6 +307,13 @@ def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations(
     assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
 
 
+def test_mql5_navigation_dispatch_has_no_duplicated_else_tokens():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "else else if" not in panel
+    for nav in range(1, 10):
+        assert f'sparam==Obj("N{nav}")' in panel
+
+
 def test_mql5_vertical_navigation_highlights_the_selected_module():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert 'string active_nav="N1";' in panel
