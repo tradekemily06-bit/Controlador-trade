@@ -187,6 +187,9 @@ void ToggleIndicators(){
    indicators_enabled=desired;
    if(ObjectFind(0,Obj("CLOSE"))>=0)
       ObjectSetString(0,Obj("CLOSE"),OBJPROP_TEXT,indicators_enabled?"INDIC: ON":"INDIC: OFF");
+   // Re-read the same runtime analysis contract so the panel immediately reflects
+   // the new shared preference and never keeps stale indicator evidence on screen.
+   Analyze(false);
    if(panel_visible)
       SetLabel(Obj("INFO1"),indicators_enabled?"Indicadores ativados e sincronizados.":"Indicadores desativados e sincronizados.",180,361,9,C'88,214,141');
    ChartRedraw();
