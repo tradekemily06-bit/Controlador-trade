@@ -177,7 +177,8 @@ void ToggleWatermark(){
    watermark_enabled=!watermark_enabled;
    GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
    RefreshWatermarkControl();
-   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",180,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   if(panel_visible)
+      SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",180,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
    ChartRedraw();
 }
 void LoadWatermark(){
