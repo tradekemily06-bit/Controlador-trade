@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 280;
-input int    InpPanelHeight = 380;
+input int    InpPanelWidth = 440;
+input int    InpPanelHeight = 440;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -36,13 +36,13 @@ void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Painel flutuante compacto, ancorado embaixo à esquerda.
-   panel_width=MathMin(InpPanelWidth,MathMax(240,(int)MathRound(cw*0.30)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(300,(int)MathRound(ch*0.44)));
-   panel_height=MathMin(panel_height,MathMax(280,ch-90));
+   panel_width=MathMin(InpPanelWidth,MathMax(360,(int)MathRound(cw*0.42)));
+   panel_width=MathMin(panel_width,MathMax(300,cw-24));
+   panel_height=MathMin(InpPanelHeight,MathMax(340,(int)MathRound(ch*0.48)));
+   panel_height=MathMin(panel_height,MathMax(320,ch-90));
    panel_x=12;
    panel_y=MathMax(12,ch-panel_height-52);
-   panel_sx=(double)panel_width/430.0;
+   panel_sx=(double)panel_width/600.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
@@ -226,13 +226,16 @@ void Panel(){
    SetLabel(Obj("BRAND_C"),"C",18,24,20,C'63,224,255');
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27,12,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • DEMO / SIMULACAO",52,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"⌂",18,67,54,25);
-   SetButton(Obj("V2"),"A",74,67,54,25);
-   SetButton(Obj("V3"),"M",130,67,54,25);
-   SetButton(Obj("V4"),"L",186,67,48,25);
-   SetButton(Obj("V5"),"E",236,67,54,25);
-   SetButton(Obj("V6"),"🔔",292,67,54,25);
-   SetButton(Obj("V7"),"⚙",348,67,54,25);
+   // Navegacao vertical no trilho direito; conteudo funcional preservado.
+   SetButton(Obj("N1"),"COCKPIT",430,82,155,29);
+   SetButton(Obj("N2"),"ANALISE",430,118,155,29);
+   SetButton(Obj("N3"),"ESTUDO",430,154,155,29);
+   SetButton(Obj("N4"),"LABORATORIO",430,190,155,29);
+   SetButton(Obj("N5"),"REPLAY",430,226,155,29);
+   SetButton(Obj("N6"),"MEMORIA",430,262,155,29);
+   SetButton(Obj("N7"),"WIN/LOSS",430,298,155,29);
+   SetButton(Obj("N8"),"ALAVANCAGEM",430,334,155,29);
+   SetButton(Obj("N9"),"CONFIGURACOES",430,370,155,29);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -424,6 +427,25 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
+   }else if(active_view=="REPLAY"){
+      SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",20,284,172,30);
+      SetLabel(Obj("INFO1"),"Replay nao tem tela nativa ligada neste EA.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao executa nem simula replay.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"A ligacao precisa ser validada no runtime.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nenhum resultado de replay foi inventado.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+   }else if(active_view=="ALAVANCAGEM"){
+      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",20,284,172,30);
@@ -663,18 +685,22 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
+   if(sparam==Obj("N1")) { active_view="COCKPIT"; RenderView(); }
+   else if(sparam==Obj("N2")) { active_view="ANALISE"; RenderView(); }
+   else if(sparam==Obj("N3")) { active_view="ENSINO"; RenderView(); }
+   else if(sparam==Obj("N4")) { active_view="LAB"; RenderView(); }
+   else if(sparam==Obj("N5")) { active_view="REPLAY"; RenderView(); }
+   else if(sparam==Obj("N6")) { active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N7")) { active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N8")) { active_view="ALAVANCAGEM"; RenderView(); }
+   else if(sparam==Obj("N9")) { active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
+      else if(active_view=="REPLAY") RefreshHealth();
+      else if(active_view=="ALAVANCAGEM") { /* Informational only; no native integration. */ }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
