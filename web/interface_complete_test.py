@@ -28,7 +28,7 @@ def test_interface_contains_calculated_evidence_and_runtime_safety():
         "MACD",
         "ATR 14",
         "GAB, DDT, pressão e taxa dívida permanecem conceitos contextuais",
-        "REAL BLOQUEADO",
+        "REAL: BLOQUEADO",
         "MT5 DEMO: VERIFICANDO",
         "FAIL-CLOSED",
         "Kill switch",
