@@ -605,9 +605,11 @@ void RefreshSecondary(){
       if(active_nav=="N7"){
          string wins=JsonValue(r,"wins");
          string losses=JsonValue(r,"losses");
-         string daily=JsonObjectValue(r,"daily");
-         string weekly=JsonObjectValue(r,"weekly");
-         string monthly=JsonObjectValue(r,"monthly");
+         // API contract: period summaries are nested under "periods".
+         string periods=JsonObjectValue(r,"periods");
+         string daily=JsonObjectValue(periods,"daily");
+         string weekly=JsonObjectValue(periods,"weekly");
+         string monthly=JsonObjectValue(periods,"monthly");
          string d_total=JsonValue(daily,"total"), d_rate=JsonValue(daily,"win_rate");
          string w_total=JsonValue(weekly,"total"), w_rate=JsonValue(weekly,"win_rate");
          string m_total=JsonValue(monthly,"total"), m_rate=JsonValue(monthly,"win_rate");
