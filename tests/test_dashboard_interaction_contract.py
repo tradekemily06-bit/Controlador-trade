@@ -96,3 +96,22 @@ def test_compact_signal_does_not_promote_weak_or_unconfirmed_analysis():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
     assert "if(actionable&&qs&&ql&&ql!=='NENHUMA')" in render
+
+
+def test_statistics_visually_separate_manual_study_from_confirmed_demo_financial_results():
+    assert "ESTUDO — registros manuais (não representam lucro financeiro)" in WEB
+    assert "DEMO — resultados financeiros confirmados pelo histórico MT5" in WEB
+    for field in ("demoTotal", "demoWins", "demoLosses", "demoDraws", "demoWinrate", "demoNet"):
+        assert f'id="{field}"' in WEB
+    assert "st.demo||{}" in WEB
+    assert "demo.periods?.daily" in WEB
+    assert "demo.periods?.weekly" in WEB
+    assert "demo.periods?.monthly" in WEB
+    assert "MT5_DEMO_HISTORY" in WEB
+
+
+def test_statistics_use_distinct_win_loss_colors_and_signed_net_result():
+    assert ".stat-win{color:#58d68d}" in WEB
+    assert ".stat-loss{color:#ff7676}" in WEB
+    assert ".stat-neutral{color:#ffd166}" in WEB
+    assert "n>0?'stat-win':Number(value)<0?'stat-loss':'stat-neutral'" in WEB
