@@ -482,8 +482,10 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshPreferences();
    }
-   if(active_view!="CONFIG"){
+   if(active_view!="CONFIG" && active_view!="MEMORIA"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   }
+   if(active_view!="CONFIG"){
       if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    }
    RefreshWatermarkControl();
@@ -727,7 +729,10 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
-   else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("SAVE")) {
+      if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="CONFIG") SaveConfig();
+   }
    else if(sparam==Obj("CLOSE")) CloseCycle();
    else if(sparam==Obj("WM")) ToggleWatermark();
 }
