@@ -68,18 +68,19 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
 
     required_buttons = (
         "PANEL_TOGGLE",
-        "V1",
-        "V2",
-        "V3",
-        "V4",
-        "V5",
-        "V6",
-        "V7",
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N6",
+        "N7",
+        "N8",
+        "N9",
         "ANALYZE",
         "CYCLE",
         "SAVE",
         "CLOSE",
-        "WM",
     )
     assert "if(id!=CHARTEVENT_OBJECT_CLICK) return;" in handler
     for button in required_buttons:
