@@ -78,6 +78,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
+    # In collapsed mode the watermark switch stays top-right, clear of C and its signal.
+    assert "int x=panel_visible?panel_x+panel_width-118:MathMax(4,cw-80);" in panel
+    assert "int y=panel_visible?panel_y+42:12;" in panel
 
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
