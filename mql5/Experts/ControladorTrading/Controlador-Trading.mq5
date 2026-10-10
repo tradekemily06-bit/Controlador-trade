@@ -433,7 +433,7 @@ void RefreshLearning(){
 void RenderView(bool refresh_data=true){
    RefreshNavigation();
    if(active_view=="COCKPIT"){
-      SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",180,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Motor de decisao: runtime",180,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",180,381,9,C'255,209,102');
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",180,401,9,C'205,215,230');
@@ -445,7 +445,7 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshSecondary();
    }else if(active_view=="ANALISE"){
-      SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
@@ -456,7 +456,7 @@ void RenderView(bool refresh_data=true){
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",180,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",180,320,110,28);
@@ -468,7 +468,7 @@ void RenderView(bool refresh_data=true){
       SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
-      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
@@ -480,7 +480,7 @@ void RenderView(bool refresh_data=true){
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",180,441,9,C'205,215,230');
    }else if(active_view=="REPLAY"){
-      SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",180,284,110,30);
       SetLabel(Obj("INFO1"),"Replay nao tem tela nativa ligada neste EA.",180,361,9,C'255,209,102');
       SetLabel(Obj("INFO2"),"Esta tela nao executa nem simula replay.",180,381,9,C'205,215,230');
@@ -492,7 +492,7 @@ void RenderView(bool refresh_data=true){
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }else if(active_view=="ALAVANCAGEM"){
-      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",180,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",180,361,9,C'255,209,102');
       SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",180,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Execucao autorizada: false.",180,401,9,C'205,215,230');
@@ -503,21 +503,21 @@ void RenderView(bool refresh_data=true){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
    }else if(active_view=="ENSINO"){
-      SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshLearning();
    }else if(active_view=="NOTIF"){
-      SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshNotifications();
    }else if(active_view=="CONFIG"){
-      SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",180,284,110,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
@@ -747,6 +747,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    if(id==CHARTEVENT_CHART_CHANGE){
       if(panel_visible){ Panel(); RenderView(false); }
       RefreshPanelToggle();
+      RefreshWatermarkControl();
       ApplyWatermark();
       ChartRedraw();
       return;
