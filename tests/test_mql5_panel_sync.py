@@ -413,3 +413,12 @@ def test_mql5_chart_resize_rerenders_layout_without_requerying_runtime():
     assert "if(refresh_data) RefreshNotifications();" in render
     assert "if(refresh_data) RefreshPreferences();" in render
     assert "if(panel_visible){ Panel(); RenderView(false); }" in event
+
+
+def test_mql5_market_asset_count_uses_api_count_contract():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assets = panel.split("void RefreshMarketAssets()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    assert 'string total=JsonValue(r,"count");' in assets
+    assert 'string source=JsonValue(r,"source");' in assets
+    assert 'StringFind(r,"\\\"symbol\\\":",p)' not in assets
+    assert 'if(total=="") total="—";' in assets
