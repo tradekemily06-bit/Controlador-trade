@@ -5,20 +5,23 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 280;
-input int    InpPanelHeight = 380;
+input int    InpPanelWidth = 440;
+input int    InpPanelHeight = 440;
 
 string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
+string active_nav="N1";
+string current_signal="AGUARDAR";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
 bool panel_visible=true;
-int panel_x=0;
-int panel_width=320;
-int panel_height=420;
+int panel_x=12;
+int panel_y=18;
+int panel_width=300;
+int panel_height=440;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
@@ -27,21 +30,25 @@ string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ return panel_y+(int)MathRound(y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(220,(int)MathRound(cw*0.22)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
-   panel_sx=(double)panel_width/430.0;
+   // Painel flutuante compacto, ancorado embaixo à esquerda.
+   panel_width=MathMin(InpPanelWidth,MathMax(360,(int)MathRound(cw*0.42)));
+   panel_width=MathMin(panel_width,MathMax(300,cw-24));
+   panel_height=MathMin(InpPanelHeight,MathMax(340,(int)MathRound(ch*0.48)));
+   panel_height=MathMin(panel_height,MathMax(320,ch-90));
+   panel_x=12;
+   panel_y=MathMax(12,ch-panel_height-52);
+   panel_sx=(double)panel_width/600.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
@@ -110,8 +117,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
    ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,75,110');
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16);
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'35,48,68');
    ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
    ObjectSetInteger(0,mark,OBJPROP_BACK,true);
@@ -123,8 +130,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'38,46,60');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
@@ -146,26 +153,48 @@ void ToggleWatermark(){
 void LoadWatermark(){
    if(GlobalVariableCheck(WatermarkKey()))
       watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
+   RefreshNavigation();
    RefreshWatermarkControl();
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int toggle_x=panel_visible?panel_x+panel_width-42:12;
+   int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-48);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,toggle_y);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,32);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,32);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,17);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'63,224,255');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,24,37');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,210,242');
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
+   ObjectSetString(0,name,OBJPROP_TEXT,"C");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   string signal_name=Obj("PANEL_SIGNAL");
+   if(panel_visible){
+      if(ObjectFind(0,signal_name)>=0) ObjectDelete(0,signal_name);
+   }else{
+      if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
+      string signal=current_signal;
+      color signal_color=C'255,209,102';
+      if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
+      else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
+      else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
+      ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,52);
+      ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,MathMax(12,ch-38));
+      ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
+      ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
+      ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
+      ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
+      ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
+   }
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -180,6 +209,16 @@ void LoadPanelVisibility(){
       panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
    RefreshPanelToggle();
 }
+void RefreshNavigation(){
+   for(int i=1;i<=9;i++){
+      string name=Obj("N"+IntegerToString(i));
+      if(ObjectFind(0,name)<0) continue;
+      bool selected=(active_nav=="N"+IntegerToString(i));
+      ObjectSetInteger(0,name,OBJPROP_BGCOLOR,selected?C'14,73,96':C'24,32,44');
+      ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,selected?C'38,210,242':C'55,72,92');
+      ObjectSetInteger(0,name,OBJPROP_COLOR,selected?C'100,235,255':C'215,225,238');
+   }
+}
 void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
@@ -187,7 +226,7 @@ void Panel(){
    RefreshPanelLayout();
    RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
+   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
@@ -196,15 +235,20 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
-   SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"⌂",18,67,54,25);
-   SetButton(Obj("V2"),"A",74,67,54,25);
-   SetButton(Obj("V3"),"M",130,67,54,25);
-   SetButton(Obj("V4"),"L",186,67,48,25);
-   SetButton(Obj("V5"),"E",236,67,54,25);
-   SetButton(Obj("V6"),"🔔",292,67,54,25);
-   SetButton(Obj("V7"),"⚙",348,67,54,25);
+   SetLabel(Obj("BRAND_C"),"C",18,24,20,C'63,224,255');
+   SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27,12,clrWhite);
+   SetLabel(Obj("SUB"),"ECOSSISTEMA • DEMO / SIMULACAO",52,47,9,C'150,165,185');
+   // Navegacao vertical no trilho direito; conteudo funcional preservado.
+   SetButton(Obj("N1"),"COCKPIT",430,82,155,29);
+   SetButton(Obj("N2"),"ANALISE",430,118,155,29);
+   SetButton(Obj("N3"),"ESTUDO",430,154,155,29);
+   SetButton(Obj("N4"),"LABORATORIO",430,190,155,29);
+   SetButton(Obj("N5"),"REPLAY",430,226,155,29);
+   SetButton(Obj("N6"),"MEMORIA",430,262,155,29);
+   SetButton(Obj("N7"),"WIN/LOSS",430,298,155,29);
+   SetButton(Obj("N8"),"ALAVANCAGEM",430,334,155,29);
+   SetButton(Obj("N9"),"CONFIGURACOES",430,370,155,29);
+   RefreshNavigation();
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -247,23 +291,29 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    if(preserveToggle) RefreshPanelToggle();
 }
 string JsonValue(string json,string key){
-   string needle="\"" + key + "\":";
+   string needle="\"" + key + "\"";
    int p=StringFind(json,needle);
    if(p<0) return "";
    p+=StringLen(needle);
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r')) p++;
-   if(p<StringLen(json) && StringGetCharacter(json,p)=='"'){
+   // Accept standard JSON whitespace around the colon and value.
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
+   if(p>=StringLen(json) || StringGetCharacter(json,p)!=':') return "";
+   p++;
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
+   if(p>=StringLen(json)) return "";
+   if(StringGetCharacter(json,p)=='"'){
       int q=p+1;
       while(q<StringLen(json)){
          if(StringGetCharacter(json,q)=='"' && (q==p+1 || StringGetCharacter(json,q-1)!='\\')) break;
          q++;
       }
+      if(q>=StringLen(json)) return "";
       return StringSubstr(json,p+1,q-p-1);
    }
    int q=p;
    while(q<StringLen(json)){
       ushort c=StringGetCharacter(json,q);
-      if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r') break;
+      if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r' || c==' ' || c=='\t') break;
       q++;
    }
    return StringSubstr(json,p,q-p);
@@ -338,16 +388,17 @@ void RefreshLearning(){
    if(Http("GET","/api/learning","",r,code)){
       string progress=JsonValue(r,"progress");
       string active=JsonValue(r,"active_module");
-      SetLabel(Obj("INFO1"),"Ensino: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Estudo: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Estudo: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
    }
 }
-void RenderView(){
+void RenderView(bool refresh_data=true){
+   RefreshNavigation();
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
@@ -359,25 +410,25 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshSecondary();
+      if(refresh_data) RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      Analyze();
+      if(refresh_data) Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshSecondary();
+      if(refresh_data) RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
@@ -389,37 +440,61 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshHealth();
-      RefreshSecondary();
+      if(refresh_data){ RefreshHealth(); RefreshSecondary(); }
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",20,401,9,C'255,209,102');
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
+   }else if(active_view=="REPLAY"){
+      SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",20,284,172,30);
+      SetLabel(Obj("INFO1"),"Replay nao tem tela nativa ligada neste EA.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao executa nem simula replay.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"A ligacao precisa ser validada no runtime.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nenhum resultado de replay foi inventado.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      // Do not leave action buttons from the previous view on this informational screen.
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+   }else if(active_view=="ALAVANCAGEM"){
+      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
    }else if(active_view=="ENSINO"){
-      SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
+      SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshLearning();
+      if(refresh_data) RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshNotifications();
+      if(refresh_data) RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      RefreshPreferences();
+      if(refresh_data) RefreshPreferences();
+   }
+   if(active_view!="CONFIG" && active_view!="MEMORIA"){
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }
    if(active_view!="CONFIG"){
-      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    }
    RefreshWatermarkControl();
@@ -449,15 +524,11 @@ void RefreshMarketAssets(){
       SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
       return;
    }
-   int total=0; int p=0;
-   while(true){
-      int hit=StringFind(r,"\"symbol\":",p);
-      if(hit<0) break;
-      total++; p=hit+9;
-      if(total>999) break;
-   }
+   // The API returns a top-level count and an assets array; asset entries are not objects with a symbol field.
+   string total=JsonValue(r,"count");
    string source=JsonValue(r,"source");
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+IntegerToString(total)+" • "+(source==""?"MT5 DEMO":source),20,278,8,C'145,160,180');
+   if(total=="") total="—";
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),20,278,8,C'145,160,180');
 }
 void RefreshSecondary(){
    string r; int code=0;
@@ -479,9 +550,8 @@ void RefreshSecondary(){
    }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",20,441,9,C'255,118,118');
 
    if(Http("GET","/api/memory?limit=1","",r,code)){
-      string count=JsonValue(r,"total");
-      if(count=="") count=JsonValue(r,"count");
-      SetLabel(Obj("INFO3"),"Memoria: runtime consultado • registros "+(count==""?"disponiveis":count),20,401,9,C'205,215,230');
+      // The endpoint returns a limited records array; it does not promise a total count.
+      SetLabel(Obj("INFO3"),"Memoria: resposta recebida do runtime",20,401,9,C'205,215,230');
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
 }
 void SaveConfig(){
@@ -512,18 +582,29 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      // A failed analysis invalidates the last analysis health state as well as its signal.
+      runtime_ok=false;
+      // Never leave a stale BUY/SELL visible when the latest analysis failed.
+      current_signal="AGUARDAR";
+      RefreshPanelToggle();
+      if(render){
+         SetLabel(Obj("SIGNAL"),current_signal,20,154,22,C'255,209,102');
+         SetLabel(Obj("REASON"),"Analise indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      }
       return;
    }
    runtime_ok=true;
-   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   // Keep the compact C signal current even when the full panel is hidden.
+   RefreshPanelToggle();
+   if(!render) return;
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
+   SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
@@ -535,7 +616,9 @@ void RunCycle(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   // This native EA has no explicit closed-candle confirmation or filter checklist UI.
+   // Fail closed instead of asserting that required safeguards passed.
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":false,\"filters_ok\":false,\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
@@ -550,14 +633,16 @@ void RunCycle(){
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
+   SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
+   RefreshPanelToggle();
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • autorizado="+(allowed==""?"false":allowed),20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • execucao aceita="+(allowed==""?"false":allowed),20,361,9,allowed=="true"?C'88,214,141':C'255,209,102');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
@@ -567,8 +652,14 @@ void CloseCycle(){
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
    if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
-      last_cycle_id=""; last_external_id="";
+      string closed=JsonValue(r,"closed");
+      if(closed=="true"){
+         SetLabel(Obj("INFO1"),"Fechamento DEMO confirmado • reconciliacao solicitada.",20,361,9,C'88,214,141');
+         last_cycle_id=""; last_external_id="";
+      }else{
+         string message=JsonValue(r,"message");
+         SetLabel(Obj("INFO1"),"Fechamento nao confirmado: "+StringSubstr(message==""?"runtime nao aceitou a operacao":message,0,42),20,361,9,C'255,118,118');
+      }
    }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
 }
 int OnInit(){
@@ -622,26 +713,40 @@ void OnTimer(){
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
+   if(id==CHARTEVENT_CHART_CHANGE){
+      if(panel_visible){ Panel(); RenderView(false); }
+      RefreshPanelToggle();
+      ApplyWatermark();
+      ChartRedraw();
+      return;
+   }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
-   if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
+   if(sparam==Obj("N1")) { active_nav="N1"; active_view="COCKPIT"; RenderView(); }
+   else if(sparam==Obj("N2")) { active_nav="N2"; active_view="ANALISE"; RenderView(); }
+   else if(sparam==Obj("N3")) { active_nav="N3"; active_view="ENSINO"; RenderView(); }
+   else if(sparam==Obj("N4")) { active_nav="N4"; active_view="LAB"; RenderView(); }
+   else if(sparam==Obj("N5")) { active_nav="N5"; active_view="REPLAY"; RenderView(); }
+   else if(sparam==Obj("N6")) { active_nav="N6"; active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N7")) { active_nav="N7"; active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
+   else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
+      else if(active_view=="REPLAY") RefreshHealth();
+      else if(active_view=="ALAVANCAGEM") { /* Informational only; no native integration. */ }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
-   else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("SAVE")) {
+      if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="CONFIG") SaveConfig();
+   }
    else if(sparam==Obj("CLOSE")) CloseCycle();
    else if(sparam==Obj("WM")) ToggleWatermark();
 }
