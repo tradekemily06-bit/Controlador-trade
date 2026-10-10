@@ -31,6 +31,10 @@ class ExternalIndicatorReading:
     bias: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.source_kind, IndicatorSourceKind):
+            raise ValueError("source_kind must be a supported IndicatorSourceKind")
+        if not isinstance(self.values, Mapping):
+            raise ValueError("values must be a mapping of indicator names to numbers")
         for name in ("provider", "symbol", "timeframe"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
