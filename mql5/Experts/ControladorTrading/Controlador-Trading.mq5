@@ -571,10 +571,9 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),180,381,9,runtime_ok?C'205,215,230':C'255,118,118');
-      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Fonte runtime • Externa: "+StringSubstr(current_external_indicator_status,0,24),180,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48),180,441,9,C'205,215,230');
-      SetLabel(Obj("INFO6"),"Fonte externa: "+StringSubstr(current_external_indicator_status,0,42),180,459,8,C'145,160,180');
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",180,284,110,30);
