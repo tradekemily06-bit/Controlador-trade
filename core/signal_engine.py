@@ -45,6 +45,7 @@ class SignalEngine:
                 confirmed=confirmed,
                 symbol=symbol,
                 timeframe=timeframe,
+                filters_ok=False,
             )
 
         if confirmed is not True:
