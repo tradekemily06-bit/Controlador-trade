@@ -163,7 +163,7 @@ def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_stu
         reconciliation_state=ReconciliationState.MATCHED,
         outcome="WIN",
         financial_result=2.6,
-        observed_at=datetime(2026, 10, 10, 15, 0, tzinfo=timezone.utc),
+        observed_at=datetime.now(timezone.utc),
     )
     service._persist_confirmed_demo_outcome(snapshot)
     service._persist_confirmed_demo_outcome(snapshot)
@@ -192,7 +192,7 @@ def test_demo_statistics_ignore_unverified_or_non_history_outcomes():
         "cycle_id": "ignored",
         "outcome": "WIN",
         "financial_result": 5.0,
-        "observed_at": datetime(2026, 10, 10, 15, 0, tzinfo=timezone.utc),
+        "observed_at": datetime.now(timezone.utc),
     }
     service._persist_confirmed_demo_outcome(SimpleNamespace(
         **base, source="MANUAL_STUDY", reconciliation_state=ReconciliationState.MATCHED
@@ -214,7 +214,7 @@ def test_demo_outcome_conflict_for_same_cycle_is_not_overwritten():
         cycle_id="demo-cycle-conflict",
         source="MT5_DEMO_HISTORY",
         reconciliation_state=ReconciliationState.MATCHED,
-        observed_at=datetime(2026, 10, 10, 15, 0, tzinfo=timezone.utc),
+        observed_at=datetime.now(timezone.utc),
     )
     service._persist_confirmed_demo_outcome(SimpleNamespace(
         **common, outcome="WIN", financial_result=2.0
