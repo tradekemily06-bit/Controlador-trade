@@ -611,7 +611,9 @@ void RunCycle(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   // This native EA has no explicit closed-candle confirmation or filter checklist UI.
+   // Fail closed instead of asserting that required safeguards passed.
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":false,\"filters_ok\":false,\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
