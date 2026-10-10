@@ -35,6 +35,7 @@ class OrchestrationResult:
     indicator_evidence: IndicatorEvidence | None = None
     external_indicator_reading: ExternalIndicatorReading | None = None
     external_indicator_status: str = "NOT_CONFIGURED"
+    indicators_enabled: bool = True
 
     @property
     def executable(self) -> bool:
@@ -76,6 +77,7 @@ class TradingOrchestrator:
         senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
         filters_ok: bool = True,
+        indicators_enabled: bool = True,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
@@ -89,12 +91,12 @@ class TradingOrchestrator:
                 market_data.candles,
                 source=f"{market_data.source}:CONTROLADOR_CALCULADO",
             )
-            if len(market_data.candles) >= 35
+            if indicators_enabled and len(market_data.candles) >= 35
             else None
         )
         external_indicator_reading = None
-        external_indicator_status = "NOT_CONFIGURED"
-        if self.indicator_provider is not None:
+        external_indicator_status = "NOT_CONFIGURED" if indicators_enabled else "DISABLED_BY_PREFERENCE"
+        if indicators_enabled and self.indicator_provider is not None:
             try:
                 candidate = self.indicator_provider.read(
                     symbol=request.symbol, timeframe=request.timeframe, now=timestamp
@@ -153,4 +155,5 @@ class TradingOrchestrator:
             indicator_evidence=indicator_evidence,
             external_indicator_reading=external_indicator_reading,
             external_indicator_status=external_indicator_status,
+            indicators_enabled=bool(indicators_enabled),
         )
