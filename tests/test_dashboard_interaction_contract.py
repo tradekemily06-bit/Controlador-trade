@@ -308,3 +308,12 @@ def test_startup_runtime_failure_marks_memory_and_news_unavailable():
     assert "Memória indisponível: runtime sem resposta." in WEB
     assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
     assert "Resultados indisponíveis até a API responder." in WEB
+
+def test_dashboard_does_not_let_manual_checkboxes_claim_market_evidence():
+    analysis_form = WEB[WEB.index('<div class="module-title">Analisar cenário</div>'):WEB.index('<div class="module-title">Resultado</div>')]
+    assert "Candle fechado/confirmado" not in analysis_form
+    assert "Filtros aprovados" not in analysis_form
+    assert "A interface não marca essas evidências manualmente." in analysis_form
+    assert "confirmedInput" not in WEB
+    assert "filtersInput" not in WEB
+
