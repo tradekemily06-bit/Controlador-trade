@@ -156,12 +156,12 @@ raise SystemExit(0 if healthy else 1)
             }
         }
         if ($healthExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
-            $script:LastMt5HealthDiagnostic = "MT5_HEALTH_DIAGNOSTIC={\"healthy\":false,\"reason\":\"python_health_check_failed\",\"exit_code\":$healthExitCode}"
+            $script:LastMt5HealthDiagnostic = 'MT5_HEALTH_DIAGNOSTIC=' + (@{ healthy = $false; reason = 'python_health_check_failed'; exit_code = $healthExitCode } | ConvertTo-Json -Compress)
             Write-SupervisorLog $script:LastMt5HealthDiagnostic
         }
         return ($healthExitCode -eq 0)
     } catch {
-        $script:LastMt5HealthDiagnostic = "MT5_HEALTH_DIAGNOSTIC={\"healthy\":false,\"reason\":\"powershell_exception\",\"detail\":\"$($_.Exception.Message -replace '[\r\n]', ' ')\"}"
+        $script:LastMt5HealthDiagnostic = 'MT5_HEALTH_DIAGNOSTIC=' + (@{ healthy = $false; reason = 'powershell_exception'; detail = ($_.Exception.Message -replace '[\r\n]', ' ') } | ConvertTo-Json -Compress)
         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
         return $false
     }
