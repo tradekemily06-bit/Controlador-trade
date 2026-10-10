@@ -304,6 +304,7 @@ def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations(
     assert "Integracao nativa nao confirmada." in panel
     assert "Execucao autorizada: false." in panel
     assert "REAL: BLOQUEADO" in panel
+    assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
 
 
 def test_mql5_vertical_navigation_highlights_the_selected_module():
