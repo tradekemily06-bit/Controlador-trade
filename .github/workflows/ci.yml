@@ -29,6 +29,17 @@ jobs:
       - name: Run full test suite
         run: python -m pytest -q
 
+      - name: Validate dashboard JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          html = Path('web/index.html').read_text(encoding='utf-8')
+          start = html.index('<script>') + len('<script>')
+          end = html.index('</script>', start)
+          Path('/tmp/controlador-dashboard.js').write_text(html[start:end], encoding='utf-8')
+          PY
+          node --check /tmp/controlador-dashboard.js
+
       - name: Dependency security audit
         run: |
           python -m pip install --upgrade pip-audit
