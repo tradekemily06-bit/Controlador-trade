@@ -540,7 +540,13 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      // Never leave a stale BUY/SELL visible when the latest analysis failed.
+      current_signal="AGUARDAR";
+      RefreshPanelToggle();
+      if(render){
+         SetLabel(Obj("SIGNAL"),current_signal,20,154,22,C'255,209,102');
+         SetLabel(Obj("REASON"),"Analise indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      }
       return;
    }
    runtime_ok=true;
