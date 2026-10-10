@@ -307,6 +307,17 @@ def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations(
     assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
 
 
+def test_mql5_navigation_selection_and_layout_refresh_after_chart_change():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "RefreshNavigation();" in render
+    assert "if(id==CHARTEVENT_CHART_CHANGE)" in event
+    assert "if(panel_visible){ Panel(); RenderView(); }" in event
+    assert "RefreshPanelToggle();" in event
+    assert "ApplyWatermark();" in event
+
+
 def test_mql5_navigation_dispatch_has_no_duplicated_else_tokens():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert "else else if" not in panel
