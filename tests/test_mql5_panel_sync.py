@@ -606,3 +606,19 @@ def test_mql5_demo_net_result_is_colored_by_real_value_and_missing_is_dash():
     assert "if(demo_net_value>0) demo_net_color=C'88,214,141';" in panel
     assert "else if(demo_net_value<0) demo_net_color=C'255,118,118';" in panel
     assert 'SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+demo_net_display,180,501,9,demo_net_color);' in panel
+
+
+def test_mql5_analysis_never_treats_runtime_decision_as_market_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'string signal=JsonValue(r,"signal");' in analyze
+    assert 'if(signal=="") signal="AGUARDAR";' in analyze
+    assert 'if(signal=="") signal=JsonValue(r,"decision");' not in analyze
+
+
+def test_mql5_hides_unavailable_quality_instead_of_showing_null_or_zero():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'if(current_quality_level=="NENHUMA" || current_quality_score=="null")' in analyze
+    assert 'if(score=="null") score="";' in analyze
+    assert 'color quality_color=current_quality_level=="FORTE"?C\\'88,214,141\\'' in analyze
