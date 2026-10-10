@@ -655,16 +655,37 @@ void RefreshHealth(){
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
       return;
    }
+   // HTTP 2xx alone is not proof of a healthy, fail-closed runtime.
+   // Apply the same safety contract as the Windows supervisor before showing ONLINE.
+   string health_ok=JsonValue(r,"ok");
+   string execution_allowed=JsonValue(r,"execution_allowed");
+   string real=JsonValue(r,"real");
+   string operational=JsonObjectValue(r,"operational_observability");
+   string operational_execution=JsonObjectValue(operational,"execution");
+   string operational_allowed=JsonValue(operational_execution,"allowed");
+   string operational_real=JsonValue(operational_execution,"real");
+   string real_runtime=JsonObjectValue(r,"real_runtime");
+   string real_allowed=JsonValue(real_runtime,"real_execution_allowed");
+   string real_enabled=JsonValue(real_runtime,"explicitly_enabled");
+   if(health_ok!="true" || execution_allowed!="false" || real!="DESABILITADO" ||
+      operational_allowed!="false" || operational_real!="DISABLED" ||
+      real_allowed!="false" || real_enabled!="false"){
+      runtime_ok=false;
+      SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO • seguranca/health",180,104,10,C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo/MT5: aguardando confirmacao segura",180,124,10,C'255,209,102');
+      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • health nao confirmou todas as barreiras",180,520,8,C'255,155,155');
+      SetLabel(Obj("INFO1"),"Runtime respondeu HTTP "+IntegerToString(code)+" mas nao passou na validacao de seguranca.",180,361,9,C'255,118,118');
+      return;
+   }
    runtime_ok=true;
    string mode=JsonValue(r,"mode");
-   string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
    SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),180,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),180,124,10,C'88,214,141');
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),180,361,9,C'205,215,230');
+   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+real+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"NAO INFORMADO":engine),180,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
