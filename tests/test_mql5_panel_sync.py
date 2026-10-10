@@ -474,3 +474,14 @@ def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rat
     assert 'Taxa WIN/LOSS registrada:' in secondary
     assert 'SetLabel(Obj("INFO3"),"Rentabilidade: — • P&L financeiro nao registrado"' in secondary
     assert "Never infer profitability from WIN/LOSS alone." in secondary
+
+
+def test_mql5_study_statistics_use_panel_semantic_colors_and_keep_pnl_separate():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert '"Estudo • WIN: "+(wins==""?"—":wins)' in secondary
+    assert '"Estudo • LOSS: "+(losses==""?"—":losses)' in secondary
+    assert 'C\'88,214,141\');' in secondary
+    assert 'C\'255,118,118\');' in secondary
+    assert 'C\'100,235,255\');' in secondary
+    assert 'Rentabilidade: — • P&L financeiro nao registrado' in secondary
