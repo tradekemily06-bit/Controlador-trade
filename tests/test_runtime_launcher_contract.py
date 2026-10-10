@@ -57,7 +57,7 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
-    assert "mt5.initialize(path=p)" in text
+    assert "mt5.initialize(path=p, timeout=15000)" in text
     assert "mt5-supervisor-status.json" in text
     assert "controlador-supervisor-status.json" in text
     assert "$status.state -eq 'HEALTHY'" in text
