@@ -325,14 +325,14 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
 }
 
 string JsonObjectValue(string json,string key){
-   string needle="\\\""+key+"\\\"";
+   string needle="\"" + key + "\"";
    int p=StringFind(json,needle);
    if(p<0) return "";
    p+=StringLen(needle);
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n' || StringGetCharacter(json,p)=='\\r' || StringGetCharacter(json,p)=='\\t')) p++;
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
    if(p>=StringLen(json) || StringGetCharacter(json,p)!=':') return "";
    p++;
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n' || StringGetCharacter(json,p)=='\\r' || StringGetCharacter(json,p)=='\\t')) p++;
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
    if(p>=StringLen(json) || StringGetCharacter(json,p)!='{') return "";
    int start=p, depth=0;
    bool in_string=false, escaped=false;
@@ -340,11 +340,11 @@ string JsonObjectValue(string json,string key){
       ushort c=StringGetCharacter(json,i);
       if(in_string){
          if(escaped) escaped=false;
-         else if(c=='\\\\') escaped=true;
-         else if(c=='\\\"') in_string=false;
+         else if(c=='\\') escaped=true;
+         else if(c=='"') in_string=false;
          continue;
       }
-      if(c=='\\\"'){ in_string=true; continue; }
+      if(c=='"'){ in_string=true; continue; }
       if(c=='{') depth++;
       else if(c=='}'){
          depth--;
@@ -353,7 +353,6 @@ string JsonObjectValue(string json,string key){
    }
    return "";
 }
-
 string JsonValue(string json,string key){
    string needle="\"" + key + "\"";
    int p=StringFind(json,needle);
