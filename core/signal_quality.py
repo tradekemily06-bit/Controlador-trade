@@ -57,6 +57,11 @@ class SignalQualityEvaluator:
             directional_score = 100.0 - float(score)
         else:
             directional_score = float(score) if float(score) >= 50.0 else 100.0 - float(score)
+            # A strong raw score with no emitted signal may have failed a
+            # required filter. Do not label it a strong opportunity; preserve
+            # FRACA only when the measured directional candidate is genuinely weak.
+            if directional_score >= self.MIN_ACTIONABLE_SCORE:
+                return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
         if directional_score < self.MIN_ACTIONABLE_SCORE:
             return SignalQuality(directional_score, SignalLevel.FRACA, False)
@@ -66,8 +71,7 @@ class SignalQualityEvaluator:
             if directional_score >= self.STRONG_SCORE
             else SignalLevel.MODERADA
         )
-        actionable = analysis.signal in (Signal.COMPRA, Signal.VENDA)
-        return SignalQuality(directional_score, level, actionable)
+        return SignalQuality(directional_score, level, True)
 
 
 def evaluate_signal_quality(analysis: AnalysisResult) -> SignalQuality:
