@@ -274,3 +274,13 @@ def test_real_and_environment_badges_follow_runtime_instead_of_static_claims():
     assert "realConnectionState').textContent=ready?'AGUARDA CONFIRMAÇÃO HUMANA':'DESABILITADO'" in WEB
     assert 'id="environmentMode">CONSULTANDO MODO' in WEB
     assert "$('environmentMode').textContent=mode==='REAL'?" in WEB
+
+
+def test_saved_mode_updates_the_visible_environment_badge_immediately():
+    assert "$('environmentMode').textContent=mode==='REAL'?'REAL selecionado • execução continua controlada':'DEMO / SIMULAÇÃO';await refreshReal();" in WEB
+
+
+def test_secondary_api_failure_does_not_leave_modules_claiming_empty_data():
+    assert "Memória indisponível: '+esc(e.message)" in WEB
+    assert "Resultados indisponíveis até a API responder." in WEB
+    assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
