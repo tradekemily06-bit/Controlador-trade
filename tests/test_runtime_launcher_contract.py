@@ -143,7 +143,7 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     adapter = _read("execution/icmarkets_mt5_market_data.py")
     preflight = _read("execution/mt5_demo_runtime_preflight.py")
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in adapter
-    assert "mt5.initialize(path=self._terminal_path)" in adapter
+    assert "mt5.initialize(path=self._terminal_path, timeout=15_000)" in adapter
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
     assert "mt5.initialize(path=configured_path, timeout=initialize_timeout_ms)" in preflight
 
@@ -190,3 +190,11 @@ def test_execution_adapter_pins_and_bounds_mt5_initialization():
     assert "mt5.initialize(path=configured_path, timeout=15_000)" in adapter
     assert "mt5.initialize(timeout=15_000)" in adapter
     assert "terminal MT5 conectado não corresponde ao caminho configurado" in adapter
+
+
+
+def test_market_data_adapter_bounds_initialization_and_requires_connected_terminal():
+    adapter = _read("execution/icmarkets_mt5_market_data.py")
+    assert "mt5.initialize(path=self._terminal_path, timeout=15_000)" in adapter
+    assert "mt5.initialize(timeout=15_000)" in adapter
+    assert "terminal MT5 não conectado após initialize" in adapter
