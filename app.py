@@ -377,6 +377,25 @@ def application(environ, start_response):
                     "reason": orchestration.decision.reason,
                 },
                 "snapshot": snapshot.as_dict(),
+                "external_indicators": {
+                    "status": getattr(orchestration, "external_indicator_status", "NOT_CONFIGURED"),
+                    "available": getattr(orchestration, "external_indicator_reading", None) is not None,
+                    "reading": (
+                        {
+                            "provider": orchestration.external_indicator_reading.provider,
+                            "source_kind": orchestration.external_indicator_reading.source_kind.value,
+                            "symbol": orchestration.external_indicator_reading.symbol,
+                            "timeframe": orchestration.external_indicator_reading.timeframe,
+                            "observed_at": orchestration.external_indicator_reading.observed_at.isoformat(),
+                            "candle_timestamp": orchestration.external_indicator_reading.candle_timestamp.isoformat(),
+                            "values": dict(orchestration.external_indicator_reading.values),
+                            "bias": orchestration.external_indicator_reading.bias,
+                            "authorizes_execution": False,
+                        }
+                        if getattr(orchestration, "external_indicator_reading", None) is not None
+                        else None
+                    ),
+                },
                 "indicators": (
                     {
                         "available": True,
