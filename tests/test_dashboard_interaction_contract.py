@@ -317,3 +317,12 @@ def test_dashboard_does_not_let_manual_checkboxes_claim_market_evidence():
     assert "confirmedInput" not in WEB
     assert "filtersInput" not in WEB
 
+def test_analysis_and_cycle_api_routes_do_not_trust_client_market_evidence():
+    analysis_route = APP[APP.index('if path == "/api/runtime/analysis"'):APP.index('if path == "/api/runtime/analysis"')+1500]
+    cycle_route = APP[APP.index('if path == "/api/runtime/cycle"'):APP.index('if path == "/api/runtime/cycle"')+1500]
+    assert "confirmed=data.get(" not in analysis_route
+    assert "filters_ok=data.get(" not in analysis_route
+    assert "confirmed=False" in cycle_route
+    assert "filters_ok=False" in cycle_route
+    assert 'data.get("filters_ok", True)' not in APP
+
