@@ -170,3 +170,8 @@ def test_analysis_panel_keeps_market_signal_separate_from_runtime_decision():
     assert "const analysisHtml='<b>'+esc(d.signal||'AGUARDAR')" in WEB
     assert "esc(d.decision||d.signal" not in WEB
     assert "d.score===null||d.score===undefined?'—':String(d.score)+'/100'" in WEB
+
+
+def test_learning_textareas_use_responsive_control_styles():
+    assert ".controls textarea{resize:vertical;line-height:1.45}" in WEB
+    assert ".controls input,.controls select,.controls textarea{min-width:0;max-width:100%}" in WEB
