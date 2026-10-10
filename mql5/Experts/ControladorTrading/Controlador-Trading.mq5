@@ -449,6 +449,10 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"A ligacao precisa ser validada no runtime.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Nenhum resultado de replay foi inventado.",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      // Do not leave action buttons from the previous view on this informational screen.
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }else if(active_view=="ALAVANCAGEM"){
       SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",20,361,9,C'255,209,102');
