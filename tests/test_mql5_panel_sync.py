@@ -684,3 +684,12 @@ def test_native_risk_leverage_view_reads_live_risk_limits_without_claiming_to_ch
     assert "Leitura somente; alavancagem da corretora nao e alterada" in risk_view
     assert "if(refresh_data) RefreshLeverageRisk();" in leverage
     assert "ATUALIZAR RISCO" in leverage
+
+
+def test_native_risk_view_does_not_present_zero_limits_as_configured():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk = panel.split("void RefreshLeverageRisk()", 1)[1].split("void RefreshLearning()", 1)[0]
+    assert 'StringToDouble(daily)<=0.0?"nao configurado":daily' in risk
+    assert 'StringToInteger(operations)<=0?"nao configurado":operations' in risk
+    assert 'StringToInteger(consecutive)<=0?"nao configurado":consecutive' in risk
+    assert "Zero means no active limit, not a safe configured limit." in risk
