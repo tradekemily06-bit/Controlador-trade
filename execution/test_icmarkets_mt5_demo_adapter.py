@@ -251,6 +251,7 @@ class FakeOutcomeMT5(FakeMT5):
                 second_entry = None
             closing = SimpleNamespace(
                 ticket=124, order=124, position_id=900, magic=2609001, entry=self.DEAL_ENTRY_OUT,
+                time=1780000000, time_msc=1780000000123,
                 profit=5.0, commission=-1.5, swap=0.1, fee=0.0,
             )
             return (opening, closing) if second_entry is None else (opening, second_entry, closing)
@@ -275,6 +276,8 @@ def test_query_trade_outcome_uses_closed_position_net_history():
     assert result.financial_result == 2.6
     assert result.source == "MT5_DEMO_HISTORY"
     assert result.observed_at.tzinfo is not None
+    assert result.closed_at is not None and result.closed_at.tzinfo is not None
+    assert result.closed_at.timestamp() == 1780000000.123
 
 
 def test_query_trade_outcome_never_classifies_open_position():
