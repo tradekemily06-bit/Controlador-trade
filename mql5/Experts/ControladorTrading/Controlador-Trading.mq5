@@ -518,15 +518,11 @@ void RefreshMarketAssets(){
       SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
       return;
    }
-   int total=0; int p=0;
-   while(true){
-      int hit=StringFind(r,"\"symbol\":",p);
-      if(hit<0) break;
-      total++; p=hit+9;
-      if(total>999) break;
-   }
+   // The API returns a top-level count and an assets array; asset entries are not objects with a symbol field.
+   string total=JsonValue(r,"count");
    string source=JsonValue(r,"source");
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+IntegerToString(total)+" • "+(source==""?"MT5 DEMO":source),20,278,8,C'145,160,180');
+   if(total=="") total="—";
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),20,278,8,C'145,160,180');
 }
 void RefreshSecondary(){
    string r; int code=0;
