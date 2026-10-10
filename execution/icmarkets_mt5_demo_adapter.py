@@ -521,6 +521,10 @@ class ICMarketsMT5RealAdapter(ICMarketsMT5DemoAdapter):
         real_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", None)
         return real_mode is not None and getattr(account, "trade_mode", None) == real_mode
 
+    def query_trade_outcome(self, external_id: str) -> MT5DemoTradeOutcome:
+        """Never label REAL account history as DEMO statistics."""
+        raise MT5AdapterError("atribuição de resultado MT5_DEMO_HISTORY não está disponível no adapter REAL.")
+
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         if request.mode is not ExecutionMode.REAL:
             return ExecutionResult(False, "IC Markets MT5 REAL adapter aceita somente REAL.")
