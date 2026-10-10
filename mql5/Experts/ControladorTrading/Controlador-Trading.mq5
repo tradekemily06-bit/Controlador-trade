@@ -45,7 +45,7 @@ void RefreshPanelLayout(){
    panel_height=MathMax(220,panel_height);
    panel_x=12;
    panel_y=MathMax(12,ch-panel_height-52);
-   panel_sx=(double)panel_width/600.0;
+   panel_sx=(double)panel_width/440.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
