@@ -648,7 +648,6 @@ void CloseCycle(){
    if(Http("POST","/api/runtime/close",body,r,code)){
       string closed=JsonValue(r,"closed");
       if(closed=="true"){
-         string reconciliation=JsonValue(r,"reconciliation_state");
          SetLabel(Obj("INFO1"),"Fechamento DEMO confirmado • reconciliacao solicitada.",20,361,9,C'88,214,141');
          last_cycle_id=""; last_external_id="";
       }else{
