@@ -562,3 +562,7 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
     assert 'else if(sparam==Obj("WM"))' not in panel
     assert 'if(active_view=="CONFIG") ToggleWatermark();' in panel
+    assert 'bool synced=Http("POST","/api/preferences",body,response,code);' in panel
+    assert 'string shared=JsonValue(response,"watermark_enabled");' in panel
+    assert 'void RefreshSharedWatermarkPreference()' in panel
+    assert 'RefreshSharedWatermarkPreference();' in panel
