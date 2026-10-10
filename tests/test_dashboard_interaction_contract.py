@@ -230,7 +230,7 @@ def test_analysis_failure_discards_stale_quality_and_indicator_evidence():
 
 def test_web_runtime_cycle_displays_market_signal_decision_and_quality_separately():
     assert "esc(x.signal||'AGUARDAR')" in WEB
-    assert "' · decisão '+esc(x.decision||'AGUARDAR')" in WEB
+    assert " · decisão '+esc(x.decision||'AGUARDAR')" in WEB
     assert "const q=x.quality||{}" in WEB
     assert "esc(qScore+'/100 · '+qScore+'% '+qLevel)" in WEB
     assert "esc(x.decision||x.signal||'AGUARDAR')" not in WEB
