@@ -79,3 +79,21 @@ def test_mt5_analysis_accepts_explicit_confirmation_and_filter_evidence():
     kwargs = service.trading_runtime.orchestrator.evaluate.call_args.kwargs
     assert kwargs["confirmed"] is True
     assert kwargs["filters_ok"] is True
+
+
+def test_mt5_cycle_defaults_missing_filter_evidence_to_blocked():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    service = ConfiguredEcosystemService()
+    service.execution_provider = "ic_markets_mt5_demo"
+    service.operational_runtime = SimpleNamespace(checkpoint_store=object())
+    service.trading_runtime = Mock()
+    service.mt5_operational_adapter = SimpleNamespace(read_operational_state=lambda: None)
+
+    service.run_mt5_cycle(symbol="EURUSD", timeframe="5m")
+
+    kwargs = service.trading_runtime.run.call_args.kwargs
+    assert kwargs["confirmed"] is False
+    assert kwargs["filters_ok"] is False
+
