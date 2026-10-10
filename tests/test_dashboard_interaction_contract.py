@@ -255,3 +255,22 @@ def test_visible_ecosystem_actions_are_bound_to_real_handlers():
     assert "$('closeRuntimeCycle').onclick=" in WEB
     assert "document.querySelectorAll('[data-outcome]').forEach(b=>b.onclick" in WEB
     assert "document.querySelectorAll('[data-learning-attempt]').forEach(b=>b.onclick" in WEB
+
+
+def test_dashboard_statistics_wait_for_runtime_data_instead_of_showing_fake_zeros():
+    assert 'id="total">—</div>' in WEB
+    assert 'id="actionable">—</div>' in WEB
+    assert 'id="demoTotal">—</div>' in WEB
+    assert 'id="demoWins">—</div>' in WEB
+    assert 'id="demoLosses">—</div>' in WEB
+    assert 'id="demoDraws">—</div>' in WEB
+    assert 'id="demoSourceNote">Fonte: aguardando resposta do runtime.' in WEB
+
+
+def test_real_and_environment_badges_follow_runtime_instead_of_static_claims():
+    assert 'id="realSafetyBadge">REAL: CONSULTANDO' in WEB
+    assert 'id="realConnectionState">CONSULTANDO' in WEB
+    assert "realSafetyBadge').textContent=ready?'REAL: AGUARDA CONFIRMAÇÃO':'REAL: BLOQUEADO'" in WEB
+    assert "realConnectionState').textContent=ready?'AGUARDA CONFIRMAÇÃO HUMANA':'DESABILITADO'" in WEB
+    assert 'id="environmentMode">CONSULTANDO MODO' in WEB
+    assert "$('environmentMode').textContent=mode==='REAL'?" in WEB
