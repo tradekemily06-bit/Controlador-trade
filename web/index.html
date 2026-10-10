@@ -20,7 +20,7 @@
 .market-meta{display:none!important}
 .chart-wrap{flex:1;min-height:0;margin-top:8px}
 .chart-svg{height:calc(100dvh - 150px);min-height:220px;max-height:none}
-.ecosystem-drawer{position:fixed;left:12px;bottom:12px;z-index:25;width:min(42vw,540px);height:min(44vh,440px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;border:1px solid #34415a;border-radius:16px;background:#0a0e15f5;backdrop-filter:blur(14px);box-shadow:0 18px 44px #0009;padding:12px}
+.ecosystem-drawer{position:fixed;left:12px;bottom:58px;z-index:25;width:min(42vw,540px);height:min(44vh,440px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;border:1px solid #34415a;border-radius:16px;background:#0a0e15f5;backdrop-filter:blur(14px);box-shadow:0 18px 44px #0009;padding:12px}
 .ecosystem-drawer[hidden]{display:none!important}
 .ecosystem-drawer .nav{position:sticky;left:auto;right:auto;bottom:-12px;width:calc(100% + 24px);max-width:none;margin:12px -12px -12px;padding:9px;justify-content:flex-start;z-index:2}
 .c-toggle{position:fixed;left:12px;bottom:12px;z-index:31;width:40px;height:40px;border-radius:50%;border:3px solid #26d2f2;background:#081825;color:#63e0ff;font:800 19px/1 Inter,system-ui,sans-serif;display:grid;place-items:center;box-shadow:0 0 12px #26d2f255;cursor:pointer}
@@ -28,7 +28,7 @@
 .compact-signal.buy{color:#36e282}.compact-signal.sell{color:#ff5665}.compact-signal.wait{color:#ffd166}
 .watermark-brand{transform:rotate(-30deg);color:#36aee8}
 .watermark[hidden]{display:none!important}
-@media(max-width:719px){.app{padding:6px 6px 64px}.chart-card{min-height:calc(100dvh - 12px);height:calc(100dvh - 12px)}.chart-svg{height:calc(100dvh - 142px);min-height:220px}.ecosystem-drawer{left:10px;bottom:10px;width:calc(100vw - 20px);height:44dvh;max-height:calc(100dvh - 20px);padding:10px}.ecosystem-drawer .nav{width:calc(100% + 20px);margin:10px -10px -10px}.c-toggle{left:10px;bottom:10px;width:40px;height:40px}.compact-signal{left:60px;bottom:22px;max-width:calc(100vw - 76px);font-size:11px}.watermark-brand{max-width:calc(100vw - 24px)}}
+@media(max-width:719px){.app{padding:6px 6px 64px}.chart-card{min-height:calc(100dvh - 12px);height:calc(100dvh - 12px)}.chart-svg{height:calc(100dvh - 142px);min-height:220px}.ecosystem-drawer{left:10px;bottom:56px;width:calc(100vw - 20px);height:44dvh;max-height:calc(100dvh - 20px);padding:10px}.ecosystem-drawer .nav{width:calc(100% + 20px);margin:10px -10px -10px}.c-toggle{left:10px;bottom:10px;width:40px;height:40px}.compact-signal{left:60px;bottom:22px;max-width:calc(100vw - 76px);font-size:11px}.watermark-brand{max-width:calc(100vw - 24px)}}
 </style>
 </head>
 <body><button class="c-toggle" id="ecosystemC" type="button" aria-controls="ecosystemDrawer" aria-expanded="false" aria-label="Abrir ou fechar o ecossistema">C</button><span class="compact-signal wait" id="compactSignal" aria-live="polite">AGUARDAR</span><div class="watermark" aria-hidden="true"><div class="watermark-brand"><svg class="watermark-mark" viewBox="0 0 100 100"><path d="M12 82V56h16v26H12zm26 0V39h16v43H38zm26 0V21h16v61H64z" fill="currentColor"/><path d="M9 47 34 34 52 43 84 13" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M67 13h17v17" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>CONTROLADOR<br>TRADING</span></div></div><main class="app">
