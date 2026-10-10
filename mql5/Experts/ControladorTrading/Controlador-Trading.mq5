@@ -699,14 +699,14 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
    if(sparam==Obj("N1")) { active_nav="N1"; active_view="COCKPIT"; RenderView(); }
-   else else if(sparam==Obj("N2")) { active_nav="N2"; active_view="ANALISE"; RenderView(); }
-   else else if(sparam==Obj("N3")) { active_nav="N3"; active_view="ENSINO"; RenderView(); }
-   else else if(sparam==Obj("N4")) { active_nav="N4"; active_view="LAB"; RenderView(); }
-   else else if(sparam==Obj("N5")) { active_nav="N5"; active_view="REPLAY"; RenderView(); }
-   else else if(sparam==Obj("N6")) { active_nav="N6"; active_view="MEMORIA"; RenderView(); }
-   else else if(sparam==Obj("N7")) { active_nav="N7"; active_view="MEMORIA"; RenderView(); }
-   else else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
-   else else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("N2")) { active_nav="N2"; active_view="ANALISE"; RenderView(); }
+   else if(sparam==Obj("N3")) { active_nav="N3"; active_view="ENSINO"; RenderView(); }
+   else if(sparam==Obj("N4")) { active_nav="N4"; active_view="LAB"; RenderView(); }
+   else if(sparam==Obj("N5")) { active_nav="N5"; active_view="REPLAY"; RenderView(); }
+   else if(sparam==Obj("N6")) { active_nav="N6"; active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N7")) { active_nav="N7"; active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
+   else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
