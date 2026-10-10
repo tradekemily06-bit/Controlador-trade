@@ -277,6 +277,16 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
     assert "Analise indisponivel" in failure
 
+def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert '"/api/memory?limit=1"' in secondary
+    assert 'StringFind(r,"\\"records\\":[")' in secondary
+    assert '"amostra "+IntegerToString(sample)' in secondary
+    assert '"disponiveis"' not in secondary
+    assert 'JsonValue(r,"total")' not in secondary
+
+
 def test_mql5_cycle_status_does_not_mislabel_execution_acceptance_as_authorization():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
