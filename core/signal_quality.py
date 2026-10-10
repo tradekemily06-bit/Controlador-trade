@@ -22,7 +22,17 @@ class SignalQuality:
 
 
 class SignalQualityEvaluator:
-    """Classifica a qualidade do sinal sem alterar a decisão do motor."""
+    """Avalia a força direcional do score; não estima probabilidade de lucro.
+
+    StrategyEngine/SignalEngine usam um score direcional de 0 a 100:
+    valores altos favorecem COMPRA e valores baixos favorecem VENDA.
+    A qualidade precisa ser calculada na direção do sinal para que compras
+    e vendas sejam avaliadas simetricamente. Uma leitura abaixo do mínimo
+    de sinal já adotado pelo SignalEngine permanece FRACA e não acionável.
+    """
+
+    MIN_ACTIONABLE_SCORE = 70.0
+    STRONG_SCORE = 80.0
 
     def evaluate(self, analysis: AnalysisResult) -> SignalQuality:
         score = analysis.score
@@ -33,38 +43,29 @@ class SignalQualityEvaluator:
             or not isfinite(score)
             or not 0 <= score <= 100
         ):
-            return SignalQuality(
-                score=0.0,
-                level=SignalLevel.NENHUMA,
-                actionable=False,
-            )
+            return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
-        actionable = (
-            analysis.confirmed is True
-            and analysis.signal in (Signal.COMPRA, Signal.VENDA)
+        if analysis.signal not in (Signal.COMPRA, Signal.VENDA):
+            return SignalQuality(0.0, SignalLevel.NENHUMA, False)
+
+        if analysis.confirmed is not True:
+            return SignalQuality(0.0, SignalLevel.NENHUMA, False)
+
+        # Convert the shared directional score into strength in the chosen
+        # direction. Never apply the buy-side score directly to a sell signal.
+        directional_score = (
+            float(score) if analysis.signal is Signal.COMPRA else 100.0 - float(score)
         )
 
-        if not actionable:
-            return SignalQuality(
-                score=0.0,
-                level=SignalLevel.NENHUMA,
-                actionable=False,
-            )
+        if directional_score < self.MIN_ACTIONABLE_SCORE:
+            return SignalQuality(directional_score, SignalLevel.FRACA, False)
 
-        quality_score = abs(score - 50.0) * 2.0
-
-        if quality_score >= 80:
-            level = SignalLevel.FORTE
-        elif quality_score >= 60:
-            level = SignalLevel.MODERADA
-        else:
-            level = SignalLevel.FRACA
-
-        return SignalQuality(
-            score=quality_score,
-            level=level,
-            actionable=True,
+        level = (
+            SignalLevel.FORTE
+            if directional_score >= self.STRONG_SCORE
+            else SignalLevel.MODERADA
         )
+        return SignalQuality(directional_score, level, True)
 
 
 def evaluate_signal_quality(analysis: AnalysisResult) -> SignalQuality:
