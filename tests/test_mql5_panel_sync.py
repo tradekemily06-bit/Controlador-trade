@@ -662,3 +662,12 @@ def test_lab_panel_does_not_overwrite_runtime_health_or_risk_with_optimistic_lab
     assert 'SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO"' not in lab
     assert 'SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime"' not in lab
     assert lab.index("SetLabel(Obj(\"INFO3\")") < lab.index("if(refresh_data){ RefreshHealth(); RefreshSecondary(); }")
+
+def test_analysis_view_reads_actual_risk_gate_instead_of_inferring_from_runtime_health():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk = panel.split("void RefreshRiskGate()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    analysis = panel.split('}else if(active_view=="ANALISE"){', 1)[1].split('}else if(active_view=="MEMORIA"){', 1)[0]
+    assert 'Http("GET","/api/risk","",r,code)' in risk
+    assert 'allowed=JsonValue(r,"allowed")' in risk
+    assert 'if(refresh_data) Analyze();\n      RefreshRiskGate();' in analysis
+    assert 'runtime_ok?"consultado":"runtime offline"' not in analysis
