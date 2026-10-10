@@ -153,8 +153,8 @@ void RefreshWatermarkControl(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int x=panel_visible?panel_x+panel_width-118:58;
-   int y=panel_visible?panel_y+42:MathMax(12,ch-48);
+   int x=panel_visible?panel_x+panel_width-118:MathMax(4,cw-80);
+   int y=panel_visible?panel_y+42:12;
    int w=panel_visible?106:72;
    int h=panel_visible?25:28;
    // This control uses screen coordinates directly, so it remains reachable when the panel is hidden.
