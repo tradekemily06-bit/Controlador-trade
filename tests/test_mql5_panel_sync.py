@@ -347,7 +347,7 @@ def test_mql5_laboratory_does_not_claim_unverified_replay_endpoint():
 
 def test_mql5_navigation_selection_and_layout_refresh_after_chart_change():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
     event = panel.split("void OnChartEvent(", 1)[1]
     assert "RefreshNavigation();" in render
     assert "if(id==CHARTEVENT_CHART_CHANGE)" in event
@@ -375,7 +375,7 @@ def test_mql5_vertical_navigation_highlights_the_selected_module():
 
 def test_mql5_memory_refresh_button_survives_view_cleanup_and_does_not_save_preferences():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
     event = panel.split("void OnChartEvent(", 1)[1]
     assert 'SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);' in render
     assert 'if(active_view!="CONFIG" && active_view!="MEMORIA")' in render
