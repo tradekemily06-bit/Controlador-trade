@@ -20,6 +20,7 @@ string current_quality_level="";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
+bool indicators_enabled=true;
 datetime last_watermark_sync=0;
 bool panel_visible=true;
 int panel_x=12;
@@ -168,6 +169,22 @@ void RefreshWatermarkControl(){
    if(panel_visible && active_view=="CONFIG" && ObjectFind(0,Obj("CYCLE"))>=0)
       ObjectSetString(0,Obj("CYCLE"),OBJPROP_TEXT,watermark_enabled?"MARCA: ON":"MARCA: OFF");
    ApplyWatermark();
+}
+void ToggleIndicators(){
+   bool desired=!indicators_enabled;
+   string body="{\"indicators_enabled\":"+(desired?"true":"false")+"}";
+   string response; int code=0;
+   if(!Http("POST","/api/preferences",body,response,code)){
+      if(panel_visible)
+         SetLabel(Obj("INFO1"),"Indicadores nao alterados • sincronizacao indisponivel.",180,361,9,C'255,209,102');
+      return;
+   }
+   indicators_enabled=desired;
+   if(ObjectFind(0,Obj("CLOSE"))>=0)
+      ObjectSetString(0,Obj("CLOSE"),OBJPROP_TEXT,indicators_enabled?"INDIC: ON":"INDIC: OFF");
+   if(panel_visible)
+      SetLabel(Obj("INFO1"),indicators_enabled?"Indicadores ativados e sincronizados.":"Indicadores desativados e sincronizados.",180,361,9,C'88,214,141');
+   ChartRedraw();
 }
 void ToggleWatermark(){
    watermark_enabled=!watermark_enabled;
@@ -476,6 +493,12 @@ void RefreshPreferences(){
    string closed=JsonValue(r,"require_closed_candle");
    string filters=JsonValue(r,"require_filters");
    string shared_watermark=JsonValue(r,"watermark_enabled");
+   string shared_indicators=JsonValue(r,"indicators_enabled");
+   if(shared_indicators=="true" || shared_indicators=="false"){
+      indicators_enabled=(shared_indicators=="true");
+      if(ObjectFind(0,Obj("CLOSE"))>=0)
+         ObjectSetString(0,Obj("CLOSE"),OBJPROP_TEXT,indicators_enabled?"INDIC: ON":"INDIC: OFF");
+   }
    if(shared_watermark=="true" || shared_watermark=="false"){
       bool enabled=(shared_watermark=="true");
       if(enabled!=watermark_enabled){
@@ -616,7 +639,7 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",180,284,110,30);
       SetButton(Obj("CYCLE"),watermark_enabled?"MARCA: ON":"MARCA: OFF",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
+      SetButton(Obj("CLOSE"),indicators_enabled?"INDIC: ON":"INDIC: OFF",296,320,114,28);
       if(refresh_data) RefreshPreferences();
    }
    if(active_view!="CONFIG" && active_view!="MEMORIA"){
@@ -947,6 +970,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="CONFIG") SaveConfig();
    }
-   else if(sparam==Obj("CLOSE")) CloseCycle();
+   else if(sparam==Obj("CLOSE")) {
+      if(active_view=="CONFIG") ToggleIndicators();
+      else CloseCycle();
+   }
    // Watermark activation is intentionally available only inside C > Configurações.
 }
