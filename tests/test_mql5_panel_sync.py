@@ -555,7 +555,9 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert 'string quality=JsonObjectValue(r,"quality");' in analyze
     assert 'current_quality_score=quality_score;' in analyze
     assert 'current_quality_level=quality_level;' in analyze
-    assert 'if(current_quality_score!="") signal+=" "+current_quality_score+"%";' in toggle
+    assert 'double quality_value=StringToDouble(current_quality_score);' in toggle
+    assert 'signal+=" "+quality_display+"%";' in toggle
+    assert 'if(current_quality_level!="") signal+=" "+current_quality_level;' in toggle
     assert 'if(current_quality_level!="") signal+=" "+current_quality_level;' in toggle
     assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
     assert 'else if(sparam==Obj("WM"))' not in panel
