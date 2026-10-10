@@ -164,3 +164,9 @@ def test_training_and_material_modules_have_real_runtime_actions():
 def test_dashboard_does_not_invent_startup_quality_score():
     assert '<div class="value" id="score">—</div>' in WEB
     assert 'id="score">50/100</div>' not in WEB
+
+
+def test_analysis_panel_keeps_market_signal_separate_from_runtime_decision():
+    assert "const analysisHtml='<b>'+esc(d.signal||'AGUARDAR')" in WEB
+    assert "esc(d.decision||d.signal" not in WEB
+    assert "d.score===null||d.score===undefined?'—':String(d.score)+'/100'" in WEB
