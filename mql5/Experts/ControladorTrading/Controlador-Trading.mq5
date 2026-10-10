@@ -116,8 +116,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
    ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,75,110');
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16);
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'35,48,68');
    ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
    ObjectSetInteger(0,mark,OBJPROP_BACK,true);
@@ -129,8 +129,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'38,46,60');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
