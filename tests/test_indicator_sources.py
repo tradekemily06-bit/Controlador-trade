@@ -110,3 +110,11 @@ def test_indicator_preference_controls_backend_work_not_just_rendering():
     assert '"DISABLED_BY_PREFERENCE"' in orchestrator
     assert "indicators_enabled=prefs.indicators_enabled" in service
     assert "Indicadores desativados nas preferências do ecossistema." in app
+
+
+def test_compact_signal_fails_closed_when_market_analysis_is_unavailable():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert "sinal anterior descartado até nova confirmação." in html
+    assert "$('compactSignal').textContent='AGUARDAR'" in html
+    assert "$('compactSignal').className='compact-signal wait'" in html
