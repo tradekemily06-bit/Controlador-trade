@@ -543,10 +543,14 @@ void RefreshLeverageRisk(){
    string daily=JsonValue(limits,"daily_loss_limit");
    string operations=JsonValue(limits,"max_operations");
    string consecutive=JsonValue(limits,"max_consecutive_losses");
+   string daily_display=(daily==""?"nao informado":(StringToDouble(daily)<=0.0?"nao configurado":daily));
+   string operations_display=(operations==""?"nao informado":(StringToInteger(operations)<=0?"nao configurado":operations));
+   string consecutive_display=(consecutive==""?"nao informado":(StringToInteger(consecutive)<=0?"nao configurado":consecutive));
+   // Zero means no active limit, not a safe configured limit. Make that explicit.
    SetLabel(Obj("INFO1"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,38),180,361,9,allowed=="true"?C'88,214,141':C'255,118,118');
-   SetLabel(Obj("INFO2"),"Limite perda diaria: "+(daily==""?"nao informado":daily),180,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Maximo de operacoes: "+(operations==""?"nao informado":operations),180,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Perdas consecutivas: "+(consecutive==""?"nao informado":consecutive),180,421,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Limite perda diaria: "+daily_display,180,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Maximo de operacoes: "+operations_display,180,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Perdas consecutivas: "+consecutive_display,180,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Leitura somente; alavancagem da corretora nao e alterada",180,441,8,C'255,209,102');
 }
 void RefreshLearning(){
