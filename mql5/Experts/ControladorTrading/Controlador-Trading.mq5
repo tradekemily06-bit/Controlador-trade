@@ -591,12 +591,12 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
+      // Refresh real runtime and risk results last; never overwrite them with optimistic
+      // hard-coded DEMO/ONLINE labels when the service or risk gate is unavailable.
+      SetLabel(Obj("INFO3"),"Replay: endpoint existe; replay historico nativo ainda nao validado",180,401,9,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Execucao REAL permanece bloqueada",180,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Estudo nao concede autorizacao operacional",180,441,9,C'205,215,230');
       if(refresh_data){ RefreshHealth(); RefreshSecondary(); }
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",180,361,9,C'88,214,141');
-      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",180,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",180,401,9,C'255,209,102');
-      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",180,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",180,441,9,C'205,215,230');
    }else if(active_view=="REPLAY"){
       SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",180,284,110,30);
