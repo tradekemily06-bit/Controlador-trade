@@ -65,12 +65,12 @@ def test_wait_signal_preserves_weak_candidate_quality_without_becoming_actionabl
     assert result.level == SignalLevel.FRACA
 
 
-def test_wait_with_strong_raw_score_stays_wait_when_filters_block_it():
+def test_wait_with_strong_raw_score_is_not_mislabeled_as_a_strong_opportunity():
     result = evaluate_signal_quality(_analysis(Signal.AGUARDAR, 90))
 
     assert result.actionable is False
-    assert result.score == 90
-    assert result.level == SignalLevel.FORTE
+    assert result.score == 0
+    assert result.level == SignalLevel.NENHUMA
 
 
 def test_invalid_scores_fail_closed():
