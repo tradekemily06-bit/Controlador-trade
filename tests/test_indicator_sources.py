@@ -66,7 +66,8 @@ def test_indicator_visibility_toggle_is_saved_in_shared_ecosystem_preferences():
     html = ( __import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
     assert 'id="indicatorsDefault"' in html
     assert 'indicators_enabled:$(\'indicatorsDefault\').checked' in html
-    assert 'body:JSON.stringify({indicators_enabled:$(\'indicatorsDefault\').checked})' in html
+    assert "const desired=$('indicatorsDefault').checked;" in html
+    assert 'JSON.stringify({indicators_enabled:desired})' in html
     assert "Indicadores ocultos nas preferências do ecossistema." in html
     assert "@media(max-width:719px)" in html
     assert ".grid{grid-template-columns:minmax(0,1fr)" in html
