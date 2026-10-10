@@ -60,7 +60,7 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 
 def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"Controlador-Trading"' in panel
+    assert '#property description "Controlador Trading' in panel
     assert '"ECOSSISTEMA • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
