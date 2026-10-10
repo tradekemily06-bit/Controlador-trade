@@ -545,9 +545,8 @@ void RefreshSecondary(){
    }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",20,441,9,C'255,118,118');
 
    if(Http("GET","/api/memory?limit=1","",r,code)){
-      // This endpoint returns a limited records array, not a total-count field.
-      int sample=StringFind(r,"\"records\":[")>=0?1:0;
-      SetLabel(Obj("INFO3"),"Memoria: runtime consultado • amostra "+IntegerToString(sample),20,401,9,C'205,215,230');
+      // The endpoint returns a limited records array; it does not promise a total count.
+      SetLabel(Obj("INFO3"),"Memoria: resposta recebida do runtime",20,401,9,C'205,215,230');
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
 }
 void SaveConfig(){
