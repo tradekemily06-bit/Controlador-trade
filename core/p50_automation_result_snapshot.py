@@ -17,6 +17,7 @@ class AutomationResultSnapshot:
     reconciliation_state: ReconciliationState
     observed_at: datetime | None = None
     source: str = "UNKNOWN"
+    closed_at: datetime | None = None
 
 
 class AutomationResultSnapshotBoundary:
@@ -49,4 +50,5 @@ class AutomationResultSnapshotBoundary:
             reconciliation_state=reconciliation.state,
             observed_at=outcome.observed_at,
             source=outcome.source,
+            closed_at=outcome.closed_at,
         )
