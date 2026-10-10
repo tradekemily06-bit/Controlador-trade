@@ -355,13 +355,14 @@ def application(environ, start_response):
             snapshot = orchestration.snapshot
             indicator_evidence = getattr(orchestration, "indicator_evidence", None)
             decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            quality_level = getattr(orchestration.quality.level, "value", orchestration.quality.level)
             technical_actionable = bool(orchestration.quality.actionable)
             display_actionable = technical_actionable and decision_value == "EXECUTAR"
             display_signal = orchestration.analysis.signal.value if display_actionable else "AGUARDAR"
             display_reason = orchestration.analysis.reason if display_actionable else orchestration.decision.reason
             return _json_response(start_response, HTTPStatus.OK, {
                 "signal": display_signal,
-                "score": (orchestration.quality.score if orchestration.quality.level.value != "NENHUMA" else None),
+                "score": (orchestration.quality.score if quality_level != "NENHUMA" else None),
                 "reason": display_reason,
                 "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                 "analysis": {
@@ -374,7 +375,7 @@ def application(environ, start_response):
                 },
                 "quality": {
                     "score": orchestration.quality.score,
-                    "level": orchestration.quality.level.value,
+                    "level": quality_level,
                     "actionable": display_actionable,
                     "technical_actionable": technical_actionable,
                     "decision_approved": decision_value == "EXECUTAR",
