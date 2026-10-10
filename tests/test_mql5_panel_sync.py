@@ -382,3 +382,13 @@ def test_mql5_memory_refresh_button_survives_view_cleanup_and_does_not_save_pref
     assert 'if(active_view=="MEMORIA") RefreshSecondary();' in event
     assert 'else if(active_view=="CONFIG") SaveConfig();' in event
 
+
+
+def test_mql5_demo_cycle_fails_closed_without_explicit_confirmation_and_filter_checks():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "no explicit closed-candle confirmation or filter checklist UI" in cycle
+    assert '\\"confirmed\\":false' in cycle
+    assert '\\"filters_ok\\":false' in cycle
+    assert '\\"confirmed\\":true' not in cycle
+    assert '\\"filters_ok\\":true' not in cycle
