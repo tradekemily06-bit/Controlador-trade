@@ -309,3 +309,36 @@ def test_weak_confirmed_candidate_keeps_fraca_quality_while_displaying_wait():
     assert payload["quality"]["level"] == "FRACA"
     assert payload["quality"]["actionable"] is False
     assert payload["quality"]["technical_actionable"] is False
+
+
+def test_sell_quality_score_is_direction_normalized_in_api_response():
+    fake = SimpleNamespace(
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="VENDA"),
+            score=20.0,
+            reason="score bruto favorece venda",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(
+            score=80.0,
+            level=SimpleNamespace(value="FORTE"),
+            actionable=True,
+        ),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="gates finais aprovados"),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "VENDA", "symbol": "EURUSD"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=()),
+    )
+    with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake):
+        status, _, payload = ApiContractTests().request(
+            "/api/runtime/analysis",
+            method="POST",
+            payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+        )
+    assert status == "200 OK"
+    assert payload["signal"] == "VENDA"
+    assert payload["score"] == 80.0
+    assert payload["quality"]["score"] == 80.0
+    assert payload["analysis"]["score"] == 20.0
+    assert payload["quality"]["level"] == "FORTE"
