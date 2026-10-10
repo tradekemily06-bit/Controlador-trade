@@ -38,6 +38,7 @@ class MT5DemoTradeOutcome:
     source: str
     closed: bool
     message: str
+    closed_at: datetime | None = None
 
 
 class ICMarketsMT5DemoAdapter:
@@ -315,8 +316,22 @@ class ICMarketsMT5DemoAdapter:
                     getattr(mt5, "DEAL_ENTRY_OUT_BY", None),
                 ) if value is not None
             }
-            if not relevant or not exit_values or not any(getattr(deal, "entry", None) in exit_values for deal in relevant):
+            exit_deals = tuple(deal for deal in relevant if getattr(deal, "entry", None) in exit_values)
+            if not relevant or not exit_values or not exit_deals:
                 return unknown(position_id, "não há negócio de saída confirmado para esta posição.")
+            # Period statistics use the final exit timestamp from MT5 history,
+            # not the later time at which an operator/runtime happened to reconcile.
+            close_times = []
+            for deal in exit_deals:
+                raw_msc = getattr(deal, "time_msc", None)
+                raw_seconds = getattr(deal, "time", None)
+                try:
+                    timestamp = float(raw_msc) / 1000.0 if raw_msc not in (None, 0) else float(raw_seconds)
+                    if math.isfinite(timestamp) and timestamp > 0:
+                        close_times.append(datetime.fromtimestamp(timestamp, tz=timezone.utc))
+                except (TypeError, ValueError, OverflowError, OSError):
+                    continue
+            closed_at = max(close_times) if close_times else None
             entry_in = getattr(mt5, "DEAL_ENTRY_IN", 0)
             entry_inout = getattr(mt5, "DEAL_ENTRY_INOUT", object())
             # Netting/reversal positions can combine several orders under one position_id.
@@ -345,6 +360,7 @@ class ICMarketsMT5DemoAdapter:
                 financial_result=float(net_result), observed_at=observed_at,
                 source="MT5_DEMO_HISTORY", closed=True,
                 message="resultado líquido confirmado no histórico da posição DEMO.",
+                closed_at=closed_at,
             )
         finally:
             mt5.shutdown()
