@@ -84,18 +84,18 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
         assert f'Obj("{button}")' in handler, f"MQL5 button has no click dispatch: {button}"
 
 
-def test_compact_signal_shows_score_percent_and_level_only_for_actionable_quality():
+def test_compact_signal_shows_validated_quality_independently_of_final_action_gate():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const actionable=q.actionable===true&&(isBuy||isSell);" in render
     assert "const signal=actionable?" in render
     assert "qs+'/100 · '+qs+'% '+ql" in render
-    assert "if(actionable&&qs&&ql&&ql!=='NENHUMA')" in render
+    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
 
 
 def test_compact_signal_does_not_promote_weak_or_unconfirmed_analysis():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
-    assert "if(actionable&&qs&&ql&&ql!=='NENHUMA')" in render
+    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
 
 
 def test_statistics_visually_separate_manual_study_from_confirmed_demo_financial_results():
