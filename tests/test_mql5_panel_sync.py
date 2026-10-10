@@ -517,3 +517,12 @@ def test_mql5_controller_c_is_a_real_circle_not_a_square_button():
     assert "OBJPROP_FILL,true" in toggle
     assert 'sparam==Obj("PANEL_TOGGLE_GLYPH")' in event
     assert 'n==Obj("PANEL_TOGGLE_GLYPH")' in panel
+
+def test_mql5_navigation_rail_stays_left_of_panel_content():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    navigation = panel.split("// Navegacao vertical no trilho esquerdo", 1)[1].split("RefreshNavigation();", 1)[0]
+    assert 'SetButton(Obj("N1"),"COCKPIT",20,82,145,29)' in navigation
+    assert 'SetButton(Obj("N7"),"WIN/LOSS",20,298,145,29)' in navigation
+    assert 'SetButton(Obj("N9"),"CONFIGURACOES",20,370,145,29)' in navigation
+    assert 'SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27' in panel
+    assert 'SetLabel(Obj("SIGNAL"),current_signal,180,154' in panel
