@@ -4,12 +4,13 @@ from core.models import AnalysisResult, Signal
 from core.signal_quality import SignalLevel, evaluate_signal_quality
 
 
-def _analysis(signal, score, confirmed=True):
+def _analysis(signal, score, confirmed=True, filters_ok=None):
     return AnalysisResult(
         signal=signal,
         score=score,
         reason="Teste de qualidade direcional.",
         confirmed=confirmed,
+        filters_ok=filters_ok,
     )
 
 
@@ -71,6 +72,26 @@ def test_wait_with_strong_raw_score_is_not_mislabeled_as_a_strong_opportunity():
     assert result.actionable is False
     assert result.score == 0
     assert result.level == SignalLevel.NENHUMA
+
+
+def test_wait_preserves_strong_directional_quality_when_a_known_safety_filter_blocks_it():
+    result = evaluate_signal_quality(
+        _analysis(Signal.AGUARDAR, 90, filters_ok=False)
+    )
+
+    assert result.actionable is False
+    assert result.score == 90
+    assert result.level == SignalLevel.FORTE
+
+
+def test_wait_preserves_sell_candidate_quality_when_a_known_safety_filter_blocks_it():
+    result = evaluate_signal_quality(
+        _analysis(Signal.AGUARDAR, 10, filters_ok=False)
+    )
+
+    assert result.actionable is False
+    assert result.score == 90
+    assert result.level == SignalLevel.FORTE
 
 
 def test_invalid_scores_fail_closed():
