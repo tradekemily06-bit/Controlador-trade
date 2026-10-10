@@ -392,6 +392,7 @@ void RefreshLearning(){
    }
 }
 void RenderView(){
+   RefreshNavigation();
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
@@ -696,6 +697,13 @@ void OnTimer(){
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
+   if(id==CHARTEVENT_CHART_CHANGE){
+      if(panel_visible){ Panel(); RenderView(); }
+      RefreshPanelToggle();
+      ApplyWatermark();
+      ChartRedraw();
+      return;
+   }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
    if(sparam==Obj("N1")) { active_nav="N1"; active_view="COCKPIT"; RenderView(); }
