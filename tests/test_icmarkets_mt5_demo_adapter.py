@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 from core.models import Signal
@@ -24,9 +25,17 @@ class FakeMT5:
         self.shutdown_calls = 0
         self.sent = []
         self.positions = []
+        self.initialize_path = None
+        self.initialize_timeout = None
 
-    def initialize(self):
+    def initialize(self, path=None, timeout=60000):
+        self.initialize_path = path
+        self.initialize_timeout = timeout
         return True
+
+    def terminal_info(self):
+        path = os.path.dirname(self.initialize_path) if self.initialize_path else os.getcwd()
+        return SimpleNamespace(path=path, connected=True)
 
     def shutdown(self):
         self.shutdown_calls += 1
@@ -228,3 +237,25 @@ def test_named_timezone_still_fails_closed_when_tzdata_is_missing(monkeypatch):
             mt5_module=FakeMT5(),
         )
 
+
+
+
+def test_adapter_pins_to_configured_terminal_and_bounds_initialize(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    fake = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    assert result.accepted is True
+    assert fake.initialize_path == terminal_path
+    assert fake.initialize_timeout == 15_000
+
+
+def test_adapter_rejects_configured_terminal_mismatch(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    fake = FakeMT5()
+    fake.terminal_info = lambda: SimpleNamespace(path=str(tmp_path / "wrong-terminal"), connected=True)
+    result = ICMarketsMT5DemoAdapter(mt5_module=fake).execute(request())
+    assert result.accepted is False
+    assert "não corresponde ao caminho configurado" in result.message
+    assert fake.sent == []
