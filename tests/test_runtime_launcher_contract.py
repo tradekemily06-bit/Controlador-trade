@@ -119,7 +119,7 @@ def test_mt5_supervisor_logs_specific_health_gate_failure_reason():
 
 def test_mt5_supervisor_pins_health_and_process_management_to_configured_terminal():
     text = _read("deployment/start_mt5_runtime.ps1")
-    assert "mt5.initialize(path=path)" in text
+    assert "mt5.initialize(path=path, timeout=15000)" in text
     assert "$Mt5TerminalPath" in text
     assert "function Get-ConfiguredMt5Process" in text
     assert "Mais de uma instância corresponde" in text
