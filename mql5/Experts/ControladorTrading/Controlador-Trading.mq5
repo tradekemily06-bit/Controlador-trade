@@ -37,10 +37,12 @@ void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Painel flutuante compacto, ancorado embaixo à esquerda.
-   panel_width=MathMin(MathMax(440,InpPanelWidth),MathMax(440,(int)MathRound(cw*0.56)));
-   panel_width=MathMin(panel_width,MathMax(420,cw-24));
-   panel_height=MathMin(MathMax(440,InpPanelHeight),MathMax(360,(int)MathRound(ch*0.68)));
-   panel_height=MathMin(panel_height,MathMax(340,ch-90));
+   int available_w=MathMax(240,cw-24);
+   int available_h=MathMax(220,ch-90);
+   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.56))));
+   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.68))));
+   panel_width=MathMax(240,panel_width);
+   panel_height=MathMax(220,panel_height);
    panel_x=12;
    panel_y=MathMax(12,ch-panel_height-52);
    panel_sx=(double)panel_width/600.0;
@@ -159,7 +161,7 @@ void ToggleWatermark(){
    watermark_enabled=!watermark_enabled;
    GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
    RefreshWatermarkControl();
-   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",180,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
    ChartRedraw();
 }
 void LoadWatermark(){
@@ -370,7 +372,7 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Configuracoes: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Configuracoes: runtime indisponivel • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
@@ -378,24 +380,24 @@ void RefreshPreferences(){
    string tf=JsonValue(r,"default_timeframe");
    string closed=JsonValue(r,"require_closed_candle");
    string filters=JsonValue(r,"require_filters");
-   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca d'agua: "+(watermark_enabled?"ATIVADA":"DESATIVADA")+" • persistencia local MT5",20,421,9,watermark_enabled?C'88,214,141':C'145,160,180');
-   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
+   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),180,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),180,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),180,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Marca d'agua: "+(watermark_enabled?"ATIVADA":"DESATIVADA")+" • persistencia local MT5",180,421,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",180,441,9,C'255,155,155');
 }
 void RefreshNotifications(){
    string r; int code=0;
    if(Http("GET","/api/notifications","",r,code)){
       string unread=JsonValue(r,"unread");
       string total=JsonValue(r,"total");
-      SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Atualizacao: HTTP "+IntegerToString(code),20,421,9,C'88,214,141');
-      SetLabel(Obj("INFO5"),"Analise operacional atualizada pelo runtime",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),180,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Atualizacao: HTTP "+IntegerToString(code),180,421,9,C'88,214,141');
+      SetLabel(Obj("INFO5"),"Analise operacional atualizada pelo runtime",180,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
    }
 }
 void RefreshLearning(){
@@ -403,107 +405,107 @@ void RefreshLearning(){
    if(Http("GET","/api/learning","",r,code)){
       string progress=JsonValue(r,"progress");
       string active=JsonValue(r,"active_module");
-      SetLabel(Obj("INFO1"),"Estudo: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
-      SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Estudo: "+(active==""?"trilha disponivel":active),180,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",180,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Historico operacional atualizado",180,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Estudo: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Estudo: runtime indisponivel • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
    }
 }
 void RenderView(bool refresh_data=true){
    RefreshNavigation();
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",20,381,9,C'255,209,102');
-      SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
-      SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetLabel(Obj("INFO1"),"Motor de decisao: runtime",180,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",180,381,9,C'255,209,102');
+      SetLabel(Obj("INFO3"),"Memoria: atualizando...",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Noticias: atualizando...",180,441,9,C'205,215,230');
+      SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) Analyze();
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
-      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),180,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",180,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",180,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Historico: /api/memory",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data){ RefreshHealth(); RefreshSecondary(); }
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
-      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",20,401,9,C'255,209,102');
-      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",180,361,9,C'88,214,141');
+      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",180,401,9,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",180,441,9,C'205,215,230');
    }else if(active_view=="REPLAY"){
       SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",20,284,172,30);
-      SetLabel(Obj("INFO1"),"Replay nao tem tela nativa ligada neste EA.",20,361,9,C'255,209,102');
-      SetLabel(Obj("INFO2"),"Esta tela nao executa nem simula replay.",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"A ligacao precisa ser validada no runtime.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Nenhum resultado de replay foi inventado.",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",180,284,110,30);
+      SetLabel(Obj("INFO1"),"Replay nao tem tela nativa ligada neste EA.",180,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao executa nem simula replay.",180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"A ligacao precisa ser validada no runtime.",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nenhum resultado de replay foi inventado.",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
       // Do not leave action buttons from the previous view on this informational screen.
       if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }else if(active_view=="ALAVANCAGEM"){
       SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",20,361,9,C'255,209,102');
-      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",180,361,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",180,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",180,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",180,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
       if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
       if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",180,284,110,30);
+      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
+      SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshPreferences();
    }
    if(active_view!="CONFIG" && active_view!="MEMORIA"){
@@ -515,8 +517,8 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),20,104,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
+      SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),180,104,10,C'255,118,118');
+      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
       return;
    }
    runtime_ok=true;
@@ -525,46 +527,46 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),20,104,10,C'88,214,141');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
+   SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),180,104,10,C'88,214,141');
+   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),180,124,10,C'88,214,141');
+   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),180,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
    if(!Http("GET","/api/market/assets","",r,code)){
-      SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
+      SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),180,278,8,C'255,118,118');
       return;
    }
    // The API returns a top-level count and an assets array; asset entries are not objects with a symbol field.
    string total=JsonValue(r,"count");
    string source=JsonValue(r,"source");
    if(total=="") total="—";
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),20,278,8,C'145,160,180');
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),180,278,8,C'145,160,180');
 }
 void RefreshSecondary(){
    string r; int code=0;
    if(Http("GET","/api/risk","",r,code)){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
-   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",20,381,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),180,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
+   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",180,381,9,C'255,118,118');
 
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
-      SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate),20,421,9,C'205,215,230');
-   }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",20,421,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate),180,421,9,C'205,215,230');
+   }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",180,421,9,C'255,118,118');
 
    if(Http("GET","/api/news?limit=1","",r,code)){
       string live=JsonValue(r,"live");
-      SetLabel(Obj("INFO5"),"Noticias: "+(live=="true"?"ONLINE":"OFFLINE")+" • sem fonte nao interfere na decisao",20,441,9,C'205,215,230');
-   }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",20,441,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"Noticias: "+(live=="true"?"ONLINE":"OFFLINE")+" • sem fonte nao interfere na decisao",180,441,9,C'205,215,230');
+   }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",180,441,9,C'255,118,118');
 
    if(Http("GET","/api/memory?limit=1","",r,code)){
       // The endpoint returns a limited records array; it does not promise a total count.
-      SetLabel(Obj("INFO3"),"Memoria: resposta recebida do runtime",20,401,9,C'205,215,230');
-   }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
+      SetLabel(Obj("INFO3"),"Memoria: resposta recebida do runtime",180,401,9,C'205,215,230');
+   }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",180,401,9,C'255,118,118');
 }
 void SaveConfig(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
@@ -575,9 +577,9 @@ void SaveConfig(){
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code))
-      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas no runtime • HTTP "+IntegerToString(code),20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas no runtime • HTTP "+IntegerToString(code),180,361,9,C'88,214,141');
    else
-      SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
@@ -600,8 +602,8 @@ void Analyze(bool render=true){
       current_signal="AGUARDAR";
       RefreshPanelToggle();
       if(render){
-         SetLabel(Obj("SIGNAL"),current_signal,20,154,22,C'255,209,102');
-         SetLabel(Obj("REASON"),"Analise indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+         SetLabel(Obj("SIGNAL"),current_signal,180,154,22,C'255,209,102');
+         SetLabel(Obj("REASON"),"Analise indisponivel • HTTP "+IntegerToString(code),180,204,9,C'255,118,118');
       }
       return;
    }
@@ -616,10 +618,10 @@ void Analyze(bool render=true){
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
-   SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
+   SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
+   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",180,184,10,clrWhite);
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),180,204,9,C'180,190,205');
+   SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",180,361,9,c);
    ChartRedraw();
 }
 void RunCycle(){
@@ -632,9 +634,9 @@ void RunCycle(){
    // Fail closed instead of asserting that required safeguards passed.
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":false,\"filters_ok\":false,\"entry_conditions\":[]}";
    string r; int code=0;
-   SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
+   SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",180,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
-      SetLabel(Obj("INFO1"),"Ciclo bloqueado/falhou • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado/falhou • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
       return;
    }
    string signal=JsonValue(r,"signal");
@@ -647,18 +649,18 @@ void RunCycle(){
    string allowed=JsonValue(r,"execution_allowed");
    current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
+   SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
    RefreshPanelToggle();
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",180,184,10,clrWhite);
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),180,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • execucao aceita="+(allowed==""?"false":allowed),20,361,9,allowed=="true"?C'88,214,141':C'255,209,102');
+   SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),180,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),180,483,8,C'145,160,180');
+   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • execucao aceita="+(allowed==""?"false":allowed),180,361,9,allowed=="true"?C'88,214,141':C'255,209,102');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
-      SetLabel(Obj("INFO1"),"Nao ha ciclo DEMO para fechar/reconciliar.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO1"),"Nao ha ciclo DEMO para fechar/reconciliar.",180,361,9,C'255,209,102');
       return;
    }
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
@@ -666,13 +668,13 @@ void CloseCycle(){
    if(Http("POST","/api/runtime/close",body,r,code)){
       string closed=JsonValue(r,"closed");
       if(closed=="true"){
-         SetLabel(Obj("INFO1"),"Fechamento DEMO confirmado • reconciliacao solicitada.",20,361,9,C'88,214,141');
+         SetLabel(Obj("INFO1"),"Fechamento DEMO confirmado • reconciliacao solicitada.",180,361,9,C'88,214,141');
          last_cycle_id=""; last_external_id="";
       }else{
          string message=JsonValue(r,"message");
-         SetLabel(Obj("INFO1"),"Fechamento nao confirmado: "+StringSubstr(message==""?"runtime nao aceitou a operacao":message,0,42),20,361,9,C'255,118,118');
+         SetLabel(Obj("INFO1"),"Fechamento nao confirmado: "+StringSubstr(message==""?"runtime nao aceitou a operacao":message,0,42),180,361,9,C'255,118,118');
       }
-   }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
 }
 int OnInit(){
    active_view="COCKPIT";
@@ -722,7 +724,7 @@ void OnTimer(){
    }
    ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),180,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id==CHARTEVENT_CHART_CHANGE){
