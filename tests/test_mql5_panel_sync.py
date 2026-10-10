@@ -622,3 +622,12 @@ def test_mql5_hides_unavailable_quality_instead_of_showing_null_or_zero():
     assert 'if(current_quality_level=="NENHUMA" || current_quality_score=="null")' in analyze
     assert 'if(score=="null") score="";' in analyze
     assert "color quality_color=current_quality_level==\"FORTE\"?C'88,214,141'" in analyze
+
+
+
+def test_native_panel_symbol_and_timeframe_fields_are_editable():
+    panel = _read_panel()
+    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark(", 1)[0]
+    assert "OBJPROP_READONLY,false" in edit
+    assert "OBJPROP_SELECTABLE,true" in edit
+    assert "OBJPROP_SELECTABLE,false" not in edit
