@@ -14,6 +14,7 @@ class AutomationOutcome:
     observed_at: datetime
     outcome: Literal["WIN", "LOSS", "DRAW", "UNKNOWN"]
     financial_result: float | None
+    source: str = "UNKNOWN"
 
 
 class AutomationOutcomeBoundary:
@@ -26,6 +27,7 @@ class AutomationOutcomeBoundary:
         observed_at: datetime,
         outcome: Literal["WIN", "LOSS", "DRAW", "UNKNOWN"],
         financial_result: float | None = None,
+        source: str = "UNKNOWN",
     ) -> AutomationOutcome:
         if not isinstance(closure, AutomationClosure):
             raise ValueError("invalid automation closure")
@@ -37,6 +39,8 @@ class AutomationOutcomeBoundary:
             raise ValueError("cycle_id is required")
         if outcome not in {"WIN", "LOSS", "DRAW", "UNKNOWN"}:
             raise ValueError("invalid automation outcome")
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("source is required")
         if financial_result is not None:
             if isinstance(financial_result, bool) or not isinstance(financial_result, (int, float)):
                 raise ValueError("financial_result must be numeric or None")
@@ -53,4 +57,5 @@ class AutomationOutcomeBoundary:
             observed_at=observed_at,
             outcome=outcome,
             financial_result=financial_result,
+            source=source.strip(),
         )
