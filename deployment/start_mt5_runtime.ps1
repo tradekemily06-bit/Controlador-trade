@@ -106,6 +106,7 @@ Load-RestartHistory
 $script:LastMt5HealthDiagnostic = 'health_check_not_run'
 
 function Test-Mt5TerminalHealth {
+    $script:LastMt5HealthDiagnostic = ''
     try {
         $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
             $ProjectRoot
