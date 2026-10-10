@@ -294,6 +294,7 @@ class ConfiguredEcosystemService(EcosystemService):
             market_context=None,
             confirmed=effective_confirmed,
             filters_ok=effective_filters,
+            indicators_enabled=prefs.indicators_enabled,
         )
         if self.trading_runtime.market_data_state is not None:
             from core.p122_broker_market_data import BrokerMarketDataSnapshot
