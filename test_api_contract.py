@@ -269,6 +269,9 @@ def test_compact_signal_waits_when_technical_candidate_fails_final_runtime_gates
     assert status == "200 OK"
     assert payload["analysis"]["signal"] == "COMPRA"
     assert payload["signal"] == "AGUARDAR"
+    assert payload["score"] == 85.0
+    assert payload["quality"]["score"] == 85.0
+    assert payload["quality"]["level"] == "FORTE"
     assert payload["quality"]["actionable"] is False
     assert payload["quality"]["technical_actionable"] is True
     assert payload["quality"]["decision_approved"] is False
