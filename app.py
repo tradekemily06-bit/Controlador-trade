@@ -361,7 +361,7 @@ def application(environ, start_response):
             display_reason = orchestration.analysis.reason if display_actionable else orchestration.decision.reason
             return _json_response(start_response, HTTPStatus.OK, {
                 "signal": display_signal,
-                "score": orchestration.analysis.score,
+                "score": (orchestration.quality.score if orchestration.quality.level.value != "NENHUMA" else None),
                 "reason": display_reason,
                 "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                 "analysis": {
