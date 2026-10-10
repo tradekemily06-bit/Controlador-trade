@@ -319,9 +319,10 @@ class ConfiguredEcosystemService(EcosystemService):
             import MetaTrader5 as mt5
         except ImportError as exc:
             raise RuntimeError("MetaTrader5 não está instalado") from exc
-        if not mt5.initialize():
-            raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
+        asset_adapter = ICMarketsMT5DemoMarketDataAdapter(mt5_module=mt5)
         try:
+            if not asset_adapter._initialize(mt5):
+                raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
             statuses = discover_mt5_instruments(mt5, include_invisible=include_invisible)
             assessments = {item.symbol: item for item in prioritize_mt5_assets(mt5, statuses)}
             result = []
