@@ -16,9 +16,10 @@ bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
 bool panel_visible=true;
-int panel_x=0;
-int panel_width=320;
-int panel_height=420;
+int panel_x=12;
+int panel_y=18;
+int panel_width=300;
+int panel_height=440;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
@@ -27,21 +28,25 @@ string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ return panel_y+(int)MathRound(y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(220,(int)MathRound(cw*0.22)));
+   // Painel flutuante compacto, ancorado embaixo à esquerda.
+   panel_width=MathMin(InpPanelWidth,MathMax(240,(int)MathRound(cw*0.30)));
    panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
+   panel_height=MathMin(InpPanelHeight,MathMax(300,(int)MathRound(ch*0.44)));
+   panel_height=MathMin(panel_height,MathMax(280,ch-90));
+   panel_x=12;
+   panel_y=MathMax(12,ch-panel_height-52);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
@@ -152,20 +157,42 @@ void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int toggle_x=panel_visible?panel_x+panel_width-42:12;
+   int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-48);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,toggle_y);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,32);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,32);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,17);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'63,224,255');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,24,37');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,210,242');
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
+   ObjectSetString(0,name,OBJPROP_TEXT,"C");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   string signal_name=Obj("PANEL_SIGNAL");
+   if(panel_visible){
+      if(ObjectFind(0,signal_name)>=0) ObjectDelete(0,signal_name);
+   }else{
+      if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
+      string signal="AGUARDAR";
+      color signal_color=C'255,209,102';
+      if(ObjectFind(0,Obj("SIGNAL"))>=0) signal=ObjectGetString(0,Obj("SIGNAL"),OBJPROP_TEXT);
+      if(StringFind(signal,"COMPRAR")>=0) signal_color=C'54,226,130';
+      else if(StringFind(signal,"VENDER")>=0) signal_color=C'255,86,101';
+      else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
+      ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,54);
+      ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,MathMax(12,ch-42));
+      ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
+      ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
+      ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
+      ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
+      ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
+      ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
+   }
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -187,7 +214,7 @@ void Panel(){
    RefreshPanelLayout();
    RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
+   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
@@ -196,8 +223,9 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
-   SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
+   SetLabel(Obj("BRAND_C"),"C",18,24,20,C'63,224,255');
+   SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27,12,clrWhite);
+   SetLabel(Obj("SUB"),"ECOSSISTEMA • DEMO / SIMULACAO",52,47,9,C'150,165,185');
    SetButton(Obj("V1"),"⌂",18,67,54,25);
    SetButton(Obj("V2"),"A",74,67,54,25);
    SetButton(Obj("V3"),"M",130,67,54,25);
