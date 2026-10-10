@@ -12,7 +12,7 @@ def test_dashboard_declares_utf8_and_keeps_portuguese_text_intact():
     assert 'id="conexoes"' in source
     assert 'id="connections"' in source
     assert 'id="ecosystemC"' in source
-    assert "REAL BLOQUEADO" in source
+    assert "REAL: BLOQUEADO" in source
 
 
 def test_dashboard_renders_runtime_health_before_waiting_for_risk_gate():
