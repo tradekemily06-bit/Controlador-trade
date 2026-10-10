@@ -727,7 +727,14 @@ void RefreshSecondary(){
          string demo_m_closed=IntegerToString((int)StringToInteger(JsonValue(demo_monthly,"wins"))+(int)StringToInteger(JsonValue(demo_monthly,"losses")));
          SetLabel(Obj("INFO6"),"DEMO • WIN: "+(demo_wins==""?"—":demo_wins),180,461,9,C'88,214,141');
          SetLabel(Obj("INFO7"),"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses),180,481,9,C'255,118,118');
-         SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+(demo_net==""?"—":demo_net),180,501,9,C'255,209,102');
+         string demo_net_display=(demo_net=="" || demo_net=="null" || demo_total=="0")?"—":demo_net;
+         color demo_net_color=C'255,209,102';
+         if(demo_net_display!="—"){
+            double demo_net_value=StringToDouble(demo_net_display);
+            if(demo_net_value>0) demo_net_color=C'88,214,141';
+            else if(demo_net_value<0) demo_net_color=C'255,118,118';
+         }
+         SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+demo_net_display,180,501,9,demo_net_color);
          SetLabel(Obj("INFO9"),"DEMO • taxa: "+(demo_total=="0"?"—":(demo_rate==""?"—":demo_rate)+"%")+" • fechadas: "+(demo_total==""?"—":demo_total),180,521,9,C'100,235,255');
          SetLabel(Obj("INFO10"),"DEMO • Dia "+(demo_d_closed=="0"?"—":(demo_d_rate==""?"—":demo_d_rate)+"%")+" ("+demo_d_closed+") | Sem "+(demo_w_closed=="0"?"—":(demo_w_rate==""?"—":demo_w_rate)+"%")+" ("+demo_w_closed+") | Mes "+(demo_m_closed=="0"?"—":(demo_m_rate==""?"—":demo_m_rate)+"%")+" ("+demo_m_closed+")",180,541,8,C'100,235,255');
       }else{
