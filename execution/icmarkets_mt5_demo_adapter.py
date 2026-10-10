@@ -288,6 +288,18 @@ class ICMarketsMT5DemoAdapter:
             }
             if not relevant or not exit_values or not any(getattr(deal, "entry", None) in exit_values for deal in relevant):
                 return unknown(position_id, "não há negócio de saída confirmado para esta posição.")
+            entry_in = getattr(mt5, "DEAL_ENTRY_IN", 0)
+            entry_inout = getattr(mt5, "DEAL_ENTRY_INOUT", object())
+            # Netting/reversal positions can combine several orders under one position_id.
+            # Do not assign their aggregate P&L to a single cycle.
+            opening_orders = {
+                int(getattr(deal, "order", -1))
+                for deal in relevant
+                if getattr(deal, "entry", None) == entry_in
+                and getattr(deal, "order", None) is not None
+            }
+            if entry_inout in {getattr(deal, "entry", None) for deal in relevant} or opening_orders != {ticket}:
+                return unknown(position_id, "posição contém identidade de entrada ambígua; resultado não atribuído.")
 
             net_result = sum(
                 float(getattr(deal, "profit", 0.0) or 0.0)
