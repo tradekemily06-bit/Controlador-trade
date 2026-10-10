@@ -585,3 +585,16 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     load_watermark = panel.split("void LoadWatermark()", 1)[1].split("void RefreshSharedWatermarkPreference()", 1)[0]
     assert 'Http(' not in load_watermark
     assert 'now-last_watermark_sync<60' in panel
+
+
+def test_mql5_runtime_cycle_parses_nested_runtime_payload_and_never_uses_decision_as_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'string runtime=JsonObjectValue(r,"runtime");' in cycle
+    assert 'string signal=JsonValue(runtime,"signal");' in cycle
+    assert 'string quality=JsonObjectValue(runtime,"quality");' in cycle
+    assert 'string cid=JsonValue(runtime,"cycle_id");' in cycle
+    assert 'string eid=JsonValue(runtime,"external_id");' in cycle
+    assert 'string allowed=JsonValue(r,"execution_allowed");' in cycle
+    assert 'if(signal=="") signal=JsonValue(r,"decision");' not in cycle
+    assert 'Resposta do ciclo sem objeto runtime; operacao bloqueada.' in cycle
