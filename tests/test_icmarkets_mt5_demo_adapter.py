@@ -197,3 +197,34 @@ def test_close_position_blocks_when_position_is_not_owned_by_controlador():
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("123456")
     assert result.accepted is False
     assert fake.sent == []
+
+def test_default_utc_timezone_falls_back_to_stdlib_when_tzdata_is_missing(monkeypatch):
+    import execution.icmarkets_mt5_demo_adapter as adapter_module
+    from datetime import timezone
+    from zoneinfo import ZoneInfoNotFoundError
+
+    def missing_zoneinfo(_name):
+        raise ZoneInfoNotFoundError("tzdata indisponível")
+
+    monkeypatch.setattr(adapter_module, "ZoneInfo", missing_zoneinfo)
+    adapter = adapter_module.ICMarketsMT5DemoAdapter(mt5_module=FakeMT5())
+    assert adapter._risk_day_zone is timezone.utc
+
+
+def test_named_timezone_still_fails_closed_when_tzdata_is_missing(monkeypatch):
+    import execution.icmarkets_mt5_demo_adapter as adapter_module
+    from zoneinfo import ZoneInfoNotFoundError
+    import pytest
+
+    def missing_zoneinfo(_name):
+        raise ZoneInfoNotFoundError("tzdata indisponível")
+
+    monkeypatch.setattr(adapter_module, "ZoneInfo", missing_zoneinfo)
+    from execution.icmarkets_mt5_demo_adapter import ICMarketsMT5DemoConfig
+
+    with pytest.raises(ValueError, match="timezone IANA válido"):
+        adapter_module.ICMarketsMT5DemoAdapter(
+            config=ICMarketsMT5DemoConfig(risk_day_timezone="America/Sao_Paulo"),
+            mt5_module=FakeMT5(),
+        )
+
