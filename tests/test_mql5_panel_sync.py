@@ -277,6 +277,14 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
     assert "Analise indisponivel" in failure
 
+def test_mql5_cycle_status_does_not_mislabel_execution_acceptance_as_authorization():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "execucao aceita=" in cycle
+    assert "autorizado=" not in cycle
+    assert 'allowed=="true"?' in cycle
+
+
 def test_mql5_close_cycle_requires_runtime_closed_true_before_clearing_identity():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
