@@ -829,8 +829,10 @@ void Analyze(bool render=true){
    string external_data=JsonObjectValue(r,"external_indicators");
    current_external_indicator_status=JsonValue(external_data,"status");
    if(current_external_indicator_status=="") current_external_indicator_status="NOT_CONFIGURED";
-   if(JsonValue(external_data,"available")=="true")
-      current_external_indicator_status="DISPONIVEL: "+JsonValue(external_data,"provider");
+   if(JsonValue(external_data,"available")=="true"){
+      string external_reading=JsonObjectValue(external_data,"reading");
+      current_external_indicator_status="DISPONIVEL: "+JsonValue(external_reading,"provider");
+   }
    // Keep the compact C signal current even when the full panel is hidden.
    RefreshPanelToggle();
    if(!render) return;
