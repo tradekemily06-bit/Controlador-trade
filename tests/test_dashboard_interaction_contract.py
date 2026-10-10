@@ -284,3 +284,8 @@ def test_secondary_api_failure_does_not_leave_modules_claiming_empty_data():
     assert "Memória indisponível: '+esc(e.message)" in WEB
     assert "Resultados indisponíveis até a API responder." in WEB
     assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
+
+
+def test_async_runtime_loaders_are_declared_async():
+    assert "async function refreshMode(){try{const d=await getJson('/api/preferences');" in WEB
+    assert "function refreshMode(){try{const d=await getJson('/api/preferences');" not in WEB
