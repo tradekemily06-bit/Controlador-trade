@@ -544,14 +544,16 @@ void Analyze(bool render=true){
       return;
    }
    runtime_ok=true;
-   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   // Keep the compact C signal current even when the full panel is hidden.
+   RefreshPanelToggle();
+   if(!render) return;
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
