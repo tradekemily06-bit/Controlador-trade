@@ -138,7 +138,8 @@ def test_demo_net_result_is_unavailable_when_there_are_no_confirmed_records():
     assert "Number(d.total)>0?d.net_result:null" in WEB
 
 
-def test_weak_candidate_is_shown_as_wait_with_its_real_weak_quality():
+def test_quality_level_remains_visible_when_final_gate_changes_signal_to_wait():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
-    assert "else if(!actionable&&q.technical_actionable===false&&ql==='FRACA'&&qs)" in render
-    assert "qs+'/100 · '+qs+'% FRACA'" in render
+    assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
+    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
+    assert "qs+'/100 · '+qs+'% '+ql" in render
