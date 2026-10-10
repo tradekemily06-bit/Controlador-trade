@@ -16,9 +16,11 @@ class FakeMT5:
         self.shutdown_called = False
         self.initialize_path = None
         self.active_path = None
+        self.initialize_timeout_ms = None
 
-    def initialize(self, path=None) -> bool:
+    def initialize(self, path=None, timeout=60000) -> bool:
         self.initialize_path = path
+        self.initialize_timeout_ms = timeout
         self.active_path = path
         return True
 
@@ -100,3 +102,38 @@ def test_preflight_rejects_a_different_connected_terminal(tmp_path) -> None:
     assert result.available is False
     assert "não corresponde ao caminho configurado" in result.message
     assert mt5.shutdown_called is True
+
+
+
+def test_preflight_bounds_initialize_timeout_and_uses_configured_value() -> None:
+    mt5 = FakeMT5()
+    result = run_preflight(mt5, initialize_timeout_ms=12_000)
+    assert result.available is True
+    assert mt5.initialize_timeout_ms == 12_000
+
+
+def test_preflight_rejects_invalid_initialize_timeout() -> None:
+    for timeout in (True, 999, 60_001, 1.5):
+        try:
+            run_preflight(FakeMT5(), initialize_timeout_ms=timeout)
+        except ValueError as exc:
+            assert "initialize_timeout_ms" in str(exc)
+        else:
+            raise AssertionError(f"timeout inválido aceito: {timeout!r}")
+
+
+def test_preflight_rejects_disconnected_terminal() -> None:
+    mt5 = FakeMT5()
+    mt5.terminal_info = lambda: SimpleNamespace(path="", connected=False)
+    result = run_preflight(mt5)
+    assert result.available is False
+    assert "não conectado" in result.message
+    assert mt5.shutdown_called is True
+
+
+def test_preflight_rejects_invalid_quote() -> None:
+    mt5 = FakeMT5()
+    mt5.symbol_info_tick = lambda symbol: SimpleNamespace(bid=1.2, ask=1.1)
+    result = run_preflight(mt5)
+    assert result.available is False
+    assert "inválidos" in result.message
