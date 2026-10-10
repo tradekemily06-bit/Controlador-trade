@@ -181,3 +181,12 @@ def test_controller_supervisor_bounds_and_logs_mt5_preflight_failures():
     assert "initialize_timeout_ms: int = 15_000" in preflight
     assert "terminal MT5 não conectado após initialize" in preflight
     assert "cotação ou limites de volume inválidos" in preflight
+
+
+
+def test_execution_adapter_pins_and_bounds_mt5_initialization():
+    adapter = _read("execution/icmarkets_mt5_demo_adapter.py")
+    assert 'os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH", "")' in adapter
+    assert "mt5.initialize(path=configured_path, timeout=15_000)" in adapter
+    assert "mt5.initialize(timeout=15_000)" in adapter
+    assert "terminal MT5 conectado não corresponde ao caminho configurado" in adapter
