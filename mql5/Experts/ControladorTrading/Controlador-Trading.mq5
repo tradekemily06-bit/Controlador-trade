@@ -859,20 +859,35 @@ void RunCycle(){
       SetLabel(Obj("INFO1"),"Ciclo bloqueado/falhou • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
       return;
    }
-   string signal=JsonValue(r,"signal");
-   if(signal=="") signal=JsonValue(r,"decision");
+   string runtime=JsonObjectValue(r,"runtime");
+   if(runtime==""){
+      current_signal="AGUARDAR";
+      current_quality_score="";
+      current_quality_level="";
+      current_quality_actionable="false";
+      current_quality_technical_actionable="false";
+      last_cycle_id=""; last_external_id="";
+      RefreshPanelToggle();
+      SetLabel(Obj("INFO1"),"Resposta do ciclo sem objeto runtime; operacao bloqueada.",180,361,9,C'255,118,118');
+      return;
+   }
+   string signal=JsonValue(runtime,"signal");
    if(signal=="") signal="AGUARDAR";
-   string score=JsonValue(r,"score");
-   string reason=JsonValue(r,"reason");
-   string cid=JsonValue(r,"cycle_id");
-   string eid=JsonValue(r,"external_id");
+   string reason=JsonValue(runtime,"reason");
+   string cid=JsonValue(runtime,"cycle_id");
+   string eid=JsonValue(runtime,"external_id");
+   string decision=JsonValue(runtime,"decision");
    string allowed=JsonValue(r,"execution_allowed");
    current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
-   string quality=JsonObjectValue(r,"quality");
+   string quality=JsonObjectValue(runtime,"quality");
    current_quality_score=JsonValue(quality,"score");
    current_quality_level=JsonValue(quality,"level");
    current_quality_actionable=JsonValue(quality,"actionable");
    current_quality_technical_actionable=JsonValue(quality,"technical_actionable");
+   if(current_quality_level=="NENHUMA" || current_quality_score=="null"){
+      current_quality_score="";
+      current_quality_level="";
+   }
    if(current_quality_actionable!="true") current_signal="AGUARDAR";
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
@@ -882,7 +897,7 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),180,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),180,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • execucao aceita="+(allowed==""?"false":allowed),180,361,9,allowed=="true"?C'88,214,141':C'255,209,102');
+   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+current_signal+" • decisao="+(decision==""?"—":decision)+" • execucao aceita="+(allowed==""?"false":allowed),180,361,9,allowed=="true"?C'88,214,141':C'255,209,102');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
