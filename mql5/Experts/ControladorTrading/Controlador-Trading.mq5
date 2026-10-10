@@ -527,6 +527,28 @@ void RefreshNotifications(){
       SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
    }
 }
+void RefreshLeverageRisk(){
+   string r; int code=0;
+   if(!Http("GET","/api/risk","",r,code)){
+      SetLabel(Obj("INFO1"),"Risk Gate: indisponivel • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Limites de risco: nao confirmados",180,381,9,C'255,118,118');
+      SetLabel(Obj("INFO3"),"Operacoes: nao confirmadas",180,401,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Perdas consecutivas: nao confirmadas",180,421,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"Alavancagem da corretora nao foi alterada",180,441,9,C'205,215,230');
+      return;
+   }
+   string allowed=JsonValue(r,"allowed");
+   string reason=JsonValue(r,"reason");
+   string limits=JsonObjectValue(r,"configured_limits");
+   string daily=JsonValue(limits,"daily_loss_limit");
+   string operations=JsonValue(limits,"max_operations");
+   string consecutive=JsonValue(limits,"max_consecutive_losses");
+   SetLabel(Obj("INFO1"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,38),180,361,9,allowed=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Limite perda diaria: "+(daily==""?"nao informado":daily),180,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Maximo de operacoes: "+(operations==""?"nao informado":operations),180,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Perdas consecutivas: "+(consecutive==""?"nao informado":consecutive),180,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Leitura somente; alavancagem da corretora nao e alterada",180,441,8,C'255,209,102');
+}
 void RefreshLearning(){
    string r; int code=0;
    if(Http("GET","/api/learning","",r,code)){
@@ -610,16 +632,12 @@ void RenderView(bool refresh_data=true){
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }else if(active_view=="ALAVANCAGEM"){
-      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",180,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",180,361,9,C'255,209,102');
-      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",180,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",180,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",180,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
-      if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+      SetLabel(Obj("SUB"),"RISCO / ALAVANCAGEM • limites operacionais somente leitura",180,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR RISCO",180,284,110,30);
       if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+      if(refresh_data) RefreshLeverageRisk();
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",180,284,110,30);
@@ -1008,6 +1026,7 @@ void OnTimer(){
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
+   else if(active_view=="ALAVANCAGEM") RefreshLeverageRisk();
    datetime current_bar=iTime(_Symbol,_Period,0);
    if(current_bar>0 && current_bar!=last_analysis_bar){
       last_analysis_bar=current_bar;
@@ -1044,7 +1063,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="REPLAY") RefreshHealth();
-      else if(active_view=="ALAVANCAGEM") { /* Informational only; no native integration. */ }
+      else if(active_view=="ALAVANCAGEM") RefreshLeverageRisk();
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
