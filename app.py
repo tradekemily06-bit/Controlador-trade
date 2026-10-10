@@ -353,6 +353,7 @@ def application(environ, start_response):
                 filters_ok=data.get("filters_ok"),
             )
             snapshot = orchestration.snapshot
+            indicator_evidence = getattr(orchestration, "indicator_evidence", None)
             return _json_response(start_response, HTTPStatus.OK, {
                 "signal": orchestration.analysis.signal.value,
                 "score": orchestration.analysis.score,
@@ -379,7 +380,7 @@ def application(environ, start_response):
                 "indicators": (
                     {
                         "available": True,
-                        "source": orchestration.indicator_evidence.source,
+                        "source": indicator_evidence.source,
                         "candle_timestamp": orchestration.indicator_evidence.candle_timestamp.isoformat(),
                         "candles_used": orchestration.indicator_evidence.candles_used,
                         "ema_fast": orchestration.indicator_evidence.ema_fast,
