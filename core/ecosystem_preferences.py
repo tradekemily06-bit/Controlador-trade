@@ -61,6 +61,7 @@ class EcosystemPreferences:
     default_timeframe: str = "5m"
     require_closed_candle: bool = True
     require_filters: bool = True
+    indicators_enabled: bool = True
     chart_theme: ChartTheme = ChartTheme.DARK
     candle: CandleAppearance = CandleAppearance()
     notifications: NotificationPreferences = NotificationPreferences()
@@ -129,6 +130,7 @@ class EcosystemPreferencesStore:
             default_timeframe=str(payload.get("default_timeframe", "5m")),
             require_closed_candle=bool(payload.get("require_closed_candle", True)),
             require_filters=bool(payload.get("require_filters", True)),
+            indicators_enabled=bool(payload.get("indicators_enabled", True)),
             chart_theme=ChartTheme(str(payload.get("chart_theme", ChartTheme.DARK.value))),
             candle=candle,
             notifications=notifications,
