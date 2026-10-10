@@ -307,6 +307,12 @@ def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations(
     assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
 
 
+def test_mql5_laboratory_does_not_claim_unverified_replay_endpoint():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'Replay: endpoint nativo ainda nao validado' in panel
+    assert 'Replay: endpoint /api/replay disponivel no runtime' not in panel
+
+
 def test_mql5_navigation_selection_and_layout_refresh_after_chart_change():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
