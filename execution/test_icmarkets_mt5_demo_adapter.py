@@ -42,7 +42,7 @@ class FakeMT5:
     def history_deals_get(self, *args, **kwargs):
         self.calls.append(("history_deals_get", args, kwargs))
         if kwargs.get("ticket") == 123:
-            return (SimpleNamespace(ticket=123, profit=4.0),)
+            return (SimpleNamespace(ticket=123, magic=2609001, profit=4.0),)
         if kwargs.get("ticket") == 456:
             return ()
         return (
@@ -54,7 +54,7 @@ class FakeMT5:
     def history_orders_get(self, *args, **kwargs):
         self.calls.append(("history_orders_get", args, kwargs))
         if kwargs.get("ticket") == 456:
-            return (SimpleNamespace(ticket=456, state=self.ORDER_STATE_CANCELED),)
+            return (SimpleNamespace(ticket=456, magic=2609001, state=self.ORDER_STATE_CANCELED),)
         return ()
 
     def positions_get(self):
@@ -185,13 +185,38 @@ class FakeFilledOrderMT5(FakeMT5):
     def history_orders_get(self, *args, **kwargs):
         self.calls.append(("history_orders_get", args, kwargs))
         if kwargs.get("ticket") == 123:
-            return (SimpleNamespace(ticket=123, state=self.ORDER_STATE_FILLED),)
+            return (SimpleNamespace(ticket=123, magic=2609001, state=self.ORDER_STATE_FILLED),)
         return ()
 
 
 def test_query_order_recognizes_filled_order_when_deal_ticket_differs():
     mt5 = FakeFilledOrderMT5()
     observation = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_order("123")
+    assert observation.status.value == "EXECUTED"
+
+
+class FakePartialCanceledOrderMT5(FakeMT5):
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("position") == 900:
+            return (SimpleNamespace(
+                ticket=999, order=456, position_id=900, magic=2609001,
+                entry=self.DEAL_ENTRY_OUT, profit=1.0,
+            ),)
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 456:
+            return (SimpleNamespace(
+                ticket=456, magic=2609001, state=self.ORDER_STATE_CANCELED, position_id=900,
+            ),)
+        return ()
+
+
+def test_query_order_recognizes_partial_fill_before_cancelled_remainder():
+    mt5 = FakePartialCanceledOrderMT5()
+    observation = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_order("456")
     assert observation.status.value == "EXECUTED"
 
 
