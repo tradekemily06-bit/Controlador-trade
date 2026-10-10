@@ -92,14 +92,14 @@ def test_compact_signal_shows_validated_quality_independently_of_final_action_ga
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const actionable=q.actionable===true&&(isBuy||isSell);" in render
     assert "const signal=actionable?" in render
-    assert "qs+'/100 · '+qs+'% '+ql" in render
-    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
+    assert "esc(qs+'/100 · '+qs+'% '+ql)" in render
+    assert "const hasQuality=Boolean(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
 
 
 def test_compact_signal_does_not_promote_weak_or_unconfirmed_analysis():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
-    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
+    assert "const hasQuality=Boolean(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
 
 
 def test_statistics_visually_separate_manual_study_from_confirmed_demo_financial_results():
@@ -145,8 +145,8 @@ def test_demo_net_result_is_unavailable_when_there_are_no_confirmed_records():
 def test_quality_level_remains_visible_when_final_gate_changes_signal_to_wait():
     render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
     assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
-    assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
-    assert "qs+'/100 · '+qs+'% '+ql" in render
+    assert "const hasQuality=Boolean(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
+    assert "esc(qs+'/100 · '+qs+'% '+ql)" in render
 
 
 def test_training_and_material_modules_have_real_runtime_actions():
@@ -203,3 +203,10 @@ def test_mt5_demo_validation_and_market_source_are_not_static_claims():
 def test_protection_status_fails_closed_when_runtime_status_is_unavailable():
     assert "catch(e){renderRuntime(null,null);renderProtectionStatus(null);" in WEB
     assert "String(status?.mt5_demo||status?.components?.mt5_demo||'NÃO CONFIRMADO')" in WEB
+
+
+def test_signal_quality_level_has_its_own_color_without_recoloring_wait_signal():
+    assert ".quality-strong{color:#58d68d}" in WEB
+    assert ".quality-moderate{color:#ffd166}" in WEB
+    assert ".quality-weak{color:#ff7676}" in WEB
+    assert "$('compactSignal').innerHTML=esc(signal)+(hasQuality?" in WEB
