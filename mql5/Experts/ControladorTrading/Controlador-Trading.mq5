@@ -617,8 +617,8 @@ void RefreshSecondary(){
          string w_closed=IntegerToString((int)StringToInteger(JsonValue(weekly,"wins"))+(int)StringToInteger(JsonValue(weekly,"losses")));
          string m_closed=IntegerToString((int)StringToInteger(JsonValue(monthly,"wins"))+(int)StringToInteger(JsonValue(monthly,"losses")));
          string closed=IntegerToString((int)StringToInteger(wins)+(int)StringToInteger(losses));
-         SetLabel(Obj("INFO1"),"Resultados fechados: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS",180,361,9,C'205,215,230');
-         SetLabel(Obj("INFO4"),"Acerto: "+(closed=="0"?"—":(rate==""?"—":rate)+"%")+" • total decisoes: "+(total==""?"—":total),180,421,9,C'205,215,230');
+         SetLabel(Obj("INFO1"),"Registros de estudo: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS",180,361,9,C'205,215,230');
+         SetLabel(Obj("INFO4"),"Taxa WIN/LOSS registrada: "+(closed=="0"?"—":(rate==""?"—":rate)+"%")+" • decisoes: "+(total==""?"—":total),180,421,9,C'205,215,230');
          SetLabel(Obj("INFO5"),"Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")+" ("+(d_total==""?"—":d_total)+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+(w_total==""?"—":w_total)+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+(m_total==""?"—":m_total)+")",180,441,8,C'205,215,230');
       }else{
          SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%",180,421,9,C'205,215,230');
