@@ -438,7 +438,7 @@ void RenderView(){
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",20,401,9,C'255,209,102');
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="REPLAY"){
