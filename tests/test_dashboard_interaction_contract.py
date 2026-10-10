@@ -54,6 +54,10 @@ def test_dashboard_actions_have_matching_runtime_api_routes():
         "/api/memory",
         "/api/news",
         "/api/outcome",
+        "/api/learning",
+        "/api/learning/activities",
+        "/api/learning/attempts",
+        "/api/learning/resources",
         "/api/status",
     )
     for route in required_routes:
@@ -143,3 +147,20 @@ def test_quality_level_remains_visible_when_final_gate_changes_signal_to_wait():
     assert "const signal=actionable?(isBuy?'COMPRAR':'VENDER'):'AGUARDAR';" in render
     assert "if(qs&&ql&&ql!=='NENHUMA'&&Number.isFinite(Number(q.score))&&Number(q.score)>=0&&Number(q.score)<=100)" in render
     assert "qs+'/100 · '+qs+'% '+ql" in render
+
+
+def test_training_and_material_modules_have_real_runtime_actions():
+    assert 'id="createStudyActivity"' in WEB
+    assert "$('createStudyActivity').onclick=async()" in WEB
+    assert "'/api/learning/activities'" in WEB
+    assert "'/api/learning/attempts'" in WEB
+    assert 'id="registerStudyResource"' in WEB
+    assert "$('registerStudyResource').onclick=async()" in WEB
+    assert "'/api/learning/resources'" in WEB
+    assert "correção automática não configurada" in WEB
+    assert "não baixa nem analisa automaticamente URLs ou vídeos" in WEB
+
+
+def test_dashboard_does_not_invent_startup_quality_score():
+    assert '<div class="value" id="score">—</div>' in WEB
+    assert 'id="score">50/100</div>' not in WEB
