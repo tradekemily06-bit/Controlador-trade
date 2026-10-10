@@ -6,6 +6,7 @@ def test_configured_service_exposes_safe_preferences_and_notification_summary():
     preferences = service.get_preferences()
     assert preferences["default_symbol"] == "EURUSD"
     assert preferences["candle"]["style"] == "CANDLESTICK"
+    assert preferences["indicators_enabled"] is True
     assert preferences["autonomous_operation_enabled"] is False
     assert preferences["real_execution_enabled"] is False
     assert service.notification_summary()["count"] == 0
@@ -17,6 +18,14 @@ def test_candle_preferences_are_updated_through_service_boundary():
     assert updated["candle"]["style"] == "HOLLOW"
     assert updated["candle"]["color_mode"] == "CUSTOM"
     assert updated["candle"]["bullish_color"] == "#00ff00"
+
+
+def test_indicator_visibility_preference_is_shared_and_does_not_change_execution_authority():
+    service = ConfiguredEcosystemService()
+    updated = service.update_preferences({"indicators_enabled": False})
+    assert updated["indicators_enabled"] is False
+    assert updated["real_execution_enabled"] is False
+    assert updated["autonomous_operation_enabled"] is False
 
 
 def test_ecosystem_update_surfaces_as_important_notification():
