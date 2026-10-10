@@ -15,6 +15,7 @@ class AutomationOutcome:
     outcome: Literal["WIN", "LOSS", "DRAW", "UNKNOWN"]
     financial_result: float | None
     source: str = "UNKNOWN"
+    closed_at: datetime | None = None
 
 
 class AutomationOutcomeBoundary:
@@ -28,6 +29,7 @@ class AutomationOutcomeBoundary:
         outcome: Literal["WIN", "LOSS", "DRAW", "UNKNOWN"],
         financial_result: float | None = None,
         source: str = "UNKNOWN",
+        closed_at: datetime | None = None,
     ) -> AutomationOutcome:
         if not isinstance(closure, AutomationClosure):
             raise ValueError("invalid automation closure")
@@ -35,6 +37,11 @@ class AutomationOutcomeBoundary:
             raise ValueError("observed_at must be timezone-aware")
         if observed_at < closure.closed_at:
             raise ValueError("observed_at cannot precede automation closure")
+        if closed_at is not None:
+            if not isinstance(closed_at, datetime) or closed_at.tzinfo is None or closed_at.utcoffset() is None:
+                raise ValueError("closed_at must be timezone-aware or None")
+            if closed_at > observed_at:
+                raise ValueError("closed_at cannot be later than observed_at")
         if not isinstance(closure.cycle_id, str) or not closure.cycle_id.strip():
             raise ValueError("cycle_id is required")
         if outcome not in {"WIN", "LOSS", "DRAW", "UNKNOWN"}:
@@ -58,4 +65,5 @@ class AutomationOutcomeBoundary:
             outcome=outcome,
             financial_result=financial_result,
             source=source.strip(),
+            closed_at=closed_at,
         )
