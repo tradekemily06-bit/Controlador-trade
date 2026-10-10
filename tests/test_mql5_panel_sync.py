@@ -65,15 +65,16 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,16)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,10)" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size)" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size)" in panel
+    assert "wm_scale=MathMin((double)w/1360.0,(double)h/760.0);" in panel
     assert "InpPanelWidth = 440" in panel
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
     assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
-    assert "MathRound(cw*0.42)" in panel
-    assert "MathRound(ch*0.48)" in panel
-    assert "panel_sx=(double)panel_width/600.0;" in panel
+    assert "MathRound(w*0.52)" in panel
+    assert "MathRound(h*0.52)" in panel
+    assert "panel_sx=(double)panel_width/440.0;" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
@@ -207,8 +208,8 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?panel_x+panel_width-42:12;" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in panel
+    assert "int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;" in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
@@ -227,7 +228,7 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
 def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in toggle
     assert 'Obj("PANEL_SIGNAL")' in toggle
     assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
     assert 'signal=="VENDA" || signal=="VENDER"' in toggle
@@ -377,7 +378,7 @@ def test_mql5_memory_refresh_button_survives_view_cleanup_and_does_not_save_pref
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
     event = panel.split("void OnChartEvent(", 1)[1]
-    assert 'SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);' in render
+    assert 'SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",180,320,110,28);' in render
     assert 'if(active_view!="CONFIG" && active_view!="MEMORIA")' in render
     assert 'if(active_view=="MEMORIA") RefreshSecondary();' in event
     assert 'else if(active_view=="CONFIG") SaveConfig();' in event
