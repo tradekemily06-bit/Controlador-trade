@@ -255,3 +255,12 @@ def test_mql5_demo_cycle_updates_closed_c_signal():
     assert 'current_signal=(signal=="COMPRA" || signal=="COMPRAR")?' in cycle
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in cycle
     assert "RefreshPanelToggle();" in cycle
+
+
+def test_mql5_hidden_analysis_updates_c_signal_before_render_guard():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert analyze.index('string signal=JsonValue(r,"signal");') < analyze.index("if(!render) return;")
+    assert analyze.index("current_signal=(signal==") < analyze.index("if(!render) return;")
+    assert analyze.index("RefreshPanelToggle();") < analyze.index("if(!render) return;")
+    assert "color c=current_signal==\"COMPRAR\"?" in analyze
