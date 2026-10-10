@@ -392,3 +392,11 @@ def test_mql5_demo_cycle_fails_closed_without_explicit_confirmation_and_filter_c
     assert '\\"filters_ok\\":false' in cycle
     assert '\\"confirmed\\":true' not in cycle
     assert '\\"filters_ok\\":true' not in cycle
+
+
+def test_mql5_replay_informational_view_removes_cycle_close_and_save_buttons():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    replay = panel.split('}else if(active_view=="REPLAY"){', 1)[1].split('}else if(active_view=="ALAVANCAGEM"){', 1)[0]
+    assert 'if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));' in replay
+    assert 'if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));' in replay
+    assert 'if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));' in replay
