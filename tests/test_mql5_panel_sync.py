@@ -566,6 +566,11 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert 'bool desired=!indicators_enabled;' in panel
     assert 'Http("POST","/api/preferences",body,response,code)' in panel
     assert 'SetButton(Obj("CLOSE"),indicators_enabled?"INDIC: ON":"INDIC: OFF",296,320,114,28);' in panel
+    assert 'string indicator_data=JsonObjectValue(r,"indicators");' in panel
+    assert 'current_indicator_summary="DESATIVADOS";' in panel
+    assert 'current_external_indicator_status=JsonValue(external_data,"status");' in panel
+    assert 'string external_reading=JsonObjectValue(external_data,"reading");' in panel
+    assert 'SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48)' in panel
     assert 'bool synced=Http("POST","/api/preferences",body,response,code);' in panel
     assert 'string shared=JsonValue(response,"watermark_enabled");' in panel
     assert 'void RefreshSharedWatermarkPreference()' in panel
