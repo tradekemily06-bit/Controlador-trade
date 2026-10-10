@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from math import isfinite
 from typing import Any
 
 
@@ -21,16 +22,37 @@ def run_preflight(
     mt5: Any,
     symbol: str = "EURUSD",
     terminal_path: str | None = None,
+    initialize_timeout_ms: int = 15_000,
 ) -> MT5RuntimePreflight:
-    """Read-only MT5 validation, pinned to the configured terminal when supplied."""
+    """Read-only MT5 validation, pinned to the configured terminal when supplied.
+
+    Bound initialize() so the supervisor can log a failed attempt and retry
+    instead of hanging indefinitely on the terminal bridge.
+    """
+    if (
+        not isinstance(initialize_timeout_ms, int)
+        or isinstance(initialize_timeout_ms, bool)
+        or not 1_000 <= initialize_timeout_ms <= 60_000
+    ):
+        raise ValueError("initialize_timeout_ms deve estar entre 1000 e 60000 ms")
     configured_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
     try:
-        initialized = bool(mt5.initialize(path=configured_path) if configured_path else mt5.initialize())
+        initialized = bool(
+            mt5.initialize(path=configured_path, timeout=initialize_timeout_ms)
+            if configured_path
+            else mt5.initialize(timeout=initialize_timeout_ms)
+        )
         if not initialized:
             return MT5RuntimePreflight(False, False, symbol, None, None, None, None, f"MT5 indisponível: {mt5.last_error()}")
 
+        terminal = mt5.terminal_info()
+        if terminal is None or not bool(getattr(terminal, "connected", False)):
+            return MT5RuntimePreflight(
+                False, False, symbol, None, None, None, None,
+                "terminal MT5 não conectado após initialize",
+            )
+
         if configured_path:
-            terminal = mt5.terminal_info()
             expected = os.path.normcase(os.path.realpath(configured_path))
             actual = (
                 os.path.normcase(
@@ -60,13 +82,24 @@ def run_preflight(
         tick = mt5.symbol_info_tick(symbol)
         if info is None or tick is None:
             return MT5RuntimePreflight(False, True, symbol, None, None, None, None, f"cotação/metadados indisponíveis: {symbol}")
+        bid, ask = float(tick.bid), float(tick.ask)
+        if (
+            not isfinite(bid) or not isfinite(ask)
+            or bid <= 0 or ask <= 0 or ask < bid
+            or not isfinite(float(info.volume_min)) or float(info.volume_min) <= 0
+            or not isfinite(float(info.volume_step)) or float(info.volume_step) <= 0
+        ):
+            return MT5RuntimePreflight(
+                False, True, symbol, None, None, None, None,
+                f"cotação ou limites de volume inválidos: {symbol}",
+            )
 
         return MT5RuntimePreflight(
             True,
             True,
             symbol,
-            float(tick.bid),
-            float(tick.ask),
+            bid,
+            ask,
             float(info.volume_min),
             float(info.volume_step),
             "MT5 DEMO + símbolo + cotação + limites de volume validados",

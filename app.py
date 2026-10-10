@@ -305,8 +305,11 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                # API payloads cannot assert that market evidence passed.
+                # Until the runtime derives both facts from verified market data,
+                # the cycle stays fail-closed.
+                confirmed=False,
+                filters_ok=False,
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
@@ -371,8 +374,6 @@ def application(environ, start_response):
                 symbol=str(data.get("symbol", "")),
                 timeframe=str(data.get("timeframe", "5m")),
                 limit=int(data.get("limit", 100)),
-                confirmed=data.get("confirmed"),
-                filters_ok=data.get("filters_ok"),
             )
             snapshot = orchestration.snapshot
             indicator_evidence = getattr(orchestration, "indicator_evidence", None)

@@ -360,20 +360,20 @@ def test_mql5_panel_has_vertical_navigation_for_requested_modules():
     assert 'active_view="ALAVANCAGEM"' in panel
 
 
-def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations():
+def test_mql5_replay_and_leverage_are_not_misrepresented_as_fully_implemented():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert "REPLAY • ligacao nativa ainda nao confirmada" in panel
     assert "Replay nao tem tela nativa ligada neste EA." in panel
-    assert "ALAVANCAGEM • modulo web nao ligado ao EA nativo" in panel
-    assert "Integracao nativa nao confirmada." in panel
-    assert "Execucao autorizada: false." in panel
+    assert "RISCO / ALAVANCAGEM • limites operacionais somente leitura" in panel
+    assert "Leitura somente; alavancagem da corretora nao e alterada" in panel
+    assert "ATUALIZAR RISCO" in panel
     assert "REAL: BLOQUEADO" in panel
     assert 'active_nav=="N7"?"WIN/LOSS • resultados, estatisticas e auditoria":"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria"' in panel
 
 
 def test_mql5_laboratory_does_not_claim_unverified_replay_endpoint():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert 'Replay: endpoint nativo ainda nao validado' in panel
+    assert 'Replay: endpoint existe; replay historico nativo ainda nao validado' in panel
     assert 'Replay: endpoint /api/replay disponivel no runtime' not in panel
 
 
@@ -622,3 +622,74 @@ def test_mql5_hides_unavailable_quality_instead_of_showing_null_or_zero():
     assert 'if(current_quality_level=="NENHUMA" || current_quality_score=="null")' in analyze
     assert 'if(score=="null") score="";' in analyze
     assert "color quality_color=current_quality_level==\"FORTE\"?C'88,214,141'" in analyze
+
+
+
+def test_native_panel_symbol_and_timeframe_fields_are_editable():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark(", 1)[0]
+    assert "OBJPROP_READONLY,false" in edit
+    assert "OBJPROP_SELECTABLE,true" in edit
+    assert "OBJPROP_SELECTABLE,false" not in edit
+
+def test_native_indicator_toggle_refreshes_runtime_analysis_without_rendering_stale_evidence():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void ToggleIndicators()", 1)[1].split("void ToggleWatermark()", 1)[0]
+    assert 'Http("POST","/api/preferences",body,response,code)' in toggle
+    assert "indicators_enabled=desired;" in toggle
+    assert "Analyze(false);" in toggle
+    assert toggle.index("indicators_enabled=desired;") < toggle.index("Analyze(false);")
+
+def test_native_panel_does_not_show_runtime_online_from_http_200_alone():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    for contract in (
+        'JsonValue(r,"ok")',
+        'JsonValue(r,"execution_allowed")',
+        'JsonObjectValue(r,"operational_observability")',
+        'JsonObjectValue(r,"real_runtime")',
+        'operational_allowed!="false"',
+        'real_allowed!="false"',
+        'SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO',
+    ):
+        assert contract in health
+    assert health.index('if(health_ok!="true"') < health.index('SetLabel(Obj("RUNTIME"),"Runtime: ONLINE')
+
+def test_lab_panel_does_not_overwrite_runtime_health_or_risk_with_optimistic_labels():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    lab = panel.split('}else if(active_view=="LAB"){', 1)[1].split('}else if(active_view=="REPLAY"){', 1)[0]
+    assert "if(refresh_data){ RefreshHealth(); RefreshSecondary(); }" in lab
+    assert 'SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO"' not in lab
+    assert 'SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime"' not in lab
+    assert lab.index("SetLabel(Obj(\"INFO3\")") < lab.index("if(refresh_data){ RefreshHealth(); RefreshSecondary(); }")
+
+def test_analysis_view_reads_actual_risk_gate_instead_of_inferring_from_runtime_health():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk = panel.split("void RefreshRiskGate()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    analysis = panel.split('}else if(active_view=="ANALISE"){', 1)[1].split('}else if(active_view=="MEMORIA"){', 1)[0]
+    assert 'Http("GET","/api/risk","",r,code)' in risk
+    assert 'allowed=JsonValue(r,"allowed")' in risk
+    assert 'if(refresh_data) Analyze();\n      RefreshRiskGate();' in analysis
+    assert 'runtime_ok?"consultado":"runtime offline"' not in analysis
+
+def test_native_risk_leverage_view_reads_live_risk_limits_without_claiming_to_change_broker_leverage():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk_view = panel.split("void RefreshLeverageRisk()", 1)[1].split("void RefreshLearning()", 1)[0]
+    leverage = panel.split('}else if(active_view=="ALAVANCAGEM"){', 1)[1].split('}else if(active_view=="ENSINO"){', 1)[0]
+    assert 'Http("GET","/api/risk","",r,code)' in risk_view
+    assert 'JsonObjectValue(r,"configured_limits")' in risk_view
+    assert 'JsonValue(limits,"daily_loss_limit")' in risk_view
+    assert 'JsonValue(limits,"max_operations")' in risk_view
+    assert 'JsonValue(limits,"max_consecutive_losses")' in risk_view
+    assert "Leitura somente; alavancagem da corretora nao e alterada" in risk_view
+    assert "if(refresh_data) RefreshLeverageRisk();" in leverage
+    assert "ATUALIZAR RISCO" in leverage
+
+
+def test_native_risk_view_does_not_present_zero_limits_as_configured():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk = panel.split("void RefreshLeverageRisk()", 1)[1].split("void RefreshLearning()", 1)[0]
+    assert 'StringToDouble(daily)<=0.0?"nao configurado":daily' in risk
+    assert 'StringToInteger(operations)<=0?"nao configurado":operations' in risk
+    assert 'StringToInteger(consecutive)<=0?"nao configurado":consecutive' in risk
+    assert "Zero means no active limit, not a safe configured limit." in risk

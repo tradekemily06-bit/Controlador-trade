@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, time, timezone
+import os
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 from typing import Any
@@ -53,16 +54,16 @@ class ICMarketsMT5DemoAdapter:
     def __init__(self, config: ICMarketsMT5DemoConfig | None = None, mt5_module: Any = None) -> None:
         self.config = config or ICMarketsMT5DemoConfig()
         try:
-            # UTC has no daylight-saving rules and is available directly from
-            # the standard library. Keep the default runtime independent of
-            # the external tzdata package, which can be incomplete on Windows.
-            if self.config.risk_day_timezone == "UTC":
+            self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            # UTC has a fixed offset and is available in the standard library.
+            # Keep the default runtime portable when optional tzdata is missing.
+            if self.config.risk_day_timezone.strip().upper() in {"UTC", "ETC/UTC", "GMT", "ETC/GMT"}:
                 self._risk_day_zone = timezone.utc
             else:
-                self._risk_day_zone = ZoneInfo(self.config.risk_day_timezone)
-        except (ZoneInfoNotFoundError, ValueError):
-            raise ValueError("risk_day_timezone deve ser um timezone IANA válido.")
+                raise ValueError("risk_day_timezone deve ser um timezone IANA válido.") from exc
         self._mt5 = mt5_module
+        self._last_initialization_error = ""
 
     def _module(self) -> Any:
         if self._mt5 is None:
@@ -79,7 +80,7 @@ class ICMarketsMT5DemoAdapter:
         mt5 = None
         try:
             mt5 = self._module()
-            if not mt5.initialize():
+            if not self._initialize_mt5(mt5):
                 return False
             account = mt5.account_info()
             return account is not None and self._is_demo_account(account, mt5)
@@ -91,6 +92,56 @@ class ICMarketsMT5DemoAdapter:
                     mt5.shutdown()
                 except Exception:
                     pass
+
+    def _initialize_mt5(self, mt5: Any) -> bool:
+        """Initialize only the configured terminal, with a bounded wait.
+
+        The deployment supervisor sets CONTROLADOR_MT5_TERMINAL_PATH. If that
+        path cannot be confirmed, do not silently attach to another terminal.
+        """
+        configured_path = os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH", "").strip()
+        try:
+            initialized = bool(
+                mt5.initialize(path=configured_path, timeout=15_000)
+                if configured_path
+                else mt5.initialize(timeout=15_000)
+            )
+            if not initialized:
+                self._last_initialization_error = f"MT5 indisponível: {self._last_error(mt5)}"
+                return False
+
+            terminal = mt5.terminal_info()
+            if terminal is None or not bool(getattr(terminal, "connected", False)):
+                self._last_initialization_error = "terminal MT5 não conectado após initialize"
+                mt5.shutdown()
+                return False
+
+            if configured_path:
+                expected = os.path.normcase(os.path.realpath(configured_path))
+                actual = os.path.normcase(
+                    os.path.realpath(
+                        os.path.join(
+                            getattr(terminal, "path", ""),
+                            os.path.basename(configured_path),
+                        )
+                    )
+                )
+                if actual != expected:
+                    self._last_initialization_error = (
+                        "terminal MT5 conectado não corresponde ao caminho configurado"
+                    )
+                    mt5.shutdown()
+                    return False
+
+            self._last_initialization_error = ""
+            return True
+        except Exception as exc:
+            self._last_initialization_error = f"falha ao inicializar MT5: {exc}"
+            try:
+                mt5.shutdown()
+            except Exception:
+                pass
+            return False
 
     @staticmethod
     def _is_demo_account(account: Any, mt5: Any) -> bool:
@@ -122,8 +173,8 @@ class ICMarketsMT5DemoAdapter:
     def read_operational_state(self) -> OperationalState:
         """Read a fail-closed DEMO operational snapshot from MT5."""
         mt5 = self._module()
-        if not mt5.initialize():
-            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        if not self._initialize_mt5(mt5):
+            raise MT5AdapterError(self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}")
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -187,8 +238,8 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido")
         mt5 = self._module()
-        if not mt5.initialize():
-            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        if not self._initialize_mt5(mt5):
+            raise MT5AdapterError((self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -260,8 +311,8 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(external_id, str) or not external_id.strip():
             raise ValueError("external_id inválido")
         mt5 = self._module()
-        if not mt5.initialize():
-            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        if not self._initialize_mt5(mt5):
+            raise MT5AdapterError((self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -374,8 +425,8 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "volume/amount deve ser maior que zero e finito.")
 
         mt5 = self._module()
-        if not mt5.initialize():
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+        if not self._initialize_mt5(mt5):
+            return ExecutionResult(False, (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
 
         try:
             account = mt5.account_info()
@@ -444,8 +495,8 @@ class ICMarketsMT5DemoAdapter:
         if not isinstance(external_id, str) or not external_id.strip():
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
         mt5 = self._module()
-        if not mt5.initialize():
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+        if not self._initialize_mt5(mt5):
+            return ExecutionResult(False, (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):

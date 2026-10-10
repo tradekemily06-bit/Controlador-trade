@@ -236,7 +236,7 @@ class ConfiguredEcosystemService(EcosystemService):
             proposed_loss,
         )
 
-    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
+    def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = False, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
@@ -284,8 +284,16 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
-        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        # A preference saying that closed candles/filters are required is policy,
+        # not proof that the current candle is closed or that filters passed.
+        # When the caller supplies no evidence, fail closed rather than turning
+        # the requirement itself into a successful confirmation.
+        effective_confirmed = (
+            (not prefs.require_closed_candle) if confirmed is None else bool(confirmed)
+        )
+        effective_filters = (
+            (not prefs.require_filters) if filters_ok is None else bool(filters_ok)
+        )
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         operational_state = self.mt5_operational_adapter.read_operational_state()
         orchestration = self.trading_runtime.orchestrator.evaluate(
@@ -319,9 +327,10 @@ class ConfiguredEcosystemService(EcosystemService):
             import MetaTrader5 as mt5
         except ImportError as exc:
             raise RuntimeError("MetaTrader5 não está instalado") from exc
-        if not mt5.initialize():
-            raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
+        asset_adapter = ICMarketsMT5DemoMarketDataAdapter(mt5_module=mt5)
         try:
+            if not asset_adapter.initialize_terminal(mt5):
+                raise RuntimeError(f"MetaTrader5 indisponível: {mt5.last_error()}")
             statuses = discover_mt5_instruments(mt5, include_invisible=include_invisible)
             assessments = {item.symbol: item for item in prioritize_mt5_assets(mt5, statuses)}
             result = []

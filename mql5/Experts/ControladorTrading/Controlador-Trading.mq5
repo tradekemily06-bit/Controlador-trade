@@ -109,7 +109,8 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   // Input fields must be selectable so users can focus and edit symbol/timeframe.
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void ApplyWatermark(){
@@ -186,6 +187,9 @@ void ToggleIndicators(){
    indicators_enabled=desired;
    if(ObjectFind(0,Obj("CLOSE"))>=0)
       ObjectSetString(0,Obj("CLOSE"),OBJPROP_TEXT,indicators_enabled?"INDIC: ON":"INDIC: OFF");
+   // Re-read the same runtime analysis contract so the panel immediately reflects
+   // the new shared preference and never keeps stale indicator evidence on screen.
+   Analyze(false);
    if(panel_visible)
       SetLabel(Obj("INFO1"),indicators_enabled?"Indicadores ativados e sincronizados.":"Indicadores desativados e sincronizados.",180,361,9,C'88,214,141');
    ChartRedraw();
@@ -523,6 +527,32 @@ void RefreshNotifications(){
       SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
    }
 }
+void RefreshLeverageRisk(){
+   string r; int code=0;
+   if(!Http("GET","/api/risk","",r,code)){
+      SetLabel(Obj("INFO1"),"Risk Gate: indisponivel • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Limites de risco: nao confirmados",180,381,9,C'255,118,118');
+      SetLabel(Obj("INFO3"),"Operacoes: nao confirmadas",180,401,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Perdas consecutivas: nao confirmadas",180,421,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"Alavancagem da corretora nao foi alterada",180,441,9,C'205,215,230');
+      return;
+   }
+   string allowed=JsonValue(r,"allowed");
+   string reason=JsonValue(r,"reason");
+   string limits=JsonObjectValue(r,"configured_limits");
+   string daily=JsonValue(limits,"daily_loss_limit");
+   string operations=JsonValue(limits,"max_operations");
+   string consecutive=JsonValue(limits,"max_consecutive_losses");
+   string daily_display=(daily==""?"nao informado":(StringToDouble(daily)<=0.0?"nao configurado":daily));
+   string operations_display=(operations==""?"nao informado":(StringToInteger(operations)<=0?"nao configurado":operations));
+   string consecutive_display=(consecutive==""?"nao informado":(StringToInteger(consecutive)<=0?"nao configurado":consecutive));
+   // Zero means no active limit, not a safe configured limit. Make that explicit.
+   SetLabel(Obj("INFO1"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,38),180,361,9,allowed=="true"?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("INFO2"),"Limite perda diaria: "+daily_display,180,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Maximo de operacoes: "+operations_display,180,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Perdas consecutivas: "+consecutive_display,180,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Leitura somente; alavancagem da corretora nao e alterada",180,441,8,C'255,209,102');
+}
 void RefreshLearning(){
    string r; int code=0;
    if(Http("GET","/api/learning","",r,code)){
@@ -564,7 +594,7 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) Analyze();
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),180,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      RefreshRiskGate();
       SetLabel(Obj("INFO3"),"Fonte runtime • Externa: "+StringSubstr(current_external_indicator_status,0,24),180,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48),180,441,9,C'205,215,230');
@@ -587,12 +617,12 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
+      // Refresh real runtime and risk results last; never overwrite them with optimistic
+      // hard-coded DEMO/ONLINE labels when the service or risk gate is unavailable.
+      SetLabel(Obj("INFO3"),"Replay: endpoint existe; replay historico nativo ainda nao validado",180,401,9,C'255,209,102');
+      SetLabel(Obj("INFO4"),"Execucao REAL permanece bloqueada",180,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Estudo nao concede autorizacao operacional",180,441,9,C'205,215,230');
       if(refresh_data){ RefreshHealth(); RefreshSecondary(); }
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",180,361,9,C'88,214,141');
-      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",180,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint nativo ainda nao validado",180,401,9,C'255,209,102');
-      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",180,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",180,441,9,C'205,215,230');
    }else if(active_view=="REPLAY"){
       SetLabel(Obj("SUB"),"REPLAY • ligacao nativa ainda nao confirmada",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VERIFICAR AMBIENTE",180,284,110,30);
@@ -606,16 +636,12 @@ void RenderView(bool refresh_data=true){
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
    }else if(active_view=="ALAVANCAGEM"){
-      SetLabel(Obj("SUB"),"ALAVANCAGEM • modulo web nao ligado ao EA nativo",180,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Integracao nativa nao confirmada.",180,361,9,C'255,209,102');
-      SetLabel(Obj("INFO2"),"Esta tela nao altera alavancagem.",180,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Execucao autorizada: false.",180,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Barreiras operacionais preservadas.",180,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",180,441,9,C'255,155,155');
-      if(ObjectFind(0,Obj("ANALYZE"))>=0) ObjectDelete(0,Obj("ANALYZE"));
+      SetLabel(Obj("SUB"),"RISCO / ALAVANCAGEM • limites operacionais somente leitura",180,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"ATUALIZAR RISCO",180,284,110,30);
       if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+      if(refresh_data) RefreshLeverageRisk();
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ESTUDO • aprendizado separado da autorizacao operacional",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR ESTUDO",180,284,110,30);
@@ -651,16 +677,37 @@ void RefreshHealth(){
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
       return;
    }
+   // HTTP 2xx alone is not proof of a healthy, fail-closed runtime.
+   // Apply the same safety contract as the Windows supervisor before showing ONLINE.
+   string health_ok=JsonValue(r,"ok");
+   string execution_allowed=JsonValue(r,"execution_allowed");
+   string real=JsonValue(r,"real");
+   string operational=JsonObjectValue(r,"operational_observability");
+   string operational_execution=JsonObjectValue(operational,"execution");
+   string operational_allowed=JsonValue(operational_execution,"allowed");
+   string operational_real=JsonValue(operational_execution,"real");
+   string real_runtime=JsonObjectValue(r,"real_runtime");
+   string real_allowed=JsonValue(real_runtime,"real_execution_allowed");
+   string real_enabled=JsonValue(real_runtime,"explicitly_enabled");
+   if(health_ok!="true" || execution_allowed!="false" || real!="DESABILITADO" ||
+      operational_allowed!="false" || operational_real!="DISABLED" ||
+      real_allowed!="false" || real_enabled!="false"){
+      runtime_ok=false;
+      SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO • seguranca/health",180,104,10,C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo/MT5: aguardando confirmacao segura",180,124,10,C'255,209,102');
+      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • health nao confirmou todas as barreiras",180,520,8,C'255,155,155');
+      SetLabel(Obj("INFO1"),"Runtime respondeu HTTP "+IntegerToString(code)+" mas nao passou na validacao de seguranca.",180,361,9,C'255,118,118');
+      return;
+   }
    runtime_ok=true;
    string mode=JsonValue(r,"mode");
-   string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
    SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),180,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),180,124,10,C'88,214,141');
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),180,361,9,C'205,215,230');
+   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+real+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"NAO INFORMADO":engine),180,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
@@ -674,14 +721,17 @@ void RefreshMarketAssets(){
    if(total=="") total="—";
    SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),180,278,8,C'145,160,180');
 }
-void RefreshSecondary(){
+void RefreshRiskGate(){
    string r; int code=0;
    if(Http("GET","/api/risk","",r,code)){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
       SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),180,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
-   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",180,381,9,C'255,118,118');
-
+   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel • HTTP "+IntegerToString(code),180,381,9,C'255,118,118');
+}
+void RefreshSecondary(){
+   string r; int code=0;
+   RefreshRiskGate();
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
@@ -980,6 +1030,7 @@ void OnTimer(){
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
+   else if(active_view=="ALAVANCAGEM") RefreshLeverageRisk();
    datetime current_bar=iTime(_Symbol,_Period,0);
    if(current_bar>0 && current_bar!=last_analysis_bar){
       last_analysis_bar=current_bar;
@@ -1011,12 +1062,12 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
    else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="ANALISE") Analyze();
+      if(active_view=="ANALISE") { Analyze(); RefreshRiskGate(); }
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="REPLAY") RefreshHealth();
-      else if(active_view=="ALAVANCAGEM") { /* Informational only; no native integration. */ }
+      else if(active_view=="ALAVANCAGEM") RefreshLeverageRisk();
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
