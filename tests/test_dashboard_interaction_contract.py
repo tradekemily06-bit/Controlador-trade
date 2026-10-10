@@ -136,3 +136,9 @@ def test_manual_outcome_controls_are_visually_study_only_and_color_coded():
 def test_demo_net_result_is_unavailable_when_there_are_no_confirmed_records():
     assert "Number(demo.total)>0?demo.net_result:null" in WEB
     assert "Number(d.total)>0?d.net_result:null" in WEB
+
+
+def test_weak_candidate_is_shown_as_wait_with_its_real_weak_quality():
+    render = next(line for line in WEB.splitlines() if line.startswith("function render(d){"))
+    assert "else if(!actionable&&q.technical_actionable===false&&ql==='FRACA'&&qs)" in render
+    assert "qs+'/100 · '+qs+'% FRACA'" in render
