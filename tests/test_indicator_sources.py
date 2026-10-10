@@ -91,9 +91,9 @@ def test_web_compact_signal_uses_runtime_quality_and_semantic_colors():
     html = (__import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
     assert 'const q=d.quality||{};' in html
     assert 'String(q.level||\'\').toUpperCase()' in html
-    assert 'compact-signal buy' in html
-    assert 'compact-signal sell' in html
-    assert 'compact-signal wait' in html
+    assert '.compact-signal.buy{' in html
+    assert '.compact-signal.sell{' in html
+    assert '.compact-signal.wait{' in html
     assert 'id="watermarkDefault"' in html
     assert 'watermark_enabled:$(' in html
     assert 'setWatermarkVisible($(' in html
