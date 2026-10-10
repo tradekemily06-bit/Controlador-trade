@@ -289,3 +289,9 @@ def test_secondary_api_failure_does_not_leave_modules_claiming_empty_data():
 def test_async_runtime_loaders_are_declared_async():
     assert "async function refreshMode(){try{const d=await getJson('/api/preferences');" in WEB
     assert "function refreshMode(){try{const d=await getJson('/api/preferences');" not in WEB
+
+
+def test_dashboard_script_has_no_literal_escape_sequences_between_functions():
+    assert "}\\nasync function" not in WEB
+    assert "}}\\n$('saveOperationMode')" not in WEB
+    assert "}}\\nasync function refreshReal" not in WEB
