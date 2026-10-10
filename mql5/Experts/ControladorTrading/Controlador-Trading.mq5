@@ -867,6 +867,8 @@ void RunCycle(){
    string quality=JsonObjectValue(r,"quality");
    current_quality_score=JsonValue(quality,"score");
    current_quality_level=JsonValue(quality,"level");
+   current_quality_actionable=JsonValue(quality,"actionable");
+   if(current_quality_actionable!="true") current_signal="AGUARDAR";
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
    RefreshPanelToggle();
