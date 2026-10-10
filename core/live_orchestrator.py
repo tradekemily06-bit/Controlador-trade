@@ -11,6 +11,7 @@ from core.market_context import MarketContextEngine, MarketContextResult
 from core.models import AnalysisResult
 from core.operational_state import OperationalState
 from core.signal_quality import SignalQuality
+from core.indicator_evidence import IndicatorEvidence, calculate_indicator_evidence
 from core.senior_context_cycle import SeniorContextCycle
 from data.feed import MarketDataFeed, MarketDataRequest, MarketDataResult
 
@@ -26,6 +27,7 @@ class OrchestrationResult:
     snapshot: DecisionSnapshot
     timestamp: datetime
     senior_context: SeniorContextCycle | None = None
+    indicator_evidence: IndicatorEvidence | None = None
 
     @property
     def executable(self) -> bool:
@@ -71,6 +73,16 @@ class TradingOrchestrator:
     ) -> OrchestrationResult:
         timestamp = datetime.now(timezone.utc)
         market_data = self.feed.fetch(request)
+        # Indicator evidence is derived from the same validated candle snapshot;
+        # it is intentionally informational and does not authorize or alter a decision.
+        indicator_evidence = (
+            calculate_indicator_evidence(
+                market_data.candles,
+                source=f"{market_data.source}:CONTROLADOR_CALCULADO",
+            )
+            if len(market_data.candles) >= 35
+            else None
+        )
         if market_context is None:
             market_context = self.market_context_engine.evaluate_from_candles(
                 candles=list(market_data.candles),
@@ -109,4 +121,5 @@ class TradingOrchestrator:
             snapshot=snapshot,
             timestamp=timestamp,
             senior_context=senior_context,
+            indicator_evidence=indicator_evidence,
         )
