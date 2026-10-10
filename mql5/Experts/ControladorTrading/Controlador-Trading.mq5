@@ -46,7 +46,7 @@ void RefreshPanelLayout(){
    int available_w=MathMax(240,cw-24);
    int available_h=MathMax(220,ch-90);
    // The open ecosystem must remain a compact overlay, never a half-screen takeover.
-   panel_width=MathMin(available_w,MathMin(MathMax(540,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.42))));
+   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.42))));
    panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.44))));
    panel_width=MathMax(240,panel_width);
    panel_height=MathMax(220,panel_height);
