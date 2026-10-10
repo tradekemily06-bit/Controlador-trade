@@ -803,7 +803,6 @@ void Analyze(bool render=true){
    }
    runtime_ok=true;
    string signal=JsonValue(r,"signal");
-   if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
    string quality=JsonObjectValue(r,"quality");
@@ -811,6 +810,10 @@ void Analyze(bool render=true){
    string quality_level=JsonValue(quality,"level");
    current_quality_score=quality_score;
    current_quality_level=quality_level;
+   if(current_quality_level=="NENHUMA" || current_quality_score=="null"){
+      current_quality_score="";
+      current_quality_level="";
+   }
    current_quality_actionable=JsonValue(quality,"actionable");
    current_quality_technical_actionable=JsonValue(quality,"technical_actionable");
    if(current_quality_actionable!="true") current_signal="AGUARDAR";
@@ -843,10 +846,12 @@ void Analyze(bool render=true){
    RefreshPanelToggle();
    if(!render) return;
    string score=JsonValue(r,"score");
+   if(score=="null") score="";
    string reason=JsonValue(r,"reason");
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
-   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,clrWhite);
+   color quality_color=current_quality_level=="FORTE"?C'88,214,141':current_quality_level=="MODERADA"?C'255,209,102':current_quality_level=="FRACA"?C'255,118,118':clrWhite;
+   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,quality_color);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),180,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",180,361,9,c);
    ChartRedraw();
@@ -899,7 +904,8 @@ void RunCycle(){
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
    RefreshPanelToggle();
-   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,clrWhite);
+   color quality_color=current_quality_level=="FORTE"?C'88,214,141':current_quality_level=="MODERADA"?C'255,209,102':current_quality_level=="FRACA"?C'255,118,118':clrWhite;
+   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,quality_color);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),180,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),180,465,8,C'145,160,180');
