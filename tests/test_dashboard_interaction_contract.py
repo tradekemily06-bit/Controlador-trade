@@ -121,3 +121,13 @@ def test_statistics_do_not_report_zero_win_rate_when_no_closed_outcomes_exist():
     assert "!(Number(st.wins)+Number(st.losses))" in WEB
     assert "!(Number(data?.wins)+Number(data?.losses))" in WEB
     assert "!(Number(demo.wins)+Number(demo.losses))" in WEB
+
+
+def test_manual_outcome_controls_are_visually_study_only_and_color_coded():
+    assert "Estudo por ativo" in WEB
+    assert "Estudo por timeframe" in WEB
+    assert "Últimas decisões de estudo" in WEB
+    assert "Resultado do estudo (registro manual)" in WEB
+    assert "não altera os resultados financeiros DEMO" in WEB
+    assert 'button[data-outcome="WIN"]' in WEB
+    assert 'button[data-outcome="LOSS"]' in WEB
