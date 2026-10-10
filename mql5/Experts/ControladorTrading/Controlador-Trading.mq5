@@ -291,23 +291,29 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    if(preserveToggle) RefreshPanelToggle();
 }
 string JsonValue(string json,string key){
-   string needle="\"" + key + "\":";
+   string needle="\"" + key + "\"";
    int p=StringFind(json,needle);
    if(p<0) return "";
    p+=StringLen(needle);
-   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r')) p++;
-   if(p<StringLen(json) && StringGetCharacter(json,p)=='"'){
+   // Accept standard JSON whitespace around the colon and value.
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
+   if(p>=StringLen(json) || StringGetCharacter(json,p)!=':') return "";
+   p++;
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r' || StringGetCharacter(json,p)=='\t')) p++;
+   if(p>=StringLen(json)) return "";
+   if(StringGetCharacter(json,p)=='"'){
       int q=p+1;
       while(q<StringLen(json)){
          if(StringGetCharacter(json,q)=='"' && (q==p+1 || StringGetCharacter(json,q-1)!='\\')) break;
          q++;
       }
+      if(q>=StringLen(json)) return "";
       return StringSubstr(json,p+1,q-p-1);
    }
    int q=p;
    while(q<StringLen(json)){
       ushort c=StringGetCharacter(json,q);
-      if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r') break;
+      if(c==',' || c=='}' || c==']' || c=='\n' || c=='\r' || c==' ' || c=='\t') break;
       q++;
    }
    return StringSubstr(json,p,q-p);
