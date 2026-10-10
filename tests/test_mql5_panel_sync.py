@@ -74,7 +74,8 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
     assert "int center_x=w/2;" in panel
     assert "MathRound(h*0.52)" in panel
-    assert "panel_sx=(double)panel_width/440.0;" in panel
+    assert "panel_sx=(double)panel_width/540.0;" in panel
+    assert "MathMax(540,InpPanelWidth)" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
