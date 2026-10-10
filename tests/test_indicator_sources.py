@@ -72,3 +72,28 @@ def test_indicator_visibility_toggle_is_saved_in_shared_ecosystem_preferences():
     assert ".grid{grid-template-columns:minmax(0,1fr)" in html
     assert ".chart-svg{height:65vw;min-height:220px}" in html
     assert "localStorage" not in html
+
+
+def test_web_chart_first_view_keeps_only_chart_c_signal_and_watermark_when_closed():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'id="ecosystemC"' in html
+    assert 'id="compactSignal"' in html
+    assert 'id="ecosystemDrawer" class="ecosystem-drawer" hidden' in html
+    assert '.app>.top{display:none!important}' in html
+    assert 'width:min(42vw,540px);height:min(44vh,440px)' in html
+    assert 'width:calc(100vw - 20px);height:44dvh' in html
+    assert 'id="mt5PanelToggle"' not in html
+    assert 'id="mt5SidePanel"' not in html
+    assert 'id="grafico"' in html
+
+
+def test_web_compact_signal_uses_runtime_quality_and_semantic_colors():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'const q=d.quality||{};' in html
+    assert 'String(q.level||\'\').toUpperCase()' in html
+    assert 'compact-signal buy' in html
+    assert 'compact-signal sell' in html
+    assert 'compact-signal wait' in html
+    assert 'id="watermarkDefault"' in html
+    assert 'watermark_enabled:$(' in html
+    assert 'setWatermarkVisible($(' in html
