@@ -206,6 +206,8 @@ class ICMarketsMT5DemoAdapter:
                 orders = tuple(order_fn(ticket=ticket) or ())
                 if orders:
                     order = orders[-1]
+                    if getattr(order, "magic", None) != self.config.magic:
+                        return ExternalOrderObservation(external_id, ExternalOrderStatus.UNKNOWN, "ticket de ordem não pertence ao Controlador; reconciliação bloqueada")
                     state = getattr(order, "state", None)
                     filled = {value for value in (
                         getattr(mt5, "ORDER_STATE_FILLED", None),
