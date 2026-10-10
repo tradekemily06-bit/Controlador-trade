@@ -264,3 +264,13 @@ def test_mql5_hidden_analysis_updates_c_signal_before_render_guard():
     assert analyze.index("current_signal=(signal==") < analyze.index("if(!render) return;")
     assert analyze.index("RefreshPanelToggle();") < analyze.index("if(!render) return;")
     assert "color c=current_signal==\"COMPRAR\"?" in analyze
+
+
+def test_mql5_failed_analysis_clears_stale_signal_to_wait():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    failure = analyze.split('if(!Http("POST","/api/runtime/analysis",body,r,code)){', 1)[1].split("   }", 1)[0]
+    assert 'current_signal="AGUARDAR";' in failure
+    assert "RefreshPanelToggle();" in failure
+    assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
+    assert "Analise indisponivel" in failure
