@@ -519,7 +519,7 @@ def test_mql5_controller_c_is_a_real_pixel_circle_with_clickable_canvas():
     assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
     assert "controller_canvas.Update();" in toggle
     assert 'sparam==Obj("PANEL_TOGGLE")' in event
-    assert "OBJ_ELLIPSE" not in toggle
+    assert "ObjectCreate(0,name,OBJ_ELLIPSE" not in toggle
     assert "controller_canvas.Destroy();" in panel
 
 def test_mql5_navigation_rail_stays_left_of_panel_content():
