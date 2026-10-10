@@ -220,3 +220,9 @@ def test_material_module_registers_reviewed_observations_without_claiming_auto_a
     assert "validated:false" in WEB
     assert "REGISTRAR OBSERVAÇÃO" in WEB
     assert "não finge que extraiu conteúdo de URL ou vídeo" in WEB
+
+
+def test_analysis_failure_discards_stale_quality_and_indicator_evidence():
+    assert "$('score').textContent='—';$('scorebar').style.width='0%';" in WEB
+    assert "score e qualidade descartados até nova leitura válida" in WEB
+    assert "Evidência técnica indisponível." in WEB
