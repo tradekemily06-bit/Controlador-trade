@@ -62,7 +62,8 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     execution = SimpleNamespace(accepted=False, status=SimpleNamespace(value="BLOCKED"), message="blocked", external_id=None)
     orchestration = SimpleNamespace(
         decision=SimpleNamespace(decision="AGUARDAR", reason="blocked"),
-        analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=0),
+        analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=50, reason="score insuficiente"),
+        quality=SimpleNamespace(score=50, level=SimpleNamespace(value="FRACA"), actionable=False),
         snapshot=SimpleNamespace(market_context=None),
         market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=(1, 2, 3)),
         senior_context=SimpleNamespace(cycle_id="senior-cycle-001"),
@@ -85,6 +86,11 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert status.startswith("200")
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
+    assert data["runtime"]["signal"] == "AGUARDAR"
+    assert data["runtime"]["score"] == 50
+    assert data["runtime"]["quality"]["level"] == "FRACA"
+    assert data["runtime"]["quality"]["actionable"] is False
+    assert data["runtime"]["analysis"]["score"] == 50
     assert data["execution_allowed"] is False
 
 
