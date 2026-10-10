@@ -80,9 +80,34 @@ try {
 
 Add-Check 'mt5-terminal-file' (Has-File $Mt5TerminalPath) $Mt5TerminalPath
 foreach ($task in @("$TaskPrefix-MT5","$TaskPrefix-Controlador")) {
-    $exists = $false
-    try { $null = Get-ScheduledTask -TaskName $task -ErrorAction Stop; $exists = $true } catch {}
-    Add-Check "scheduled-task:$task" $exists $task
+    $taskInfo = $null
+    try { $taskInfo = Get-ScheduledTask -TaskName $task -ErrorAction Stop } catch {}
+    Add-Check "scheduled-task:$task" ($null -ne $taskInfo) $task
+
+    if ($null -ne $taskInfo) {
+        $taskEnabled = ($taskInfo.State -ne 'Disabled') -and ($taskInfo.Settings.Enabled -eq $true)
+        Add-Check "scheduled-task-enabled:$task" $taskEnabled "state=$($taskInfo.State); enabled=$($taskInfo.Settings.Enabled)"
+        Add-Check "scheduled-task-running:$task" ($taskInfo.State -eq 'Running') "state=$($taskInfo.State)"
+    }
+}
+
+foreach ($supervisor in @(
+    @{ name='mt5'; file='mt5-supervisor-status.json' },
+    @{ name='controller'; file='controlador-supervisor-status.json' }
+)) {
+    $statusFile = Join-Path $RuntimeDir $supervisor.file
+    $status = $null
+    $readOk = $false
+    try {
+        if (Test-Path -LiteralPath $statusFile -PathType Leaf) {
+            $status = Get-Content -LiteralPath $statusFile -Raw | ConvertFrom-Json -ErrorAction Stop
+            $readOk = $true
+        }
+    } catch {}
+    Add-Check "supervisor-status:$($supervisor.name)" $readOk $statusFile
+    $supervisorHealthy = ($readOk -and $status.state -eq 'HEALTHY')
+    $reason = if ($readOk) { "state=$($status.state); reason=$($status.reason)" } else { 'arquivo ausente ou JSON inválido' }
+    Add-Check "supervisor-healthy:$($supervisor.name)" $supervisorHealthy $reason
 }
 
 $mq5 = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
