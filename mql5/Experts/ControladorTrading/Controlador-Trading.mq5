@@ -115,24 +115,27 @@ void ApplyWatermark(){
    }
    int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // Marca d'agua responsiva: permanece no fundo do grafico, independente do painel.
-   // O tamanho cresce em telas grandes e reduz em janelas pequenas para evitar cortes.
-   double wm_scale=MathMin((double)w/1360.0,(double)h/760.0);
-   wm_scale=MathMax(0.62,MathMin(1.55,wm_scale));
-   int wm_icon_size=(int)MathRound(48.0*wm_scale);
-   int wm_text_size=(int)MathRound(25.0*wm_scale);
+   // Marca d'agua diagonal e responsiva, alinhada ao brilho azul/ciano do ecossistema.
+   // Mantida no fundo e dimensionada pela area real do grafico para desktop e janelas menores.
+   double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);
+   wm_scale=MathMax(0.72,MathMin(1.42,wm_scale));
+   int wm_icon_size=(int)MathRound(46.0*wm_scale);
+   int wm_text_size=(int)MathRound(34.0*wm_scale);
    int center_x=w/2;
    int center_y=(int)MathRound(h*0.52);
-   int icon_x=MathMax(12,center_x-(int)MathRound(245.0*wm_scale));
-   int text_x=MathMin(w-12,center_x+(int)MathRound(105.0*wm_scale));
+   int icon_x=MathMax(18,center_x-(int)MathRound(245.0*wm_scale));
+   int text_x=MathMin(w-18,center_x+(int)MathRound(105.0*wm_scale));
+   // ANGLE is applied to both elements so the icon and full wordmark share one diagonal.
+   double wm_angle=330.0;
 
    if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,icon_x);
    ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
+   ObjectSetInteger(0,mark,OBJPROP_ANGLE,wm_angle);
    ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'36,91,125');
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'36,150,190');
    ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
    ObjectSetInteger(0,mark,OBJPROP_BACK,true);
@@ -144,8 +147,9 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,text_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
+   ObjectSetInteger(0,name,OBJPROP_ANGLE,wm_angle);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'42,75,98');
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'35,135,175');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
