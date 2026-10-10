@@ -25,7 +25,7 @@ class FakeMT5:
         return True
 
     def terminal_info(self):
-        return SimpleNamespace(path=os.path.dirname(self.active_path), connected=True)
+        return SimpleNamespace(path=os.path.dirname(self.active_path) if self.active_path else os.getcwd(), connected=True)
 
     def account_info(self):
         return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO if self.demo else 0)
