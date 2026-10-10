@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 from types import SimpleNamespace
 import pytest
 from core.models import AnalysisResult, Signal
@@ -7,7 +8,7 @@ from integration.mt5_demo_analysis_service import build_ic_markets_mt5_demo_anal
 class FakeMT5:
     ACCOUNT_TRADE_MODE_DEMO = 2
     TIMEFRAME_M5 = 5
-    def __init__(self): self.initialized = 0; self.shutdowns = 0
+    def __init__(self): self.initialized = 0; self.shutdowns = 0; self.active_path = None
     def symbols_get(self): return (SimpleNamespace(name="BTCUSD"), SimpleNamespace(name="EURUSD"))
     def symbol_info(self, symbol): return SimpleNamespace(name=symbol, visible=True, trade_mode=0)
     def symbol_info_tick(self, symbol): return SimpleNamespace(bid=100.0, ask=100.1, last=100.05, time_msc=1_000_000, volume=12, volume_real=12)
@@ -15,7 +16,8 @@ class FakeMT5:
         if index > 0:
             return None
         return SimpleNamespace(**{"from": 0, "to": 86_399})
-    def initialize(self): self.initialized += 1; return True
+    def initialize(self, path=None, timeout=60000): self.initialized += 1; self.active_path = path; return True
+    def terminal_info(self): return SimpleNamespace(path=os.path.dirname(self.active_path) if self.active_path else os.getcwd(), connected=True)
     def account_info(self): return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO)
     def symbol_select(self, symbol, selected): return selected
     def copy_rates_from_pos(self, symbol, timeframe, start_pos, count):
