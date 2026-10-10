@@ -671,3 +671,16 @@ def test_analysis_view_reads_actual_risk_gate_instead_of_inferring_from_runtime_
     assert 'allowed=JsonValue(r,"allowed")' in risk
     assert 'if(refresh_data) Analyze();\n      RefreshRiskGate();' in analysis
     assert 'runtime_ok?"consultado":"runtime offline"' not in analysis
+
+def test_native_risk_leverage_view_reads_live_risk_limits_without_claiming_to_change_broker_leverage():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    risk_view = panel.split("void RefreshLeverageRisk()", 1)[1].split("void RefreshLearning()", 1)[0]
+    leverage = panel.split('}else if(active_view=="ALAVANCAGEM"){', 1)[1].split('}else if(active_view=="ENSINO"){', 1)[0]
+    assert 'Http("GET","/api/risk","",r,code)' in risk_view
+    assert 'JsonObjectValue(r,"configured_limits")' in risk_view
+    assert 'JsonValue(limits,"daily_loss_limit")' in risk_view
+    assert 'JsonValue(limits,"max_operations")' in risk_view
+    assert 'JsonValue(limits,"max_consecutive_losses")' in risk_view
+    assert "Leitura somente; alavancagem da corretora nao e alterada" in risk_view
+    assert "if(refresh_data) RefreshLeverageRisk();" in leverage
+    assert "ATUALIZAR RISCO" in leverage
