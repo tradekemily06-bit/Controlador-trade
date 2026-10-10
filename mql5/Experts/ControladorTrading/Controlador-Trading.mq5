@@ -39,13 +39,13 @@ void RefreshPanelLayout(){
    // Painel flutuante compacto, ancorado embaixo à esquerda.
    int available_w=MathMax(240,cw-24);
    int available_h=MathMax(220,ch-90);
-   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.56))));
+   panel_width=MathMin(available_w,MathMin(MathMax(540,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.56))));
    panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.68))));
    panel_width=MathMax(240,panel_width);
    panel_height=MathMax(220,panel_height);
    panel_x=12;
    panel_y=MathMax(12,ch-panel_height-52);
-   panel_sx=(double)panel_width/440.0;
+   panel_sx=(double)panel_width/540.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
