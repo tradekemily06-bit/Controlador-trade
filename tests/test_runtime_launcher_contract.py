@@ -205,9 +205,9 @@ def test_mt5_asset_discovery_uses_the_configured_bounded_adapter():
     runtime = _read("integration/ecosystem_configuration_runtime.py")
     asset_method = runtime.split("def get_mt5_assets(", 1)[1].split("def validate_mt5_cycle_identity(", 1)[0]
     assert "asset_adapter = ICMarketsMT5DemoMarketDataAdapter(mt5_module=mt5)" in asset_method
-    assert "asset_adapter._initialize(mt5)" in asset_method
+    assert "asset_adapter.initialize_terminal(mt5)" in asset_method
     assert "if not mt5.initialize()" not in asset_method
 
     service = _read("integration/mt5_demo_analysis_service.py")
-    assert "if not adapter._initialize(runtime)" in service
+    assert "if not adapter.initialize_terminal(runtime)" in service
     assert "statuses = discover_mt5_instruments(runtime)" in service
