@@ -31,7 +31,7 @@ def test_mobile_operation_controls_remain_touch_friendly():
 
 def test_mobile_ui_keeps_real_execution_blocked():
     assert 'id="real"' in HTML and 'id="conexoes"' in HTML
-    assert "REAL BLOQUEADO" in HTML
+    assert "REAL: BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "Execução: DEMO" in HTML
 

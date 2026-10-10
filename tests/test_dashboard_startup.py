@@ -9,8 +9,10 @@ def test_dashboard_declares_utf8_and_keeps_portuguese_text_intact():
     source = DASHBOARD.read_text(encoding="utf-8")
     assert '<meta charset="utf-8">' in source
     assert "Ecossistema de análise, decisão, risco, memória e execução" in source
-    assert "Conexão MT5" in source
-    assert "Execução REAL" in source
+    assert 'id="conexoes"' in source
+    assert 'id="connections"' in source
+    assert 'id="ecosystemC"' in source
+    assert "REAL: BLOQUEADO" in source
 
 
 def test_dashboard_renders_runtime_health_before_waiting_for_risk_gate():

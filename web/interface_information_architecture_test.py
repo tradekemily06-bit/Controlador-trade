@@ -53,7 +53,7 @@ def test_critical_and_admin_destinations_have_distinct_roles():
 
 
 def test_real_execution_has_no_interface_enablement_path():
-    assert "REAL BLOQUEADO" in HTML
+    assert "REAL: BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "DESABILITADO" in HTML
 

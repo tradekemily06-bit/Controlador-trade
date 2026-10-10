@@ -311,20 +311,42 @@ def application(environ, start_response):
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            orchestration = cycle.orchestration
+            quality = orchestration.quality
+            quality_level = getattr(quality.level, "value", quality.level)
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            raw_signal = orchestration.analysis.signal.value
+            technical_actionable = bool(quality.actionable)
+            decision_approved = decision_value == "EXECUTAR"
+            display_actionable = technical_actionable and decision_approved and raw_signal in {"COMPRA", "COMPRAR", "VENDA", "VENDER"}
+            display_signal = raw_signal if display_actionable else "AGUARDAR"
+            quality_score = quality.score if quality_level != "NENHUMA" else None
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
-                "decision": cycle.orchestration.decision.decision,
-                "signal": cycle.orchestration.analysis.signal.value,
-                "score": cycle.orchestration.analysis.score,
-                "reason": cycle.orchestration.decision.reason,
-                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
-                "market_data_source": cycle.orchestration.market_data.source,
-                "candles": len(cycle.orchestration.market_data.candles),
+                "decision": decision_value,
+                "signal": display_signal,
+                "score": quality_score,
+                "reason": orchestration.decision.reason,
+                "quality": {
+                    "score": quality_score,
+                    "level": quality_level,
+                    "actionable": display_actionable,
+                    "technical_actionable": technical_actionable,
+                    "decision_approved": decision_approved,
+                },
+                "analysis": {
+                    "signal": raw_signal,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                },
+                "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+                "market_data_source": orchestration.market_data.source,
+                "candles": len(orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
                 "cycle_id": (
-                    cycle.orchestration.senior_context.cycle_id
-                    if cycle.orchestration.senior_context is not None
+                    orchestration.senior_context.cycle_id
+                    if orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
                 "external_id": execution.external_id if execution else None,
@@ -353,10 +375,17 @@ def application(environ, start_response):
                 filters_ok=data.get("filters_ok"),
             )
             snapshot = orchestration.snapshot
+            indicator_evidence = getattr(orchestration, "indicator_evidence", None)
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            quality_level = getattr(orchestration.quality.level, "value", orchestration.quality.level)
+            technical_actionable = bool(orchestration.quality.actionable)
+            display_actionable = technical_actionable and decision_value == "EXECUTAR"
+            display_signal = orchestration.analysis.signal.value if display_actionable else "AGUARDAR"
+            display_reason = orchestration.analysis.reason if display_actionable else orchestration.decision.reason
             return _json_response(start_response, HTTPStatus.OK, {
-                "signal": orchestration.analysis.signal.value,
-                "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
+                "signal": display_signal,
+                "score": (orchestration.quality.score if quality_level != "NENHUMA" else None),
+                "reason": display_reason,
                 "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                 "analysis": {
                     "signal": orchestration.analysis.signal.value,
@@ -368,14 +397,65 @@ def application(environ, start_response):
                 },
                 "quality": {
                     "score": orchestration.quality.score,
-                    "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "level": quality_level,
+                    "actionable": display_actionable,
+                    "technical_actionable": technical_actionable,
+                    "decision_approved": decision_value == "EXECUTAR",
                 },
                 "decision_detail": {
-                    "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                    "decision": decision_value,
                     "reason": orchestration.decision.reason,
                 },
                 "snapshot": snapshot.as_dict(),
+                "external_indicators": {
+                    "status": getattr(orchestration, "external_indicator_status", "NOT_CONFIGURED"),
+                    "available": getattr(orchestration, "external_indicator_reading", None) is not None,
+                    "reading": (
+                        {
+                            "provider": orchestration.external_indicator_reading.provider,
+                            "source_kind": orchestration.external_indicator_reading.source_kind.value,
+                            "symbol": orchestration.external_indicator_reading.symbol,
+                            "timeframe": orchestration.external_indicator_reading.timeframe,
+                            "observed_at": orchestration.external_indicator_reading.observed_at.isoformat(),
+                            "candle_timestamp": orchestration.external_indicator_reading.candle_timestamp.isoformat(),
+                            "values": dict(orchestration.external_indicator_reading.values),
+                            "bias": orchestration.external_indicator_reading.bias,
+                            "authorizes_execution": False,
+                        }
+                        if getattr(orchestration, "external_indicator_reading", None) is not None
+                        else None
+                    ),
+                },
+                "indicators": (
+                    {
+                        "enabled": getattr(orchestration, "indicators_enabled", True),
+                        "available": True,
+                        "source": indicator_evidence.source,
+                        "candle_timestamp": indicator_evidence.candle_timestamp.isoformat(),
+                        "candles_used": indicator_evidence.candles_used,
+                        "ema_fast": indicator_evidence.ema_fast,
+                        "ema_slow": indicator_evidence.ema_slow,
+                        "rsi_14": indicator_evidence.rsi_14,
+                        "macd": indicator_evidence.macd,
+                        "macd_signal": indicator_evidence.macd_signal,
+                        "atr_14": indicator_evidence.atr_14,
+                        "bias": indicator_evidence.bias.value,
+                        "bullish_votes": indicator_evidence.bullish_votes,
+                        "bearish_votes": indicator_evidence.bearish_votes,
+                        "reason": indicator_evidence.reason,
+                        "authorizes_execution": False,
+                    }
+                    if indicator_evidence is not None
+                    else {
+                        "enabled": getattr(orchestration, "indicators_enabled", True),
+                        "available": False,
+                        "reason": (
+                            "Indicadores desativados nas preferências do ecossistema."
+                            if not getattr(orchestration, "indicators_enabled", True)
+                            else "Histórico insuficiente: são necessários pelo menos 35 candles."
+                        ),
+                    }
+                ),
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),
