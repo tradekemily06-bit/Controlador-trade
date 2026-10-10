@@ -7,11 +7,10 @@ PANEL = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading
 
 
 def test_dashboard_primary_controls_are_wired_to_click_or_change_handlers():
-    # The MT5 toggle intentionally uses a local variable; all other primary
-    # static controls bind directly by ID. The two confirmation/close controls
-    # are generated after a successful API response and bind inside their flows.
+    # The circular C opens the ecosystem drawer; confirmation controls are
+    # generated after successful API responses and bind inside their flows.
     required_bindings = (
-        "const mt5Toggle=$('mt5PanelToggle'),mt5Panel=$('mt5SidePanel');mt5Toggle.onclick=",
+        "const cToggle=$('ecosystemC'),ecosystemDrawer=$('ecosystemDrawer');" ,
         "$('refreshChart').onclick=refreshMarketChart",
         "$('saveOperationMode').onclick=async()",
         "$('realPrepare').onclick=async()",
@@ -79,7 +78,6 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
         "CYCLE",
         "SAVE",
         "CLOSE",
-        "WM",
     )
     assert "if(id!=CHARTEVENT_OBJECT_CLICK) return;" in handler
     for button in required_buttons:
