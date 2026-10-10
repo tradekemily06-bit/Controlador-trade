@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 from core.models import Signal
@@ -27,10 +28,18 @@ class FakeMT5:
         self.check_code = check_code
         self.send_result = send_result
         self.calls = []
+        self.initialize_path = None
+        self.initialize_timeout = None
 
-    def initialize(self):
+    def initialize(self, path=None, timeout=60000):
         self.calls.append("initialize")
+        self.initialize_path = path
+        self.initialize_timeout = timeout
         return True
+
+    def terminal_info(self):
+        path = os.path.dirname(self.initialize_path) if self.initialize_path else os.getcwd()
+        return SimpleNamespace(path=path, connected=True)
 
     def shutdown(self):
         self.calls.append("shutdown")
@@ -381,3 +390,25 @@ def test_real_adapter_never_accepts_demo_request():
     result = adapter.execute(request(mode=ExecutionMode.DEMO))
     assert result.accepted is False
     assert mt5.calls == []
+
+
+
+def test_execution_adapter_pins_to_configured_mt5_terminal(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    mt5 = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+    assert result.accepted is True
+    assert mt5.initialize_path == terminal_path
+    assert mt5.initialize_timeout == 15_000
+
+
+def test_execution_adapter_fails_closed_on_terminal_path_mismatch(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    mt5 = FakeMT5()
+    mt5.terminal_info = lambda: SimpleNamespace(path=str(tmp_path / "wrong-terminal"), connected=True)
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+    assert result.accepted is False
+    assert "não corresponde ao caminho configurado" in result.message
+    assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls)
