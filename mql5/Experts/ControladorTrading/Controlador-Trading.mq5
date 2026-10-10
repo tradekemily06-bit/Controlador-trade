@@ -646,8 +646,15 @@ void CloseCycle(){
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
    if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
-      last_cycle_id=""; last_external_id="";
+      string closed=JsonValue(r,"closed");
+      if(closed=="true"){
+         string reconciliation=JsonValue(r,"reconciliation_state");
+         SetLabel(Obj("INFO1"),"Fechamento DEMO confirmado • reconciliacao solicitada.",20,361,9,C'88,214,141');
+         last_cycle_id=""; last_external_id="";
+      }else{
+         string message=JsonValue(r,"message");
+         SetLabel(Obj("INFO1"),"Fechamento nao confirmado: "+StringSubstr(message==""?"runtime nao aceitou a operacao":message,0,42),20,361,9,C'255,118,118');
+      }
    }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
 }
 int OnInit(){
