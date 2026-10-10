@@ -568,7 +568,7 @@ void RenderView(bool refresh_data=true){
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) Analyze();
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),180,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      RefreshRiskGate();
       SetLabel(Obj("INFO3"),"Fonte runtime • Externa: "+StringSubstr(current_external_indicator_status,0,24),180,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",180,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Indicadores: "+StringSubstr(current_indicator_summary,0,48),180,441,9,C'205,215,230');
@@ -699,14 +699,17 @@ void RefreshMarketAssets(){
    if(total=="") total="—";
    SetLabel(Obj("MARKET"),"Ativos/Mercados: "+total+" • "+(source==""?"fonte nao informada":source),180,278,8,C'145,160,180');
 }
-void RefreshSecondary(){
+void RefreshRiskGate(){
    string r; int code=0;
    if(Http("GET","/api/risk","",r,code)){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
       SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),180,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
-   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",180,381,9,C'255,118,118');
-
+   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel • HTTP "+IntegerToString(code),180,381,9,C'255,118,118');
+}
+void RefreshSecondary(){
+   string r; int code=0;
+   RefreshRiskGate();
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
@@ -1036,7 +1039,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
    else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="ANALISE") Analyze();
+      if(active_view=="ANALISE") { Analyze(); RefreshRiskGate(); }
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
