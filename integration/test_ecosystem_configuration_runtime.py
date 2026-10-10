@@ -157,14 +157,15 @@ def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_stu
     from core.p49_outcome_reconciliation import ReconciliationState
 
     service = ConfiguredEcosystemService()
+    now = datetime.now(timezone.utc)
     snapshot = SimpleNamespace(
         cycle_id="demo-cycle-001",
         source="MT5_DEMO_HISTORY",
         reconciliation_state=ReconciliationState.MATCHED,
         outcome="WIN",
         financial_result=2.6,
-        observed_at=datetime.now(timezone.utc),
-        closed_at=datetime.now(timezone.utc),
+        observed_at=now,
+        closed_at=now,
     )
     service._persist_confirmed_demo_outcome(snapshot)
     service._persist_confirmed_demo_outcome(snapshot)
