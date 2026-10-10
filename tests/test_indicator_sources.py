@@ -97,3 +97,15 @@ def test_web_compact_signal_uses_runtime_quality_and_semantic_colors():
     assert 'id="watermarkDefault"' in html
     assert 'watermark_enabled:$(' in html
     assert 'setWatermarkVisible($(' in html
+
+
+def test_indicator_preference_controls_backend_work_not_just_rendering():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    orchestrator = (root / "core" / "live_orchestrator.py").read_text(encoding="utf-8")
+    service = (root / "integration" / "ecosystem_configuration_runtime.py").read_text(encoding="utf-8")
+    app = (root / "app.py").read_text(encoding="utf-8")
+    assert "if indicators_enabled and self.indicator_provider is not None:" in orchestrator
+    assert '"DISABLED_BY_PREFERENCE"' in orchestrator
+    assert "indicators_enabled=prefs.indicators_enabled" in service
+    assert "Indicadores desativados nas preferências do ecossistema." in app
