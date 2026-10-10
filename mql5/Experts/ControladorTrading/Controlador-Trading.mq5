@@ -210,25 +210,24 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    string signal_name=Obj("PANEL_SIGNAL");
-   if(panel_visible){
-      if(ObjectFind(0,signal_name)>=0) ObjectDelete(0,signal_name);
-   }else{
-      if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
-      string signal=current_signal;
-      color signal_color=C'255,209,102';
-      if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
-      else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
-      else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
-      ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-      ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,52);
-      ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,MathMax(12,ch-38));
-      ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
-      ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
-      ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
-      ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
-      ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
-      ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
-   }
+   if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
+   string signal=current_signal;
+   color signal_color=C'255,209,102';
+   if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
+   else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
+   else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
+   // Keep the market signal visually separate from the C control in both states.
+   int signal_x=panel_visible?MathMax(56,toggle_x-92):52;
+   int signal_y=panel_visible?toggle_y+10:MathMax(12,ch-38);
+   ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,signal_x);
+   ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,signal_y);
+   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
+   ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
+   ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
+   ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
