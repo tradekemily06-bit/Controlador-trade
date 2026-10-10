@@ -703,10 +703,13 @@ int OnInit(){
       RefreshPanelToggle();
    }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
-   RefreshHealth();
-   RefreshSecondary();
-   RefreshMarketAssets();
-   // Prime runtime market-data state immediately, even when the native panel is hidden.
+   // Keep hidden startup clean: runtime labels belong to the visible panel only.
+   // Market analysis may still update the separate signal control without rendering panel labels.
+   if(panel_visible){
+      RefreshHealth();
+      RefreshSecondary();
+      RefreshMarketAssets();
+   }
    Analyze(panel_visible);
    last_analysis_bar=iTime(_Symbol,_Period,0);
    return(INIT_SUCCEEDED);
