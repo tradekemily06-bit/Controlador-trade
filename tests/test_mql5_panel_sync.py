@@ -283,7 +283,10 @@ def test_mql5_memory_label_does_not_invent_total_from_limited_records_endpoint()
     assert '"/api/memory?limit=1"' in secondary
     assert '"Memoria: resposta recebida do runtime"' in secondary
     assert '"disponiveis"' not in secondary
-    assert 'JsonValue(r,"total")' not in secondary
+    memory_block = secondary.split('if(Http("GET","/api/memory?limit=1","",r,code)){', 1)[1]
+    memory_block = memory_block.split('}else SetLabel(Obj("INFO3")', 1)[0]
+    assert 'JsonValue(r,"total")' not in memory_block
+    assert 'JsonValue(r,"count")' not in memory_block
 
 
 def test_mql5_cycle_status_does_not_mislabel_execution_acceptance_as_authorization():
