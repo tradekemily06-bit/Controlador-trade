@@ -242,7 +242,11 @@ void RefreshPanelToggle(){
    if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
    else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
    else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
-   if(current_quality_score!="") signal+=" "+current_quality_score+"%";
+   if(current_quality_score!=""){
+      double quality_value=StringToDouble(current_quality_score);
+      string quality_display=(MathAbs(quality_value-MathRound(quality_value))<0.001)?IntegerToString((int)MathRound(quality_value)):DoubleToString(quality_value,1);
+      signal+=" "+quality_display+"%";
+   }
    if(current_quality_level!="") signal+=" "+current_quality_level;
    // The signal and its quality remain beside C, with no extra heading or status label.
    int signal_x=c_size+20;
