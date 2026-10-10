@@ -376,6 +376,27 @@ def application(environ, start_response):
                     "reason": orchestration.decision.reason,
                 },
                 "snapshot": snapshot.as_dict(),
+                "indicators": (
+                    {
+                        "available": True,
+                        "source": orchestration.indicator_evidence.source,
+                        "candle_timestamp": orchestration.indicator_evidence.candle_timestamp.isoformat(),
+                        "candles_used": orchestration.indicator_evidence.candles_used,
+                        "ema_fast": orchestration.indicator_evidence.ema_fast,
+                        "ema_slow": orchestration.indicator_evidence.ema_slow,
+                        "rsi_14": orchestration.indicator_evidence.rsi_14,
+                        "macd": orchestration.indicator_evidence.macd,
+                        "macd_signal": orchestration.indicator_evidence.macd_signal,
+                        "atr_14": orchestration.indicator_evidence.atr_14,
+                        "bias": orchestration.indicator_evidence.bias.value,
+                        "bullish_votes": orchestration.indicator_evidence.bullish_votes,
+                        "bearish_votes": orchestration.indicator_evidence.bearish_votes,
+                        "reason": orchestration.indicator_evidence.reason,
+                        "authorizes_execution": False,
+                    }
+                    if orchestration.indicator_evidence is not None
+                    else {"available": False, "reason": "Histórico insuficiente: são necessários pelo menos 35 candles."}
+                ),
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),
