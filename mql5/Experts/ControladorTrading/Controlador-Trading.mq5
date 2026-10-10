@@ -20,6 +20,7 @@ string current_quality_level="";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
+datetime last_watermark_sync=0;
 bool panel_visible=true;
 int panel_x=12;
 int panel_y=18;
@@ -193,6 +194,21 @@ void LoadWatermark(){
    }
    RefreshNavigation();
    RefreshWatermarkControl();
+}
+void RefreshSharedWatermarkPreference(){
+   datetime now=TimeCurrent();
+   if(last_watermark_sync>0 && now-last_watermark_sync<30) return;
+   last_watermark_sync=now;
+   string response; int code=0;
+   if(!Http("GET","/api/preferences","",response,code)) return;
+   string shared=JsonValue(response,"watermark_enabled");
+   if(shared!="true" && shared!="false") return;
+   bool enabled=(shared=="true");
+   if(enabled==watermark_enabled) return;
+   watermark_enabled=enabled;
+   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+   RefreshWatermarkControl();
+   ChartRedraw();
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
@@ -459,6 +475,15 @@ void RefreshPreferences(){
    string tf=JsonValue(r,"default_timeframe");
    string closed=JsonValue(r,"require_closed_candle");
    string filters=JsonValue(r,"require_filters");
+   string shared_watermark=JsonValue(r,"watermark_enabled");
+   if(shared_watermark=="true" || shared_watermark=="false"){
+      bool enabled=(shared_watermark=="true");
+      if(enabled!=watermark_enabled){
+         watermark_enabled=enabled;
+         GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+         RefreshWatermarkControl();
+      }
+   }
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),180,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),180,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),180,401,9,C'205,215,230');
@@ -855,6 +880,7 @@ void OnDeinit(const int reason){
    DeletePanel();
 }
 void OnTimer(){
+   if(!panel_visible || active_view!="CONFIG") RefreshSharedWatermarkPreference();
    if(!panel_visible){
       RefreshPanelToggle();
       RefreshWatermarkControl();
