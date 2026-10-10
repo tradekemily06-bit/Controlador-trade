@@ -462,7 +462,10 @@ def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rat
     assert 'string monthly=JsonObjectValue(periods,"monthly");' in secondary
     assert 'JsonValue(r,"wins")' in secondary
     assert 'JsonValue(r,"losses")' in secondary
-    assert '"Registros de estudo: "+(wins==""?"—":wins)+" WIN / "+(losses==""?"—":losses)+" LOSS"' in secondary
+    assert '"Estudo • WIN: "+(wins==""?"—":wins)' in secondary
+    assert '"Estudo • LOSS: "+(losses==""?"—":losses)' in secondary
+    assert "SetLabel(Obj(\"INFO1\"),\"Estudo • WIN: \"+(wins==\"\"?\"—\":wins),180,361,9,C'88,214,141')" in secondary
+    assert "SetLabel(Obj(\"INFO2\"),\"Estudo • LOSS: \"+(losses==\"\"?\"—\":losses),180,381,9,C'255,118,118')" in secondary
     assert 'JsonValue(daily,"wins")' in secondary
     assert 'JsonValue(weekly,"losses")' in secondary
     assert 'JsonValue(monthly,"wins")' in secondary
