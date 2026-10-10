@@ -183,6 +183,31 @@ def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_stu
     assert statistics["demo"]["periods"]["monthly"]["total"] == 1
 
 
+def test_demo_close_time_can_be_enriched_without_duplicate_result():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    observed_at = datetime.now(timezone.utc)
+    closed_at = observed_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    common = dict(
+        cycle_id="close-time-enrichment",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        outcome="WIN",
+        financial_result=3.0,
+        observed_at=observed_at,
+    )
+    service._persist_confirmed_demo_outcome(SimpleNamespace(**common, closed_at=None))
+    service._persist_confirmed_demo_outcome(SimpleNamespace(**common, closed_at=closed_at))
+
+    saved = service.state_store.load("demo_trade_outcomes")
+    assert len(saved) == 1
+    assert saved[0]["closed_at"] == closed_at.isoformat()
+    assert service.statistics()["demo"]["total"] == 1
+
+
 def test_demo_periods_use_trade_close_time_not_reconciliation_time():
     from datetime import datetime, timezone, timedelta
     from types import SimpleNamespace
