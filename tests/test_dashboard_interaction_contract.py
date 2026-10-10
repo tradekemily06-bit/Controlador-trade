@@ -295,3 +295,9 @@ def test_dashboard_script_has_no_literal_escape_sequences_between_functions():
     assert "}\\nasync function" not in WEB
     assert "}}\\n$('saveOperationMode')" not in WEB
     assert "}}\\nasync function refreshReal" not in WEB
+
+
+def test_ci_validates_dashboard_javascript_syntax():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "Validate dashboard JavaScript syntax" in workflow
+    assert "node --check /tmp/controlador-dashboard.js" in workflow
