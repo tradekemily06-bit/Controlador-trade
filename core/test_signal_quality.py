@@ -57,12 +57,20 @@ def test_unconfirmed_signal_is_not_actionable():
     assert result.level == SignalLevel.NENHUMA
 
 
-def test_wait_signal_has_no_quality():
+def test_wait_signal_preserves_weak_candidate_quality_without_becoming_actionable():
     result = evaluate_signal_quality(_analysis(Signal.AGUARDAR, 50))
 
     assert result.actionable is False
-    assert result.score == 0
-    assert result.level == SignalLevel.NENHUMA
+    assert result.score == 50
+    assert result.level == SignalLevel.FRACA
+
+
+def test_wait_with_strong_raw_score_stays_wait_when_filters_block_it():
+    result = evaluate_signal_quality(_analysis(Signal.AGUARDAR, 90))
+
+    assert result.actionable is False
+    assert result.score == 90
+    assert result.level == SignalLevel.FORTE
 
 
 def test_invalid_scores_fail_closed():
