@@ -335,6 +335,18 @@ def test_real_adapter_blocks_when_terminal_is_demo():
     )
 
 
+def test_real_adapter_cannot_publish_results_as_demo_history():
+    mt5 = FakeRealMT5()
+    adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
+    try:
+        adapter.query_trade_outcome("123")
+    except RuntimeError as exc:
+        assert "não está disponível" in str(exc)
+    else:
+        raise AssertionError("REAL history must never be labelled as DEMO outcome")
+    assert mt5.calls == []
+
+
 def test_real_adapter_never_accepts_demo_request():
     mt5 = FakeRealMT5()
     adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
