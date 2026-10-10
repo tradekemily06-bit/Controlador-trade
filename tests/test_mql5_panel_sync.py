@@ -400,3 +400,16 @@ def test_mql5_replay_informational_view_removes_cycle_close_and_save_buttons():
     assert 'if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));' in replay
     assert 'if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));' in replay
     assert 'if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));' in replay
+
+
+def test_mql5_chart_resize_rerenders_layout_without_requerying_runtime():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView(bool refresh_data=true)", 1)[1].split("void RefreshHealth()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "if(refresh_data) RefreshSecondary();" in render
+    assert "if(refresh_data) Analyze();" in render
+    assert "if(refresh_data){ RefreshHealth(); RefreshSecondary(); }" in render
+    assert "if(refresh_data) RefreshLearning();" in render
+    assert "if(refresh_data) RefreshNotifications();" in render
+    assert "if(refresh_data) RefreshPreferences();" in render
+    assert "if(panel_visible){ Panel(); RenderView(false); }" in event
