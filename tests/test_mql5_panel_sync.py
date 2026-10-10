@@ -228,8 +228,8 @@ def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
     assert 'Obj("PANEL_SIGNAL")' in toggle
-    assert 'StringFind(signal,"COMPRAR")' in toggle
-    assert 'StringFind(signal,"VENDER")' in toggle
+    assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
+    assert 'signal=="VENDA" || signal=="VENDER"' in toggle
     assert 'signal="AGUARDAR"' in toggle
     assert "panel_visible?panel_x+panel_width-42:12" in toggle
     assert '"CONTROLADOR TRADING"' in panel
