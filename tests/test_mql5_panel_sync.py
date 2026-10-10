@@ -654,3 +654,11 @@ def test_native_panel_does_not_show_runtime_online_from_http_200_alone():
     ):
         assert contract in health
     assert health.index('if(health_ok!="true"') < health.index('SetLabel(Obj("RUNTIME"),"Runtime: ONLINE')
+
+def test_lab_panel_does_not_overwrite_runtime_health_or_risk_with_optimistic_labels():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    lab = panel.split('}else if(active_view=="LAB"){', 1)[1].split('}else if(active_view=="REPLAY"){', 1)[0]
+    assert "if(refresh_data){ RefreshHealth(); RefreshSecondary(); }" in lab
+    assert 'SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO"' not in lab
+    assert 'SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime"' not in lab
+    assert lab.index("SetLabel(Obj(\"INFO3\")") < lab.index("if(refresh_data){ RefreshHealth(); RefreshSecondary(); }")
