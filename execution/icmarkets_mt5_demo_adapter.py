@@ -107,7 +107,7 @@ class ICMarketsMT5DemoAdapter:
                 else mt5.initialize(timeout=15_000)
             )
             if not initialized:
-                self._last_initialization_error = f"MT5 indisponível: {self._last_error(mt5)}"
+                self._last_initialization_error = (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}")
                 return False
 
             terminal = mt5.terminal_info()
@@ -174,7 +174,7 @@ class ICMarketsMT5DemoAdapter:
         """Read a fail-closed DEMO operational snapshot from MT5."""
         mt5 = self._module()
         if not self._initialize_mt5(mt5):
-            raise MT5AdapterError(self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}")
+            raise MT5AdapterError(self._last_initialization_error or (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -239,7 +239,7 @@ class ICMarketsMT5DemoAdapter:
             raise ValueError("external_id inválido")
         mt5 = self._module()
         if not self._initialize_mt5(mt5):
-            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+            raise MT5AdapterError((self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -312,7 +312,7 @@ class ICMarketsMT5DemoAdapter:
             raise ValueError("external_id inválido")
         mt5 = self._module()
         if not self._initialize_mt5(mt5):
-            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+            raise MT5AdapterError((self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
@@ -426,7 +426,7 @@ class ICMarketsMT5DemoAdapter:
 
         mt5 = self._module()
         if not self._initialize_mt5(mt5):
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+            return ExecutionResult(False, (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
 
         try:
             account = mt5.account_info()
@@ -496,7 +496,7 @@ class ICMarketsMT5DemoAdapter:
             return ExecutionResult(False, "external_id inválido; fechamento bloqueado.")
         mt5 = self._module()
         if not self._initialize_mt5(mt5):
-            return ExecutionResult(False, f"MT5 indisponível: {self._last_error(mt5)}")
+            return ExecutionResult(False, (self._last_initialization_error or f"MT5 indisponível: {self._last_error(mt5)}"))
         try:
             account = mt5.account_info()
             if account is None or not self._is_demo_account(account, mt5):
