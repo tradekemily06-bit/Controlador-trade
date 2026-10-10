@@ -598,3 +598,11 @@ def test_mql5_runtime_cycle_parses_nested_runtime_payload_and_never_uses_decisio
     assert 'string allowed=JsonValue(r,"execution_allowed");' in cycle
     assert 'if(signal=="") signal=JsonValue(r,"decision");' not in cycle
     assert 'Resposta do ciclo sem objeto runtime; operacao bloqueada.' in cycle
+
+
+def test_mql5_demo_net_result_is_colored_by_real_value_and_missing_is_dash():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'string demo_net_display=(demo_net=="" || demo_net=="null" || demo_total=="0")?"—":demo_net;' in panel
+    assert "if(demo_net_value>0) demo_net_color=C'88,214,141';" in panel
+    assert "else if(demo_net_value<0) demo_net_color=C'255,118,118';" in panel
+    assert 'SetLabel(Obj("INFO8"),"DEMO • DRAW: "+(demo_draws==""?"—":demo_draws)+" • P&L liquido: "+demo_net_display,180,501,9,demo_net_color);' in panel
