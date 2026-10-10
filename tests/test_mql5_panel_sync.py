@@ -247,3 +247,11 @@ def test_mql5_panel_preserves_dynamic_signal_when_closed():
     assert 'signal="AGUARDAR"' in toggle
     assert "current_signal=(signal==" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"C");' in toggle
+
+
+def test_mql5_demo_cycle_updates_closed_c_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'current_signal=(signal=="COMPRA" || signal=="COMPRAR")?' in cycle
+    assert 'SetLabel(Obj("SIGNAL"),current_signal' in cycle
+    assert "RefreshPanelToggle();" in cycle
