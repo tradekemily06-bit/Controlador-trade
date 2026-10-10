@@ -631,3 +631,11 @@ def test_native_panel_symbol_and_timeframe_fields_are_editable():
     assert "OBJPROP_READONLY,false" in edit
     assert "OBJPROP_SELECTABLE,true" in edit
     assert "OBJPROP_SELECTABLE,false" not in edit
+
+def test_native_indicator_toggle_refreshes_runtime_analysis_without_rendering_stale_evidence():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void ToggleIndicators()", 1)[1].split("void ToggleWatermark()", 1)[0]
+    assert 'Http("POST","/api/preferences",body,response,code)' in toggle
+    assert "indicators_enabled=desired;" in toggle
+    assert "Analyze(false);" in toggle
+    assert toggle.index("indicators_enabled=desired;") < toggle.index("Analyze(false);")
