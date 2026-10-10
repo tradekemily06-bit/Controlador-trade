@@ -428,5 +428,5 @@ def test_mql5_json_value_accepts_standard_json_whitespace_around_keys():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     parser = panel.split("string JsonValue(string json,string key)", 1)[1].split("bool Http(", 1)[0]
     assert "StringGetCharacter(json,p)!=':'" in parser
-    assert "StringGetCharacter(json,p)=='\\\\t'" in parser
-    assert "StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\\\n'" in parser
+    assert "StringGetCharacter(json,p)=='\\t'" in parser
+    assert "StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\\n'" in parser
