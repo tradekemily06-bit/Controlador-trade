@@ -17,6 +17,7 @@ string active_nav="N1";
 string current_signal="AGUARDAR";
 string current_quality_score="";
 string current_quality_level="";
+string current_quality_actionable="false";
 string current_indicator_summary="AGUARDANDO";
 string current_external_indicator_status="NOT_CONFIGURED";
 bool runtime_ok=false;
@@ -264,17 +265,16 @@ void RefreshPanelToggle(){
 
    string signal_name=Obj("PANEL_SIGNAL");
    if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
-   string signal=current_signal;
+   string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";
    color signal_color=C'255,209,102';
    if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
    else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
    else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
-   if(current_quality_score!=""){
+   if(current_quality_actionable=="true" && current_quality_score!="" && current_quality_level!="" && current_quality_level!="NENHUMA"){
       double quality_value=StringToDouble(current_quality_score);
       string quality_display=(MathAbs(quality_value-MathRound(quality_value))<0.001)?IntegerToString((int)MathRound(quality_value)):DoubleToString(quality_value,1);
-      signal+=" "+quality_display+"%";
+      signal+=" "+quality_display+"/100 • "+quality_display+"% "+current_quality_level;
    }
-   if(current_quality_level!="") signal+=" "+current_quality_level;
    // The signal and its quality remain beside C, with no extra heading or status label.
    int signal_x=c_size+20;
    int signal_y=toggle_y+MathMax(8,(c_size-18)/2);
@@ -781,6 +781,7 @@ void Analyze(bool render=true){
       current_signal="AGUARDAR";
       current_quality_score="";
       current_quality_level="";
+      current_quality_actionable="false";
       current_indicator_summary="INDISPONIVEIS";
       current_external_indicator_status="INDISPONIVEL";
       RefreshPanelToggle();
@@ -800,6 +801,8 @@ void Analyze(bool render=true){
    string quality_level=JsonValue(quality,"level");
    current_quality_score=quality_score;
    current_quality_level=quality_level;
+   current_quality_actionable=JsonValue(quality,"actionable");
+   if(current_quality_actionable!="true") current_signal="AGUARDAR";
    string indicator_data=JsonObjectValue(r,"indicators");
    string indicator_enabled=JsonValue(indicator_data,"enabled");
    string indicator_available=JsonValue(indicator_data,"available");
