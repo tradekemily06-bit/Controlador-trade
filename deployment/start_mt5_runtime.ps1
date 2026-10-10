@@ -117,7 +117,7 @@ function Test-Mt5TerminalHealth {
         $healthCheckCode = @'
 import json, MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
-ok = mt5.initialize(path=path)
+ok = mt5.initialize(path=path, timeout=15000)
 terminal = mt5.terminal_info() if ok else None
 account = mt5.account_info() if ok else None
 demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
@@ -197,7 +197,7 @@ import MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
 state = "UNKNOWN"
 try:
-    ok = mt5.initialize(path=path)
+    ok = mt5.initialize(path=path, timeout=15000)
     terminal = mt5.terminal_info() if ok else None
     account = mt5.account_info() if ok else None
     demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
