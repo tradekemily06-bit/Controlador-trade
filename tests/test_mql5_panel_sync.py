@@ -215,7 +215,7 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
     assert "int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;" in panel
-    assert 'ObjectCreate(0,name,OBJ_ELLIPSE,0,0,0)' in panel
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
@@ -234,9 +234,9 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
 def test_mql5_panel_has_compact_c_toggle_and_dynamic_signal_when_closed():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
-    assert 'ObjectCreate(0,name,OBJ_ELLIPSE,0,0,0)' in toggle
-    assert 'ObjectCreate(0,inner,OBJ_ELLIPSE,0,0,0)' in toggle
-    assert 'ObjectSetString(0,glyph,OBJPROP_TEXT,"C");' in toggle
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in toggle
+    assert 'controller_canvas.FillCircle(center,center,inner_radius' in toggle
+    assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
     assert 'Obj("PANEL_SIGNAL")' in toggle
     assert 'signal=="COMPRA" || signal=="COMPRAR"' in toggle
     assert 'signal=="VENDA" || signal=="VENDER"' in toggle
@@ -256,9 +256,9 @@ def test_mql5_panel_preserves_dynamic_signal_when_closed():
     assert 'signal="VENDER"' in toggle
     assert 'signal="AGUARDAR"' in toggle
     assert "current_signal=(signal==" in panel
-    assert 'ObjectCreate(0,name,OBJ_ELLIPSE,0,0,0)' in toggle
-    assert 'ObjectCreate(0,inner,OBJ_ELLIPSE,0,0,0)' in toggle
-    assert 'ObjectSetString(0,glyph,OBJPROP_TEXT,"C");' in toggle
+    assert 'CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)' in toggle
+    assert 'controller_canvas.FillCircle(center,center,inner_radius' in toggle
+    assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
 
 
 def test_mql5_demo_cycle_updates_closed_c_signal():
