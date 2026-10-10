@@ -274,10 +274,8 @@ void RefreshPanelToggle(){
    if(current_quality_score!="" && current_quality_level!="" && current_quality_level!="NENHUMA"){
       double quality_value=StringToDouble(current_quality_score);
       string quality_display=(MathAbs(quality_value-MathRound(quality_value))<0.001)?IntegerToString((int)MathRound(quality_value)):DoubleToString(quality_value,1);
-      if(current_quality_actionable=="true")
-         signal+=" "+quality_display+"/100 • "+quality_display+"% "+current_quality_level;
-      else if(current_quality_technical_actionable=="false" && current_quality_level=="FRACA")
-         signal+=" "+quality_display+"/100 • "+quality_display+"% FRACA";
+      // Quality is an independently measured index; final execution gates may still keep the signal at AGUARDAR.
+      signal+=" "+quality_display+"/100 • "+quality_display+"% "+current_quality_level;
    }
    // The signal and its quality remain beside C, with no extra heading or status label.
    int signal_x=c_size+20;
