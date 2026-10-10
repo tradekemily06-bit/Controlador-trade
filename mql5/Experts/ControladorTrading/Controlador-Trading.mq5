@@ -12,6 +12,7 @@ string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
+string current_signal="AGUARDAR";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
@@ -177,15 +178,14 @@ void RefreshPanelToggle(){
       if(ObjectFind(0,signal_name)>=0) ObjectDelete(0,signal_name);
    }else{
       if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
-      string signal="AGUARDAR";
+      string signal=current_signal;
       color signal_color=C'255,209,102';
-      if(ObjectFind(0,Obj("SIGNAL"))>=0) signal=ObjectGetString(0,Obj("SIGNAL"),OBJPROP_TEXT);
-      if(StringFind(signal,"COMPRAR")>=0) signal_color=C'54,226,130';
-      else if(StringFind(signal,"VENDER")>=0) signal_color=C'255,86,101';
+      if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
+      else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
       else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
       ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-      ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,54);
-      ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,MathMax(12,ch-42));
+      ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,52);
+      ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,MathMax(12,ch-38));
       ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
       ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
       ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
@@ -551,7 +551,8 @@ void Analyze(bool render=true){
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   SetLabel(Obj("SIGNAL"),current_signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
