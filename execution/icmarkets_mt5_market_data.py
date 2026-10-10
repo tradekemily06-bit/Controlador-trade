@@ -42,7 +42,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         self._mt5 = mt5_module
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
 
-    def _initialize(self, mt5: Any) -> bool:
+    def initialize_terminal(self, mt5: Any) -> bool:
         initialized = bool(
             mt5.initialize(path=self._terminal_path, timeout=15_000)
             if self._terminal_path
@@ -126,7 +126,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
         mt5 = self._module()
         timeframe = self._timeframe(request.timeframe)
-        if not self._initialize(mt5):
+        if not self.initialize_terminal(mt5):
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:
