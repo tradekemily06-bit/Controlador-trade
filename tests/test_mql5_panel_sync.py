@@ -621,4 +621,4 @@ def test_mql5_hides_unavailable_quality_instead_of_showing_null_or_zero():
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     assert 'if(current_quality_level=="NENHUMA" || current_quality_score=="null")' in analyze
     assert 'if(score=="null") score="";' in analyze
-    assert 'color quality_color=current_quality_level=="FORTE"?C\\'88,214,141\\'' in analyze
+    assert "color quality_color=current_quality_level==\"FORTE\"?C'88,214,141'" in analyze
