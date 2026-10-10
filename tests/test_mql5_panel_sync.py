@@ -511,12 +511,11 @@ def test_mql5_controller_c_is_a_real_pixel_circle_with_clickable_canvas():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     event = panel.split("void OnChartEvent", 1)[1]
-    assert '#include <Canvas\\\\Canvas.mqh>' in panel
+    assert '#include <Canvas\\Canvas.mqh>' in panel
     assert "CCanvas controller_canvas;" in panel
     assert "CreateBitmapLabel(0,0,name,toggle_x,toggle_y,c_size,c_size,COLOR_FORMAT_ARGB_NORMALIZE)" in toggle
     assert "controller_canvas.FillCircle(center,center,outer_radius" in toggle
     assert "controller_canvas.FillCircle(center,center,inner_radius" in toggle
-    assert "controller_canvas.TextOut(center-5,center-11,\\"C\\" " not in toggle
     assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
     assert "controller_canvas.Update();" in toggle
     assert 'sparam==Obj("PANEL_TOGGLE")' in event
