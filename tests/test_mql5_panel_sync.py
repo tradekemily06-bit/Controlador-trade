@@ -304,3 +304,14 @@ def test_mql5_replay_and_leverage_are_not_misrepresented_as_native_integrations(
     assert "Integracao nativa nao confirmada." in panel
     assert "Execucao autorizada: false." in panel
     assert "REAL: BLOQUEADO" in panel
+
+
+def test_mql5_vertical_navigation_highlights_the_selected_module():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'string active_nav="N1";' in panel
+    assert "void RefreshNavigation()" in panel
+    assert 'OBJPROP_BGCOLOR,selected?C\'14,73,96\':C\'24,32,44\'' in panel
+    assert 'OBJPROP_BORDER_COLOR,selected?C\'38,210,242\':C\'55,72,92\'' in panel
+    for nav in range(1, 10):
+        assert f'active_nav="N{nav}"' in panel
+    assert panel.index("RefreshNavigation();", panel.index("void Panel()")) < panel.index("void DeletePanel(")
