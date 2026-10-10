@@ -164,6 +164,7 @@ def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_stu
         outcome="WIN",
         financial_result=2.6,
         observed_at=datetime.now(timezone.utc),
+        closed_at=datetime.now(timezone.utc),
     )
     service._persist_confirmed_demo_outcome(snapshot)
     service._persist_confirmed_demo_outcome(snapshot)
@@ -180,6 +181,31 @@ def test_confirmed_demo_outcomes_persist_idempotently_and_stay_separate_from_stu
     assert statistics["demo"]["wins"] == 1
     assert statistics["demo"]["net_result"] == 2.6
     assert statistics["demo"]["periods"]["monthly"]["total"] == 1
+
+
+def test_demo_periods_use_trade_close_time_not_reconciliation_time():
+    from datetime import datetime, timezone, timedelta
+    from types import SimpleNamespace
+    from core.p49_outcome_reconciliation import ReconciliationState
+
+    service = ConfiguredEcosystemService()
+    observed_at = datetime.now(timezone.utc)
+    prior_month = observed_at.replace(day=1, hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+    closed_at = prior_month.replace(hour=12, minute=0, second=0, microsecond=0)
+    service._persist_confirmed_demo_outcome(SimpleNamespace(
+        cycle_id="closed-last-month",
+        source="MT5_DEMO_HISTORY",
+        reconciliation_state=ReconciliationState.MATCHED,
+        outcome="WIN",
+        financial_result=4.0,
+        observed_at=observed_at,
+        closed_at=closed_at,
+    ))
+
+    statistics = service.statistics()
+    assert statistics["demo"]["total"] == 1
+    assert statistics["demo"]["wins"] == 1
+    assert statistics["demo"]["periods"]["monthly"]["total"] == 0
 
 
 def test_demo_statistics_ignore_unverified_or_non_history_outcomes():
