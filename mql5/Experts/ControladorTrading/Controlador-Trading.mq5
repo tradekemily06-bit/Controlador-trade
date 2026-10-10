@@ -171,14 +171,26 @@ void RefreshWatermarkControl(){
 void ToggleWatermark(){
    watermark_enabled=!watermark_enabled;
    GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+   string body="{\"watermark_enabled\":"+(watermark_enabled?"true":"false")+"}";
+   string response; int code=0;
+   bool synced=Http("POST","/api/preferences",body,response,code);
    RefreshWatermarkControl();
    if(panel_visible)
-      SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",180,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
+      SetLabel(Obj("INFO1"),synced?(watermark_enabled?"Marca d'agua ativada e sincronizada.":"Marca d'agua desativada e sincronizada."):"Marca alterada neste MT5; sincronizacao indisponivel.",180,361,9,synced?C'88,214,141':C'255,209,102');
    ChartRedraw();
 }
 void LoadWatermark(){
    if(GlobalVariableCheck(WatermarkKey()))
       watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
+   // Shared runtime preference is authoritative when available; local state is a safe fallback.
+   string response; int code=0;
+   if(Http("GET","/api/preferences","",response,code)){
+      string shared=JsonValue(response,"watermark_enabled");
+      if(shared=="true" || shared=="false"){
+         watermark_enabled=(shared=="true");
+         GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+      }
+   }
    RefreshNavigation();
    RefreshWatermarkControl();
 }
