@@ -37,10 +37,10 @@ void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Painel flutuante compacto, ancorado embaixo à esquerda.
-   panel_width=MathMin(InpPanelWidth,MathMax(360,(int)MathRound(cw*0.42)));
-   panel_width=MathMin(panel_width,MathMax(300,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(340,(int)MathRound(ch*0.48)));
-   panel_height=MathMin(panel_height,MathMax(320,ch-90));
+   panel_width=MathMin(MathMax(440,InpPanelWidth),MathMax(440,(int)MathRound(cw*0.56)));
+   panel_width=MathMin(panel_width,MathMax(420,cw-24));
+   panel_height=MathMin(MathMax(440,InpPanelHeight),MathMax(360,(int)MathRound(ch*0.68)));
+   panel_height=MathMin(panel_height,MathMax(340,ch-90));
    panel_x=12;
    panel_y=MathMax(12,ch-panel_height-52);
    panel_sx=(double)panel_width/600.0;
@@ -147,8 +147,12 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RefreshWatermarkControl(){
-   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
-   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
+   if(panel_visible){
+      SetButton(Obj("WM"),watermark_enabled?"MARCA ON":"MARCA OFF",panel_x+panel_width-118,panel_y+42,106,25);
+   }else{
+      int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+      SetButton(Obj("WM"),watermark_enabled?"WM ON":"WM OFF",58,MathMax(12,ch-48),72,28);
+   }
    ApplyWatermark();
 }
 void ToggleWatermark(){
@@ -249,45 +253,45 @@ void Panel(){
    SetLabel(Obj("BRAND_C"),"C",18,24,20,C'63,224,255');
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",52,27,12,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • DEMO / SIMULACAO",52,47,9,C'150,165,185');
-   // Navegacao vertical no trilho direito; conteudo funcional preservado.
-   SetButton(Obj("N1"),"COCKPIT",430,82,155,29);
-   SetButton(Obj("N2"),"ANALISE",430,118,155,29);
-   SetButton(Obj("N3"),"ESTUDO",430,154,155,29);
-   SetButton(Obj("N4"),"LABORATORIO",430,190,155,29);
-   SetButton(Obj("N5"),"REPLAY",430,226,155,29);
-   SetButton(Obj("N6"),"MEMORIA",430,262,155,29);
-   SetButton(Obj("N7"),"WIN/LOSS",430,298,155,29);
-   SetButton(Obj("N8"),"ALAVANCAGEM",430,334,155,29);
-   SetButton(Obj("N9"),"CONFIGURACOES",430,370,155,29);
+   // Navegacao vertical no trilho esquerdo; conteudo funcional preservado.
+   SetButton(Obj("N1"),"COCKPIT",20,82,145,29);
+   SetButton(Obj("N2"),"ANALISE",20,118,145,29);
+   SetButton(Obj("N3"),"ESTUDO",20,154,145,29);
+   SetButton(Obj("N4"),"LABORATORIO",20,190,145,29);
+   SetButton(Obj("N5"),"REPLAY",20,226,145,29);
+   SetButton(Obj("N6"),"MEMORIA",20,262,145,29);
+   SetButton(Obj("N7"),"WIN/LOSS",20,298,145,29);
+   SetButton(Obj("N8"),"ALAVANCAGEM",20,334,145,29);
+   SetButton(Obj("N9"),"CONFIGURACOES",20,370,145,29);
    RefreshNavigation();
 
-   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
-   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
-   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,209,102');
-   SetLabel(Obj("SCORE"),"Score: —/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
+   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",180,104,10,C'255,209,102');
+   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",180,124,10,C'88,214,141');
+   SetLabel(Obj("SIGNAL"),"AGUARDAR",180,154,22,C'255,209,102');
+   SetLabel(Obj("SCORE"),"Score: —/100",180,184,10,clrWhite);
+   SetLabel(Obj("REASON"),"Aguardando analise.",180,204,9,C'180,190,205');
 
-   SetLabel(Obj("SYML"),"ATIVO",20,236,8,C'130,145,165');
-   SetEdit(Obj("SYM"),_Symbol,20,249,150,25);
-   SetLabel(Obj("TFL"),"TIMEFRAME",184,236,8,C'130,145,165');
-   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,249,195,25);
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
+   SetLabel(Obj("SYML"),"ATIVO",180,236,8,C'130,145,165');
+   SetEdit(Obj("SYM"),_Symbol,180,249,100,25);
+   SetLabel(Obj("TFL"),"TIMEFRAME",290,236,8,C'130,145,165');
+   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),290,249,120,25);
+   SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",180,278,8,C'145,160,180');
 
-   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,294,172,30);
-   SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,294,177,30);
-   SetButton(Obj("SAVE"),"SALVAR CONFIG",20,330,172,28);
-   SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,330,177,28);
+   SetButton(Obj("ANALYZE"),"ANALISAR RUNTIME",180,294,110,30);
+   SetButton(Obj("CYCLE"),"CICLO DEMO",296,294,114,30);
+   SetButton(Obj("SAVE"),"SALVAR CONFIG",180,330,110,28);
+   SetButton(Obj("CLOSE"),"FECHAR/RECONC.",296,330,114,28);
 
-   SetLabel(Obj("INFO1"),"Decisao: —",20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Memoria: verificando...",20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
+   SetLabel(Obj("INFO1"),"Decisao: —",180,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Risk Gate: verificando...",180,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Memoria: verificando...",180,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Estatisticas: verificando...",180,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Noticias: verificando...",180,441,9,C'205,215,230');
 
-   SetLabel(Obj("CYCLEID"),"Ciclo: —",20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
-   SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
-   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
+   SetLabel(Obj("CYCLEID"),"Ciclo: —",180,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: —",180,483,8,C'145,160,180');
+   SetLabel(Obj("PRICE"),"Preco atual: —",180,501,9,C'190,200,215');
+   SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",180,520,8,C'255,155,155');
    SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
 }
 void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
@@ -504,9 +508,6 @@ void RenderView(bool refresh_data=true){
    }
    if(active_view!="CONFIG" && active_view!="MEMORIA"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
-   }
-   if(active_view!="CONFIG"){
-      if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    }
    RefreshWatermarkControl();
 }
