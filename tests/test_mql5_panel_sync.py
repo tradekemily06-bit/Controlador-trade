@@ -271,6 +271,7 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     failure = analyze.split('if(!Http("POST","/api/runtime/analysis",body,r,code)){', 1)[1].split("   }", 1)[0]
+    assert 'runtime_ok=false;' in failure
     assert 'current_signal="AGUARDAR";' in failure
     assert "RefreshPanelToggle();" in failure
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
