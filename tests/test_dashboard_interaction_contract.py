@@ -175,3 +175,17 @@ def test_analysis_panel_keeps_market_signal_separate_from_runtime_decision():
 def test_learning_textareas_use_responsive_control_styles():
     assert ".controls textarea{resize:vertical;line-height:1.45}" in WEB
     assert ".controls input,.controls select,.controls textarea{min-width:0;max-width:100%}" in WEB
+
+
+def test_technical_readout_uses_calculated_evidence_not_static_concept_badges():
+    assert 'id="indicatorReadout"' in WEB
+    assert "GAB, DDT, pressão e taxa dívida permanecem conceitos contextuais" in WEB
+    assert '<span class="chip">Tendência</span>' not in WEB
+
+
+def test_protection_panel_reads_real_runtime_observability():
+    for element in ("killSwitchState", "reconciliationState", "recoveryState", "runtimeIntegrityState"):
+        assert f'id="{element}"' in WEB
+    assert "function renderProtectionStatus(status)" in WEB
+    assert "status?.operational_observability" in WEB
+    assert "renderProtectionStatus(s)" in WEB
