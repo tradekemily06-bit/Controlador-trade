@@ -197,6 +197,7 @@ class TradingRuntime:
             and not isinstance(getattr(trade_outcome, "financial_result", None), bool)
         )
         outcome_observed_at = observed_at
+        trade_closed_at = None
         external_observation = None
         outcome_name = "UNKNOWN"
         financial_result = None
@@ -208,13 +209,23 @@ class TradingRuntime:
                     or outcome_observed_at < closure.closed_at):
                 confirmed_outcome = False
             else:
-                outcome_name = trade_outcome.outcome
-                financial_result = float(trade_outcome.financial_result)
-                external_observation = ExternalOutcomeObservation(
-                    cycle_id=cycle_id,
-                    outcome=outcome_name,
-                    financial_result=financial_result,
-                )
+                candidate_closed_at = getattr(trade_outcome, "closed_at", None)
+                if candidate_closed_at is not None:
+                    if (not isinstance(candidate_closed_at, datetime)
+                            or candidate_closed_at.tzinfo is None
+                            or candidate_closed_at.utcoffset() is None
+                            or candidate_closed_at > outcome_observed_at):
+                        confirmed_outcome = False
+                    else:
+                        trade_closed_at = candidate_closed_at
+                if confirmed_outcome:
+                    outcome_name = trade_outcome.outcome
+                    financial_result = float(trade_outcome.financial_result)
+                    external_observation = ExternalOutcomeObservation(
+                        cycle_id=cycle_id,
+                        outcome=outcome_name,
+                        financial_result=financial_result,
+                    )
         if not confirmed_outcome:
             outcome_observed_at = observed_at
             outcome_name = "UNKNOWN"
@@ -226,6 +237,7 @@ class TradingRuntime:
             outcome=outcome_name,
             financial_result=financial_result,
             source=(getattr(trade_outcome, "source", "UNKNOWN") if confirmed_outcome else "UNKNOWN"),
+            closed_at=(trade_closed_at if confirmed_outcome else None),
         )
         reconciliation = OutcomeReconciliationBoundary().reconcile(outcome, external_observation)
         return AutomationResultSnapshotBoundary().compose(closure, outcome, reconciliation)
