@@ -213,7 +213,8 @@ void LoadWatermark(){
    RefreshWatermarkControl();
 }
 void RefreshSharedWatermarkPreference(){
-   datetime now=TimeCurrent();
+   // Use wall-clock time so preference sync continues when the market has no ticks.
+   datetime now=TimeLocal();
    if(last_watermark_sync>0 && now-last_watermark_sync<60) return;
    last_watermark_sync=now;
    string response; int code=0;
