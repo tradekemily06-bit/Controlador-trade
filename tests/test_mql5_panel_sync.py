@@ -580,8 +580,10 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     visibility = panel.split("void LoadPanelVisibility()", 1)[1].split("void RefreshNavigation()", 1)[0]
     assert "panel_visible=false;" in visibility
     assert "GlobalVariableSet(PanelVisibilityKey(),0.0);" in visibility
-    assert "MathRound(cw*0.42)" in layout
-    assert "MathRound(ch*0.44)" in layout
+    assert "double panel_width_ratio=(cw<720?0.92:0.42);" in layout
+    assert "double panel_height_ratio=(cw<720?0.70:0.44);" in layout
+    assert "MathRound(cw*panel_width_ratio)" in layout
+    assert "MathRound(ch*panel_height_ratio)" in layout
     assert "int toggle_x=12;" in toggle
     assert "int toggle_y=MathMax(12,ch-c_size-12);" in toggle
     assert 'string quality=JsonObjectValue(r,"quality");' in analyze
