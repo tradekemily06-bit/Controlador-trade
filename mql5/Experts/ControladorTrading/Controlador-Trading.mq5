@@ -12,6 +12,7 @@ string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
+string active_nav="N1";
 string current_signal="AGUARDAR";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
@@ -152,6 +153,7 @@ void ToggleWatermark(){
 void LoadWatermark(){
    if(GlobalVariableCheck(WatermarkKey()))
       watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
+   RefreshNavigation();
    RefreshWatermarkControl();
 }
 void RefreshPanelToggle(){
@@ -207,6 +209,16 @@ void LoadPanelVisibility(){
       panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
    RefreshPanelToggle();
 }
+void RefreshNavigation(){
+   for(int i=1;i<=9;i++){
+      string name=Obj("N"+IntegerToString(i));
+      if(ObjectFind(0,name)<0) continue;
+      bool selected=(active_nav=="N"+IntegerToString(i));
+      ObjectSetInteger(0,name,OBJPROP_BGCOLOR,selected?C'14,73,96':C'24,32,44');
+      ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,selected?C'38,210,242':C'55,72,92');
+      ObjectSetInteger(0,name,OBJPROP_COLOR,selected?C'100,235,255':C'215,225,238');
+   }
+}
 void Panel(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
@@ -236,6 +248,7 @@ void Panel(){
    SetButton(Obj("N7"),"WIN/LOSS",430,298,155,29);
    SetButton(Obj("N8"),"ALAVANCAGEM",430,334,155,29);
    SetButton(Obj("N9"),"CONFIGURACOES",430,370,155,29);
+   RefreshNavigation();
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -685,15 +698,15 @@ void OnTimer(){
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
-   if(sparam==Obj("N1")) { active_view="COCKPIT"; RenderView(); }
-   else if(sparam==Obj("N2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("N3")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("N4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("N5")) { active_view="REPLAY"; RenderView(); }
-   else if(sparam==Obj("N6")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("N7")) { active_view="MEMORIA"; RenderView(); }
-   else if(sparam==Obj("N8")) { active_view="ALAVANCAGEM"; RenderView(); }
-   else if(sparam==Obj("N9")) { active_view="CONFIG"; RenderView(); }
+   if(sparam==Obj("N1")) { active_nav="N1"; active_view="COCKPIT"; RenderView(); }
+   else else if(sparam==Obj("N2")) { active_nav="N2"; active_view="ANALISE"; RenderView(); }
+   else else if(sparam==Obj("N3")) { active_nav="N3"; active_view="ENSINO"; RenderView(); }
+   else else if(sparam==Obj("N4")) { active_nav="N4"; active_view="LAB"; RenderView(); }
+   else else if(sparam==Obj("N5")) { active_nav="N5"; active_view="REPLAY"; RenderView(); }
+   else else if(sparam==Obj("N6")) { active_nav="N6"; active_view="MEMORIA"; RenderView(); }
+   else else if(sparam==Obj("N7")) { active_nav="N7"; active_view="MEMORIA"; RenderView(); }
+   else else if(sparam==Obj("N8")) { active_nav="N8"; active_view="ALAVANCAGEM"; RenderView(); }
+   else else if(sparam==Obj("N9")) { active_nav="N9"; active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
