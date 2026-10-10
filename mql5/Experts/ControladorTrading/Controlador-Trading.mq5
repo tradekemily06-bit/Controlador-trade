@@ -15,6 +15,8 @@ string last_external_id="";
 string active_view="COCKPIT";
 string active_nav="N1";
 string current_signal="AGUARDAR";
+string current_quality_score="";
+string current_quality_level="";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
@@ -43,8 +45,9 @@ void RefreshPanelLayout(){
    // Painel flutuante compacto, ancorado embaixo à esquerda.
    int available_w=MathMax(240,cw-24);
    int available_h=MathMax(220,ch-90);
-   panel_width=MathMin(available_w,MathMin(MathMax(540,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.56))));
-   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.68))));
+   // The open ecosystem must remain a compact overlay, never a half-screen takeover.
+   panel_width=MathMin(available_w,MathMin(MathMax(540,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.42))));
+   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.44))));
    panel_width=MathMax(240,panel_width);
    panel_height=MathMax(220,panel_height);
    panel_x=12;
@@ -157,28 +160,12 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RefreshWatermarkControl(){
-   string name=Obj("WM");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int x=panel_visible?panel_x+panel_width-118:MathMax(4,cw-80);
-   int y=panel_visible?panel_y+42:12;
-   int w=panel_visible?106:72;
-   int h=panel_visible?25:28;
-   // This control uses screen coordinates directly, so it remains reachable when the panel is hidden.
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMax(4,MathMin(x,MathMax(4,cw-w-4))));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,MathMax(4,MathMin(y,MathMax(4,ch-h-4))));
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,w);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,h);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,watermark_enabled?C'100,235,255':C'160,170,185');
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'16,27,40');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,115,145');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?(watermark_enabled?"MARCA ON":"MARCA OFF"):(watermark_enabled?"WM ON":"WM OFF"));
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   // No extra watermark button may remain on the chart when C is closed.
+   string legacy=Obj("WM");
+   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
+   // The independent watermark switch lives inside C > Configurações only.
+   if(panel_visible && active_view=="CONFIG" && ObjectFind(0,Obj("CYCLE"))>=0)
+      ObjectSetString(0,Obj("CYCLE"),OBJPROP_TEXT,watermark_enabled?"MARCA: ON":"MARCA: OFF");
    ApplyWatermark();
 }
 void ToggleWatermark(){
@@ -201,8 +188,9 @@ void RefreshPanelToggle(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    double c_scale=MathMax(0.90,MathMin(1.20,MathMin((double)cw/1100.0,(double)ch/650.0)));
    int c_size=(int)MathRound(38.0*c_scale);
-   int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;
-   int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-c_size-12);
+   // C stays anchored at the lower-left in both states; opening it does not move the control.
+   int toggle_x=12;
+   int toggle_y=MathMax(12,ch-c_size-12);
 
    // A CCanvas bitmap is a pixel-anchored, clickable chart label. OBJ_ELLIPSE
    // is a time/price drawing object and must not be used as a screen button.
@@ -242,13 +230,15 @@ void RefreshPanelToggle(){
    if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
    else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
    else { signal="AGUARDAR"; signal_color=C'255,209,102'; }
-   // Keep the market signal visually separate from the C control in both states.
-   int signal_x=panel_visible?MathMax(56,toggle_x-92):52;
-   int signal_y=panel_visible?toggle_y+10:MathMax(12,ch-38);
+   if(current_quality_score!="") signal+=" "+current_quality_score+"%";
+   if(current_quality_level!="") signal+=" "+current_quality_level;
+   // The signal and its quality remain beside C, with no extra heading or status label.
+   int signal_x=c_size+20;
+   int signal_y=toggle_y+MathMax(8,(c_size-18)/2);
    ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,signal_x);
    ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,signal_y);
-   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,11);
+   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,10);
    ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
    ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
@@ -265,8 +255,9 @@ void TogglePanel(){
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   if(GlobalVariableCheck(PanelVisibilityKey()))
-      panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
+   // Start with the chart unobstructed every time the EA initializes.
+   panel_visible=false;
+   GlobalVariableSet(PanelVisibilityKey(),0.0);
    RefreshPanelToggle();
 }
 void RefreshNavigation(){
@@ -582,7 +573,7 @@ void RenderView(bool refresh_data=true){
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",180,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",180,284,110,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",296,284,114,30);
+      SetButton(Obj("CYCLE"),watermark_enabled?"MARCA: ON":"MARCA: OFF",296,284,114,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",180,320,110,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONC.",296,320,114,28);
       if(refresh_data) RefreshPreferences();
@@ -727,10 +718,11 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      // A failed analysis invalidates the last analysis health state as well as its signal.
+      // A failed analysis invalidates the last analysis health state and all signal quality.
       runtime_ok=false;
-      // Never leave a stale BUY/SELL visible when the latest analysis failed.
       current_signal="AGUARDAR";
+      current_quality_score="";
+      current_quality_level="";
       RefreshPanelToggle();
       if(render){
          SetLabel(Obj("SIGNAL"),current_signal,180,154,22,C'255,209,102');
@@ -743,6 +735,11 @@ void Analyze(bool render=true){
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
+   string quality=JsonObjectValue(r,"quality");
+   string quality_score=JsonValue(quality,"score");
+   string quality_level=JsonValue(quality,"level");
+   current_quality_score=quality_score;
+   current_quality_level=quality_level;
    // Keep the compact C signal current even when the full panel is hidden.
    RefreshPanelToggle();
    if(!render) return;
@@ -750,7 +747,7 @@ void Analyze(bool render=true){
    string reason=JsonValue(r,"reason");
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",180,184,10,clrWhite);
+   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),180,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",180,361,9,c);
    ChartRedraw();
@@ -782,7 +779,7 @@ void RunCycle(){
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
    RefreshPanelToggle();
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",180,184,10,clrWhite);
+   SetLabel(Obj("SCORE"),"Qualidade: "+(current_quality_score==""?"—":current_quality_score)+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),180,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),180,465,8,C'145,160,180');
@@ -897,11 +894,14 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
    }
-   else if(sparam==Obj("CYCLE")) RunCycle();
+   else if(sparam==Obj("CYCLE")) {
+      if(active_view=="CONFIG") ToggleWatermark();
+      else RunCycle();
+   }
    else if(sparam==Obj("SAVE")) {
       if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="CONFIG") SaveConfig();
    }
    else if(sparam==Obj("CLOSE")) CloseCycle();
-   else if(sparam==Obj("WM")) ToggleWatermark();
+   // Watermark activation is intentionally available only inside C > Configurações.
 }
