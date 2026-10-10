@@ -469,6 +469,7 @@ def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rat
     assert 'closed=="0"?"—"' in secondary
     assert 'd_closed=="0"?"—"' in secondary
     assert '"Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")' in secondary
+    assert '("+d_closed+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+w_closed+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+m_closed+")"' in secondary
     assert 'if(active_nav=="N7")' in secondary
     assert 'Taxa WIN/LOSS registrada:' in secondary
     assert 'SetLabel(Obj("INFO3"),"Rentabilidade: — • P&L financeiro nao registrado"' in secondary
