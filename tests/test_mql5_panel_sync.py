@@ -556,9 +556,10 @@ def test_mql5_chart_starts_clean_with_bottom_left_c_and_signal_quality():
     assert 'current_quality_score=quality_score;' in analyze
     assert 'current_quality_level=quality_level;' in analyze
     assert 'double quality_value=StringToDouble(current_quality_score);' in toggle
-    assert 'signal+=" "+quality_display+"%";' in toggle
-    assert 'if(current_quality_level!="") signal+=" "+current_quality_level;' in toggle
-    assert 'if(current_quality_level!="") signal+=" "+current_quality_level;' in toggle
+    assert 'signal+=" "+quality_display+"/100 • "+quality_display+"% "+current_quality_level;' in toggle
+    assert 'current_quality_actionable=JsonValue(quality,"actionable");' in analyze
+    assert 'if(current_quality_actionable!="true") current_signal="AGUARDAR";' in analyze
+    assert 'string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";' in toggle
     assert "panel_visible?panel_x+panel_width-c_size-8:12" not in panel
     assert 'else if(sparam==Obj("WM"))' not in panel
     assert 'if(active_view=="CONFIG") ToggleWatermark();' in panel
