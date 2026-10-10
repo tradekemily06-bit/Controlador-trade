@@ -189,26 +189,48 @@ void LoadWatermark(){
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   if(ObjectFind(0,name)>=0 && ObjectGetInteger(0,name,OBJPROP_TYPE)!=OBJ_ELLIPSE) ObjectDelete(0,name);
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_ELLIPSE,0,0,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    double c_scale=MathMax(0.90,MathMin(1.20,MathMin((double)cw/1100.0,(double)ch/650.0)));
    int c_size=(int)MathRound(38.0*c_scale);
    int toggle_x=panel_visible?panel_x+panel_width-c_size-8:12;
    int toggle_y=panel_visible?panel_y+8:MathMax(12,ch-c_size-12);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,toggle_y);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,c_size);
    ObjectSetInteger(0,name,OBJPROP_YSIZE,c_size);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,(int)MathRound(19.0*c_scale));
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'63,224,255');
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,24,37');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,210,242');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'38,210,242');
+   ObjectSetInteger(0,name,OBJPROP_FILL,true);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   string inner=Obj("PANEL_TOGGLE_INNER");
+   if(ObjectFind(0,inner)>=0 && ObjectGetInteger(0,inner,OBJPROP_TYPE)!=OBJ_ELLIPSE) ObjectDelete(0,inner);
+   if(ObjectFind(0,inner)<0) ObjectCreate(0,inner,OBJ_ELLIPSE,0,0,0);
+   ObjectSetInteger(0,inner,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,inner,OBJPROP_XDISTANCE,toggle_x+2);
+   ObjectSetInteger(0,inner,OBJPROP_YDISTANCE,toggle_y+2);
+   ObjectSetInteger(0,inner,OBJPROP_XSIZE,MathMax(1,c_size-4));
+   ObjectSetInteger(0,inner,OBJPROP_YSIZE,MathMax(1,c_size-4));
+   ObjectSetInteger(0,inner,OBJPROP_COLOR,C'8,24,37');
+   ObjectSetInteger(0,inner,OBJPROP_FILL,true);
+   ObjectSetInteger(0,inner,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,inner,OBJPROP_HIDDEN,true);
+   string glyph=Obj("PANEL_TOGGLE_GLYPH");
+   if(ObjectFind(0,glyph)>=0 && ObjectGetInteger(0,glyph,OBJPROP_TYPE)!=OBJ_LABEL) ObjectDelete(0,glyph);
+   if(ObjectFind(0,glyph)<0) ObjectCreate(0,glyph,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,glyph,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,glyph,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,glyph,OBJPROP_XDISTANCE,toggle_x+c_size/2);
+   ObjectSetInteger(0,glyph,OBJPROP_YDISTANCE,toggle_y+c_size/2);
+   ObjectSetInteger(0,glyph,OBJPROP_FONTSIZE,(int)MathRound(19.0*c_scale));
+   ObjectSetInteger(0,glyph,OBJPROP_COLOR,C'63,224,255');
+   ObjectSetString(0,glyph,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,glyph,OBJPROP_TEXT,"C");
+   ObjectSetInteger(0,glyph,OBJPROP_SELECTABLE,true);
+   ObjectSetInteger(0,glyph,OBJPROP_HIDDEN,true);
    string signal_name=Obj("PANEL_SIGNAL");
    if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
    string signal=current_signal;
@@ -317,7 +339,7 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
+      if(preserveToggle && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_INNER") || n==Obj("PANEL_TOGGLE_GLYPH"))) continue;
       if(preserveWatermark && (n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT"))) continue;
       ObjectDelete(0,n);
    }
@@ -845,7 +867,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_GLYPH")) { TogglePanel(); return; }
    if(sparam==Obj("N1")) { active_nav="N1"; active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("N2")) { active_nav="N2"; active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("N3")) { active_nav="N3"; active_view="ENSINO"; RenderView(); }
