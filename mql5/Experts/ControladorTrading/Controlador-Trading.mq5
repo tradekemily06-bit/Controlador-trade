@@ -204,8 +204,8 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'63,224,255');
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,24,37');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'38,210,242');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,"C");
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    string signal_name=Obj("PANEL_SIGNAL");
@@ -235,6 +235,7 @@ void TogglePanel(){
    if(panel_visible){ Panel(); RenderView(); Analyze(true); }
    else DeletePanel(true,true);
    RefreshPanelToggle();
+   RefreshWatermarkControl();
    ChartRedraw();
 }
 void LoadPanelVisibility(){
@@ -717,6 +718,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
+      RefreshWatermarkControl();
       ApplyWatermark();
       datetime hidden_bar=iTime(_Symbol,_Period,0);
       if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
