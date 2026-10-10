@@ -189,3 +189,12 @@ def test_protection_panel_reads_real_runtime_observability():
     assert "function renderProtectionStatus(status)" in WEB
     assert "status?.operational_observability" in WEB
     assert "renderProtectionStatus(s)" in WEB
+
+
+def test_mt5_demo_validation_and_market_source_are_not_static_claims():
+    assert 'id="demoValidationBadge">MT5 DEMO: VERIFICANDO' in WEB
+    assert "status?.mt5_demo||status?.components?.mt5_demo" in WEB
+    assert 'id="marketSourceBadge">Fonte: aguardando runtime' in WEB
+    assert "$('marketSourceBadge').textContent='Fonte: '+String(d.market_data?.source||'NÃO CONFIRMADA')" in WEB
+    assert "DEMO VALIDADO</span>" not in WEB
+    assert "DEMO • leitura real do MT5" not in WEB
