@@ -67,7 +67,12 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert '"WATERMARK_MARK"' in panel
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,wm_icon_size)" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,wm_text_size)" in panel
-    assert "wm_scale=MathMin((double)w/1360.0,(double)h/760.0);" in panel
+    assert "wm_scale=MathMin((double)w/1180.0,(double)h/650.0);" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_ANGLE,wm_angle);" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_ANGLE,wm_angle);" in panel
+    assert "double wm_angle=330.0;" in panel
+    assert "C'36,150,190'" in panel
+    assert "C'35,135,175'" in panel
     assert "InpPanelWidth = 440" in panel
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
