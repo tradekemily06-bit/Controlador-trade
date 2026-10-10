@@ -474,8 +474,16 @@ def test_mql5_win_loss_view_shows_real_outcomes_and_daily_weekly_monthly_hit_rat
     assert '"Dia "+(d_closed=="0"?"—":(d_rate==""?"—":d_rate)+"%")' in secondary
     assert '("+d_closed+") | Sem "+(w_closed=="0"?"—":(w_rate==""?"—":w_rate)+"%")+" ("+w_closed+") | Mes "+(m_closed=="0"?"—":(m_rate==""?"—":m_rate)+"%")+" ("+m_closed+")"' in secondary
     assert 'if(active_nav=="N7")' in secondary
-    assert 'Taxa WIN/LOSS registrada:' in secondary
-    assert 'SetLabel(Obj("INFO3"),"Rentabilidade: — • P&L financeiro nao registrado"' in secondary
+    assert 'Estudo • taxa:' in secondary
+    assert 'SetLabel(Obj("INFO3"),"Estudo • DRAW: "+(draws==""?"—":draws)+" • P&L: nao registrado"' in secondary
+    assert 'string demo=JsonObjectValue(r,"demo");' in secondary
+    assert 'JsonValue(demo,"wins")' in secondary
+    assert 'JsonValue(demo,"losses")' in secondary
+    assert 'JsonValue(demo,"net_result")' in secondary
+    assert 'string demo_periods=JsonObjectValue(demo,"periods");' in secondary
+    assert 'SetLabel(Obj("INFO6"),"DEMO • WIN: "+(demo_wins==""?"—":demo_wins),180,461,9,C\'88,214,141\')' in secondary
+    assert 'SetLabel(Obj("INFO7"),"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses),180,481,9,C\'255,118,118\')' in secondary
+    assert 'SetLabel(Obj("INFO10"),"DEMO • Dia "+' in secondary
     assert "Never infer profitability from WIN/LOSS alone." in secondary
 
 
@@ -487,4 +495,10 @@ def test_mql5_study_statistics_use_panel_semantic_colors_and_keep_pnl_separate()
     assert 'C\'88,214,141\');' in secondary
     assert 'C\'255,118,118\');' in secondary
     assert 'C\'100,235,255\');' in secondary
-    assert 'Rentabilidade: — • P&L financeiro nao registrado' in secondary
+    assert '"DEMO • WIN: "+(demo_wins==""?"—":demo_wins)' in secondary
+    assert '"DEMO • LOSS: "+(demo_losses==""?"—":demo_losses)' in secondary
+    assert 'C\'88,214,141\');' in secondary
+    assert 'C\'255,118,118\');' in secondary
+    assert 'P&L liquido:' in secondary
+    assert 'DEMO • Dia ' in secondary
+    assert 'P&L: nao registrado' in secondary
