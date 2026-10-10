@@ -207,7 +207,17 @@ class ICMarketsMT5DemoAdapter:
                 if orders:
                     order = tuple(orders)[-1]
                     state = getattr(order, "state", None)
-                    canceled = {getattr(mt5, "ORDER_STATE_CANCELED", object()), getattr(mt5, "ORDER_STATE_REJECTED", object()), getattr(mt5, "ORDER_STATE_EXPIRED", object())}
+                    filled = {value for value in (
+                        getattr(mt5, "ORDER_STATE_FILLED", None),
+                        getattr(mt5, "ORDER_STATE_PARTIAL", None),
+                    ) if value is not None}
+                    canceled = {value for value in (
+                        getattr(mt5, "ORDER_STATE_CANCELED", None),
+                        getattr(mt5, "ORDER_STATE_REJECTED", None),
+                        getattr(mt5, "ORDER_STATE_EXPIRED", None),
+                    ) if value is not None}
+                    if state in filled:
+                        return ExternalOrderObservation(external_id, ExternalOrderStatus.EXECUTED, f"ordem externa executada; state={state}")
                     if state in canceled:
                         return ExternalOrderObservation(external_id, ExternalOrderStatus.NOT_EXECUTED, f"ordem externa não executada; state={state}")
                     return ExternalOrderObservation(external_id, ExternalOrderStatus.PENDING, f"ordem externa encontrada; state={state}")
