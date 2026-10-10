@@ -277,6 +277,17 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
     assert "Analise indisponivel" in failure
 
+def test_mql5_close_cycle_requires_runtime_closed_true_before_clearing_identity():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'string closed=JsonValue(r,"closed");' in close
+    assert 'if(closed=="true")' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert close.index('if(closed=="true")') < close.index('last_cycle_id=""; last_external_id="";')
+    assert "Fechamento nao confirmado" in close
+    assert "Fechamento DEMO confirmado" in close
+
+
 def test_mql5_learning_view_is_named_estudo_in_user_facing_copy():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '"ESTUDO • aprendizado separado da autorizacao operacional"' in panel
