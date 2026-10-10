@@ -73,4 +73,3 @@ def test_mobile_operational_analysis_does_not_use_manual_score_path():
     assert 'Candle fechado/confirmado' not in analyze_area
     assert 'Filtros aprovados' not in analyze_area
     assert 'A interface não marca essas evidências manualmente.' in analyze_area
-    assert 'Filtros aprovados' in analyze_area
