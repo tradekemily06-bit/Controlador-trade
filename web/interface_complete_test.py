@@ -19,29 +19,24 @@ def test_interface_contains_core_modules():
         assert marker in HTML
 
 
-def test_interface_contains_ecosystem_concepts_and_safety():
+def test_interface_contains_calculated_evidence_and_runtime_safety():
     for marker in (
-        "Tendência",
-        "Estrutura",
-        "Suporte / resistência",
-        "Topos / fundos",
-        "Volume",
-        "Rompimento",
-        "Pullback",
-        "Pavio / rejeição",
-        "Retirada de pavio",
-        "Vela comando / força",
-        "GAB",
-        "DDT",
-        "Pressão alta / baixa",
-        "Taxa dívida",
+        "Evidência técnica calculada",
+        'id="indicatorReadout"',
+        "EMA 9/21",
+        "RSI 14",
+        "MACD",
+        "ATR 14",
+        "GAB, DDT, pressão e taxa dívida permanecem conceitos contextuais",
         "REAL BLOQUEADO",
-        "DEMO VALIDADO",
+        "MT5 DEMO: VERIFICANDO",
         "FAIL-CLOSED",
         "Kill switch",
         "Reconciliação",
     ):
         assert marker in HTML
+    assert '<span class="chip">Tendência</span>' not in HTML
+    assert '<span class="chip">DEMO VALIDADO</span>' not in HTML
 
 
 def test_interface_wires_existing_safe_apis():
