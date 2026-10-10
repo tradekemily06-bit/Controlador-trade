@@ -628,7 +628,10 @@ void RefreshSecondary(){
       }else SetLabel(Obj("INFO5"),"Noticias: indisponiveis",180,441,9,C'255,118,118');
    }
 
-   if(Http("GET","/api/memory?limit=1","",r,code)){
+   if(active_nav=="N7"){
+      // Outcomes are manual study labels, not broker P&L. Never infer profitability from WIN/LOSS alone.
+      SetLabel(Obj("INFO3"),"Rentabilidade: — • P&L financeiro nao registrado",180,401,9,C'255,209,102');
+   }else if(Http("GET","/api/memory?limit=1","",r,code)){
       // The endpoint returns a limited records array; it does not promise a total count.
       SetLabel(Obj("INFO3"),"Memoria: resposta recebida do runtime",180,401,9,C'205,215,230');
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",180,401,9,C'255,118,118');
