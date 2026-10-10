@@ -51,9 +51,11 @@ void RefreshPanelLayout(){
    // Painel flutuante compacto, ancorado embaixo à esquerda.
    int available_w=MathMax(240,cw-24);
    int available_h=MathMax(220,ch-90);
-   // The open ecosystem must remain a compact overlay, never a half-screen takeover.
-   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.42))));
-   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.44))));
+   // Notebook charts keep a compact overlay; narrow chart windows get enough room for usable controls.
+   double panel_width_ratio=(cw<720?0.92:0.42);
+   double panel_height_ratio=(cw<720?0.70:0.44);
+   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*panel_width_ratio))));
+   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*panel_height_ratio))));
    panel_width=MathMax(240,panel_width);
    panel_height=MathMax(220,panel_height);
    panel_x=12;
