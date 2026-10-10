@@ -1,5 +1,5 @@
 #property strict
-#include <Canvas\\Canvas.mqh>
+#include <Canvas\Canvas.mqh>
 #property version   "2.0"
 #property description "Controlador Trading - interface nativa do ecossistema no grafico MT5."
 #property description "Camada visual e operacional ligada ao runtime; DEMO por padrao."
