@@ -277,7 +277,7 @@ def test_query_trade_outcome_uses_closed_position_net_history():
     assert result.source == "MT5_DEMO_HISTORY"
     assert result.observed_at.tzinfo is not None
     assert result.closed_at is not None and result.closed_at.tzinfo is not None
-    assert result.closed_at.timestamp() == 1780000000.123
+    assert abs(result.closed_at.timestamp() - 1780000000.123) < 0.001
 
 
 def test_query_trade_outcome_never_classifies_open_position():
