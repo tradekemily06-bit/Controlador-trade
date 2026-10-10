@@ -202,21 +202,13 @@ void ToggleWatermark(){
 void LoadWatermark(){
    if(GlobalVariableCheck(WatermarkKey()))
       watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
-   // Shared runtime preference is authoritative when available; local state is a safe fallback.
-   string response; int code=0;
-   if(Http("GET","/api/preferences","",response,code)){
-      string shared=JsonValue(response,"watermark_enabled");
-      if(shared=="true" || shared=="false"){
-         watermark_enabled=(shared=="true");
-         GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
-      }
-   }
+   // Avoid blocking EA initialization on HTTP; the timer and C > Configurações sync the shared value.
    RefreshNavigation();
    RefreshWatermarkControl();
 }
 void RefreshSharedWatermarkPreference(){
    datetime now=TimeCurrent();
-   if(last_watermark_sync>0 && now-last_watermark_sync<30) return;
+   if(last_watermark_sync>0 && now-last_watermark_sync<60) return;
    last_watermark_sync=now;
    string response; int code=0;
    if(!Http("GET","/api/preferences","",response,code)) return;
