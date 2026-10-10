@@ -274,3 +274,10 @@ def test_mql5_failed_analysis_clears_stale_signal_to_wait():
     assert "RefreshPanelToggle();" in failure
     assert 'SetLabel(Obj("SIGNAL"),current_signal' in failure
     assert "Analise indisponivel" in failure
+
+def test_mql5_learning_view_is_named_estudo_in_user_facing_copy():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert '"ESTUDO • aprendizado separado da autorizacao operacional"' in panel
+    assert '"ATUALIZAR ESTUDO"' in panel
+    assert '"Estudo: "' in panel
+    assert 'active_view=="ENSINO"' in panel  # Internal routing remains stable.
