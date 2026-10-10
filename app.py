@@ -354,10 +354,15 @@ def application(environ, start_response):
             )
             snapshot = orchestration.snapshot
             indicator_evidence = getattr(orchestration, "indicator_evidence", None)
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            technical_actionable = bool(orchestration.quality.actionable)
+            display_actionable = technical_actionable and decision_value == "EXECUTAR"
+            display_signal = orchestration.analysis.signal.value if display_actionable else "AGUARDAR"
+            display_reason = orchestration.analysis.reason if display_actionable else orchestration.decision.reason
             return _json_response(start_response, HTTPStatus.OK, {
-                "signal": orchestration.analysis.signal.value,
+                "signal": display_signal,
                 "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
+                "reason": display_reason,
                 "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                 "analysis": {
                     "signal": orchestration.analysis.signal.value,
@@ -370,10 +375,12 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "actionable": display_actionable,
+                    "technical_actionable": technical_actionable,
+                    "decision_approved": decision_value == "EXECUTAR",
                 },
                 "decision_detail": {
-                    "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                    "decision": decision_value,
                     "reason": orchestration.decision.reason,
                 },
                 "snapshot": snapshot.as_dict(),
