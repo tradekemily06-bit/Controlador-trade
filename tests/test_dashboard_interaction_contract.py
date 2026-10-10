@@ -198,3 +198,8 @@ def test_mt5_demo_validation_and_market_source_are_not_static_claims():
     assert "$('marketSourceBadge').textContent='Fonte: '+String(d.market_data?.source||'NÃO CONFIRMADA')" in WEB
     assert "DEMO VALIDADO</span>" not in WEB
     assert "DEMO • leitura real do MT5" not in WEB
+
+
+def test_protection_status_fails_closed_when_runtime_status_is_unavailable():
+    assert "catch(e){renderRuntime(null,null);renderProtectionStatus(null);" in WEB
+    assert "String(status?.mt5_demo||status?.components?.mt5_demo||'NÃO CONFIRMADO')" in WEB
