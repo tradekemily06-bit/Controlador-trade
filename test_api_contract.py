@@ -180,6 +180,7 @@ class ApiContractTests(unittest.TestCase):
             )
 
         self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["signal"], "AGUARDAR")
         self.assertEqual(payload["execution_allowed"], False)
         self.assertEqual(payload["detail"], "dados indisponíveis")
 
