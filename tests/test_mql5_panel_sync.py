@@ -749,3 +749,16 @@ def test_mql5_watermark_does_not_force_desktop_minimum_on_mobile_charts():
     assert "double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);" in watermark
     assert "wm_scale=MathMax(0.20,MathMin(1.42,wm_scale));" in watermark
     assert "wm_scale=MathMax(0.72" not in watermark
+
+def test_mql5_new_demo_cycle_clears_stale_reconciliation_ids_before_request():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    clear_ids = cycle.index('last_cycle_id="";')
+    clear_external = cycle.index('last_external_id="";')
+    request = cycle.index('Http("POST","/api/runtime/cycle"')
+    failure = cycle.index('Ciclo bloqueado/falhou • HTTP')
+    assert clear_ids < request
+    assert clear_external < request
+    assert 'SetLabel(Obj("CYCLEID"),"Ciclo: —"' in cycle
+    assert 'SetLabel(Obj("EXTID"),"Execucao: —"' in cycle
+    assert request < failure
