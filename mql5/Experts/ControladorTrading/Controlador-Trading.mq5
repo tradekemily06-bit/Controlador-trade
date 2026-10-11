@@ -926,12 +926,14 @@ void RunCycle(){
    string runtime=JsonObjectValue(r,"runtime");
    if(runtime==""){
       current_signal="AGUARDAR";
+      current_signal_reason="Resposta do ciclo invalida • sinal anterior descartado.";
       current_quality_score="";
       current_quality_level="";
       current_quality_actionable="false";
       current_quality_technical_actionable="false";
       last_cycle_id=""; last_external_id="";
       RefreshPanelToggle();
+      RefreshSignalLabels();
       SetLabel(Obj("INFO1"),"Resposta do ciclo sem objeto runtime; operacao bloqueada.",180,361,9,C'255,118,118');
       return;
    }
