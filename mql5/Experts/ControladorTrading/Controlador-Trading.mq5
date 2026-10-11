@@ -128,7 +128,8 @@ void ApplyWatermark(){
    // Marca d'agua diagonal e responsiva, alinhada ao brilho azul/ciano do ecossistema.
    // Mantida no fundo e dimensionada pela area real do grafico para desktop e janelas menores.
    double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);
-   wm_scale=MathMax(0.72,MathMin(1.42,wm_scale));
+   // Do not force a desktop-sized watermark onto narrow mobile charts.
+   wm_scale=MathMax(0.20,MathMin(1.42,wm_scale));
    int wm_icon_size=(int)MathRound(46.0*wm_scale);
    int wm_text_size=(int)MathRound(34.0*wm_scale);
    int center_x=w/2;
