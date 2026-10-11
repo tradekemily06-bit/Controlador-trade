@@ -48,16 +48,15 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // Painel flutuante compacto, ancorado embaixo à esquerda.
-   int available_w=MathMax(240,cw-24);
-   int available_h=MathMax(220,ch-90);
+   // Keep the overlay inside the actual chart bounds, including narrow/short windows.
+   // Never force a 220/240px minimum that could push the panel beyond the visible chart.
+   int available_w=MathMax(1,cw-24);
+   int available_h=MathMax(1,ch-64);
    // The open ecosystem must remain a compact overlay, never a half-screen takeover.
-   panel_width=MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(240,(int)MathRound(cw*0.42))));
-   panel_height=MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(220,(int)MathRound(ch*0.44))));
-   panel_width=MathMax(240,panel_width);
-   panel_height=MathMax(220,panel_height);
-   panel_x=12;
-   panel_y=MathMax(12,ch-panel_height-52);
+   panel_width=MathMax(1,MathMin(available_w,MathMin(MathMax(440,InpPanelWidth),MathMax(1,(int)MathRound(cw*0.42)))));
+   panel_height=MathMax(1,MathMin(available_h,MathMin(MathMax(440,InpPanelHeight),MathMax(1,(int)MathRound(ch*0.44)))));
+   panel_x=MathMax(0,MathMin(12,cw-panel_width));
+   panel_y=MathMax(0,ch-panel_height-12);
    panel_sx=(double)panel_width/540.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
