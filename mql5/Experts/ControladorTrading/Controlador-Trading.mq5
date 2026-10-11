@@ -595,8 +595,10 @@ void Analyze(bool render=true){
    string quality_score=JsonObjectValue(r,"quality","score");
    string quality_actionable=JsonObjectValue(r,"quality","actionable");
    string decision=JsonValue(r,"decision");
-   // Qualidade alta sozinha nunca autoriza ciclo: a decisão final do motor também precisa liberar.
-   last_analysis_actionable=(quality_actionable=="true" && decision=="EXECUTAR");
+   // Qualidade alta sozinha nunca autoriza ciclo: o motor precisa aprovar a decisão final.
+   last_analysis_actionable=(quality_actionable=="true" && decision=="EXECUTAR" && (signal=="COMPRAR" || signal=="VENDER"));
+   // Se contexto, filtros ou risco não liberarem, a indicação visível deve ser AGUARDAR.
+   if(!last_analysis_actionable) signal="AGUARDAR";
    RefreshFloatingSignal(signal,quality_score);
    if(!render) return;
    string reason=JsonValue(r,"reason");
