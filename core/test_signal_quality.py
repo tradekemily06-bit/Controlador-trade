@@ -54,7 +54,7 @@ def test_quality_level_boundaries_match_ecosystem_rules():
         assert result.level == expected_level
 
 
-def test_unconfirmed_signal_is_not_actionable():
+def test_unconfirmed_signal_keeps_quality_but_is_not_actionable():
     result = evaluate_signal_quality(
         AnalysisResult(
             signal=Signal.COMPRA,
@@ -65,23 +65,23 @@ def test_unconfirmed_signal_is_not_actionable():
     )
 
     assert result.actionable is False
-    assert result.score == 0
-    assert result.level == SignalLevel.NENHUMA
+    assert result.score == 100
+    assert result.level == SignalLevel.FORTE
 
 
-def test_wait_signal_has_no_quality():
+def test_wait_signal_keeps_minimum_quality_but_is_not_actionable():
     result = evaluate_signal_quality(
         AnalysisResult(
             signal=Signal.AGUARDAR,
             score=50,
-            reason="Score insuficiente.",
+            reason="Contexto ainda não liberou operação.",
             confirmed=True,
         )
     )
 
     assert result.actionable is False
-    assert result.score == 0
-    assert result.level == SignalLevel.NENHUMA
+    assert result.score == 1
+    assert result.level == SignalLevel.FRACA
 
 
 def test_invalid_scores_fail_closed():
