@@ -138,8 +138,10 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert "bool last_analysis_actionable=false;" in panel
     assert "Analyze(false);" in panel
     assert 'string decision=JsonValue(r,"decision");' in panel
-    assert 'last_analysis_actionable=(quality_actionable=="true" && decision=="EXECUTAR");' in panel
+    assert 'last_analysis_actionable=(quality_actionable=="true" && decision=="EXECUTAR" && (signal=="COMPRAR" || signal=="VENDER"));' in panel
+    assert 'if(!last_analysis_actionable) signal="AGUARDAR";' in panel
     assert 'string filters_flag=last_analysis_actionable?"true":"false";' in panel
+    assert 'if(allowed!="true" || decision!="EXECUTAR" || quality_actionable!="true") signal="AGUARDAR";' in panel
     assert 'if(!runtime_ok || !last_analysis_actionable)' in panel
     assert 'JsonObjectValue(r,"reconciliation","reconciliation_state")' in panel
     assert 'closed=="true" && reconciliation_state=="MATCHED"' in panel
