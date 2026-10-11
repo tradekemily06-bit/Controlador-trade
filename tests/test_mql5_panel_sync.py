@@ -65,13 +65,15 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
     assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,MathMin(40,MathMax(24,w/35)))" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMin(24,MathMax(15,w/55)))" in panel
+    assert "ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0)" in panel
+    assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" in panel
     assert "InpPanelWidth = 280" in panel
     assert "InpPanelHeight = 380" in panel
     assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
     assert "MathRound(cw*0.22)" in panel
-    assert "OBJPROP_ANGLE,18.0" not in panel
+    assert "OBJPROP_ANGLE,18.0" in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
 
@@ -124,6 +126,10 @@ def test_mql5_sync_does_not_reject_identical_binary_hash_after_successful_recomp
 def test_mql5_panel_has_safe_visibility_toggle():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert "PANEL_TOGGLE" in panel
+    assert 'OBJPROP_TEXT,"●"' in panel
+    assert 'Obj("PANEL_C_TEXT")' in panel
+    assert "RefreshFloatingSignal(signal,score);" in panel
+    assert "FLOAT_QUALITY" in panel
     assert "TogglePanel()" in panel
     assert "PanelVisibilityKey()" in panel
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
@@ -190,6 +196,7 @@ def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
 
     assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
     assert 'n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT")' in delete
+    assert 'n==Obj("PANEL_C_TEXT") || n==Obj("FLOAT_SIGNAL") || n==Obj("FLOAT_QUALITY")' in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
     assert "else DeletePanel(true,true);" in toggle
     assert "ApplyWatermark();" in hidden
@@ -204,7 +211,8 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_TEXT,\"●\");" in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
