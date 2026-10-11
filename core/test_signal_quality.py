@@ -19,7 +19,7 @@ def test_strong_buy_is_strong():
     assert result.level == SignalLevel.FORTE
 
 
-def test_moderate_sell_is_moderate():
+def test_quality_score_below_70_is_weak():
     result = evaluate_signal_quality(
         AnalysisResult(
             signal=Signal.VENDA,
@@ -31,7 +31,27 @@ def test_moderate_sell_is_moderate():
 
     assert result.actionable is True
     assert result.score == 60
-    assert result.level == SignalLevel.MODERADA
+    assert result.level == SignalLevel.FRACA
+
+
+def test_quality_level_boundaries_match_ecosystem_rules():
+    cases = (
+        (15.5, 69, SignalLevel.FRACA),
+        (15, 70, SignalLevel.MODERADA),
+        (10.5, 79, SignalLevel.MODERADA),
+        (10, 80, SignalLevel.FORTE),
+    )
+    for analysis_score, expected_score, expected_level in cases:
+        result = evaluate_signal_quality(
+            AnalysisResult(
+                signal=Signal.COMPRA,
+                score=analysis_score,
+                reason="Limite de faixa.",
+                confirmed=True,
+            )
+        )
+        assert result.score == expected_score
+        assert result.level == expected_level
 
 
 def test_unconfirmed_signal_is_not_actionable():
