@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 280;
-input int    InpPanelHeight = 380;
+input int    InpPanelWidth = 390;
+input int    InpPanelHeight = 440;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -17,26 +17,32 @@ datetime last_analysis_bar=0;
 bool watermark_enabled=false;
 bool panel_visible=false;
 int panel_x=0;
-int panel_width=280;
-int panel_height=380;
+int panel_y=18;
+int panel_width=390;
+int panel_height=440;
 double panel_sx=1.0;
 double panel_sy=1.0;
+string last_signal="AGUARDAR";
+string last_score="";
 
 string Obj(string suffix){ return P+suffix; }
 string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ return panel_y+(int)MathRound(y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(220,(int)MathRound(cw*0.22)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
+   // Keep the panel compact and on the left, scaling to narrow charts without covering half the chart.
+   panel_width=MathMin(InpPanelWidth,MathMax(220,cw-24));
+   panel_width=MathMin(panel_width,MathMax(220,(int)MathRound(cw*0.34)));
+   panel_height=MathMin(InpPanelHeight,MathMax(280,ch-24));
+   panel_height=MathMin(panel_height,MathMax(280,(int)MathRound(ch*0.88)));
+   panel_x=12;
+   panel_y=MathMax(12,ch-panel_height-12);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -156,13 +162,14 @@ void RefreshPanelToggle(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int x=12;
-   int y=MathMax(8,ch-62);
+   int y=MathMax(8,ch-58);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,42);
    ObjectSetInteger(0,name,OBJPROP_YSIZE,42);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
+   ObjectSetInteger(0,name,OBJPROP_STATE,false);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,220,245');
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,18,29');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'0,190,225');
@@ -179,7 +186,12 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,sig,OBJPROP_TEXT,"AGUARDAR  •  —%");
+   string shown_signal=last_signal;
+   string shown_score=(last_score==""?"—":last_score);
+   string compact_text=shown_signal+"  "+shown_score+"%";
+   color compact_color=shown_signal=="COMPRA" || shown_signal=="COMPRAR"?C'0,220,145':shown_signal=="VENDA" || shown_signal=="VENDER"?C'255,82,105':C'255,194,65';
+   ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
+   ObjectSetString(0,sig,OBJPROP_TEXT,compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,sig,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,sig,OBJPROP_ZORDER,100);
@@ -205,7 +217,7 @@ void Panel(){
    RefreshPanelLayout();
    RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
+   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
@@ -540,6 +552,8 @@ void Analyze(bool render=true){
    if(signal=="") signal="AGUARDAR";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
+   last_signal=signal;
+   last_score=score;
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
