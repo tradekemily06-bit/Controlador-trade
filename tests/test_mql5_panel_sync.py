@@ -187,7 +187,8 @@ def test_mql5_native_panel_keeps_ecosystem_modules_connected():
         assert route in panel
     assert 'SetButton(Obj("V1")' in panel
     assert 'SetButton(Obj("V7")' in panel
-    assert 'if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }' in panel
+    assert 'if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_C_TEXT")) { TogglePanel(); return; }' in panel
+    assert 'ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,true);' in panel
 
 
 def test_mql5_panel_off_does_not_render_on_init():
