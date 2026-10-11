@@ -706,7 +706,9 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),180,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),180,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),180,361,9,C'205,215,230');
+   // Health refresh must not overwrite the active module's own INFO1 content.
+   if(active_view=="COCKPIT")
+      SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),180,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
