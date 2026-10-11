@@ -711,3 +711,16 @@ def test_native_compact_signal_fails_closed_when_runtime_health_is_unavailable()
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     assert 'if(!runtime_ok) current_signal="AGUARDAR";' in cycle
     assert "RefreshHealth();" in hidden_timer
+
+
+def test_native_demo_cycle_requires_independent_runtime_health_before_post():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "RefreshHealth();" in cycle
+    assert "if(!runtime_ok){" in cycle
+    guard = cycle.split("if(!runtime_ok){", 1)[1].split("return;", 1)[0]
+    assert 'current_signal="AGUARDAR";' in guard
+    assert 'current_quality_actionable="false";' in guard
+    assert 'last_cycle_id="";' in guard
+    assert "Ciclo bloqueado: runtime/seguranca nao validados." in guard
+    assert cycle.index("if(!runtime_ok){") < cycle.index('Http("POST","/api/runtime/cycle"')
