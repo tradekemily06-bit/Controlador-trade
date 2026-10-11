@@ -128,8 +128,12 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert "PANEL_TOGGLE" in panel
     assert 'OBJPROP_TEXT,"●"' in panel
     assert 'Obj("PANEL_C_TEXT")' in panel
-    assert "RefreshFloatingSignal(signal,score);" in panel
+    assert 'JsonObjectValue(r,"quality","score")' in panel
+    assert "RefreshFloatingSignal(signal,quality_score);" in panel
+    assert 'RefreshFloatingSignal(signal,"",false);' in panel
     assert "FLOAT_QUALITY" in panel
+    assert 'quality_text="Qualidade: "+score+"/100 • "+band;' in panel
+    assert 'score_value>=80.0?"FORTE":score_value>=70.0?"MODERADA":"FRACA"' in panel
     assert "TogglePanel()" in panel
     assert "PanelVisibilityKey()" in panel
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
