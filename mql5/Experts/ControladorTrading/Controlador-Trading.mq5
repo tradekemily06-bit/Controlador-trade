@@ -135,7 +135,7 @@ void ApplyWatermark(){
    // The combined icon + wordmark must fit inside the visible chart at every width.
    double fit_scale=(double)MathMax(1,w-32)/300.0;
    wm_scale=MathMin(wm_scale,fit_scale);
-   wm_scale=MathMax(0.35,wm_scale);
+   wm_scale=MathMax(MathMin(0.35,fit_scale),wm_scale);
    int wm_icon_size=(int)MathRound(36.0*wm_scale);
    int wm_text_size=(int)MathMax(9,MathRound(22.0*wm_scale));
    int center_x=w/2;
