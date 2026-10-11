@@ -305,8 +305,9 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", False)),
+                # Authorization flags must be actual JSON booleans; strings like "false" fail closed.
+                confirmed=data.get("confirmed") is True,
+                filters_ok=data.get("filters_ok") is True,
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
