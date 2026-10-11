@@ -792,6 +792,17 @@ void RefreshSecondary(){
       }else{
          SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"—":total)+" decisoes • Win rate "+(rate==""?"—":rate)+"%",180,421,9,C'205,215,230');
       }
+   }else if(active_nav=="N7"){
+      // Never leave yesterday's WIN/LOSS or financial results visible after a statistics API failure.
+      SetLabel(Obj("INFO1"),"Estudo: estatisticas indisponiveis",180,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Estudo: resultados indisponiveis",180,381,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Estudo: taxa indisponivel",180,421,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"Estudo: periodos indisponiveis",180,441,8,C'255,118,118');
+      SetLabel(Obj("INFO6"),"DEMO: historico indisponivel",180,461,9,C'255,118,118');
+      SetLabel(Obj("INFO7"),"DEMO: historico indisponivel",180,481,9,C'255,118,118');
+      SetLabel(Obj("INFO8"),"DEMO: P&L indisponivel",180,501,9,C'255,118,118');
+      SetLabel(Obj("INFO9"),"DEMO: taxa indisponivel",180,521,9,C'255,118,118');
+      SetLabel(Obj("INFO10"),"DEMO: periodos indisponiveis",180,541,8,C'255,118,118');
    }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",180,421,9,C'255,118,118');
 
    if(active_nav!="N7"){
