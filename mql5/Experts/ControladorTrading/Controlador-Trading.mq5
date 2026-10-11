@@ -881,6 +881,7 @@ void Analyze(bool render=true){
    }
    current_quality_actionable=JsonValue(quality,"actionable");
    current_quality_technical_actionable=JsonValue(quality,"technical_actionable");
+   if(!runtime_ok) current_signal="AGUARDAR";
    if(current_quality_actionable!="true") current_signal="AGUARDAR";
    string indicator_data=JsonObjectValue(r,"indicators");
    string indicator_enabled=JsonValue(indicator_data,"enabled");
@@ -965,6 +966,7 @@ void RunCycle(){
       current_quality_score="";
       current_quality_level="";
    }
+   if(!runtime_ok) current_signal="AGUARDAR";
    if(current_quality_actionable!="true") current_signal="AGUARDAR";
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,86,101':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
