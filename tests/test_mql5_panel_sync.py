@@ -137,7 +137,8 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert 'RefreshFloatingSignal(signal,"",false);' not in panel
     assert 'if(allowed=="true")' in panel
     assert 'JsonObjectValue(r,"reconciliation","reconciliation_state")' in panel
-    assert 'closed=="true" && reconciliation_state!=""' in panel
+    assert 'closed=="true" && reconciliation_state=="MATCHED"' in panel
+    assert 'reconciliation_state!="MATCHED"' in panel
     assert 'ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);' in panel
     assert "FLOAT_QUALITY" in panel
     assert 'quality_text="Qualidade: "+score+"/100 • "+band;' in panel
