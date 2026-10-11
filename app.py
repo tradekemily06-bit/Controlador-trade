@@ -305,8 +305,9 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                # Authorization flags must be actual JSON booleans; strings like "false" fail closed.
-                confirmed=data.get("confirmed") is True,
+                # Candle confirmation is a server-owned policy, never a client authorization flag.
+                # The MT5 market adapter reads completed bars (copy_rates_from_pos start_pos=1).
+                confirmed=SERVICE.preferences.preferences.require_closed_candle,
                 # Missing filter verdict is derived from live candles when required;
                 # explicit false or malformed values remain a fail-closed veto.
                 filters_ok=(
