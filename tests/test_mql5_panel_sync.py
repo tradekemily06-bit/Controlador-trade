@@ -724,3 +724,13 @@ def test_mql5_runtime_outage_clears_stale_mode_and_limits_safety_label_to_config
     assert 'SetLabel(Obj("MODE"),"Modo: DESCONHECIDO • MT5: NAO CONFIRMADO"' in offline
     assert 'if(active_view=="CONFIG")' in offline
     assert 'ObjectDelete(0,Obj("SAFE"));' in offline
+
+
+def test_mql5_win_loss_view_clears_old_statistics_when_runtime_api_fails():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    secondary = panel.split("void RefreshSecondary()", 1)[1].split("void SaveConfig()", 1)[0]
+    failure = secondary.split('}else if(active_nav=="N7"){', 1)[1].split("}else SetLabel(Obj(\"INFO4\"),\"Estatisticas: indisponiveis", 1)[0]
+    for label in ("INFO1", "INFO2", "INFO4", "INFO5", "INFO6", "INFO7", "INFO8", "INFO9", "INFO10"):
+        assert f'SetLabel(Obj("{label}")' in failure
+    assert "P&L indisponivel" in failure
+    assert "periodos indisponiveis" in failure
