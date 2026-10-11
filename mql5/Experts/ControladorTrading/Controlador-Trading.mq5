@@ -707,6 +707,20 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
+   string health_status=JsonValue(r,"status");
+   if(engine=="OFFLINE" || engine=="UNAVAILABLE" || engine=="ERROR" ||
+      health_status=="OFFLINE" || health_status=="UNHEALTHY" || health_status=="ERROR"){
+      InvalidateCurrentSignal();
+      SetLabel(Obj("RUNTIME"),"Runtime: DEGRADADO • motor indisponivel",180,104,10,C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: DESCONHECIDO • MT5: NAO CONFIRMADO",180,124,10,C'255,209,102');
+      if(active_view=="CONFIG")
+         SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • motor indisponivel",180,520,8,C'255,155,155');
+      else if(ObjectFind(0,Obj("SAFE"))>=0)
+         ObjectDelete(0,Obj("SAFE"));
+      if(active_view=="COCKPIT")
+         SetLabel(Obj("INFO1"),"Motor de decisao: indisponivel",180,361,9,C'255,118,118');
+      return;
+   }
    SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),180,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),180,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),180,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
