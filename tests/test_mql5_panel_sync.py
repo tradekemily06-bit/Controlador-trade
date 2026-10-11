@@ -156,6 +156,26 @@ def test_mql5_native_panel_reflows_when_chart_size_changes():
     assert "panel_x=MathMax(0,MathMin(12,cw-panel_width));" in panel
 
 
+def test_mql5_native_panel_keeps_ecosystem_modules_connected():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    for view in ("COCKPIT", "ANALISE", "MEMORIA", "LAB", "ENSINO", "NOTIF", "CONFIG"):
+        assert f'active_view="{view}"' in panel
+    for route in (
+        '"/api/health"',
+        '"/api/runtime/analysis"',
+        '"/api/runtime/cycle"',
+        '"/api/runtime/close"',
+        '"/api/preferences"',
+        '"/api/notifications"',
+        '"/api/learning"',
+        '"/api/market/assets"',
+    ):
+        assert route in panel
+    assert 'SetButton(Obj("V1")' in panel
+    assert 'SetButton(Obj("V7")' in panel
+    assert 'if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }' in panel
+
+
 def test_mql5_panel_off_does_not_render_on_init():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     init = panel.split("int OnInit()", 1)[1].split("int OnDeinit", 1)[0]
