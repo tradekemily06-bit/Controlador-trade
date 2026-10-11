@@ -314,6 +314,7 @@ def test_watermark_is_layered_over_chart_background_but_behind_market_candles():
     assert '.chart-wrap::before{content:"↗ CONTROLADOR TRADING"' in WEB
     assert "position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0" in WEB
     assert "transform:rotate(-30deg)" in WEB
+    assert "color:#36aee8;opacity:.12;text-shadow:0 0 18px #36aee866,0 0 36px #36aee833" in WEB
     assert ".chart-svg{position:relative;z-index:1}" in WEB
     assert ".watermark-off #chartWrap::before{display:none}" in WEB
     assert "document.body.classList.toggle('watermark-off',!enabled)" in WEB
