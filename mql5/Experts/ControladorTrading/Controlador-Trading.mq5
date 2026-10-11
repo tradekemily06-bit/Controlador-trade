@@ -635,11 +635,15 @@ void RunCycle(){
    else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
    string quality_score=JsonObjectValue(r,"quality","score");
-   RefreshFloatingSignal(signal,quality_score);
+   string quality_actionable=JsonObjectValue(r,"quality","actionable");
+   string decision=JsonValue(r,"decision");
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
+   // O resultado do ciclo também precisa respeitar a decisão final e a aceitação do runtime.
+   if(allowed!="true" || decision!="EXECUTAR" || quality_actionable!="true") signal="AGUARDAR";
+   RefreshFloatingSignal(signal,quality_score);
    color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
