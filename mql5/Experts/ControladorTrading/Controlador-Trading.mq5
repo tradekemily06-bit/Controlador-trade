@@ -13,6 +13,7 @@ string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
+bool last_analysis_actionable=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
 bool panel_visible=true;
@@ -578,6 +579,7 @@ void Analyze(bool render=true){
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
       runtime_ok=false;
+      last_analysis_actionable=false;
       RefreshFloatingSignal("AGUARDAR","");
       if(render) SetLabel(Obj("REASON"),"Leitura indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
       ChartRedraw();
@@ -591,6 +593,8 @@ void Analyze(bool render=true){
    else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
    string quality_score=JsonObjectValue(r,"quality","score");
+   string quality_actionable=JsonObjectValue(r,"quality","actionable");
+   last_analysis_actionable=(quality_actionable=="true");
    RefreshFloatingSignal(signal,quality_score);
    if(!render) return;
    string reason=JsonValue(r,"reason");
@@ -607,7 +611,13 @@ void RunCycle(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   Analyze(false);
+   if(!runtime_ok || !last_analysis_actionable){
+      SetLabel(Obj("INFO1"),"Ciclo DEMO bloqueado: filtros/qualidade nao validados.",20,361,9,C'255,209,102');
+      return;
+   }
+   string filters_flag=last_analysis_actionable?"true":"false";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":"+filters_flag+",\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
