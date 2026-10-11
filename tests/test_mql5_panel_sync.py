@@ -734,3 +734,13 @@ def test_mql5_win_loss_view_clears_old_statistics_when_runtime_api_fails():
         assert f'SetLabel(Obj("{label}")' in failure
     assert "P&L indisponivel" in failure
     assert "periodos indisponiveis" in failure
+
+
+def test_mql5_http_200_with_degraded_engine_still_invalidates_the_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'string health_status=JsonValue(r,"status");' in health
+    assert 'engine=="OFFLINE" || engine=="UNAVAILABLE" || engine=="ERROR"' in health
+    assert 'health_status=="OFFLINE" || health_status=="UNHEALTHY" || health_status=="ERROR"' in health
+    assert "InvalidateCurrentSignal();" in health
+    assert 'Runtime: DEGRADADO • motor indisponivel' in health
