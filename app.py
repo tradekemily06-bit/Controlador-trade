@@ -306,7 +306,7 @@ def application(environ, start_response):
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
                 confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                filters_ok=bool(data.get("filters_ok", False)),
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
