@@ -92,6 +92,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "int center_x=w/2;" in panel
     assert "MathRound(h*0.52)" in panel
     assert "panel_sx=(double)panel_width/540.0;" in panel
+    # Child controls must follow the floating panel background, not stay at chart origin.
+    assert panel.count("OBJPROP_XDISTANCE,panel_x+SX(x)") == 3
+    assert panel.count("OBJPROP_YDISTANCE,panel_y+SY(y)") == 3
     assert "MathMax(440,InpPanelWidth)" in panel
     assert "double panel_width_ratio=(cw<720?0.92:0.42);" in panel
     assert "double panel_height_ratio=(cw<720?0.70:0.44);" in panel
