@@ -296,6 +296,17 @@ void RefreshPanelToggle(){
    ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
    ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
+
+void RefreshSignalLabels(){
+   if(!panel_visible) return;
+   string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";
+   color signal_color=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
+   if(ObjectFind(0,Obj("SIGNAL"))>=0)
+      SetLabel(Obj("SIGNAL"),signal,180,154,22,signal_color);
+   color quality_color=current_quality_level=="FORTE"?C'88,214,141':current_quality_level=="MODERADA"?C'255,209,102':current_quality_level=="FRACA"?C'255,118,118':clrWhite;
+   string score=(current_quality_score=="" || current_quality_level=="")?"—":current_quality_score;
+   if(ObjectFind(0,Obj("SCORE"))>=0)
+      SetLabel(Obj("SCORE"),"Qualidade: "+score+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,quality_color);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -660,6 +671,7 @@ void InvalidateCurrentSignal(){
    current_indicator_summary="INDISPONIVEL";
    current_external_indicator_status="INDISPONIVEL";
    RefreshPanelToggle();
+   RefreshSignalLabels();
 }
 void CheckRuntimeForCompactSignal(){
    string r; int code=0;
@@ -826,6 +838,7 @@ void Analyze(bool render=true){
       current_indicator_summary="INDISPONIVEIS";
       current_external_indicator_status="INDISPONIVEL";
       RefreshPanelToggle();
+      RefreshSignalLabels();
       if(render){
          SetLabel(Obj("SIGNAL"),current_signal,180,154,22,C'255,209,102');
          SetLabel(Obj("REASON"),"Analise indisponivel • HTTP "+IntegerToString(code),180,204,9,C'255,118,118');
@@ -873,8 +886,9 @@ void Analyze(bool render=true){
       string external_reading=JsonObjectValue(external_data,"reading");
       current_external_indicator_status="DISPONIVEL: "+JsonValue(external_reading,"provider");
    }
-   // Keep the compact C signal current even when the full panel is hidden.
+   // Keep the compact C signal and the open panel synchronized, even for quiet refreshes.
    RefreshPanelToggle();
+   RefreshSignalLabels();
    if(!render) return;
    string score=JsonValue(r,"score");
    if(score=="null") score="";
