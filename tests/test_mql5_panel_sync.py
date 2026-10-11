@@ -762,3 +762,6 @@ def test_mql5_new_demo_cycle_clears_stale_reconciliation_ids_before_request():
     assert 'SetLabel(Obj("CYCLEID"),"Ciclo: —"' in cycle
     assert 'SetLabel(Obj("EXTID"),"Execucao: —"' in cycle
     assert request < failure
+    malformed = cycle.split('if(runtime==""){', 1)[1].split("return;", 1)[0]
+    assert 'last_cycle_id=""; last_external_id="";' in malformed
+    assert 'current_quality_actionable="false";' in malformed
