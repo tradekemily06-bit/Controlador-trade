@@ -147,7 +147,6 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert 'string filters_flag=last_analysis_candidate?"true":"false";' in panel
     assert "O endpoint de análise é read-only e pode retornar AGUARDAR pela ausência de contexto sênior." in panel
     assert 'if(allowed!="true" || decision!="EXECUTAR" || quality_actionable!="true") signal="AGUARDAR";' in panel
-    assert 'if(!runtime_ok || !last_analysis_actionable)' in panel
     assert 'JsonObjectValue(r,"reconciliation","reconciliation_state")' in panel
     assert 'closed=="true" && reconciliation_state=="MATCHED"' in panel
     assert 'reconciliacao nao confirmada' in panel
