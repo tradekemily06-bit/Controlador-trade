@@ -129,16 +129,20 @@ void ApplyWatermark(){
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Marca d'agua diagonal e responsiva, alinhada ao brilho azul/ciano do ecossistema.
    // Mantida no fundo e dimensionada pela area real do grafico para desktop e janelas menores.
+   // Scale from the real chart size; do not force desktop-sized text onto a phone chart.
    double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);
-   // Um pouco maior que a versao discreta anterior, sem dominar o grafico.
-   wm_scale=MathMax(0.72,MathMin(1.20,wm_scale));
+   wm_scale=MathMin(1.0,wm_scale);
+   // The combined icon + wordmark must fit inside the visible chart at every width.
+   double fit_scale=(double)MathMax(1,w-32)/300.0;
+   wm_scale=MathMin(wm_scale,fit_scale);
+   wm_scale=MathMax(0.35,wm_scale);
    int wm_icon_size=(int)MathRound(36.0*wm_scale);
-   int wm_text_size=(int)MathRound(22.0*wm_scale);
+   int wm_text_size=(int)MathMax(9,MathRound(22.0*wm_scale));
    int center_x=w/2;
    int center_y=(int)MathRound(h*0.52);
-   // Keep the mark and wordmark together and centered, including narrow phone-sized charts.
-   int icon_x=MathMax(18,center_x-(int)MathRound(120.0*wm_scale));
-   int text_x=MathMin(w-18,center_x+(int)MathRound(45.0*wm_scale));
+   // Keep the angled icon and complete wordmark as one centered group.
+   int icon_x=center_x-(int)MathRound(120.0*wm_scale);
+   int text_x=center_x+(int)MathRound(45.0*wm_scale);
    // ANGLE is applied to both elements so the icon and full wordmark share one diagonal.
    double wm_angle=330.0;
 
@@ -286,12 +290,14 @@ void RefreshPanelToggle(){
       signal+=" "+quality_display+"% "+current_quality_level;
    }
    // The signal and its quality remain beside C, with no extra heading or status label.
-   int signal_x=c_size+20;
+   // The chart label uses absolute chart coordinates, so include the C button's left offset.
+   int signal_x=toggle_x+c_size+12;
+   int signal_font=(cw<380?8:(cw<520?9:10));
    int signal_y=toggle_y+MathMax(8,(c_size-18)/2);
    ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,signal_x);
    ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,signal_y);
-   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,10);
+   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,signal_font);
    ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
    ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
