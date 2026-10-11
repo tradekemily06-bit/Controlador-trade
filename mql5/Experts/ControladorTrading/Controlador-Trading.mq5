@@ -108,12 +108,13 @@ void ApplyWatermark(){
    if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
+   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(45,w/2-180));
    ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,75,110');
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,MathMin(40,MathMax(24,w/35)));
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'35,115,155');
    ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
+   ObjectSetDouble(0,mark,OBJPROP_ANGLE,18.0);
    ObjectSetInteger(0,mark,OBJPROP_BACK,true);
    ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
@@ -121,12 +122,13 @@ void ApplyWatermark(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(MathMax(80,w-80),w/2+90));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMin(24,MathMax(15,w/55)));
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'45,105,145');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
+   ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0);
    ObjectSetInteger(0,name,OBJPROP_BACK,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -149,23 +151,71 @@ void LoadWatermark(){
    RefreshWatermarkControl();
 }
 void RefreshPanelToggle(){
+   // O controle fica fixo no canto inferior do gráfico, aberto ou fechado.
+   // O círculo e a letra C são objetos separados para manter a forma circular.
    string name=Obj("PANEL_TOGGLE");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,10);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,8);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,42);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'45,205,235');
+   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
+   ObjectSetString(0,name,OBJPROP_TEXT,"●");
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+
+   string letter=Obj("PANEL_C_TEXT");
+   if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_LOWER);
+   ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,22);
+   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,17);
+   ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,16);
+   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'8,22,32');
+   ObjectSetString(0,letter,OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,letter,OBJPROP_TEXT,"C");
+   ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,letter,OBJPROP_HIDDEN,true);
+}
+void RefreshFloatingSignal(string raw_signal,string score){
+   string signal=raw_signal;
+   if(signal=="COMPRA" || signal=="BUY" || signal=="COMPRAR") signal="COMPRAR";
+   else if(signal=="VENDA" || signal=="SELL" || signal=="VENDER") signal="VENDER";
+   else signal="AGUARDAR";
+   color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
+   string signal_name=Obj("FLOAT_SIGNAL");
+   if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
+   ObjectSetInteger(0,signal_name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,61);
+   ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,22);
+   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,12);
+   ObjectSetInteger(0,signal_name,OBJPROP_COLOR,c);
+   ObjectSetString(0,signal_name,OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
+   ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
+
+   string quality_name=Obj("FLOAT_QUALITY");
+   if(ObjectFind(0,quality_name)<0) ObjectCreate(0,quality_name,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,quality_name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
+   ObjectSetInteger(0,quality_name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,quality_name,OBJPROP_XDISTANCE,61);
+   ObjectSetInteger(0,quality_name,OBJPROP_YDISTANCE,7);
+   ObjectSetInteger(0,quality_name,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,quality_name,OBJPROP_COLOR,C'170,190,205');
+   ObjectSetString(0,quality_name,OBJPROP_FONT,"Arial");
+   string quality_text="Qualidade: —";
+   double score_value=StringToDouble(score);
+   if(score!=""){
+      string band=score_value>=80.0?"FORTE":score_value>=70.0?"MODERADA":"FRACA";
+      quality_text="Qualidade: "+score+"/100 • "+band;
+   }
+   ObjectSetString(0,quality_name,OBJPROP_TEXT,quality_text);
+   ObjectSetInteger(0,quality_name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,quality_name,OBJPROP_HIDDEN,true);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -240,7 +290,7 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
+      if(preserveToggle && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_C_TEXT") || n==Obj("FLOAT_SIGNAL") || n==Obj("FLOAT_QUALITY"))) continue;
       if(preserveWatermark && (n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT"))) continue;
       ObjectDelete(0,n);
    }
@@ -516,13 +566,14 @@ void Analyze(bool render=true){
       return;
    }
    runtime_ok=true;
-   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    string score=JsonValue(r,"score");
+   RefreshFloatingSignal(signal,score);
+   if(!render) return;
    string reason=JsonValue(r,"reason");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
+   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'88,214,141':(signal=="VENDA" || signal=="VENDER")?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
@@ -546,6 +597,7 @@ void RunCycle(){
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    string score=JsonValue(r,"score");
+   RefreshFloatingSignal(signal,score);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
