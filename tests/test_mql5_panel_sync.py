@@ -768,3 +768,14 @@ def test_mql5_new_demo_cycle_clears_stale_reconciliation_ids_before_request():
     malformed = cycle.split('if(runtime==""){', 1)[1].split("return;", 1)[0]
     assert 'last_cycle_id=""; last_external_id="";' in malformed
     assert 'current_quality_actionable="false";' in malformed
+
+
+def test_mql5_panel_layout_clamps_to_actual_chart_bounds_on_small_windows():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel(", 1)[0]
+    assert "int available_w=MathMax(1,cw-24);" in layout
+    assert "int available_h=MathMax(1,ch-64);" in layout
+    assert "panel_x=MathMax(0,MathMin(12,cw-panel_width));" in layout
+    assert "panel_y=MathMax(0,ch-panel_height-12);" in layout
+    assert "panel_width=MathMax(240,panel_width);" not in layout
+    assert "panel_height=MathMax(220,panel_height);" not in layout
