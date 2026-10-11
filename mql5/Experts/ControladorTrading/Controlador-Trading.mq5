@@ -648,10 +648,33 @@ void RenderView(bool refresh_data=true){
    }
    RefreshWatermarkControl();
 }
+void InvalidateCurrentSignal(){
+   runtime_ok=false;
+   current_signal="AGUARDAR";
+   current_quality_score="";
+   current_quality_level="";
+   current_quality_actionable="false";
+   current_quality_technical_actionable="false";
+   current_indicator_summary="INDISPONIVEL";
+   current_external_indicator_status="INDISPONIVEL";
+   RefreshPanelToggle();
+}
+void CheckRuntimeForCompactSignal(){
+   string r; int code=0;
+   if(!Http("GET","/api/health","",r,code)){
+      InvalidateCurrentSignal();
+      return;
+   }
+   string engine=JsonValue(r,"decision_engine");
+   string status=JsonValue(r,"status");
+   if(engine=="OFFLINE" || engine=="UNAVAILABLE" || engine=="ERROR" ||
+      status=="OFFLINE" || status=="UNHEALTHY" || status=="ERROR")
+      InvalidateCurrentSignal();
+}
 void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
-      runtime_ok=false;
+      InvalidateCurrentSignal();
       SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),180,104,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
       return;
@@ -969,6 +992,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible || active_view!="CONFIG") RefreshSharedWatermarkPreference();
    if(!panel_visible){
+      CheckRuntimeForCompactSignal();
       RefreshPanelToggle();
       RefreshWatermarkControl();
       ApplyWatermark();
