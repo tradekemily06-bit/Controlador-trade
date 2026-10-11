@@ -14,6 +14,7 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 bool last_analysis_actionable=false;
+bool last_analysis_candidate=false;
 datetime last_analysis_bar=0;
 bool watermark_enabled=true;
 bool panel_visible=true;
@@ -580,6 +581,7 @@ void Analyze(bool render=true){
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
       runtime_ok=false;
       last_analysis_actionable=false;
+      last_analysis_candidate=false;
       RefreshFloatingSignal("AGUARDAR","");
       if(render) SetLabel(Obj("REASON"),"Leitura indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
       ChartRedraw();
@@ -595,8 +597,11 @@ void Analyze(bool render=true){
    string quality_score=JsonObjectValue(r,"quality","score");
    string quality_actionable=JsonObjectValue(r,"quality","actionable");
    string decision=JsonValue(r,"decision");
-   // Qualidade alta sozinha nunca autoriza ciclo: o motor precisa aprovar a decisão final.
-   last_analysis_actionable=(quality_actionable=="true" && decision=="EXECUTAR" && (signal=="COMPRAR" || signal=="VENDER"));
+   // Candidato apenas permite solicitar uma avaliação completa do ciclo; não autoriza ordem.
+   // O endpoint de análise é read-only e pode retornar AGUARDAR pela ausência de contexto sênior.
+   // A autorização real continua exclusiva do resultado final do ciclo (EXECUTAR + execution_allowed).
+   last_analysis_candidate=(quality_actionable=="true" && (signal=="COMPRAR" || signal=="VENDER"));
+   last_analysis_actionable=(last_analysis_candidate && decision=="EXECUTAR");
    // Se contexto, filtros ou risco não liberarem, a indicação visível deve ser AGUARDAR.
    if(!last_analysis_actionable) signal="AGUARDAR";
    RefreshFloatingSignal(signal,quality_score);
@@ -616,11 +621,12 @@ void RunCycle(){
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
    Analyze(false);
-   if(!runtime_ok || !last_analysis_actionable){
-      SetLabel(Obj("INFO1"),"Ciclo DEMO bloqueado: filtros/qualidade nao validados.",20,361,9,C'255,209,102');
+   if(!runtime_ok || !last_analysis_candidate){
+      SetLabel(Obj("INFO1"),"Ciclo DEMO bloqueado: qualidade/sinal candidato nao validados.",20,361,9,C'255,209,102');
       return;
    }
-   string filters_flag=last_analysis_actionable?"true":"false";
+   // Solicitar um ciclo não concede autoridade: o runtime reavalia contexto, risco e execução.
+   string filters_flag=last_analysis_candidate?"true":"false";
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":"+filters_flag+",\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
