@@ -179,7 +179,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,letter,OBJPROP_COLOR,C'8,22,32');
    ObjectSetString(0,letter,OBJPROP_FONT,"Arial Bold");
    ObjectSetString(0,letter,OBJPROP_TEXT,"C");
-   ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,letter,OBJPROP_HIDDEN,true);
 }
 void RefreshFloatingSignal(string raw_signal,string score,bool update_quality=true){
@@ -741,7 +741,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_C_TEXT")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
