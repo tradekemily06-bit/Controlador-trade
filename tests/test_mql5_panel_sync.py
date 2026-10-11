@@ -700,3 +700,10 @@ def test_mql5_panel_discards_old_signal_and_quality_on_analysis_or_health_failur
     assert 'current_quality_score="";' in analyze
     assert "RefreshSignalLabels();" in invalidation
     assert 'current_signal="AGUARDAR";' in invalidation
+
+
+def test_mql5_health_poll_does_not_overwrite_other_module_content():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'if(active_view=="COCKPIT")' in health
+    assert 'SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine)' in health
