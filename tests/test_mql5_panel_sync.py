@@ -685,3 +685,16 @@ def test_mql5_refreshes_compact_signal_after_indicator_or_symbol_preferences_cha
     assert "Analyze(false);" in indicators
     assert "if(Http(\"POST\",\"/api/preferences\",body,r,code)){" in save
     assert save.index("Analyze(false);") < save.index("Configuracoes sincronizadas no runtime")
+
+
+def test_mql5_panel_discards_old_signal_and_quality_on_analysis_or_health_failure():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    labels = panel.split("void RefreshSignalLabels()", 1)[1].split("void TogglePanel()", 1)[0]
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    invalidation = panel.split("void InvalidateCurrentSignal()", 1)[1].split("void CheckRuntimeForCompactSignal()", 1)[0]
+    assert 'SetLabel(Obj("SIGNAL"),signal,180,154,22,signal_color);' in labels
+    assert 'SetLabel(Obj("SCORE"),"Qualidade: "+score+"/100' in labels
+    assert "RefreshSignalLabels();" in analyze
+    assert 'current_quality_score="";' in analyze
+    assert "RefreshSignalLabels();" in invalidation
+    assert 'current_signal="AGUARDAR";' in invalidation
