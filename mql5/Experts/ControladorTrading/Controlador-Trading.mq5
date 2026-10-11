@@ -209,7 +209,7 @@ void RefreshFloatingSignal(string raw_signal,string score){
    ObjectSetString(0,quality_name,OBJPROP_FONT,"Arial");
    string quality_text="Qualidade: —";
    double score_value=StringToDouble(score);
-   if(score!=""){
+   if(score!="" && score_value>=1.0 && score_value<=100.0){
       string band=score_value>=80.0?"FORTE":score_value>=70.0?"MODERADA":"FRACA";
       quality_text="Qualidade: "+score+"/100 • "+band;
    }
@@ -569,11 +569,13 @@ void Analyze(bool render=true){
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   if(signal=="COMPRA" || signal=="BUY") signal="COMPRAR";
+   else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
    RefreshFloatingSignal(signal,score);
    if(!render) return;
    string reason=JsonValue(r,"reason");
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'88,214,141':(signal=="VENDA" || signal=="VENDER")?C'255,118,118':C'255,209,102';
+   color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
@@ -596,13 +598,15 @@ void RunCycle(){
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   if(signal=="COMPRA" || signal=="BUY") signal="COMPRAR";
+   else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
    RefreshFloatingSignal(signal,score);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
+   color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
