@@ -190,6 +190,8 @@ void ToggleIndicators(){
    indicators_enabled=desired;
    if(ObjectFind(0,Obj("CLOSE"))>=0)
       ObjectSetString(0,Obj("CLOSE"),OBJPROP_TEXT,indicators_enabled?"INDIC: ON":"INDIC: OFF");
+   // Refresh the compact signal immediately after a preference that changes analysis evidence.
+   Analyze(false);
    if(panel_visible)
       SetLabel(Obj("INFO1"),indicators_enabled?"Indicadores ativados e sincronizados.":"Indicadores desativados e sincronizados.",180,361,9,C'88,214,141');
    ChartRedraw();
@@ -793,9 +795,10 @@ void SaveConfig(){
    tf=NormalizeTimeframe(tf);
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
-   if(Http("POST","/api/preferences",body,r,code))
+   if(Http("POST","/api/preferences",body,r,code)){
+      Analyze(false);
       SetLabel(Obj("INFO1"),"Configuracoes sincronizadas no runtime • HTTP "+IntegerToString(code),180,361,9,C'88,214,141');
-   else
+   }else
       SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),180,361,9,C'255,118,118');
 }
 void Analyze(bool render=true){
