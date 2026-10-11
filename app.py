@@ -311,6 +311,7 @@ def application(environ, start_response):
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            cycle_quality = getattr(cycle.orchestration, "quality", None)
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
@@ -331,9 +332,9 @@ def application(environ, start_response):
                 "execution_status": execution.status.value if execution else None,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
                 "quality": {
-                    "score": cycle.orchestration.quality.score,
-                    "level": cycle.orchestration.quality.level.value,
-                    "actionable": cycle.orchestration.quality.actionable,
+                    "score": cycle_quality.score if cycle_quality is not None else None,
+                    "level": cycle_quality.level.value if cycle_quality is not None else None,
+                    "actionable": bool(cycle_quality is not None and cycle_quality.actionable),
                 },
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
