@@ -18,6 +18,7 @@ from core.real_runtime_controller import RealRuntimeController
 from core.runtime_process_lock import RuntimeProcessLock
 from integration.ecosystem_configuration_runtime import ConfiguredEcosystemService
 from integration.execution_provider import build_demo_execution_port
+from execution.icmarkets_mt5_market_data import MT5MarketDataError
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 
@@ -370,11 +371,28 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
-            orchestration = SERVICE.analyze_mt5_market(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=int(data.get("limit", 100)),
-            )
+            try:
+                orchestration = SERVICE.analyze_mt5_market(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=int(data.get("limit", 100)),
+                )
+            except MT5MarketDataError as exc:
+                # Broker/data failures are expected runtime states, not unhandled
+                # server errors. Preserve the fail-closed contract for the EA.
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "Dados de mercado MT5 indisponíveis; análise bloqueada.",
+                        "detail": str(exc),
+                        "signal": "AGUARDAR",
+                        "execution_allowed": False,
+                        "request_id": request_id,
+                    },
+                    request_id,
+                    environ,
+                )
             snapshot = orchestration.snapshot
             indicator_evidence = getattr(orchestration, "indicator_evidence", None)
             decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
