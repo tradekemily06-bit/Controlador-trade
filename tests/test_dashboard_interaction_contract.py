@@ -308,3 +308,13 @@ def test_startup_runtime_failure_marks_memory_and_news_unavailable():
     assert "Memória indisponível: runtime sem resposta." in WEB
     assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
     assert "Resultados indisponíveis até a API responder." in WEB
+
+
+def test_watermark_is_layered_over_chart_background_but_behind_market_candles():
+    assert '.chart-wrap::before{content:"↗ CONTROLADOR TRADING"' in WEB
+    assert "position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0" in WEB
+    assert "transform:rotate(-30deg)" in WEB
+    assert ".chart-svg{position:relative;z-index:1}" in WEB
+    chart = WEB.split("function renderMarketChart(candles)", 1)[1].split("async function refreshMarketAssets()", 1)[0]
+    assert '<svg class="chart-svg"' in chart
+    assert 'fill="#080b11"' not in chart
