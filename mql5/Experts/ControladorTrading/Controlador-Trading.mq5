@@ -89,7 +89,7 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void ApplyWatermark(){
@@ -577,7 +577,10 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      runtime_ok=false;
+      RefreshFloatingSignal("AGUARDAR","");
+      if(render) SetLabel(Obj("REASON"),"Leitura indisponivel • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      ChartRedraw();
       return;
    }
    runtime_ok=true;
@@ -617,7 +620,8 @@ void RunCycle(){
    if(signal=="COMPRA" || signal=="BUY") signal="COMPRAR";
    else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
-   RefreshFloatingSignal(signal,"",false);
+   string quality_score=JsonObjectValue(r,"quality","score");
+   RefreshFloatingSignal(signal,quality_score);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
@@ -629,7 +633,11 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • autorizado="+(allowed==""?"false":allowed),20,361,9,C'88,214,141');
+   if(allowed=="true"){
+      SetLabel(Obj("INFO1"),"Execucao DEMO aceita pelo runtime • "+signal,20,361,9,C'88,214,141');
+   }else{
+      SetLabel(Obj("INFO1"),"Ciclo DEMO sem execucao autorizada • "+(reason==""?"verifique os bloqueios do runtime":StringSubstr(reason,0,42)),20,361,9,C'255,209,102');
+   }
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
@@ -638,10 +646,21 @@ void CloseCycle(){
    }
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
-   if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
+   if(!Http("POST","/api/runtime/close",body,r,code)){
+      SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      return;
+   }
+   string closed=JsonValue(r,"closed");
+   string reconciliation_state=JsonObjectValue(r,"reconciliation","reconciliation_state");
+   if(closed=="true" && reconciliation_state!=""){
+      SetLabel(Obj("INFO1"),"Fechamento + reconciliacao confirmados • "+reconciliation_state,20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
-   }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }else if(closed=="true"){
+      SetLabel(Obj("INFO1"),"Fechamento aceito; reconciliacao pendente. IDs preservados.",20,361,9,C'255,209,102');
+   }else{
+      string message=JsonValue(r,"message");
+      SetLabel(Obj("INFO1"),"Fechamento nao confirmado • "+(message==""?"IDs preservados":StringSubstr(message,0,42)),20,361,9,C'255,118,118');
+   }
 }
 int OnInit(){
    active_view="COCKPIT";
