@@ -707,3 +707,11 @@ def test_mql5_health_poll_does_not_overwrite_other_module_content():
     health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
     assert 'if(active_view=="COCKPIT")' in health
     assert 'SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine)' in health
+
+
+def test_mql5_memory_and_win_loss_statistics_refresh_while_the_view_is_open():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    assert 'else if(active_view=="MEMORIA") RefreshSecondary();' in timer
+    assert 'if(active_nav=="N7")' in panel
+    assert 'string demo=JsonObjectValue(r,"demo");' in panel
