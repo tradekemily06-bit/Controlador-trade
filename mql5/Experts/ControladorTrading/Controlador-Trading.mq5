@@ -694,7 +694,11 @@ void RefreshHealth(){
    if(!Http("GET","/api/health","",r,code)){
       InvalidateCurrentSignal();
       SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),180,104,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
+      SetLabel(Obj("MODE"),"Modo: DESCONHECIDO • MT5: NAO CONFIRMADO",180,124,10,C'255,209,102');
+      if(active_view=="CONFIG")
+         SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
+      else if(ObjectFind(0,Obj("SAFE"))>=0)
+         ObjectDelete(0,Obj("SAFE"));
       return;
    }
    runtime_ok=true;
