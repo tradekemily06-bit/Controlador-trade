@@ -71,8 +71,11 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "ObjectSetDouble(0,name,OBJPROP_ANGLE,18.0)" in panel
     assert "InpPanelWidth = 280" in panel
     assert "InpPanelHeight = 380" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.22)" in panel
+    assert "int available_w=MathMax(1,cw-24);" in panel
+    assert "int available_h=MathMax(1,ch-24);" in panel
+    assert "panel_x=MathMax(0,MathMin(12,cw-panel_width));" in panel
+    assert "MathRound(cw*0.42)" in panel
+    assert "MathRound(ch*0.70)" in panel
     assert "OBJPROP_ANGLE,18.0" in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
@@ -215,7 +218,7 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_RIGHT_LOWER);" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
 
 
