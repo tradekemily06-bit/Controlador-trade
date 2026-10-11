@@ -672,6 +672,7 @@ void RenderView(bool refresh_data=true){
 void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
+      runtime_ok=false;
       current_signal="AGUARDAR";
       current_quality_score="";
       current_quality_level="";
@@ -851,8 +852,7 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      // A failed analysis invalidates the last analysis health state and all signal quality.
-      runtime_ok=false;
+      // A failed analysis invalidates the signal evidence, not the independent /api/health state.
       current_signal="AGUARDAR";
       current_quality_score="";
       current_quality_level="";
