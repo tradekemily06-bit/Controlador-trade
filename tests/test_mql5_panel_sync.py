@@ -741,3 +741,11 @@ def test_mql5_compact_signal_quality_is_not_duplicated_and_scales_on_small_chart
     assert "int signal_x=toggle_x+c_size+12;" in toggle
     assert "int signal_font=(cw<380?8:(cw<520?9:10));" in toggle
     assert "OBJPROP_FONTSIZE,signal_font" in toggle
+
+
+def test_mql5_watermark_does_not_force_desktop_minimum_on_mobile_charts():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshWatermarkControl()", 1)[0]
+    assert "double wm_scale=MathMin((double)w/1180.0,(double)h/650.0);" in watermark
+    assert "wm_scale=MathMax(0.20,MathMin(1.42,wm_scale));" in watermark
+    assert "wm_scale=MathMax(0.72" not in watermark
