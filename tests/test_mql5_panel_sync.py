@@ -724,3 +724,10 @@ def test_native_demo_cycle_requires_independent_runtime_health_before_post():
     assert 'last_cycle_id="";' in guard
     assert "Ciclo bloqueado: runtime/seguranca nao validados." in guard
     assert cycle.index("if(!runtime_ok){") < cycle.index('Http("POST","/api/runtime/cycle"')
+
+
+def test_mql5_watermark_shared_preference_sync_works_without_market_ticks():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    sync = panel.split("void RefreshSharedWatermarkPreference()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    assert "datetime now=TimeLocal();" in sync
+    assert "datetime now=TimeCurrent();" not in sync
