@@ -33,10 +33,12 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(220,(int)MathRound(cw*0.22)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
+   int available_w=MathMax(1,cw-24);
+   int available_h=MathMax(1,ch-24);
+   panel_width=MathMax(1,MathMin(available_w,MathMin(InpPanelWidth,MathMax(1,(int)MathRound(cw*0.42)))));
+   panel_height=MathMax(1,MathMin(available_h,MathMin(InpPanelHeight,MathMax(1,(int)MathRound(ch*0.70)))));
+   // O painel abre à esquerda; o controle C permanece fixo no canto inferior direito.
+   panel_x=MathMax(0,MathMin(12,cw-panel_width));
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -155,8 +157,8 @@ void RefreshPanelToggle(){
    // O círculo e a letra C são objetos separados para manter a forma circular.
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_RIGHT_LOWER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_RIGHT_LOWER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,10);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,8);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,42);
@@ -168,8 +170,8 @@ void RefreshPanelToggle(){
 
    string letter=Obj("PANEL_C_TEXT");
    if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_RIGHT_LOWER);
+   ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_RIGHT_LOWER);
    ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,22);
    ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,17);
    ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,16);
@@ -187,8 +189,8 @@ void RefreshFloatingSignal(string raw_signal,string score,bool update_quality=tr
    color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
    string signal_name=Obj("FLOAT_SIGNAL");
    if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,signal_name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_RIGHT_LOWER);
+   ObjectSetInteger(0,signal_name,OBJPROP_ANCHOR,ANCHOR_RIGHT_LOWER);
    ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,61);
    ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,22);
    ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,12);
@@ -201,8 +203,8 @@ void RefreshFloatingSignal(string raw_signal,string score,bool update_quality=tr
    if(!update_quality) return;
    string quality_name=Obj("FLOAT_QUALITY");
    if(ObjectFind(0,quality_name)<0) ObjectCreate(0,quality_name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,quality_name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,quality_name,OBJPROP_ANCHOR,ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0,quality_name,OBJPROP_CORNER,CORNER_RIGHT_LOWER);
+   ObjectSetInteger(0,quality_name,OBJPROP_ANCHOR,ANCHOR_RIGHT_LOWER);
    ObjectSetInteger(0,quality_name,OBJPROP_XDISTANCE,61);
    ObjectSetInteger(0,quality_name,OBJPROP_YDISTANCE,7);
    ObjectSetInteger(0,quality_name,OBJPROP_FONTSIZE,9);
