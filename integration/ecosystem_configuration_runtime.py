@@ -250,7 +250,7 @@ class ConfiguredEcosystemService(EcosystemService):
         # "require_filters" means the real candle filters must be evaluated;
         # it is not a substitute for that evaluation. The orchestrator derives
         # the verdict from live market context when the preference is enabled.
-        effective_filters = False if filters_ok is False else (None if prefs.require_filters else True)
+        effective_filters = False if filters_ok is not None and filters_ok is not True else (None if prefs.require_filters else True)
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
@@ -291,7 +291,7 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         # A UI/API boolean is not filter evidence. When filters are required,
         # evaluate them from the market context built from the actual MT5 candles.
-        effective_filters = False if filters_ok is False else (None if prefs.require_filters else True)
+        effective_filters = False if filters_ok is not None and filters_ok is not True else (None if prefs.require_filters else True)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         operational_state = self.mt5_operational_adapter.read_operational_state()
         orchestration = self.trading_runtime.orchestrator.evaluate(
