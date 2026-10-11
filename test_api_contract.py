@@ -184,6 +184,19 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(payload["execution_allowed"], False)
         self.assertEqual(payload["detail"], "dados indisponíveis")
 
+    def test_mt5_runtime_analysis_maps_unavailable_runtime_to_safe_503(self):
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=RuntimeError("runtime DEMO indisponível")):
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["signal"], "AGUARDAR")
+        self.assertFalse(payload["execution_allowed"])
+        self.assertEqual(payload["detail"], "runtime DEMO indisponível")
+
 
 
     def request_raw(self, path, method="GET"):
