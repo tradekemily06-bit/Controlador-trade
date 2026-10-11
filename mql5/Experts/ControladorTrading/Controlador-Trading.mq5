@@ -208,14 +208,16 @@ void RefreshFloatingSignal(string raw_signal,string score,bool update_quality=tr
    ObjectSetInteger(0,quality_name,OBJPROP_XDISTANCE,61);
    ObjectSetInteger(0,quality_name,OBJPROP_YDISTANCE,7);
    ObjectSetInteger(0,quality_name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,quality_name,OBJPROP_COLOR,C'170,190,205');
    ObjectSetString(0,quality_name,OBJPROP_FONT,"Arial");
    string quality_text="Qualidade: —";
+   color quality_color=C'170,190,205';
    double score_value=StringToDouble(score);
    if(score!="" && score_value>=1.0 && score_value<=100.0){
       string band=score_value>=80.0?"FORTE":score_value>=70.0?"MODERADA":"FRACA";
+      quality_color=score_value>=80.0?C'88,214,141':score_value>=70.0?C'255,209,102':C'255,118,118';
       quality_text="Qualidade: "+score+"/100 • "+band;
    }
+   ObjectSetInteger(0,quality_name,OBJPROP_COLOR,quality_color);
    ObjectSetString(0,quality_name,OBJPROP_TEXT,quality_text);
    ObjectSetInteger(0,quality_name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,quality_name,OBJPROP_HIDDEN,true);
