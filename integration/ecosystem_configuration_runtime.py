@@ -291,7 +291,7 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         # A UI/API boolean is not filter evidence. When filters are required,
         # evaluate them from the market context built from the actual MT5 candles.
-        effective_filters = None if prefs.require_filters else (True if filters_ok is None else bool(filters_ok))
+        effective_filters = False if filters_ok is False else (None if prefs.require_filters else True)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         operational_state = self.mt5_operational_adapter.read_operational_state()
         orchestration = self.trading_runtime.orchestrator.evaluate(
