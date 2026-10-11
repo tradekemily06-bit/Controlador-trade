@@ -15,7 +15,7 @@ def make_snapshot() -> DecisionSnapshot:
         analysis_score=80.0,
         confirmed=True,
         quality_score=60.0,
-        quality_level="MODERADA",
+        quality_level="FRACA",
         actionable=True,
         decision="EXECUTAR",
         decision_reason="contexto favorável",
