@@ -93,7 +93,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
     assert observed_calls[0]["confirmed"] is False
-    assert observed_calls[0]["filters_ok"] is False
+    assert observed_calls[0]["filters_ok"] is None  # derive from real market context when required
 
     # Text values are not authorization booleans: both must fail closed.
     status, data = call_app(
