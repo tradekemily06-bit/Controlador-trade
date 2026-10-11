@@ -731,3 +731,13 @@ def test_mql5_watermark_shared_preference_sync_works_without_market_ticks():
     sync = panel.split("void RefreshSharedWatermarkPreference()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
     assert "datetime now=TimeLocal();" in sync
     assert "datetime now=TimeCurrent();" not in sync
+
+
+def test_mql5_compact_signal_quality_is_not_duplicated_and_scales_on_small_charts():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'signal+=" "+quality_display+"% "+current_quality_level;' in toggle
+    assert 'quality_display+"/100' not in toggle
+    assert "int signal_x=toggle_x+c_size+12;" in toggle
+    assert "int signal_font=(cw<380?8:(cw<520?9:10));" in toggle
+    assert "OBJPROP_FONTSIZE,signal_font" in toggle
