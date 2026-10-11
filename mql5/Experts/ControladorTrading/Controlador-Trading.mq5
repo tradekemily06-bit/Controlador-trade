@@ -14,11 +14,11 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
-bool watermark_enabled=true;
-bool panel_visible=true;
+bool watermark_enabled=false;
+bool panel_visible=false;
 int panel_x=0;
-int panel_width=320;
-int panel_height=420;
+int panel_width=280;
+int panel_height=380;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
@@ -132,8 +132,8 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void RefreshWatermarkControl(){
-   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
-   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
+   watermark_enabled=false;
+   if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    ApplyWatermark();
 }
 void ToggleWatermark(){
@@ -144,28 +144,45 @@ void ToggleWatermark(){
    ChartRedraw();
 }
 void LoadWatermark(){
-   if(GlobalVariableCheck(WatermarkKey()))
-      watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
-   RefreshWatermarkControl();
+   watermark_enabled=false;
+   if(ObjectFind(0,Obj("WATERMARK"))>=0) ObjectDelete(0,Obj("WATERMARK"));
+   if(ObjectFind(0,Obj("WATERMARK_MARK"))>=0) ObjectDelete(0,Obj("WATERMARK_MARK"));
+   if(ObjectFind(0,Obj("WATERMARK_TEXT"))>=0) ObjectDelete(0,Obj("WATERMARK_TEXT"));
+   if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int x=12;
+   int y=MathMax(8,ch-62);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,42);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,42);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,220,245');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,18,29');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'0,190,225');
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
+   ObjectSetString(0,name,OBJPROP_TEXT,"C");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,100);
+   string sig=Obj("COLLAPSED_SIGNAL");
+   if(ObjectFind(0,sig)<0) ObjectCreate(0,sig,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,sig,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,62);
+   ObjectSetInteger(0,sig,OBJPROP_YDISTANCE,y+3);
+   ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
+   ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
+   ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,sig,OBJPROP_TEXT,"AGUARDAR  •  —%");
+   ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,sig,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,sig,OBJPROP_ZORDER,100);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -178,6 +195,7 @@ void TogglePanel(){
 void LoadPanelVisibility(){
    if(GlobalVariableCheck(PanelVisibilityKey()))
       panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
+   else panel_visible=false;
    RefreshPanelToggle();
 }
 void Panel(){
@@ -233,7 +251,7 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
-   SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
+   // Marca-d agua removida conforme aprovacao visual.
 }
 void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
