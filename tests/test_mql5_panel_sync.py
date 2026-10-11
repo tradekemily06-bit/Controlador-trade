@@ -675,3 +675,13 @@ def test_mql5_compact_signal_fails_closed_when_runtime_health_is_lost():
     assert "InvalidateCurrentSignal();" in health
     assert "CheckRuntimeForCompactSignal();" in timer
     assert timer.index("CheckRuntimeForCompactSignal();") < timer.index("datetime hidden_bar=")
+
+
+def test_mql5_refreshes_compact_signal_after_indicator_or_symbol_preferences_change():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    indicators = panel.split("void ToggleIndicators()", 1)[1].split("void LoadWatermark()", 1)[0]
+    save = panel.split("void SaveConfig()", 1)[1].split("void ToggleIndicators()", 1)[0]
+    assert "indicators_enabled=desired;" in indicators
+    assert "Analyze(false);" in indicators
+    assert "if(Http(\"POST\",\"/api/preferences\",body,r,code)){" in save
+    assert save.index("Analyze(false);") < save.index("Configuracoes sincronizadas no runtime")
