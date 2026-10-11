@@ -270,7 +270,7 @@ void RefreshPanelToggle(){
 
    string signal_name=Obj("PANEL_SIGNAL");
    if(ObjectFind(0,signal_name)<0) ObjectCreate(0,signal_name,OBJ_LABEL,0,0,0);
-   string signal=(current_quality_actionable=="true")?current_signal:"AGUARDAR";
+   string signal=(runtime_ok && current_quality_actionable=="true")?current_signal:"AGUARDAR";
    color signal_color=C'255,209,102';
    if(signal=="COMPRA" || signal=="COMPRAR"){ signal="COMPRAR"; signal_color=C'54,226,130'; }
    else if(signal=="VENDA" || signal=="VENDER"){ signal="VENDER"; signal_color=C'255,86,101'; }
@@ -672,9 +672,16 @@ void RenderView(bool refresh_data=true){
 void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
-      runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),180,104,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
+      current_signal="AGUARDAR";
+      current_quality_score="";
+      current_quality_level="";
+      current_quality_actionable="false";
+      current_quality_technical_actionable="false";
+      RefreshPanelToggle();
+      if(panel_visible){
+         SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),180,104,10,C'255,118,118');
+         SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",180,520,8,C'255,155,155');
+      }
       return;
    }
    // HTTP 2xx alone is not proof of a healthy, fail-closed runtime.
@@ -693,13 +700,22 @@ void RefreshHealth(){
       operational_allowed!="false" || operational_real!="DISABLED" ||
       real_allowed!="false" || real_enabled!="false"){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO • seguranca/health",180,104,10,C'255,118,118');
-      SetLabel(Obj("MODE"),"Modo/MT5: aguardando confirmacao segura",180,124,10,C'255,209,102');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • health nao confirmou todas as barreiras",180,520,8,C'255,155,155');
-      SetLabel(Obj("INFO1"),"Runtime respondeu HTTP "+IntegerToString(code)+" mas nao passou na validacao de seguranca.",180,361,9,C'255,118,118');
+      current_signal="AGUARDAR";
+      current_quality_score="";
+      current_quality_level="";
+      current_quality_actionable="false";
+      current_quality_technical_actionable="false";
+      RefreshPanelToggle();
+      if(panel_visible){
+         SetLabel(Obj("RUNTIME"),"Runtime: NAO VALIDADO • seguranca/health",180,104,10,C'255,118,118');
+         SetLabel(Obj("MODE"),"Modo/MT5: aguardando confirmacao segura",180,124,10,C'255,209,102');
+         SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • health nao confirmou todas as barreiras",180,520,8,C'255,155,155');
+         SetLabel(Obj("INFO1"),"Runtime respondeu HTTP "+IntegerToString(code)+" mas nao passou na validacao de seguranca.",180,361,9,C'255,118,118');
+      }
       return;
    }
    runtime_ok=true;
+   if(!panel_visible) return;
    string mode=JsonValue(r,"mode");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
@@ -851,7 +867,6 @@ void Analyze(bool render=true){
       }
       return;
    }
-   runtime_ok=true;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal="AGUARDAR";
    current_signal=(signal=="COMPRA" || signal=="COMPRAR")?"COMPRAR":(signal=="VENDA" || signal=="VENDER")?"VENDER":"AGUARDAR";
@@ -1014,6 +1029,9 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible || active_view!="CONFIG") RefreshSharedWatermarkPreference();
    if(!panel_visible){
+      bool was_runtime_healthy=runtime_ok;
+      RefreshHealth();
+      if(!was_runtime_healthy && runtime_ok) Analyze(false);
       RefreshPanelToggle();
       RefreshWatermarkControl();
       ApplyWatermark();
@@ -1026,7 +1044,10 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
+   bool was_runtime_healthy=runtime_ok;
    RefreshHealth();
+   if(!was_runtime_healthy && runtime_ok)
+      Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
