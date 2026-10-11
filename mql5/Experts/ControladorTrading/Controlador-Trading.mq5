@@ -303,6 +303,7 @@ void RefreshPanelToggle(){
    ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
    ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
+}
 
 void RefreshSignalLabels(){
    if(!panel_visible) return;
