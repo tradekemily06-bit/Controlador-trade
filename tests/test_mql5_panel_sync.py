@@ -693,3 +693,18 @@ def test_native_risk_view_does_not_present_zero_limits_as_configured():
     assert 'StringToInteger(operations)<=0?"nao configurado":operations' in risk
     assert 'StringToInteger(consecutive)<=0?"nao configurado":consecutive' in risk
     assert "Zero means no active limit, not a safe configured limit." in risk
+
+
+def test_native_compact_signal_fails_closed_when_runtime_health_is_unavailable():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    analysis = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    hidden_timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0].split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
+    assert 'string signal=(runtime_ok && current_quality_actionable=="true")?current_signal:"AGUARDAR";' in toggle
+    assert 'if(!Http("GET","/api/health","",r,code)){\n      runtime_ok=false;' in health
+    assert 'runtime_ok=false;' in health
+    assert 'current_quality_actionable="false";' in health
+    assert 'runtime_ok=false;' not in analysis
+    assert 'runtime_ok=true;' not in analysis
+    assert "RefreshHealth();" in hidden_timer
