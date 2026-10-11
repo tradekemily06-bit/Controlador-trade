@@ -75,8 +75,8 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "C'35,135,175'" in panel
     assert "InpPanelWidth = 440" in panel
     assert "InpPanelHeight = 440" in panel
-    assert "panel_x=12;" in panel
-    assert "panel_y=MathMax(12,ch-panel_height-52);" in panel
+    assert "panel_x=MathMax(0,MathMin(12,cw-panel_width));" in panel
+    assert "panel_y=MathMax(0,ch-panel_height-12);" in panel
     assert "int center_x=w/2;" in panel
     assert "MathRound(h*0.52)" in panel
     assert "panel_sx=(double)panel_width/540.0;" in panel
