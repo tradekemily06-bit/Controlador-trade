@@ -651,8 +651,10 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   if(allowed=="true"){
+   if(allowed=="true" && decision=="EXECUTAR" && quality_actionable=="true" && (signal=="COMPRAR" || signal=="VENDER")){
       SetLabel(Obj("INFO1"),"Execucao DEMO aceita pelo runtime • "+signal,20,361,9,C'88,214,141');
+   }else if(allowed=="true"){
+      SetLabel(Obj("INFO1"),"Resposta inconsistente: autorizacao e decisao/qualidade divergem. Verifique auditoria; REAL segue bloqueado.",20,361,9,C'255,118,118');
    }else{
       SetLabel(Obj("INFO1"),"Ciclo DEMO sem execucao autorizada • "+(reason==""?"verifique os bloqueios do runtime":StringSubstr(reason,0,42)),20,361,9,C'255,209,102');
    }
