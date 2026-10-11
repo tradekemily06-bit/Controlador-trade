@@ -74,8 +74,8 @@ void RefreshPanelLayout(){
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,panel_x+SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,panel_y+SY(y));
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(size*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
@@ -86,8 +86,8 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
 void SetButton(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,panel_x+SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,panel_y+SY(y));
    ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
    ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
@@ -102,8 +102,8 @@ void SetButton(string name,string text,int x,int y,int w,int h){
 void SetEdit(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,panel_x+SX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,panel_y+SY(y));
    ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
    ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
