@@ -707,4 +707,7 @@ def test_native_compact_signal_fails_closed_when_runtime_health_is_unavailable()
     assert 'current_quality_actionable="false";' in health
     assert 'runtime_ok=false;' not in analysis
     assert 'runtime_ok=true;' not in analysis
+    assert 'if(!runtime_ok) current_signal="AGUARDAR";' in analysis
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'if(!runtime_ok) current_signal="AGUARDAR";' in cycle
     assert "RefreshHealth();" in hidden_timer
