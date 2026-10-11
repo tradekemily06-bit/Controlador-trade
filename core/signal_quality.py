@@ -55,7 +55,7 @@ class SignalQualityEvaluator:
 
         if quality_score >= 80:
             level = SignalLevel.FORTE
-        elif quality_score >= 60:
+        elif quality_score >= 70:
             level = SignalLevel.MODERADA
         else:
             level = SignalLevel.FRACA
