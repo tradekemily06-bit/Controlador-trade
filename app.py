@@ -330,6 +330,11 @@ def application(environ, start_response):
                 "external_id": execution.external_id if execution else None,
                 "execution_status": execution.status.value if execution else None,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
+                "quality": {
+                    "score": cycle.orchestration.quality.score,
+                    "level": cycle.orchestration.quality.level.value,
+                    "actionable": cycle.orchestration.quality.actionable,
+                },
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
         if path == "/api/market/assets" and method == "GET":
