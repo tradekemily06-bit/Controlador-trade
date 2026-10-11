@@ -169,6 +169,22 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("text/plain", headers["Content-Type"])
         self.assertEqual(body, b"Not Found")
 
+    def test_mt5_runtime_analysis_maps_mt5_read_failures_to_safe_503(self):
+        from execution.icmarkets_mt5_market_data import MT5MarketDataError
+
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=MT5MarketDataError("dados indisponíveis")):
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["execution_allowed"], False)
+        self.assertEqual(payload["detail"], "dados indisponíveis")
+
+
+
     def request_raw(self, path, method="GET"):
         captured = {}
 
@@ -186,24 +202,6 @@ class ApiContractTests(unittest.TestCase):
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-    def test_mt5_runtime_analysis_maps_mt5_read_failures_to_safe_503(self):
-        from execution.icmarkets_mt5_market_data import MT5MarketDataError
-
-        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=MT5MarketDataError("dados indisponíveis")):
-            status, _, payload = self.request(
-                "/api/runtime/analysis",
-                method="POST",
-                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
-            )
-
-        self.assertEqual(status, "503 Service Unavailable")
-        self.assertEqual(payload["execution_allowed"], False)
-        self.assertEqual(payload["detail"], "dados indisponíveis")
 
 
 def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
@@ -345,3 +343,7 @@ def test_sell_quality_score_is_direction_normalized_in_api_response():
     assert payload["quality"]["score"] == 80.0
     assert payload["analysis"]["score"] == 20.0
     assert payload["quality"]["level"] == "FORTE"
+
+
+if __name__ == "__main__":
+    unittest.main()
