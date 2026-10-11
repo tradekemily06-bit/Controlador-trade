@@ -74,7 +74,13 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
         automation_lifecycle=None,
     )
     fake_result = SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,))
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    observed = {}
+
+    def run_cycle(**kwargs):
+        observed.update(kwargs)
+        return fake_result
+
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", run_cycle)
 
     status, data = call_app(
         "/api/runtime/cycle",
@@ -86,6 +92,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
+    assert observed["filters_ok"] is False
 
 
 
