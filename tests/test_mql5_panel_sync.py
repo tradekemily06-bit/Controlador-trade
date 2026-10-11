@@ -145,6 +145,16 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert "execution" not in "TogglePanel" or "runtime" not in "TogglePanel"
 
 
+def test_mql5_native_panel_reflows_when_chart_size_changes():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    handler = panel.split("void OnChartEvent(", 1)[1].split("if(id!=CHARTEVENT_OBJECT_CLICK)", 1)[0]
+    assert "if(id==CHARTEVENT_CHART_CHANGE)" in handler
+    assert "if(panel_visible){ Panel(); RenderView(); }" in handler
+    assert "RefreshPanelToggle();" in handler
+    assert "ApplyWatermark();" in handler
+    assert "panel_x=MathMax(0,MathMin(12,cw-panel_width));" in panel
+
+
 def test_mql5_panel_off_does_not_render_on_init():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     init = panel.split("int OnInit()", 1)[1].split("int OnDeinit", 1)[0]
