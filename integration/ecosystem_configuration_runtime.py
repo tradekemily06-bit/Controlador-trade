@@ -250,7 +250,7 @@ class ConfiguredEcosystemService(EcosystemService):
         # "require_filters" means the real candle filters must be evaluated;
         # it is not a substitute for that evaluation. The orchestrator derives
         # the verdict from live market context when the preference is enabled.
-        effective_filters = None if prefs.require_filters else (True if filters_ok is None else bool(filters_ok))
+        effective_filters = False if filters_ok is False else (None if prefs.require_filters else True)
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
