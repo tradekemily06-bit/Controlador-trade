@@ -104,7 +104,7 @@ void ApplyWatermark(){
    int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int center_y=MathMax(120,h/2);
 
-   // Marca horizontal, discreta e centralizada para não competir com os candles.
+   // Marca inclinada, luminosa e ao fundo para não competir com os candles.
    if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
@@ -179,7 +179,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,letter,OBJPROP_HIDDEN,true);
 }
-void RefreshFloatingSignal(string raw_signal,string score){
+void RefreshFloatingSignal(string raw_signal,string score,bool update_quality=true){
    string signal=raw_signal;
    if(signal=="COMPRA" || signal=="BUY" || signal=="COMPRAR") signal="COMPRAR";
    else if(signal=="VENDA" || signal=="SELL" || signal=="VENDER") signal="VENDER";
@@ -198,6 +198,7 @@ void RefreshFloatingSignal(string raw_signal,string score){
    ObjectSetInteger(0,signal_name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);
 
+   if(!update_quality) return;
    string quality_name=Obj("FLOAT_QUALITY");
    if(ObjectFind(0,quality_name)<0) ObjectCreate(0,quality_name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,quality_name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
@@ -317,6 +318,16 @@ string JsonValue(string json,string key){
       q++;
    }
    return StringSubstr(json,p,q-p);
+}
+string JsonObjectValue(string json,string object_key,string key){
+   string object_needle="\"" + object_key + "\":";
+   int p=StringFind(json,object_needle);
+   if(p<0) return "";
+   int open=StringFind(json,"{",p+StringLen(object_needle));
+   if(open<0) return "";
+   int close=StringFind(json,"}",open+1);
+   if(close<0 || close<=open) return "";
+   return JsonValue(StringSubstr(json,open,close-open+1),key);
 }
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
@@ -572,7 +583,8 @@ void Analyze(bool render=true){
    if(signal=="COMPRA" || signal=="BUY") signal="COMPRAR";
    else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
-   RefreshFloatingSignal(signal,score);
+   string quality_score=JsonObjectValue(r,"quality","score");
+   RefreshFloatingSignal(signal,quality_score);
    if(!render) return;
    string reason=JsonValue(r,"reason");
    color c=signal=="COMPRAR"?C'88,214,141':signal=="VENDER"?C'255,118,118':C'255,209,102';
@@ -601,7 +613,7 @@ void RunCycle(){
    if(signal=="COMPRA" || signal=="BUY") signal="COMPRAR";
    else if(signal=="VENDA" || signal=="SELL") signal="VENDER";
    string score=JsonValue(r,"score");
-   RefreshFloatingSignal(signal,score);
+   RefreshFloatingSignal(signal,"",false);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
