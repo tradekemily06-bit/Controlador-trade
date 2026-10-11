@@ -81,7 +81,6 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
         return fake_result
 
     monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", run_cycle)
-    configured_closed_candle_policy = app.SERVICE.preferences.preferences.require_closed_candle
 
     status, data = call_app(
         "/api/runtime/cycle",
@@ -93,7 +92,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
-    assert observed_calls[0]["confirmed"] is configured_closed_candle_policy
+    assert observed_calls[0]["confirmed"] is True  # derived from MT5 adapter closed-bar contract
     assert observed_calls[0]["filters_ok"] is None  # derive from real market context when required
 
     # Client-supplied confirmation cannot override server policy; malformed filter evidence fails closed.
@@ -112,7 +111,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     )
     assert status.startswith("200")
     assert data["execution_allowed"] is False
-    assert observed_calls[1]["confirmed"] is configured_closed_candle_policy
+    assert observed_calls[1]["confirmed"] is True  # client cannot override broker-data confirmation
     assert observed_calls[1]["filters_ok"] is False
 
 
