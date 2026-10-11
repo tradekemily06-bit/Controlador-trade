@@ -71,7 +71,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "wm_scale=MathMin(1.0,wm_scale);" in panel
     assert "double fit_scale=(double)MathMax(1,w-32)/300.0;" in panel
     assert "wm_scale=MathMin(wm_scale,fit_scale);" in panel
-    assert "wm_scale=MathMax(0.35,wm_scale);" in panel
+    assert "wm_scale=MathMax(MathMin(0.35,fit_scale),wm_scale);" in panel
     assert "int signal_x=toggle_x+c_size+12;" in panel
     assert "int signal_font=(cw<380?8:(cw<520?9:10));" in panel
     assert "MathRound(36.0*wm_scale)" in panel
