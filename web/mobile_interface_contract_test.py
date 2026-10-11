@@ -40,4 +40,4 @@ def test_mobile_workspace_navigation_and_watermark_remain_compact():
     assert 'href="#painel">Cockpit</a>' in HTML
     assert "workspace-hidden" in HTML
     assert 'class="watermark-mark"' in HTML
-    assert "transform:rotate(-18deg)" not in HTML
+    assert "transform:rotate(-30deg)" in HTML

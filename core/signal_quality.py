@@ -48,19 +48,20 @@ class SignalQualityEvaluator:
         if analysis.confirmed is not True:
             return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
-        # High raw scores favor COMPRA; low raw scores favor VENDA. For an
-        # AGUARDAR result, preserve the measured strength of the best
-        # directional candidate without promoting it to a trading signal.
+        # High raw scores favor COMPRA; low raw scores favor VENDA.
+        # The explicit filter status lets AGUARDAR retain technical strength
+        # when a known safety filter blocked the candidate. It does not make
+        # that candidate actionable or authorize execution.
+        is_directional_signal = analysis.signal in (Signal.COMPRA, Signal.VENDA)
         if analysis.signal is Signal.COMPRA:
             directional_score = float(score)
         elif analysis.signal is Signal.VENDA:
             directional_score = 100.0 - float(score)
         else:
-            directional_score = float(score) if float(score) >= 50.0 else 100.0 - float(score)
-            # A strong raw score with no emitted signal may have failed a
-            # required filter. Do not label it a strong opportunity; preserve
-            # FRACA only when the measured directional candidate is genuinely weak.
-            if directional_score >= self.MIN_ACTIONABLE_SCORE:
+            directional_score = max(float(score), 100.0 - float(score))
+            # A high AGUARDAR score without an explicit failed-filter reason
+            # is ambiguous: do not invent a strong candidate.
+            if directional_score >= self.MIN_ACTIONABLE_SCORE and analysis.filters_ok is not False:
                 return SignalQuality(0.0, SignalLevel.NENHUMA, False)
 
         if directional_score < self.MIN_ACTIONABLE_SCORE:
@@ -71,7 +72,7 @@ class SignalQualityEvaluator:
             if directional_score >= self.STRONG_SCORE
             else SignalLevel.MODERADA
         )
-        return SignalQuality(directional_score, level, True)
+        return SignalQuality(directional_score, level, is_directional_signal)
 
 
 def evaluate_signal_quality(analysis: AnalysisResult) -> SignalQuality:

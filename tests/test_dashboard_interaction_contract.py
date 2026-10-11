@@ -72,13 +72,15 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
 
     required_buttons = (
         "PANEL_TOGGLE",
-        "V1",
-        "V2",
-        "V3",
-        "V4",
-        "V5",
-        "V6",
-        "V7",
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "N5",
+        "N6",
+        "N7",
+        "N8",
+        "N9",
         "ANALYZE",
         "CYCLE",
         "SAVE",
@@ -306,3 +308,16 @@ def test_startup_runtime_failure_marks_memory_and_news_unavailable():
     assert "Memória indisponível: runtime sem resposta." in WEB
     assert "Fonte de notícias indisponível; nenhum dado foi inventado." in WEB
     assert "Resultados indisponíveis até a API responder." in WEB
+
+
+def test_watermark_is_layered_over_chart_background_but_behind_market_candles():
+    assert '.chart-wrap::before{content:"↗ CONTROLADOR TRADING"' in WEB
+    assert "position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;z-index:0" in WEB
+    assert "transform:rotate(-30deg)" in WEB
+    assert "color:#36aee8;opacity:.12;text-shadow:0 0 18px #36aee866,0 0 36px #36aee833" in WEB
+    assert ".chart-svg{position:relative;z-index:1}" in WEB
+    assert ".watermark-off #chartWrap::before{display:none}" in WEB
+    assert "document.body.classList.toggle('watermark-off',!enabled)" in WEB
+    chart = WEB.split("function renderMarketChart(candles)", 1)[1].split("async function refreshMarketAssets()", 1)[0]
+    assert '<svg class="chart-svg"' in chart
+    assert 'fill="#080b11"' not in chart
