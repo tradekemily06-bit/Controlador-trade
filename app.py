@@ -377,9 +377,10 @@ def application(environ, start_response):
                     timeframe=str(data.get("timeframe", "5m")),
                     limit=int(data.get("limit", 100)),
                 )
-            except MT5MarketDataError as exc:
-                # Broker/data failures are expected runtime states, not unhandled
-                # server errors. Preserve the fail-closed contract for the EA.
+            except (MT5MarketDataError, RuntimeError) as exc:
+                # Broker/data failures and unavailable/misconfigured runtime states
+                # are expected operational failures, not permission to reuse a signal.
+                # Preserve the fail-closed contract for the EA.
                 return _json_response(
                     start_response,
                     HTTPStatus.SERVICE_UNAVAILABLE,
