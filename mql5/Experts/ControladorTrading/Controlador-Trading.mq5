@@ -15,6 +15,7 @@ string last_external_id="";
 string active_view="COCKPIT";
 string active_nav="N1";
 string current_signal="AGUARDAR";
+string current_signal_reason="Aguardando analise.";
 string current_quality_score="";
 string current_quality_level="";
 string current_quality_actionable="false";
@@ -307,6 +308,8 @@ void RefreshSignalLabels(){
    string score=(current_quality_score=="" || current_quality_level=="")?"—":current_quality_score;
    if(ObjectFind(0,Obj("SCORE"))>=0)
       SetLabel(Obj("SCORE"),"Qualidade: "+score+"/100 • "+(current_quality_level==""?"—":current_quality_level),180,184,10,quality_color);
+   if(ObjectFind(0,Obj("REASON"))>=0)
+      SetLabel(Obj("REASON"),StringSubstr(current_signal_reason,0,62),180,204,9,C'180,190,205');
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -664,6 +667,7 @@ void RenderView(bool refresh_data=true){
 void InvalidateCurrentSignal(){
    runtime_ok=false;
    current_signal="AGUARDAR";
+   current_signal_reason="Runtime indisponivel • sinal anterior descartado.";
    current_quality_score="";
    current_quality_level="";
    current_quality_actionable="false";
@@ -831,6 +835,7 @@ void Analyze(bool render=true){
       // A failed analysis invalidates the last analysis health state and all signal quality.
       runtime_ok=false;
       current_signal="AGUARDAR";
+      current_signal_reason="Analise indisponivel • HTTP "+IntegerToString(code);
       current_quality_score="";
       current_quality_level="";
       current_quality_actionable="false";
@@ -861,6 +866,8 @@ void Analyze(bool render=true){
    current_quality_actionable=JsonValue(quality,"actionable");
    current_quality_technical_actionable=JsonValue(quality,"technical_actionable");
    if(current_quality_actionable!="true") current_signal="AGUARDAR";
+   current_signal_reason=JsonValue(r,"reason");
+   if(current_signal_reason=="") current_signal_reason="Analise concluida pelo runtime.";
    string indicator_data=JsonObjectValue(r,"indicators");
    string indicator_enabled=JsonValue(indicator_data,"enabled");
    string indicator_available=JsonValue(indicator_data,"available");
@@ -892,7 +899,7 @@ void Analyze(bool render=true){
    if(!render) return;
    string score=JsonValue(r,"score");
    if(score=="null") score="";
-   string reason=JsonValue(r,"reason");
+   string reason=current_signal_reason;
    color c=current_signal=="COMPRAR"?C'88,214,141':current_signal=="VENDER"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),current_signal,180,154,22,c);
    color quality_color=current_quality_level=="FORTE"?C'88,214,141':current_quality_level=="MODERADA"?C'255,209,102':current_quality_level=="FRACA"?C'255,118,118':clrWhite;
@@ -931,6 +938,7 @@ void RunCycle(){
    string signal=JsonValue(runtime,"signal");
    if(signal=="") signal="AGUARDAR";
    string reason=JsonValue(runtime,"reason");
+   current_signal_reason=reason==""?"Ciclo concluido.":reason;
    string cid=JsonValue(runtime,"cycle_id");
    string eid=JsonValue(runtime,"external_id");
    string decision=JsonValue(runtime,"decision");
