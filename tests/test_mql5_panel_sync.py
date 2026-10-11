@@ -135,6 +135,11 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert "RefreshFloatingSignal(signal,quality_score);" in panel
     assert 'RefreshFloatingSignal(signal,"",false);' not in panel
     assert 'if(allowed=="true")' in panel
+    assert "bool last_analysis_actionable=false;" in panel
+    assert "Analyze(false);" in panel
+    assert 'last_analysis_actionable=(quality_actionable=="true");' in panel
+    assert 'string filters_flag=last_analysis_actionable?"true":"false";' in panel
+    assert 'if(!runtime_ok || !last_analysis_actionable)' in panel
     assert 'JsonObjectValue(r,"reconciliation","reconciliation_state")' in panel
     assert 'closed=="true" && reconciliation_state=="MATCHED"' in panel
     assert 'reconciliacao nao confirmada' in panel
