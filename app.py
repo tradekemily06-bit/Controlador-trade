@@ -305,9 +305,9 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                # Candle confirmation is a server-owned policy, never a client authorization flag.
-                # The MT5 market adapter reads completed bars (copy_rates_from_pos start_pos=1).
-                confirmed=SERVICE.preferences.preferences.require_closed_candle,
+                # This route is MT5-only: its adapter fetches completed bars with start_pos=1.
+                # Confirmation is derived from that server-owned data contract, never from client JSON.
+                confirmed=True,
                 # Missing filter verdict is derived from live candles when required;
                 # explicit false or malformed values remain a fail-closed veto.
                 filters_ok=(
