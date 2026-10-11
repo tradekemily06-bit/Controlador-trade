@@ -307,7 +307,13 @@ def application(environ, start_response):
                 duration_seconds=int(data.get("duration_seconds", 60)),
                 # Authorization flags must be actual JSON booleans; strings like "false" fail closed.
                 confirmed=data.get("confirmed") is True,
-                filters_ok=data.get("filters_ok") is True,
+                # Missing filter verdict is derived from live candles when required;
+                # explicit false or malformed values remain a fail-closed veto.
+                filters_ok=(
+                    data.get("filters_ok")
+                    if isinstance(data.get("filters_ok"), bool)
+                    else (None if "filters_ok" not in data else False)
+                ),
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
