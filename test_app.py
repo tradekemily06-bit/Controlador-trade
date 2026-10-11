@@ -74,7 +74,13 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
         automation_lifecycle=None,
     )
     fake_result = SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,))
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
+    observed_calls = []
+
+    def run_cycle(**kwargs):
+        observed_calls.append(dict(kwargs))
+        return fake_result
+
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", run_cycle)
 
     status, data = call_app(
         "/api/runtime/cycle",
@@ -86,6 +92,27 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     assert data["runtime"]["cycle_id"] == "senior-cycle-001"
     assert data["runtime"]["request_id"] == "req-001"
     assert data["execution_allowed"] is False
+    assert observed_calls[0]["confirmed"] is True  # derived from MT5 adapter closed-bar contract
+    assert observed_calls[0]["filters_ok"] is None  # derive from real market context when required
+
+    # Client-supplied confirmation cannot override server policy; malformed filter evidence fails closed.
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {
+            "symbol": "EURUSD",
+            "timeframe": "5m",
+            "limit": 3,
+            "amount": 0.01,
+            "duration_seconds": 60,
+            "confirmed": "true",
+            "filters_ok": "true",
+        },
+    )
+    assert status.startswith("200")
+    assert data["execution_allowed"] is False
+    assert observed_calls[1]["confirmed"] is True  # client cannot override broker-data confirmation
+    assert observed_calls[1]["filters_ok"] is False
 
 
 

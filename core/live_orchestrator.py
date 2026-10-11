@@ -64,7 +64,7 @@ class TradingOrchestrator:
         market_context: MarketContextResult | None,
         senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
-        filters_ok: bool = True,
+        filters_ok: bool | None = True,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
@@ -75,6 +75,12 @@ class TradingOrchestrator:
             market_context = self.market_context_engine.evaluate_from_candles(
                 candles=list(market_data.candles),
             )
+        # When the caller has no trusted filter verdict, derive it from the
+        # same live candle context used by the final decision engine. A
+        # preference or client checkbox is not evidence that filters passed.
+        if filters_ok is None:
+            from core.market_context import MarketContext
+            filters_ok = market_context.context is MarketContext.FAVORAVEL
         analysis = self.pipeline.evaluate(
             list(market_data.candles),
             confirmed=confirmed,

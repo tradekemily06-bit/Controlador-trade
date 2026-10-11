@@ -129,3 +129,35 @@ def test_orchestrator_builds_senior_context_from_same_fetched_candles():
     assert len(captured) == 1
     assert captured[0][0] == result.market_data.candles
     assert captured[0][1] == state()
+
+
+def test_orchestrator_derives_required_filter_verdict_from_real_market_context():
+    from core.market_context import MarketContextResult
+
+    neutral_context = MarketContextResult(
+        context=MarketContext.NEUTRO,
+        score=50.0,
+        reason="contexto neutro",
+        direction=MarketDirection.NEUTRA,
+    )
+    result = make_orchestrator(make_candles()).evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=neutral_context,
+        confirmed=True,
+        filters_ok=None,
+    )
+    assert result.analysis.signal.value == "AGUARDAR"
+    assert "Filtros de segurança não aprovados" in result.analysis.reason
+    assert result.executable is False
+
+
+def test_orchestrator_derives_filter_verdict_from_favorable_market_context():
+    result = make_orchestrator(make_candles()).evaluate(
+        MarketDataRequest("TEST", "1m", 3),
+        operational_state=state(),
+        market_context=favorable(),
+        confirmed=True,
+        filters_ok=None,
+    )
+    assert "Filtros de segurança não aprovados" not in result.analysis.reason

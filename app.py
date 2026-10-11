@@ -305,12 +305,21 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                # This route is MT5-only: its adapter fetches completed bars with start_pos=1.
+                # Confirmation is derived from that server-owned data contract, never from client JSON.
+                confirmed=True,
+                # Missing filter verdict is derived from live candles when required;
+                # explicit false or malformed values remain a fail-closed veto.
+                filters_ok=(
+                    data.get("filters_ok")
+                    if isinstance(data.get("filters_ok"), bool)
+                    else (None if "filters_ok" not in data else False)
+                ),
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            cycle_quality = getattr(cycle.orchestration, "quality", None)
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
@@ -330,6 +339,11 @@ def application(environ, start_response):
                 "external_id": execution.external_id if execution else None,
                 "execution_status": execution.status.value if execution else None,
                 "execution": {"accepted": execution.accepted, "status": execution.status.value, "message": execution.message, "external_id": execution.external_id} if execution else None,
+                "quality": {
+                    "score": cycle_quality.score if cycle_quality is not None else None,
+                    "level": cycle_quality.level.value if cycle_quality is not None else None,
+                    "actionable": bool(cycle_quality is not None and cycle_quality.actionable),
+                },
             }
             return _json_response(start_response, HTTPStatus.OK, {"runtime": payload, "execution_allowed": bool(execution and execution.accepted)}, request_id, environ)
         if path == "/api/market/assets" and method == "GET":

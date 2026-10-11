@@ -39,23 +39,18 @@ class SignalQualityEvaluator:
                 actionable=False,
             )
 
+        # Qualidade mede a força relativa da leitura, não a autorização operacional.
+        # Portanto, também existe para AGUARDAR e para candles ainda não confirmados.
+        # A autorização permanece separada em "actionable".
         actionable = (
             analysis.confirmed is True
             and analysis.signal in (Signal.COMPRA, Signal.VENDA)
         )
-
-        if not actionable:
-            return SignalQuality(
-                score=0.0,
-                level=SignalLevel.NENHUMA,
-                actionable=False,
-            )
-
-        quality_score = abs(score - 50.0) * 2.0
+        quality_score = max(1.0, abs(score - 50.0) * 2.0)
 
         if quality_score >= 80:
             level = SignalLevel.FORTE
-        elif quality_score >= 60:
+        elif quality_score >= 70:
             level = SignalLevel.MODERADA
         else:
             level = SignalLevel.FRACA
@@ -63,7 +58,7 @@ class SignalQualityEvaluator:
         return SignalQuality(
             score=quality_score,
             level=level,
-            actionable=True,
+            actionable=actionable,
         )
 
 
