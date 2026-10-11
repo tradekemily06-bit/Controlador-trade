@@ -947,6 +947,12 @@ void RunCycle(){
    // This native EA has no explicit closed-candle confirmation or filter checklist UI.
    // Fail closed instead of asserting that required safeguards passed.
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":false,\"filters_ok\":false,\"entry_conditions\":[]}";
+   // A new attempt invalidates the previous cycle reference until this response is verified.
+   // This prevents a failed request from leaving a stale ID available to FECHAR + RECONCILIAR.
+   last_cycle_id="";
+   last_external_id="";
+   SetLabel(Obj("CYCLEID"),"Ciclo: —",180,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: —",180,483,8,C'145,160,180');
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",180,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
