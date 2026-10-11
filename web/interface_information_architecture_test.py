@@ -53,7 +53,7 @@ def test_critical_and_admin_destinations_have_distinct_roles():
 
 
 def test_real_execution_has_no_interface_enablement_path():
-    assert "REAL BLOQUEADO" in HTML
+    assert "REAL: BLOQUEADO" in HTML
     assert "REAL /" not in HTML
     assert "DESABILITADO" in HTML
 
@@ -70,5 +70,6 @@ def test_mobile_cockpit_uses_runtime_market_analysis_and_real_chart_context():
 def test_mobile_operational_analysis_does_not_use_manual_score_path():
     analyze_area = HTML.split('id="analise"', 1)[1].split('<div class="section"', 1)[0]
     assert 'id="scoreInput"' not in analyze_area
-    assert 'Candle fechado/confirmado' in analyze_area
-    assert 'Filtros aprovados' in analyze_area
+    assert 'Candle fechado/confirmado' not in analyze_area
+    assert 'Filtros aprovados' not in analyze_area
+    assert 'A interface não marca essas evidências manualmente.' in analyze_area

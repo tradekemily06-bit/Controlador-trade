@@ -35,6 +35,8 @@ def test_failed_filters_wait():
     result = SignalEngine().evaluate(score=90, confirmed=True, filters_ok=False)
 
     assert result.signal is Signal.AGUARDAR
+    assert result.filters_ok is False
+    assert result.score == 90
 
 
 def test_out_of_range_score_waits():

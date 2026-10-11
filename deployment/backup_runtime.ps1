@@ -5,7 +5,7 @@ if(-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)){throw "Python não e
 if([string]::IsNullOrWhiteSpace($RuntimeDir)){$RuntimeDir=Join-Path $ProjectRoot '.runtime'}
 if([string]::IsNullOrWhiteSpace($OutputDir)){$OutputDir=Join-Path $ProjectRoot '.runtime-backups'}
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$timestamp=Get-Date -Format 'yyyyMMdd-HHmmss'; $backup=Join-Path $OutputDir "controlador-runtime-$timestamp.zip"
+$timestamp=Get-Date -Format 'yyyyMMdd-HHmmss-fff'; $backup=Join-Path $OutputDir "controlador-runtime-$timestamp-$([guid]::NewGuid().ToString('N').Substring(0,8)).zip"
 Set-Location $ProjectRoot
-& $PythonExe -c "from core.runtime_portability import create_backup; print(create_backup(r'$RuntimeDir',r'$backup'))"
+& $PythonExe -c "import sys; from core.runtime_portability import create_backup; print(create_backup(sys.argv[1], sys.argv[2]))" $RuntimeDir $backup
 if($LASTEXITCODE -ne 0){throw 'Falha ao criar backup do runtime.'}

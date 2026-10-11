@@ -1,0 +1,120 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from core.indicator_sources import (
+    ExternalIndicatorReading,
+    IndicatorSourceKind,
+    is_fresh_indicator_reading,
+)
+
+
+def reading(**overrides):
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    values = dict(
+        provider="test-provider",
+        source_kind=IndicatorSourceKind.EXTERNAL_SITE,
+        symbol="EURUSD",
+        timeframe="M5",
+        observed_at=now,
+        candle_timestamp=now - timedelta(minutes=5),
+        values={"rsi_14": 53.2, "macd": 0.001},
+    )
+    values.update(overrides)
+    # Keep the candle time before observation time even when testing old observations.
+    if "observed_at" in overrides and "candle_timestamp" not in overrides:
+        values["candle_timestamp"] = overrides["observed_at"] - timedelta(minutes=5)
+    return ExternalIndicatorReading(**values)
+
+
+def test_accepts_normalized_external_indicator_reading():
+    result = reading()
+    assert result.source_kind is IndicatorSourceKind.EXTERNAL_SITE
+    assert result.values["rsi_14"] == 53.2
+
+
+def test_rejects_non_finite_indicator_values():
+    with pytest.raises(ValueError, match="finite numeric"):
+        reading(values={"rsi_14": float("nan")})
+
+
+def test_rejects_future_candle_timestamp():
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="after observation"):
+        reading(candle_timestamp=now + timedelta(seconds=1))
+
+
+def test_freshness_rejects_old_and_future_observations():
+    now = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
+    assert is_fresh_indicator_reading(reading(), now=now)
+    assert not is_fresh_indicator_reading(
+        reading(observed_at=now - timedelta(minutes=10)),
+        now=now,
+    )
+    assert not is_fresh_indicator_reading(
+        reading(observed_at=now + timedelta(seconds=1)),
+        now=now,
+    )
+
+
+def test_requires_timezone_aware_timestamps():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        reading(observed_at=datetime(2026, 10, 10, 12))
+
+
+def test_indicator_visibility_toggle_is_saved_in_shared_ecosystem_preferences():
+    html = ( __import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'id="indicatorsDefault"' in html
+    assert 'indicators_enabled:$(\'indicatorsDefault\').checked' in html
+    assert "const desired=$('indicatorsDefault').checked;" in html
+    assert 'JSON.stringify({indicators_enabled:desired})' in html
+    assert "Indicadores ocultos nas preferências do ecossistema." in html
+    assert "@media(max-width:719px)" in html
+    assert ".grid{grid-template-columns:minmax(0,1fr)" in html
+    assert ".chart-svg{height:65vw;min-height:220px}" in html
+    assert "localStorage" not in html
+
+
+def test_web_chart_first_view_keeps_only_chart_c_signal_and_watermark_when_closed():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'id="ecosystemC"' in html
+    assert 'id="compactSignal"' in html
+    assert 'id="ecosystemDrawer" class="ecosystem-drawer" hidden' in html
+    assert '.app>.top{display:none!important}' in html
+    assert 'width:min(42vw,540px);height:min(44vh,440px)' in html
+    assert 'width:calc(100vw - 20px);height:44dvh' in html
+    assert 'id="mt5PanelToggle"' not in html
+    assert 'id="mt5SidePanel"' not in html
+    assert 'id="grafico"' in html
+
+
+def test_web_compact_signal_uses_runtime_quality_and_semantic_colors():
+    html = (__import__("pathlib").Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert 'const q=d.quality||{};' in html
+    assert 'String(q.level||\'\').toUpperCase()' in html
+    assert '.compact-signal.buy{' in html
+    assert '.compact-signal.sell{' in html
+    assert '.compact-signal.wait{' in html
+    assert 'id="watermarkDefault"' in html
+    assert 'watermark_enabled:$(' in html
+    assert 'setWatermarkVisible($(' in html
+
+
+def test_indicator_preference_controls_backend_work_not_just_rendering():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    orchestrator = (root / "core" / "live_orchestrator.py").read_text(encoding="utf-8")
+    service = (root / "integration" / "ecosystem_configuration_runtime.py").read_text(encoding="utf-8")
+    app = (root / "app.py").read_text(encoding="utf-8")
+    assert "if indicators_enabled and self.indicator_provider is not None:" in orchestrator
+    assert '"DISABLED_BY_PREFERENCE"' in orchestrator
+    assert "indicators_enabled=prefs.indicators_enabled" in service
+    assert "Indicadores desativados nas preferências do ecossistema." in app
+
+
+def test_compact_signal_fails_closed_when_market_analysis_is_unavailable():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
+    assert "sinal anterior descartado até nova confirmação." in html
+    assert "$('compactSignal').textContent='AGUARDAR'" in html
+    assert "$('compactSignal').className='compact-signal wait'" in html

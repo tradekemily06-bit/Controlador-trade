@@ -11,6 +11,12 @@ from core.market_context import MarketContextEngine, MarketContextResult
 from core.models import AnalysisResult
 from core.operational_state import OperationalState
 from core.signal_quality import SignalQuality
+from core.indicator_evidence import IndicatorEvidence, calculate_indicator_evidence
+from core.indicator_sources import (
+    ExternalIndicatorReading,
+    IndicatorReadingProvider,
+    is_fresh_indicator_reading,
+)
 from core.senior_context_cycle import SeniorContextCycle
 from data.feed import MarketDataFeed, MarketDataRequest, MarketDataResult
 
@@ -26,6 +32,10 @@ class OrchestrationResult:
     snapshot: DecisionSnapshot
     timestamp: datetime
     senior_context: SeniorContextCycle | None = None
+    indicator_evidence: IndicatorEvidence | None = None
+    external_indicator_reading: ExternalIndicatorReading | None = None
+    external_indicator_status: str = "NOT_CONFIGURED"
+    indicators_enabled: bool = True
 
     @property
     def executable(self) -> bool:
@@ -48,6 +58,7 @@ class TradingOrchestrator:
         quality_evaluator,
         market_context_engine: MarketContextEngine | None = None,
         senior_context_builder: Callable[[list, OperationalState | None], SeniorContextCycle | None] | None = None,
+        indicator_provider: IndicatorReadingProvider | None = None,
     ) -> None:
         self.feed = feed
         self.pipeline = pipeline
@@ -55,6 +66,7 @@ class TradingOrchestrator:
         self.quality_evaluator = quality_evaluator
         self.market_context_engine = market_context_engine or MarketContextEngine()
         self.senior_context_builder = senior_context_builder
+        self.indicator_provider = indicator_provider
 
     def evaluate(
         self,
@@ -65,12 +77,43 @@ class TradingOrchestrator:
         senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
         filters_ok: bool = True,
+        indicators_enabled: bool = True,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
     ) -> OrchestrationResult:
         timestamp = datetime.now(timezone.utc)
         market_data = self.feed.fetch(request)
+        # Indicator evidence is derived from the same validated candle snapshot;
+        # it is intentionally informational and does not authorize or alter a decision.
+        indicator_evidence = (
+            calculate_indicator_evidence(
+                market_data.candles,
+                source=f"{market_data.source}:CONTROLADOR_CALCULADO",
+            )
+            if indicators_enabled and len(market_data.candles) >= 35
+            else None
+        )
+        external_indicator_reading = None
+        external_indicator_status = "NOT_CONFIGURED" if indicators_enabled else "DISABLED_BY_PREFERENCE"
+        if indicators_enabled and self.indicator_provider is not None:
+            try:
+                candidate = self.indicator_provider.read(
+                    symbol=request.symbol, timeframe=request.timeframe, now=timestamp
+                )
+                if candidate is None:
+                    external_indicator_status = "UNAVAILABLE"
+                elif candidate.symbol.upper() != request.symbol.upper() or candidate.timeframe.upper() != request.timeframe.upper():
+                    external_indicator_status = "REJECTED_SYMBOL_OR_TIMEFRAME_MISMATCH"
+                elif not is_fresh_indicator_reading(candidate, now=timestamp, max_age_seconds=300):
+                    external_indicator_status = "REJECTED_STALE_READING"
+                else:
+                    external_indicator_reading = candidate
+                    external_indicator_status = "AVAILABLE_EVIDENCE_ONLY"
+            except Exception:
+                # A provider outage or malformed external payload must not stop
+                # the core analysis or grant any additional execution authority.
+                external_indicator_status = "UNAVAILABLE_PROVIDER_ERROR"
         if market_context is None:
             market_context = self.market_context_engine.evaluate_from_candles(
                 candles=list(market_data.candles),
@@ -109,4 +152,8 @@ class TradingOrchestrator:
             snapshot=snapshot,
             timestamp=timestamp,
             senior_context=senior_context,
+            indicator_evidence=indicator_evidence,
+            external_indicator_reading=external_indicator_reading,
+            external_indicator_status=external_indicator_status,
+            indicators_enabled=bool(indicators_enabled),
         )

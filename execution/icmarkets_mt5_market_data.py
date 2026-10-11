@@ -42,27 +42,37 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
         self._mt5 = mt5_module
         self._terminal_path = terminal_path or os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH") or None
 
-    def _initialize(self, mt5: Any) -> bool:
-        if not self._terminal_path:
-            return bool(mt5.initialize())
-        if not mt5.initialize(path=self._terminal_path):
-            return False
-        terminal = mt5.terminal_info()
-        expected = os.path.normcase(os.path.realpath(self._terminal_path))
-        actual = (
-            os.path.normcase(
-                os.path.realpath(
-                    os.path.join(getattr(terminal, "path", ""), os.path.basename(self._terminal_path))
-                )
-            )
-            if terminal is not None
-            else ""
+    def initialize_terminal(self, mt5: Any) -> bool:
+        initialized = bool(
+            mt5.initialize(path=self._terminal_path, timeout=15_000)
+            if self._terminal_path
+            else mt5.initialize(timeout=15_000)
         )
-        if actual != expected:
+        if not initialized:
+            return False
+
+        terminal = mt5.terminal_info()
+        if terminal is None or not bool(getattr(terminal, "connected", False)):
             mt5.shutdown()
             raise MT5MarketDataError(
-                "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
+                "terminal MT5 não conectado após initialize; leitura bloqueada."
             )
+
+        if self._terminal_path:
+            expected = os.path.normcase(os.path.realpath(self._terminal_path))
+            actual = os.path.normcase(
+                os.path.realpath(
+                    os.path.join(
+                        getattr(terminal, "path", ""),
+                        os.path.basename(self._terminal_path),
+                    )
+                )
+            )
+            if actual != expected:
+                mt5.shutdown()
+                raise MT5MarketDataError(
+                    "terminal MT5 conectado não corresponde ao caminho configurado; leitura bloqueada."
+                )
         return True
 
     def _module(self) -> Any:
@@ -116,7 +126,7 @@ class ICMarketsMT5DemoMarketDataAdapter(BrokerMarketDataPort):
 
         mt5 = self._module()
         timeframe = self._timeframe(request.timeframe)
-        if not self._initialize(mt5):
+        if not self.initialize_terminal(mt5):
             raise MT5MarketDataError(f"MT5 indisponível: {self._last_error(mt5)}")
 
         try:

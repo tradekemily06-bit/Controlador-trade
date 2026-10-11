@@ -91,7 +91,7 @@ import os
 import sys
 import MetaTrader5 as mt5
 requested = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else ""
-if not mt5.initialize(path=requested or None):
+if not mt5.initialize(path=requested or None, timeout=15000):
     raise SystemExit("MT5_INIT_FAILED:" + str(mt5.last_error()))
 info = mt5.terminal_info()
 if info is None:

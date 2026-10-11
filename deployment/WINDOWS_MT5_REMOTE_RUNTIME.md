@@ -114,6 +114,8 @@ Essas variáveis são configuração de ambiente/segredo operacional e não deve
 O diretório `CONTROLADOR_RUNTIME_DIR` é o estado portátil do ecossistema. A partir desta versão, a memória de decisões usa por padrão `decision-memory.sqlite` dentro desse diretório, portanto não depende de configuração manual de um caminho externo.
 
 Os artefatos de estado portáveis são:
+
+O pacote impõe limites defensivos de **2 GiB por arquivo** e **4 GiB no total**. Se o estado ultrapassar esses limites, a criação/restauração é recusada; o backup anterior não deve ser substituído por um pacote incompleto.
 - `operation-memory.json`
 - `operational-safety.json`
 - `execution-ledger.json`
@@ -124,7 +126,7 @@ Os artefatos de estado portáveis são:
 - `decision-memory.sqlite`
 - `security-audit.sqlite`
 
-`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup inclui também o lifecycle persistente da automação; usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão.
+`deployment/backup_runtime.ps1` cria um pacote verificado desses artefatos. O backup inclui também o lifecycle persistente da automação; usa a API de backup do SQLite para os bancos e registra SHA-256 no manifesto; segredos, tokens, senhas e configuração específica da máquina ficam fora do pacote. Como os arquivos JSON e os bancos são capturados em momentos distintos, pare o Controlador e seus supervisores antes de criar um backup de migração consistente. A restauração também deve ocorrer com o runtime/supervisores parados, para evitar gravações concorrentes, bancos abertos ou estado reescrito durante a substituição. A restauração usa `deployment/restore_runtime.ps1`, valida o manifesto e não sobrescreve estado existente por padrão. A substituição de estado exige a opção explícita `-Replace`; faça isso somente depois de confirmar o backup e o diretório de destino. A restauração prepara e verifica todos os arquivos antes de substituí-los. A criação de destinos ausentes usa uma operação atômica sem sobrescrita; em `-Replace`, destinos preexistentes são conferidos contra o estado observado durante a preparação, e conflitos detectados interrompem a restauração. O rollback tenta reverter somente destinos que ainda correspondem aos arquivos gravados pelo próprio restaurador. **Essas verificações não são uma transação compare-and-swap contra processos arbitrários**: um escritor que ignore a parada do runtime ainda pode alterar um destino na janela entre a última conferência e a substituição. Portanto, pare o Controlador, MT5 supervisor e quaisquer processos que escrevam no diretório antes de restaurar; não use `-Replace` com escritores ativos. Além disso, como a substituição de vários arquivos não é uma transação única do sistema de arquivos, desligamento abrupto ou perda de energia durante o commit pode deixar um conjunto parcialmente restaurado. Até existir recuperação transacional persistente validada por testes de interrupção, mantenha uma cópia independente do backup e não interprete a reversão de exceções como garantia de recuperação após queda do sistema.
 
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 

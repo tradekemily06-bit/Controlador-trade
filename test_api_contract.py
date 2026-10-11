@@ -169,6 +169,36 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("text/plain", headers["Content-Type"])
         self.assertEqual(body, b"Not Found")
 
+    def test_mt5_runtime_analysis_maps_mt5_read_failures_to_safe_503(self):
+        from execution.icmarkets_mt5_market_data import MT5MarketDataError
+
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=MT5MarketDataError("dados indisponíveis")):
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["signal"], "AGUARDAR")
+        self.assertEqual(payload["execution_allowed"], False)
+        self.assertEqual(payload["detail"], "dados indisponíveis")
+
+    def test_mt5_runtime_analysis_maps_unavailable_runtime_to_safe_503(self):
+        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=RuntimeError("runtime DEMO indisponível")):
+            status, _, payload = self.request(
+                "/api/runtime/analysis",
+                method="POST",
+                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+            )
+
+        self.assertEqual(status, "503 Service Unavailable")
+        self.assertEqual(payload["signal"], "AGUARDAR")
+        self.assertFalse(payload["execution_allowed"])
+        self.assertEqual(payload["detail"], "runtime DEMO indisponível")
+
+
+
     def request_raw(self, path, method="GET"):
         captured = {}
 
@@ -186,24 +216,6 @@ class ApiContractTests(unittest.TestCase):
         }
         response = b"".join(application(environ, start_response))
         return captured["status"], captured["headers"], response
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-    def test_mt5_runtime_analysis_maps_mt5_read_failures_to_safe_503(self):
-        from execution.icmarkets_mt5_market_data import MT5MarketDataError
-
-        with patch.object(__import__("app").SERVICE, "analyze_mt5_market", side_effect=MT5MarketDataError("dados indisponíveis")):
-            status, _, payload = self.request(
-                "/api/runtime/analysis",
-                method="POST",
-                payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
-            )
-
-        self.assertEqual(status, "503 Service Unavailable")
-        self.assertEqual(payload["execution_allowed"], False)
-        self.assertEqual(payload["detail"], "dados indisponíveis")
 
 
 def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
@@ -236,3 +248,116 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
     assert len(payload["market_data"]["ohlcv"]) == 120
     assert payload["market_data"]["ohlcv"][0]["open"] == candles[-120].open
     assert payload["execution_allowed"] is False
+
+
+def test_compact_signal_waits_when_technical_candidate_fails_final_runtime_gates():
+    fake = SimpleNamespace(
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="COMPRA"),
+            score=85.0,
+            reason="score técnico favorável",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(
+            score=85.0,
+            level=SimpleNamespace(value="FORTE"),
+            actionable=True,
+        ),
+        decision=SimpleNamespace(
+            decision="AGUARDAR",
+            reason="Contexto de mercado não favorável para execução.",
+        ),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "COMPRA", "symbol": "EURUSD"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=()),
+    )
+    with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake):
+        status, _, payload = ApiContractTests().request(
+            "/api/runtime/analysis",
+            method="POST",
+            payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+        )
+    assert status == "200 OK"
+    assert payload["analysis"]["signal"] == "COMPRA"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["score"] == 85.0
+    assert payload["quality"]["score"] == 85.0
+    assert payload["quality"]["level"] == "FORTE"
+    assert payload["quality"]["actionable"] is False
+    assert payload["quality"]["technical_actionable"] is True
+    assert payload["quality"]["decision_approved"] is False
+    assert payload["reason"] == "Contexto de mercado não favorável para execução."
+
+
+def test_weak_confirmed_candidate_keeps_fraca_quality_while_displaying_wait():
+    fake = SimpleNamespace(
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="AGUARDAR"),
+            score=50.0,
+            reason="Score insuficiente para entrada.",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(
+            score=50.0,
+            level=SimpleNamespace(value="FRACA"),
+            actionable=False,
+        ),
+        decision=SimpleNamespace(
+            decision="AGUARDAR",
+            reason="Score insuficiente para entrada.",
+        ),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "symbol": "EURUSD"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=()),
+    )
+    with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake):
+        status, _, payload = ApiContractTests().request(
+            "/api/runtime/analysis",
+            method="POST",
+            payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+        )
+    assert status == "200 OK"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["quality"]["score"] == 50.0
+    assert payload["quality"]["level"] == "FRACA"
+    assert payload["quality"]["actionable"] is False
+    assert payload["quality"]["technical_actionable"] is False
+
+
+def test_sell_quality_score_is_direction_normalized_in_api_response():
+    fake = SimpleNamespace(
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="VENDA"),
+            score=20.0,
+            reason="score bruto favorece venda",
+            confirmed=True,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(
+            score=80.0,
+            level=SimpleNamespace(value="FORTE"),
+            actionable=True,
+        ),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="gates finais aprovados"),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "VENDA", "symbol": "EURUSD"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=()),
+    )
+    with patch.object(__import__("app").SERVICE, "analyze_mt5_market", return_value=fake):
+        status, _, payload = ApiContractTests().request(
+            "/api/runtime/analysis",
+            method="POST",
+            payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+        )
+    assert status == "200 OK"
+    assert payload["signal"] == "VENDA"
+    assert payload["score"] == 80.0
+    assert payload["quality"]["score"] == 80.0
+    assert payload["analysis"]["score"] == 20.0
+    assert payload["quality"]["level"] == "FORTE"
+
+
+if __name__ == "__main__":
+    unittest.main()

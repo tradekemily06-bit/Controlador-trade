@@ -60,23 +60,51 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # ConvertFrom-Json can accept scalar JSON such as null or a string.
+        # Only the persisted JSON array contract is valid; malformed history
+        # must stop the supervisor rather than silently reset its restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        $previousRestart = [datetime]::MinValue
+        $futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)
         foreach ($item in @($items)) {
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
+            $parsedRestart = [datetime]::Parse($item).ToUniversalTime()
+            if ($parsedRestart -gt $futureLimit) {
+                throw 'Formato do histórico de reinícios inválido: existe data no futuro.'
+            }
+            if ($parsedRestart -lt $previousRestart) {
+                throw 'Formato do histórico de reinícios inválido: registros fora de ordem cronológica.'
+            }
+            $restartTimes.Add($parsedRestart.ToLocalTime())
+            $previousRestart = $parsedRestart
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-StartupLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
+        throw $message
     }
 }
 
 function Save-RestartHistory {
     $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
-    $tmp = "$restartHistoryPath.tmp"
-    $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($restartHistoryPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        $json = ConvertTo-Json -InputObject @($values) -Depth 3
+        Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -105,10 +133,12 @@ function Sync-Mt5Panel {
         return
     }
     try {
+        # Capture both streams before reading LASTEXITCODE; otherwise a failed
+        # MetaEditor/sync invocation can lose its useful diagnostic output.
         $syncOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $syncScript -ProjectRoot $ProjectRoot -PythonExe $PythonExe -Mt5TerminalPath $Mt5TerminalPath 2>&1
         $syncExitCode = $LASTEXITCODE
-        foreach ($line in @($syncOutput)) {
-            $message = [string]$line
+        foreach ($line in $syncOutput) {
+            $message = ([string]$line).Trim()
             if (-not [string]::IsNullOrWhiteSpace($message)) {
                 Write-StartupLog "Sincronização MQL5: $message"
             }
@@ -126,13 +156,28 @@ function Sync-Mt5Panel {
 function Test-Mt5Demo {
     param([int]$WaitSeconds)
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
+    $attempt = 0
     while ((Get-Date) -lt $deadline) {
+        $attempt++
         try {
-            & $PythonExe -c "import MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5); raise SystemExit(0 if r.available and r.demo else 1)"
-            if ($LASTEXITCODE -eq 0) { return $true }
-        } catch {}
+            $preflightOutput = @(& $PythonExe -c "import json, MetaTrader5 as mt5; from execution.mt5_demo_runtime_preflight import run_preflight; r=run_preflight(mt5, initialize_timeout_ms=15000); print('MT5_PREFLIGHT=' + json.dumps({'available':r.available,'demo':r.demo,'symbol':r.symbol,'bid':r.bid,'ask':r.ask,'volume_min':r.volume_min,'volume_step':r.volume_step,'message':r.message}, ensure_ascii=False)); raise SystemExit(0 if r.available and r.demo else 1)" 2>&1)
+            $preflightExitCode = $LASTEXITCODE
+            foreach ($line in $preflightOutput) {
+                $message = ([string]$line).Trim()
+                if (-not [string]::IsNullOrWhiteSpace($message)) {
+                    Write-StartupLog "MT5 DEMO preflight tentativa $attempt (exit=$preflightExitCode): $message"
+                }
+            }
+            if ($preflightExitCode -eq 0) { return $true }
+            if (-not $preflightOutput -or $preflightOutput.Count -eq 0) {
+                Write-StartupLog "MT5 DEMO preflight tentativa $attempt falhou sem saída (exit=$preflightExitCode)."
+            }
+        } catch {
+            Write-StartupLog "MT5 DEMO preflight tentativa $attempt lançou exceção: $($_.Exception.Message)"
+        }
         Start-Sleep -Seconds 5
     }
+    Write-StartupLog "MT5 DEMO preflight não foi confirmado dentro de $WaitSeconds s; runtime permanecerá bloqueado para execução."
     return $false
 }
 
@@ -194,6 +239,8 @@ function Stop-ControllerProcess {
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 2
 }
+
+Load-RestartHistory
 
 $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) { $ProjectRoot } else { "$ProjectRoot;$($env:PYTHONPATH)" }
 Set-Location $ProjectRoot

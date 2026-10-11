@@ -40,6 +40,8 @@ def test_read_only_windows_validator_covers_deployment_surface():
         "MT5_DEMO_MARKET=True",
         "orders=not requested",
         "scheduled-task:$task",
+        "scheduled-task-enabled:$task",
+        "scheduled-task-running:$task",
         "mql5-source",
         "mql5-ex5-current",
         "$payload.execution_allowed -eq $false",
@@ -55,7 +57,10 @@ def test_read_only_windows_validator_covers_deployment_surface():
     assert "$payload.execution.real" not in text
     assert "Register-ScheduledTask" not in text
     assert "Start-Process" not in text
-    assert "mt5.initialize(path=p)" in text
+    assert "mt5.initialize(path=p, timeout=15000)" in text
+    assert "mt5-supervisor-status.json" in text
+    assert "controlador-supervisor-status.json" in text
+    assert "$status.state -eq 'HEALTHY'" in text
     assert "$Mt5TerminalPath | Out-Null" in text
     assert "Invoke-WebRequest -UseBasicParsing -Method Post" not in text
     assert "/api/runtime/analysis" not in text
@@ -114,7 +119,7 @@ def test_mt5_supervisor_logs_specific_health_gate_failure_reason():
 
 def test_mt5_supervisor_pins_health_and_process_management_to_configured_terminal():
     text = _read("deployment/start_mt5_runtime.ps1")
-    assert "mt5.initialize(path=path)" in text
+    assert "mt5.initialize(path=path, timeout=15000)" in text
     assert "$Mt5TerminalPath" in text
     assert "function Get-ConfiguredMt5Process" in text
     assert "Mais de uma instância corresponde" in text
@@ -129,7 +134,7 @@ def test_controller_supervisor_and_installer_share_configured_mt5_terminal():
     assert "$env:CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in controller
     bootstrap = _read("deployment/bootstrap_windows_runtime.ps1")
     assert "CONTROLADOR_MT5_TERMINAL_PATH = $Mt5TerminalPath" in bootstrap
-    assert "run_preflight(mt5)" in controller
+    assert "run_preflight(mt5, initialize_timeout_ms=15000)" in controller
     assert "-Mt5TerminalPath $Mt5TerminalPath" in controller
     assert "-Mt5TerminalPath \"' + $Mt5TerminalPath + '\"" in installer
 
@@ -138,9 +143,9 @@ def test_market_data_adapter_and_preflight_honor_configured_terminal():
     adapter = _read("execution/icmarkets_mt5_market_data.py")
     preflight = _read("execution/mt5_demo_runtime_preflight.py")
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in adapter
-    assert "mt5.initialize(path=self._terminal_path)" in adapter
+    assert "mt5.initialize(path=self._terminal_path, timeout=15_000)" in adapter
     assert "CONTROLADOR_MT5_TERMINAL_PATH" in preflight
-    assert "mt5.initialize(path=configured_path)" in preflight
+    assert "mt5.initialize(path=configured_path, timeout=initialize_timeout_ms)" in preflight
 
 def test_controller_supervisor_preserves_mql5_sync_failure_details():
     text = _read("deployment/start_controlador_runtime.ps1")
@@ -150,4 +155,59 @@ def test_controller_supervisor_preserves_mql5_sync_failure_details():
     assert 'Write-StartupLog "Sincronização MQL5: $message"' in text
     assert "terminou com código $syncExitCode" in text
 
+def test_supervisors_reject_restart_history_that_is_future_dated_or_out_of_order():
+    for name in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(name)
+        assert "$futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)" in text
+        assert "$parsedRestart -gt $futureLimit" in text
+        assert "$parsedRestart -lt $previousRestart" in text
+        assert "$json = ConvertTo-Json -InputObject @($values) -Depth 3" in text
+        assert "RESTART_HISTORY_INVALID" in text
+        assert "supervisor interrompido para preservar o limite de segurança" in text or "supervisor MT5 interrompido para preservar o limite de segurança" in text
 
+
+
+
+def test_controller_supervisor_bounds_and_logs_mt5_preflight_failures():
+    controller = _read("deployment/start_controlador_runtime.ps1")
+    preflight = _read("execution/mt5_demo_runtime_preflight.py")
+    assert "initialize_timeout_ms=15000" in controller
+    assert "MT5_PREFLIGHT=" in controller
+    assert "MT5 DEMO preflight tentativa" in controller
+    assert "não foi confirmado dentro de" in controller
+    assert "initialize_timeout_ms: int = 15_000" in preflight
+    assert "terminal MT5 não conectado após initialize" in preflight
+    assert "cotação ou limites de volume inválidos" in preflight
+
+
+
+def test_execution_adapter_pins_and_bounds_mt5_initialization():
+    adapter = _read("execution/icmarkets_mt5_demo_adapter.py")
+    assert 'os.environ.get("CONTROLADOR_MT5_TERMINAL_PATH", "")' in adapter
+    assert "mt5.initialize(path=configured_path, timeout=15_000)" in adapter
+    assert "mt5.initialize(timeout=15_000)" in adapter
+    assert "terminal MT5 conectado não corresponde ao caminho configurado" in adapter
+
+
+
+def test_market_data_adapter_bounds_initialization_and_requires_connected_terminal():
+    adapter = _read("execution/icmarkets_mt5_market_data.py")
+    assert "mt5.initialize(path=self._terminal_path, timeout=15_000)" in adapter
+    assert "mt5.initialize(timeout=15_000)" in adapter
+    assert "terminal MT5 não conectado após initialize" in adapter
+
+
+
+def test_mt5_asset_discovery_uses_the_configured_bounded_adapter():
+    runtime = _read("integration/ecosystem_configuration_runtime.py")
+    asset_method = runtime.split("def get_mt5_assets(", 1)[1].split("def validate_mt5_cycle_identity(", 1)[0]
+    assert "asset_adapter = ICMarketsMT5DemoMarketDataAdapter(mt5_module=mt5)" in asset_method
+    assert "asset_adapter.initialize_terminal(mt5)" in asset_method
+    assert "if not mt5.initialize()" not in asset_method
+
+    service = _read("integration/mt5_demo_analysis_service.py")
+    assert "if not adapter.initialize_terminal(runtime)" in service
+    assert "statuses = discover_mt5_instruments(runtime)" in service

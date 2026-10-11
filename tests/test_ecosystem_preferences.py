@@ -50,3 +50,13 @@ def test_invalid_selected_mode_is_rejected():
     except ValueError:
         return
     raise AssertionError("selected_mode inválido deveria ser rejeitado")
+
+
+def test_watermark_visibility_is_a_persistable_presentation_preference_only():
+    store = EcosystemPreferencesStore()
+    updated = store.update(watermark_enabled=False)
+    assert updated.watermark_enabled is False
+    restored = EcosystemPreferencesStore.from_dict({"watermark_enabled": False})
+    assert restored.preferences.watermark_enabled is False
+    assert restored.preferences.real_execution_enabled is False
+    assert restored.preferences.autonomous_operation_enabled is False

@@ -140,6 +140,20 @@ class FakeOrderQuery:
         return ExternalOrderObservation(external_id, self.status, "observed")
 
 
+class FakeTradeOutcomeQuery(FakeOrderQuery):
+    def query_trade_outcome(self, external_id):
+        return SimpleNamespace(
+            external_id=external_id,
+            position_id=900,
+            outcome="WIN",
+            financial_result=3.4,
+            observed_at=datetime.now(timezone.utc),
+            source="MT5_DEMO_HISTORY",
+            closed=True,
+            message="closed DEMO position history confirmed",
+        )
+
+
 def _reconciliation_identity(tmp_path, cycle_id: str, request_id: str, external_id: str):
     ledger = ExecutionLedger(tmp_path / "ledger.json")
     lifecycle = ExecutionLifecycleStore(tmp_path / "lifecycle.json")
@@ -190,6 +204,22 @@ def test_runtime_reconciles_executed_order_without_inventing_financial_outcome(t
     assert snapshot.financial_result is None
     assert snapshot.reconciliation_state.value == "UNVERIFIED"
     assert ledger.status("req-1") is ExecutionLedgerStatus.RECONCILED_EXECUTED
+
+
+def test_runtime_accepts_only_explicit_closed_demo_history_outcome(tmp_path):
+    ledger, lifecycle = _reconciliation_identity(tmp_path, "runtime-000001", "req-1", "123")
+    snapshot = TradingRuntime.reconcile_external_cycle(
+        cycle_id="runtime-000001",
+        external_id="123",
+        query_port=FakeTradeOutcomeQuery(ExternalOrderStatus.EXECUTED),
+        ledger=ledger,
+        execution_lifecycle=lifecycle,
+    )
+
+    assert snapshot is not None
+    assert snapshot.outcome == "WIN"
+    assert snapshot.financial_result == 3.4
+    assert snapshot.reconciliation_state.value == "MATCHED"
 
 
 def test_runtime_reconciles_not_executed_order_as_blocked_without_financial_inference(tmp_path):

@@ -37,23 +37,49 @@ $restartTimes = New-Object System.Collections.Generic.List[datetime]
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
+        $raw = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        # A corrupt restart history must not silently reset the restart budget.
+        if ([string]::IsNullOrWhiteSpace($raw) -or $raw.Trim() -notmatch '(?s)^\[.*\]$') {
+            throw 'Formato do histórico de reinícios inválido: era esperada uma lista JSON.'
+        }
+        $items = ConvertFrom-Json -InputObject $raw -ErrorAction Stop
+        $previousRestart = [datetime]::MinValue
+        $futureLimit = (Get-Date).ToUniversalTime().AddMinutes(5)
         foreach ($item in @($items)) {
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+            if ($item -isnot [string]) {
+                throw 'Formato do histórico de reinícios inválido: cada registro deve ser uma data textual.'
+            }
+            $parsedRestart = [datetime]::Parse($item).ToUniversalTime()
+            if ($parsedRestart -gt $futureLimit) {
+                throw 'Formato do histórico de reinícios inválido: existe data no futuro.'
+            }
+            if ($parsedRestart -lt $previousRestart) {
+                throw 'Formato do histórico de reinícios inválido: registros fora de ordem cronológica.'
+            }
+            $restartTimes.Add($parsedRestart.ToLocalTime())
+            $previousRestart = $parsedRestart
         }
     } catch {
         $restartTimes.Clear()
+        $message = "Histórico de reinícios inválido; supervisor MT5 interrompido para preservar o limite de segurança: $($_.Exception.Message)"
+        Write-SupervisorLog $message
+        Write-SupervisorStatus 'FAILED' 'RESTART_HISTORY_INVALID'
+        throw $message
     }
 }
 
 function Save-RestartHistory {
     $values = @($restartTimes | ForEach-Object { $_.ToUniversalTime().ToString('o') })
-    $tmp = "$restartHistoryPath.tmp"
-    $values | ConvertTo-Json | Set-Content -LiteralPath $tmp -Encoding UTF8
-    Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    $tmp = Join-Path $RuntimeDir (".$([System.IO.Path]::GetFileName($restartHistoryPath)).$([guid]::NewGuid().ToString('N')).tmp")
+    try {
+        $json = ConvertTo-Json -InputObject @($values) -Depth 3
+        Set-Content -LiteralPath $tmp -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $restartHistoryPath -Force
+    } finally {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    }
 }
 
-Load-RestartHistory
 $finalState = 'STOPPED'
 $finalReason = 'Supervisor finalizado.'
 
@@ -75,7 +101,12 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
 }
 
+Load-RestartHistory
+
+$script:LastMt5HealthDiagnostic = 'health_check_not_run'
+
 function Test-Mt5TerminalHealth {
+    $script:LastMt5HealthDiagnostic = ''
     try {
         $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) {
             $ProjectRoot
@@ -86,48 +117,52 @@ function Test-Mt5TerminalHealth {
         $healthCheckCode = @'
 import json, MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
-reasons = []
-try:
-    ok = bool(mt5.initialize(path=path))
-except Exception as exc:
-    print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps({"healthy": False, "initialize": False, "exception": repr(exc)}, ensure_ascii=False))
-    raise SystemExit(1)
-error = mt5.last_error()
+ok = mt5.initialize(path=path, timeout=15000)
 terminal = mt5.terminal_info() if ok else None
 account = mt5.account_info() if ok else None
 demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
 expected = os.path.normcase(os.path.realpath(path))
 actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
-connected = bool(getattr(terminal, "connected", False)) if terminal else False
-trade_mode = getattr(account, "trade_mode", None) if account else None
-if not ok: reasons.append("initialize_false")
-if ok and terminal is None: reasons.append("terminal_info_missing")
-if terminal is not None and not connected: reasons.append("terminal_not_connected")
-if terminal is not None and actual != expected: reasons.append("configured_terminal_path_mismatch")
-if account is None: reasons.append("account_info_missing")
-if demo_mode is None: reasons.append("demo_mode_constant_missing")
-elif account is not None and trade_mode != demo_mode: reasons.append("account_not_confirmed_demo")
-healthy = bool(ok and terminal is not None and connected and actual == expected and account is not None and demo_mode is not None and trade_mode == demo_mode)
-print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps({
-    "healthy": healthy, "initialize": ok, "last_error": repr(error),
-    "terminal_connected": connected, "terminal_reported_path": getattr(terminal, "path", None) if terminal else None,
-    "expected_path": expected, "actual_path": actual, "account_info_present": account is not None,
-    "trade_mode": trade_mode, "demo_mode": demo_mode, "reasons": reasons
-}, ensure_ascii=False))
-try:
-    mt5.shutdown()
-except Exception:
-    pass
+connected = bool(terminal is not None and getattr(terminal, "connected", False))
+path_mismatch = bool(terminal is not None and actual != expected)
+demo_confirmed = bool(account is not None and demo_mode is not None and getattr(account, "trade_mode", None) == demo_mode)
+healthy = bool(ok and terminal is not None and connected and not path_mismatch and demo_confirmed)
+diagnostic = {
+    "initialize": bool(ok),
+    "last_error": repr(mt5.last_error()),
+    "terminal_connected": connected,
+    "configured_terminal_path_mismatch": path_mismatch,
+    "account_not_confirmed_demo": not demo_confirmed,
+    "expected_terminal_path": expected,
+    "actual_terminal_path": actual,
+    "account_info_present": account is not None,
+    "healthy": healthy,
+}
+print("MT5_HEALTH_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True))
+mt5.shutdown()
 raise SystemExit(0 if healthy else 1)
 '@
         $encodedHealthCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($healthCheckCode))
         $oneLineHealthCode = "import base64;exec(compile(base64.b64decode('$encodedHealthCode'),'<mt5-health>','exec'))"
-        $healthOutput = & $PythonExe -c $oneLineHealthCode $Mt5TerminalPath 2>&1
+        $healthOutput = @(& $PythonExe -c $oneLineHealthCode $Mt5TerminalPath 2>&1)
         $healthExitCode = $LASTEXITCODE
-        $script:LastMt5HealthDiagnostic = (@($healthOutput | ForEach-Object { [string]$_ }) -join ' ')
+        foreach ($line in $healthOutput) {
+            $text = [string]$line
+            if ($text -like 'MT5_HEALTH_DIAGNOSTIC=*') {
+                $script:LastMt5HealthDiagnostic = $text
+                Write-SupervisorLog $text
+            } elseif (-not [string]::IsNullOrWhiteSpace($text)) {
+                Write-SupervisorLog "Diagnóstico do health gate MT5: $text"
+            }
+        }
+        if ($healthExitCode -ne 0 -and [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
+            $script:LastMt5HealthDiagnostic = 'MT5_HEALTH_DIAGNOSTIC=' + (@{ healthy = $false; reason = 'python_health_check_failed'; exit_code = $healthExitCode } | ConvertTo-Json -Compress)
+            Write-SupervisorLog $script:LastMt5HealthDiagnostic
+        }
         return ($healthExitCode -eq 0)
     } catch {
-        $script:LastMt5HealthDiagnostic = "Falha ao executar diagnóstico MT5: $($_.Exception.Message)"
+        $script:LastMt5HealthDiagnostic = 'MT5_HEALTH_DIAGNOSTIC=' + (@{ healthy = $false; reason = 'powershell_exception'; detail = ($_.Exception.Message -replace '[\r\n]', ' ') } | ConvertTo-Json -Compress)
+        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
         return $false
     }
 }
@@ -162,7 +197,7 @@ import MetaTrader5 as mt5, os, sys
 path = sys.argv[1]
 state = "UNKNOWN"
 try:
-    ok = mt5.initialize(path=path)
+    ok = mt5.initialize(path=path, timeout=15000)
     terminal = mt5.terminal_info() if ok else None
     account = mt5.account_info() if ok else None
     demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
@@ -241,10 +276,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                     $healthFailures++
                     Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                     if ($healthFailures -ge $HealthFailureThreshold) {
-                        if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
-                        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
-                    }
-                    Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
+                        Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
                         Stop-Mt5Process -Process $process
                         break
                     }
@@ -254,9 +286,6 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
         } else {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
-            if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
-                Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
-            }
             Stop-Mt5Process -Process $process
         }
     }
@@ -312,9 +341,6 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 $healthFailures++
                 Write-SupervisorLog "Health do MT5 falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                 if ($healthFailures -ge $HealthFailureThreshold) {
-                    if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
-                        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
-                    }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
                     Stop-Mt5Process -Process $processAfterStart
                     break
@@ -330,9 +356,6 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
         Stop-Mt5Process -Process $processAfterStart
-    }
-    if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
-        Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
     }
     Write-SupervisorLog "MT5 não alcançou o health gate em $HealthWaitSeconds s; nova tentativa após backoff."
     Write-SupervisorStatus 'RECOVERING' 'MT5 sem health DEMO; nova tentativa após backoff.'

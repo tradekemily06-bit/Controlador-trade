@@ -1,3 +1,4 @@
+import os
 from types import SimpleNamespace
 
 from core.models import Signal
@@ -16,7 +17,9 @@ class FakeMT5:
     TRADE_RETCODE_DONE = 10009
     DEAL_ENTRY_OUT = 1
     DEAL_ENTRY_OUT_BY = 2
-    ORDER_STATE_CANCELED = 4
+    ORDER_STATE_CANCELED = 2
+    ORDER_STATE_PARTIAL = 3
+    ORDER_STATE_FILLED = 4
     ORDER_STATE_REJECTED = 5
     ORDER_STATE_EXPIRED = 6
     POSITION_TYPE_BUY = 0
@@ -25,10 +28,18 @@ class FakeMT5:
         self.check_code = check_code
         self.send_result = send_result
         self.calls = []
+        self.initialize_path = None
+        self.initialize_timeout = None
 
-    def initialize(self):
+    def initialize(self, path=None, timeout=60000):
         self.calls.append("initialize")
+        self.initialize_path = path
+        self.initialize_timeout = timeout
         return True
+
+    def terminal_info(self):
+        path = os.path.dirname(self.initialize_path) if self.initialize_path else os.getcwd()
+        return SimpleNamespace(path=path, connected=True)
 
     def shutdown(self):
         self.calls.append("shutdown")
@@ -40,7 +51,7 @@ class FakeMT5:
     def history_deals_get(self, *args, **kwargs):
         self.calls.append(("history_deals_get", args, kwargs))
         if kwargs.get("ticket") == 123:
-            return (SimpleNamespace(ticket=123, profit=4.0),)
+            return (SimpleNamespace(ticket=123, magic=2609001, profit=4.0),)
         if kwargs.get("ticket") == 456:
             return ()
         return (
@@ -52,7 +63,7 @@ class FakeMT5:
     def history_orders_get(self, *args, **kwargs):
         self.calls.append(("history_orders_get", args, kwargs))
         if kwargs.get("ticket") == 456:
-            return (SimpleNamespace(ticket=456, state=self.ORDER_STATE_CANCELED),)
+            return (SimpleNamespace(ticket=456, magic=2609001, state=self.ORDER_STATE_CANCELED),)
         return ()
 
     def positions_get(self):
@@ -175,6 +186,131 @@ def test_query_order_reconciles_canceled_external_order_as_not_executed():
     assert observation.status.value == "NOT_EXECUTED"
 
 
+class FakeFilledOrderMT5(FakeMT5):
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(ticket=123, magic=2609001, state=self.ORDER_STATE_FILLED),)
+        return ()
+
+
+def test_query_order_recognizes_filled_order_when_deal_ticket_differs():
+    mt5 = FakeFilledOrderMT5()
+    observation = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_order("123")
+    assert observation.status.value == "EXECUTED"
+
+
+class FakePartialCanceledOrderMT5(FakeMT5):
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("position") == 900:
+            return (SimpleNamespace(
+                ticket=999, order=456, position_id=900, magic=2609001,
+                entry=self.DEAL_ENTRY_OUT, profit=1.0,
+            ),)
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        if kwargs.get("ticket") == 456:
+            return (SimpleNamespace(
+                ticket=456, magic=2609001, state=self.ORDER_STATE_CANCELED, position_id=900,
+            ),)
+        return ()
+
+
+def test_query_order_recognizes_partial_fill_before_cancelled_remainder():
+    mt5 = FakePartialCanceledOrderMT5()
+    observation = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_order("456")
+    assert observation.status.value == "EXECUTED"
+
+
+class FakeOutcomeMT5(FakeMT5):
+    def __init__(self, *, open_position=False, wrong_magic=False, missing_exit=False, ambiguous_position=False):
+        super().__init__()
+        self.open_position = open_position
+        self.wrong_magic = wrong_magic
+        self.missing_exit = missing_exit
+        self.ambiguous_position = ambiguous_position
+
+    def history_deals_get(self, *args, **kwargs):
+        self.calls.append(("history_deals_get", args, kwargs))
+        if kwargs.get("ticket") == 123:
+            return (SimpleNamespace(
+                ticket=123, order=123, position_id=900, magic=0 if self.wrong_magic else 2609001,
+                entry=0, profit=0.0, commission=-1.0, swap=0.0, fee=0.0,
+            ),)
+        if kwargs.get("position") == 900:
+            opening = SimpleNamespace(
+                ticket=123, order=123, position_id=900, magic=2609001, entry=0,
+                profit=0.0, commission=-1.0, swap=0.0, fee=0.0,
+            )
+            if self.missing_exit:
+                return (opening,)
+            if self.ambiguous_position:
+                second_entry = SimpleNamespace(
+                    ticket=125, order=777, position_id=900, magic=2609001, entry=0,
+                    profit=0.0, commission=-0.5, swap=0.0, fee=0.0,
+                )
+            else:
+                second_entry = None
+            closing = SimpleNamespace(
+                ticket=124, order=124, position_id=900, magic=2609001, entry=self.DEAL_ENTRY_OUT,
+                time=1780000000, time_msc=1780000000123,
+                profit=5.0, commission=-1.5, swap=0.1, fee=0.0,
+            )
+            return (opening, closing) if second_entry is None else (opening, second_entry, closing)
+        return ()
+
+    def history_orders_get(self, *args, **kwargs):
+        self.calls.append(("history_orders_get", args, kwargs))
+        return ()
+
+    def positions_get(self):
+        self.calls.append("positions_get")
+        return (SimpleNamespace(ticket=900, magic=2609001),) if self.open_position else ()
+
+
+def test_query_trade_outcome_uses_closed_position_net_history():
+    mt5 = FakeOutcomeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_trade_outcome("123")
+
+    assert result.position_id == 900
+    assert result.closed is True
+    assert result.outcome == "WIN"
+    assert result.financial_result == 2.6
+    assert result.source == "MT5_DEMO_HISTORY"
+    assert result.observed_at.tzinfo is not None
+    assert result.closed_at is not None and result.closed_at.tzinfo is not None
+    assert abs(result.closed_at.timestamp() - 1780000000.123) < 0.001
+
+
+def test_query_trade_outcome_never_classifies_open_position():
+    mt5 = FakeOutcomeMT5(open_position=True)
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).query_trade_outcome("123")
+
+    assert result.outcome == "UNKNOWN"
+    assert result.financial_result is None
+    assert result.closed is False
+
+
+def test_query_trade_outcome_rejects_unowned_or_missing_exit_history():
+    unowned = ICMarketsMT5DemoAdapter(mt5_module=FakeOutcomeMT5(wrong_magic=True)).query_trade_outcome("123")
+    missing_exit = ICMarketsMT5DemoAdapter(mt5_module=FakeOutcomeMT5(missing_exit=True)).query_trade_outcome("123")
+
+    assert unowned.outcome == "UNKNOWN"
+    assert unowned.financial_result is None
+    assert missing_exit.outcome == "UNKNOWN"
+    assert missing_exit.financial_result is None
+    ambiguous = ICMarketsMT5DemoAdapter(mt5_module=FakeOutcomeMT5(ambiguous_position=True)).query_trade_outcome("123")
+    assert ambiguous.outcome == "UNKNOWN"
+    assert ambiguous.financial_result is None
+
+
 def test_risk_day_timezone_is_explicit_and_converted_to_utc():
     mt5 = FakeMT5()
     adapter = ICMarketsMT5DemoAdapter(
@@ -236,9 +372,43 @@ def test_real_adapter_blocks_when_terminal_is_demo():
     )
 
 
+def test_real_adapter_cannot_publish_results_as_demo_history():
+    mt5 = FakeRealMT5()
+    adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
+    try:
+        adapter.query_trade_outcome("123")
+    except RuntimeError as exc:
+        assert "não está disponível" in str(exc)
+    else:
+        raise AssertionError("REAL history must never be labelled as DEMO outcome")
+    assert mt5.calls == []
+
+
 def test_real_adapter_never_accepts_demo_request():
     mt5 = FakeRealMT5()
     adapter = ICMarketsMT5RealAdapter(mt5_module=mt5)
     result = adapter.execute(request(mode=ExecutionMode.DEMO))
     assert result.accepted is False
     assert mt5.calls == []
+
+
+
+def test_execution_adapter_pins_to_configured_mt5_terminal(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    mt5 = FakeMT5()
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+    assert result.accepted is True
+    assert mt5.initialize_path == terminal_path
+    assert mt5.initialize_timeout == 15_000
+
+
+def test_execution_adapter_fails_closed_on_terminal_path_mismatch(monkeypatch, tmp_path):
+    terminal_path = str(tmp_path / "terminal64.exe")
+    monkeypatch.setenv("CONTROLADOR_MT5_TERMINAL_PATH", terminal_path)
+    mt5 = FakeMT5()
+    mt5.terminal_info = lambda: SimpleNamespace(path=str(tmp_path / "wrong-terminal"), connected=True)
+    result = ICMarketsMT5DemoAdapter(mt5_module=mt5).execute(request())
+    assert result.accepted is False
+    assert "não corresponde ao caminho configurado" in result.message
+    assert not any(isinstance(call, tuple) and call[0] == "order_send" for call in mt5.calls)

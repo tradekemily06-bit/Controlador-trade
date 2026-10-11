@@ -31,9 +31,14 @@ def build_ic_markets_mt5_demo_analysis_service(*, mt5_module: Any = None, timefr
             except ImportError as exc:
                 raise RuntimeError("MetaTrader5 não instalado; análise DEMO indisponível.") from exc
             runtime = runtime_module
-        statuses = discover_mt5_instruments(runtime)
-        candidates = select_mt5_analysis_candidates(runtime, statuses, limit=analysis_limit)
         adapter = ICMarketsMT5DemoMarketDataAdapter(mt5_module=runtime)
+        try:
+            if not adapter.initialize_terminal(runtime):
+                raise RuntimeError(f"MT5 indisponível para descoberta de ativos: {runtime.last_error()}")
+            statuses = discover_mt5_instruments(runtime)
+            candidates = select_mt5_analysis_candidates(runtime, statuses, limit=analysis_limit)
+        finally:
+            runtime.shutdown()
         boundary = BrokerMarketDataBoundary(adapter, source="IC Markets MT5 DEMO")
         return analyze_mt5_candidates_from_market_data(candidates, boundary, timeframe=timeframe, limit=candle_limit, evaluator=selected_evaluator, analysis_limit=analysis_limit)
 

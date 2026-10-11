@@ -55,7 +55,7 @@ try {
 
     $mt5Healthy = $false
     try {
-        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; p=sys.argv[1]; ok=mt5.initialize(path=p); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(p)))) if t else ''; h=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); print('MT5_HEALTH='+str(h)); mt5.shutdown(); raise SystemExit(0 if h else 1)" $Mt5TerminalPath | Out-Null
+        & $PythonExe -c "import MetaTrader5 as mt5, os, sys; p=sys.argv[1]; ok=mt5.initialize(path=p, timeout=15000); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(p)))) if t else ''; h=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); print('MT5_HEALTH='+str(h)); mt5.shutdown(); raise SystemExit(0 if h else 1)" $Mt5TerminalPath | Out-Null
         $mt5Healthy = $LASTEXITCODE -eq 0
     } catch {}
     Add-Check 'mt5-demo-health' $mt5Healthy 'terminal conectado + conta DEMO; disponibilidade de mercado é verificada separadamente.'
@@ -67,7 +67,7 @@ try {
 $marketDataHealthy = $false
 $candleCount = 0
 try {
-    $marketProbe = & $PythonExe -c "import MetaTrader5 as mt5, os, sys; p=sys.argv[1]; ok=mt5.initialize(path=p); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(p)))) if t else ''; demo=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); rates=mt5.copy_rates_from_pos('EURUSD',mt5.TIMEFRAME_M5,1,100) if demo else None; count=len(rates) if rates is not None else 0; print('MT5_DEMO_MARKET=' + str(demo)); print('CANDLES=' + str(count)); mt5.shutdown(); raise SystemExit(0 if demo and count>0 else 1)" $Mt5TerminalPath
+    $marketProbe = & $PythonExe -c "import MetaTrader5 as mt5, os, sys; p=sys.argv[1]; ok=mt5.initialize(path=p, timeout=15000); t=mt5.terminal_info() if ok else None; a=mt5.account_info() if ok else None; d=getattr(mt5,'ACCOUNT_TRADE_MODE_DEMO',None); expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(t,'path',''),os.path.basename(p)))) if t else ''; demo=bool(ok and t is not None and getattr(t,'connected',False) and actual==expected and a is not None and d is not None and getattr(a,'trade_mode',None)==d); rates=mt5.copy_rates_from_pos('EURUSD',mt5.TIMEFRAME_M5,1,100) if demo else None; count=len(rates) if rates is not None else 0; print('MT5_DEMO_MARKET=' + str(demo)); print('CANDLES=' + str(count)); mt5.shutdown(); raise SystemExit(0 if demo and count>0 else 1)" $Mt5TerminalPath
     $probeExitCode = $LASTEXITCODE
     $demoLine = $marketProbe | Where-Object { $_ -match '^MT5_DEMO_MARKET=' } | Select-Object -Last 1
     $countLine = $marketProbe | Where-Object { $_ -match '^CANDLES=' } | Select-Object -Last 1
@@ -80,16 +80,41 @@ try {
 
 Add-Check 'mt5-terminal-file' (Has-File $Mt5TerminalPath) $Mt5TerminalPath
 foreach ($task in @("$TaskPrefix-MT5","$TaskPrefix-Controlador")) {
-    $exists = $false
-    try { $null = Get-ScheduledTask -TaskName $task -ErrorAction Stop; $exists = $true } catch {}
-    Add-Check "scheduled-task:$task" $exists $task
+    $taskInfo = $null
+    try { $taskInfo = Get-ScheduledTask -TaskName $task -ErrorAction Stop } catch {}
+    Add-Check "scheduled-task:$task" ($null -ne $taskInfo) $task
+
+    if ($null -ne $taskInfo) {
+        $taskEnabled = ($taskInfo.State -ne 'Disabled') -and ($taskInfo.Settings.Enabled -eq $true)
+        Add-Check "scheduled-task-enabled:$task" $taskEnabled "state=$($taskInfo.State); enabled=$($taskInfo.Settings.Enabled)"
+        Add-Check "scheduled-task-running:$task" ($taskInfo.State -eq 'Running') "state=$($taskInfo.State)"
+    }
+}
+
+foreach ($supervisor in @(
+    @{ name='mt5'; file='mt5-supervisor-status.json' },
+    @{ name='controller'; file='controlador-supervisor-status.json' }
+)) {
+    $statusFile = Join-Path $RuntimeDir $supervisor.file
+    $status = $null
+    $readOk = $false
+    try {
+        if (Test-Path -LiteralPath $statusFile -PathType Leaf) {
+            $status = Get-Content -LiteralPath $statusFile -Raw | ConvertFrom-Json -ErrorAction Stop
+            $readOk = $true
+        }
+    } catch {}
+    Add-Check "supervisor-status:$($supervisor.name)" $readOk $statusFile
+    $supervisorHealthy = ($readOk -and $status.state -eq 'HEALTHY')
+    $reason = if ($readOk) { "state=$($status.state); reason=$($status.reason)" } else { 'arquivo ausente ou JSON inválido' }
+    Add-Check "supervisor-healthy:$($supervisor.name)" $supervisorHealthy $reason
 }
 
 $mq5 = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 Add-Check 'mql5-source' (Has-File $mq5) $mq5
 if (Has-File $mq5) {
     try {
-        $mt5Data = & $PythonExe -c 'import os,sys,MetaTrader5 as mt5; p=sys.argv[1]; ok=mt5.initialize(path=p); i=mt5.terminal_info() if ok else None; expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(i,"path",""),os.path.basename(p)))) if i else ""; valid=bool(ok and i and actual==expected); print(getattr(i,"data_path","") if valid else ""); mt5.shutdown(); raise SystemExit(0 if valid else 1)' $Mt5TerminalPath 2>$null
+        $mt5Data = & $PythonExe -c 'import os,sys,MetaTrader5 as mt5; p=sys.argv[1]; ok=mt5.initialize(path=p, timeout=15000); i=mt5.terminal_info() if ok else None; expected=os.path.normcase(os.path.realpath(p)); actual=os.path.normcase(os.path.realpath(os.path.join(getattr(i,"path",""),os.path.basename(p)))) if i else ""; valid=bool(ok and i and actual==expected); print(getattr(i,"data_path","") if valid else ""); mt5.shutdown(); raise SystemExit(0 if valid else 1)' $Mt5TerminalPath 2>$null
         $dataPath = ($mt5Data | Select-Object -Last 1).Trim()
         if ($LASTEXITCODE -eq 0 -and $dataPath) {
             $ex5 = Join-Path $dataPath 'MQL5\Experts\ControladorTrading\Controlador-Trading.ex5'
