@@ -652,11 +652,11 @@ void CloseCycle(){
    }
    string closed=JsonValue(r,"closed");
    string reconciliation_state=JsonObjectValue(r,"reconciliation","reconciliation_state");
-   if(closed=="true" && reconciliation_state!=""){
-      SetLabel(Obj("INFO1"),"Fechamento + reconciliacao confirmados • "+reconciliation_state,20,361,9,C'88,214,141');
+   if(closed=="true" && reconciliation_state=="MATCHED"){
+      SetLabel(Obj("INFO1"),"Fechamento + reconciliacao confirmados • MATCHED",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
    }else if(closed=="true"){
-      SetLabel(Obj("INFO1"),"Fechamento aceito; reconciliacao pendente. IDs preservados.",20,361,9,C'255,209,102');
+      SetLabel(Obj("INFO1"),"Fechamento aceito; reconciliacao nao confirmada ("+(reconciliation_state==""?"indisponivel":reconciliation_state)+"). IDs preservados.",20,361,9,C'255,209,102');
    }else{
       string message=JsonValue(r,"message");
       SetLabel(Obj("INFO1"),"Fechamento nao confirmado • "+(message==""?"IDs preservados":StringSubstr(message,0,42)),20,361,9,C'255,118,118');
