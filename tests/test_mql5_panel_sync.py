@@ -715,3 +715,12 @@ def test_mql5_memory_and_win_loss_statistics_refresh_while_the_view_is_open():
     assert 'else if(active_view=="MEMORIA") RefreshSecondary();' in timer
     assert 'if(active_nav=="N7")' in panel
     assert 'string demo=JsonObjectValue(r,"demo");' in panel
+
+
+def test_mql5_runtime_outage_clears_stale_mode_and_limits_safety_label_to_config():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    offline = health.split('if(!Http("GET","/api/health","",r,code)){', 1)[1].split("return;", 1)[0]
+    assert 'SetLabel(Obj("MODE"),"Modo: DESCONHECIDO • MT5: NAO CONFIRMADO"' in offline
+    assert 'if(active_view=="CONFIG")' in offline
+    assert 'ObjectDelete(0,Obj("SAFE"));' in offline
