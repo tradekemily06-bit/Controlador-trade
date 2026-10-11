@@ -134,7 +134,8 @@ def test_mql5_panel_has_safe_visibility_toggle():
     assert 'JsonObjectValue(r,"quality","score")' in panel
     assert "RefreshFloatingSignal(signal,quality_score);" in panel
     assert 'RefreshFloatingSignal(signal,"",false);' not in panel
-    assert 'if(allowed=="true")' in panel
+    assert 'if(allowed=="true" && decision=="EXECUTAR" && quality_actionable=="true" && (signal=="COMPRAR" || signal=="VENDER"))' in panel
+    assert 'Resposta inconsistente: autorizacao e decisao/qualidade divergem.' in panel
     assert "bool last_analysis_actionable=false;" in panel
     assert "Analyze(false);" in panel
     assert 'string decision=JsonValue(r,"decision");' in panel
