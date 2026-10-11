@@ -216,7 +216,7 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
     assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_TEXT,\"●\");" in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
