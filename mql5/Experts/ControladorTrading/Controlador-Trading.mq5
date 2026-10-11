@@ -1036,6 +1036,7 @@ void OnTimer(){
    RefreshPanelToggle();
    RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
+   else if(active_view=="MEMORIA") RefreshSecondary();
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    datetime current_bar=iTime(_Symbol,_Period,0);
