@@ -568,6 +568,7 @@ def test_mql5_controller_c_is_a_real_pixel_circle_with_clickable_canvas():
     assert "controller_canvas.FillCircle(center,center,inner_radius" in toggle
     assert 'controller_canvas.TextOut(center-5,center-11,"C",' in toggle
     assert "controller_canvas.Update();" in toggle
+    assert "ObjectSetInteger(0,signal_name,OBJPROP_HIDDEN,true);\n}\n\nvoid RefreshSignalLabels(){" in toggle
     assert 'sparam==Obj("PANEL_TOGGLE")' in event
     assert "ObjectCreate(0,name,OBJ_ELLIPSE" not in toggle
     assert "controller_canvas.Destroy();" in panel
