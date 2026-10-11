@@ -634,7 +634,7 @@ def test_mql5_runtime_cycle_parses_nested_runtime_payload_and_never_uses_decisio
     assert 'string allowed=JsonValue(r,"execution_allowed");' in cycle
     assert 'if(signal=="") signal=JsonValue(r,"decision");' not in cycle
     assert 'Resposta do ciclo sem objeto runtime; operacao bloqueada.' in cycle
-    assert 'current_signal_reason="Resposta do ciclo invalida • sinal anterior descartado";' in cycle
+    assert 'current_signal_reason="Resposta do ciclo invalida • sinal anterior descartado."' in cycle
     assert "RefreshSignalLabels();" in cycle
 
 
