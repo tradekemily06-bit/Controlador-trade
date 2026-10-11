@@ -279,15 +279,16 @@ void RefreshPanelToggle(){
       double quality_value=StringToDouble(current_quality_score);
       string quality_display=(MathAbs(quality_value-MathRound(quality_value))<0.001)?IntegerToString((int)MathRound(quality_value)):DoubleToString(quality_value,1);
       // Quality is an independently measured index; final execution gates may still keep the signal at AGUARDAR.
-      signal+=" "+quality_display+"/100 • "+quality_display+"% "+current_quality_level;
+      signal+=" "+quality_display+"% "+current_quality_level;
    }
    // The signal and its quality remain beside C, with no extra heading or status label.
-   int signal_x=c_size+20;
+   int signal_x=toggle_x+c_size+12;
    int signal_y=toggle_y+MathMax(8,(c_size-18)/2);
    ObjectSetInteger(0,signal_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,signal_name,OBJPROP_XDISTANCE,signal_x);
    ObjectSetInteger(0,signal_name,OBJPROP_YDISTANCE,signal_y);
-   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,10);
+   int signal_font=(cw<380?8:(cw<520?9:10));
+   ObjectSetInteger(0,signal_name,OBJPROP_FONTSIZE,signal_font);
    ObjectSetInteger(0,signal_name,OBJPROP_COLOR,signal_color);
    ObjectSetString(0,signal_name,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,signal_name,OBJPROP_TEXT,signal);
