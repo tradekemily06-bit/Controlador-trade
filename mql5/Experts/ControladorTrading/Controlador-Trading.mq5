@@ -923,6 +923,20 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   // Do not even request a cycle unless the independent health/safety contract passes.
+   RefreshHealth();
+   if(!runtime_ok){
+      current_signal="AGUARDAR";
+      current_quality_score="";
+      current_quality_level="";
+      current_quality_actionable="false";
+      current_quality_technical_actionable="false";
+      last_cycle_id="";
+      last_external_id="";
+      RefreshPanelToggle();
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado: runtime/seguranca nao validados.",180,361,9,C'255,118,118');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
