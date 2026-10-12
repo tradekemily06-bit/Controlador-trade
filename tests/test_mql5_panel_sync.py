@@ -74,6 +74,8 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "MathRound(ch*0.43)" in panel
     assert "watermark_enabled=false;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
+    assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in panel
+    assert 'SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);' in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
     assert "ToggleWatermark" in panel
     assert "GlobalVariableSet(WatermarkKey()" in panel
