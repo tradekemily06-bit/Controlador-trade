@@ -40,9 +40,9 @@ void RefreshPanelLayout(){
    panel_width=MathMin(InpPanelWidth,MathMax(220,cw-24));
    panel_width=MathMin(panel_width,MathMax(220,(int)MathRound(cw*0.34)));
    panel_height=MathMin(InpPanelHeight,MathMax(280,ch-24));
-   panel_height=MathMin(panel_height,MathMax(280,(int)MathRound(ch*0.88)));
+   panel_height=MathMin(panel_height,MathMax(280,(int)MathRound(ch*0.43)));
    panel_x=12;
-   panel_y=MathMax(12,ch-panel_height-12);
+   panel_y=18;
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -187,9 +187,11 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=last_signal;
+   if(shown_signal=="COMPRA") shown_signal="COMPRAR";
+   else if(shown_signal=="VENDA") shown_signal="VENDER";
    string shown_score=(last_score==""?"—":last_score);
    string compact_text=shown_signal+"  "+shown_score+"%";
-   color compact_color=shown_signal=="COMPRA" || shown_signal=="COMPRAR"?C'0,220,145':shown_signal=="VENDA" || shown_signal=="VENDER"?C'255,82,105':C'255,194,65';
+   color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,194,65';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
@@ -546,7 +548,6 @@ void Analyze(bool render=true){
       return;
    }
    runtime_ok=true;
-   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
@@ -554,7 +555,9 @@ void Analyze(bool render=true){
    string reason=JsonValue(r,"reason");
    last_signal=signal;
    last_score=score;
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
+   RefreshPanelToggle();
+   if(!render) return;
+   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'88,214,141':(signal=="VENDA" || signal=="VENDER")?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
