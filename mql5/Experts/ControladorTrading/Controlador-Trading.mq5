@@ -129,7 +129,7 @@ void ApplyWatermark(){
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,22);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_FONT,"Arial");
    ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
@@ -161,8 +161,12 @@ void RefreshPanelToggle(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int x=12;
-   int y=MathMax(8,ch-58);
+   int x=panel_visible?panel_x+10:12;
+   int y=panel_visible?panel_y+8:MathMax(8,ch-58);
+   if(panel_visible){
+      x=MathMax(8,MathMin(x,MathMax(8,cw-54)));
+      y=MathMax(8,MathMin(y,MathMax(8,ch-54)));
+   }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
@@ -174,7 +178,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,18,29');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'0,190,225');
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,"C");
+   ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,name,OBJPROP_ZORDER,100);
