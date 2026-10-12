@@ -37,10 +37,10 @@ void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Keep the panel compact and on the left, scaling to narrow charts without covering half the chart.
-   panel_width=MathMin(InpPanelWidth,MathMax(220,cw-24));
-   panel_width=MathMin(panel_width,MathMax(220,(int)MathRound(cw*0.34)));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,ch-24));
-   panel_height=MathMin(panel_height,MathMax(280,(int)MathRound(ch*0.43)));
+   panel_width=MathMin(InpPanelWidth,MathMax(180,cw-24));
+   panel_width=MathMin(panel_width,MathMax(180,(int)MathRound(cw*0.34)));
+   panel_height=MathMin(InpPanelHeight,MathMax(240,ch-24));
+   panel_height=MathMin(panel_height,MathMax(240,(int)MathRound(ch*0.43)));
    panel_x=12;
    panel_y=18;
    panel_sx=(double)panel_width/430.0;
