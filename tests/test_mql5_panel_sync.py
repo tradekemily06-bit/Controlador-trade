@@ -72,6 +72,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
     assert "panel_x=12;" in panel
     assert "MathRound(cw*0.34)" in panel
     assert "MathRound(ch*0.43)" in panel
+    chart_event = panel.split("void OnChartEvent", 1)[1]
+    assert "CHARTEVENT_CHART_CHANGE" in chart_event
+    assert "if(panel_visible){ Panel(); RenderView(); RefreshPanelToggle(); ChartRedraw(); }" in chart_event
     assert "watermark_enabled=false;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
     assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in panel
