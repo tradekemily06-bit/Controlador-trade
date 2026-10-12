@@ -197,7 +197,7 @@ void RefreshPanelToggle(){
    string compact_text=shown_signal+"  "+shown_score+"%";
    color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,194,65';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
-   ObjectSetString(0,sig,OBJPROP_TEXT,compact_text);
+   ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,sig,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,sig,OBJPROP_ZORDER,100);
@@ -232,7 +232,7 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
+   SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"⌂",18,67,54,25);
    SetButton(Obj("V2"),"A",74,67,54,25);
