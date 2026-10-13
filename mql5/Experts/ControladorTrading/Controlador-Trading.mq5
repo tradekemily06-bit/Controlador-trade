@@ -603,10 +603,16 @@ void CloseCycle(){
       return;
    }
    string closed=JsonValue(r,"closed");
-   string reconciliation_state=JsonValue(r,"reconciliation_state");
+   string reconciliation=JsonValue(r,"reconciliation");
+   string reconciliation_state="";
+   if(reconciliation!="" && reconciliation!="null"){
+      reconciliation_state=JsonValue(reconciliation,"reconciliation_state");
+      if(reconciliation_state=="") reconciliation_state=JsonValue(reconciliation,"terminal_state");
+   }
+   if(reconciliation_state=="") reconciliation_state=JsonValue(r,"reconciliation_state");
    if(reconciliation_state=="") reconciliation_state=JsonValue(r,"state");
    StringToLower(reconciliation_state);
-   bool reconciled=(reconciliation_state!="" && reconciliation_state!="null" && reconciliation_state!="unverified" && reconciliation_state!="pending" && reconciliation_state!="unknown");
+   bool reconciled=(reconciliation_state=="reconciled" || reconciliation_state=="reconciled_executed" || reconciliation_state=="reconciled_closed" || reconciliation_state=="closed" || reconciliation_state=="executed");
    if(closed=="true" && reconciled){
       SetLabel(Obj("INFO1"),"Fechamento e reconciliação confirmados.",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
