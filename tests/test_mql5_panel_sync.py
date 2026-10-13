@@ -469,3 +469,29 @@ def test_mql5_health_does_not_claim_unknown_decision_engine_is_online():
     health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
     assert 'runtime_ok=(ok=="true" && health=="OK");' in health
     assert 'runtime_ok? "Sistema ONLINE"' not in health
+
+
+def test_mql5_normalizes_signal_case_before_rendering_current_market_decision():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert analyze.count("StringToUpper(signal);") == 1
+    assert cycle.count("StringToUpper(signal);") == 1
+    assert 'if(!quality_valid){ signal="Aguardar"; score="";' in analyze
+    assert 'if(!quality_valid){ signal="Aguardar"; score="";' in cycle
+
+
+def test_mql5_study_failure_clears_stale_content_from_previous_refresh():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    study = panel.split("void RefreshLearning()", 1)[1].split("void RenderView()", 1)[0]
+    failure = study.split('SetLabel(Obj("INFO1"),"Estudo indisponível"', 1)[1]
+    for label in ("INFO2", "INFO3", "INFO4", "INFO5"):
+        assert f'SetLabel(Obj("{label}"),"",20,' in failure
+
+
+def test_mql5_notifications_view_avoids_transport_diagnostics_as_user_content():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    notifications = panel.split("void RefreshNotifications()", 1)[1].split("void RefreshLearning()", 1)[0]
+    assert "Consulta HTTP concluída" not in notifications
+    assert "conteúdo limitado ao resumo" not in notifications
+    assert 'SetLabel(Obj("INFO2"),"Alertas importantes e críticos do ecossistema"' in notifications
