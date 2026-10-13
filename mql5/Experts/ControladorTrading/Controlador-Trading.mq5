@@ -570,10 +570,22 @@ void CloseCycle(){
    }
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
-   if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento de demonstração e reconciliação confirmados.",20,361,9,C'88,214,141');
+   if(!Http("POST","/api/runtime/close",body,r,code)){
+      SetLabel(Obj("INFO1"),"Fechamento falhou ou foi bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      return;
+   }
+   string closed=JsonValue(r,"closed");
+   string reconciliation_state=JsonValue(r,"reconciliation_state");
+   if(reconciliation_state=="") reconciliation_state=JsonValue(r,"state");
+   if(closed=="true" && reconciliation_state!=""){
+      SetLabel(Obj("INFO1"),"Fechamento e reconciliação confirmados.",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
-   }else SetLabel(Obj("INFO1"),"Fechamento falhou ou foi bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }else if(closed=="true"){
+      SetLabel(Obj("INFO1"),"Fechamento aceito; reconciliação ainda não confirmada.",20,361,9,C'255,176,0');
+   }else{
+      string message=JsonValue(r,"message");
+      SetLabel(Obj("INFO1"),"Fechamento não confirmado: "+StringSubstr(message==""?"runtime não confirmou":message,0,44),20,361,9,C'255,118,118');
+   }
 }
 int OnInit(){
    active_view="COCKPIT";
