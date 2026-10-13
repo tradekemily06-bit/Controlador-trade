@@ -604,16 +604,20 @@ void CloseCycle(){
    }
    string closed=JsonValue(r,"closed");
    string reconciliation=JsonValue(r,"reconciliation");
-   // JsonValue is a flat scanner: read the explicit nested state from the full response.
-   // Never treat terminal_state or a generic "closed/executed" label as reconciliation proof.
-   string reconciliation_state=JsonValue(r,"reconciliation_state");
-   StringToUpper(reconciliation_state);
-   bool reconciled=(reconciliation_state=="MATCHED");
+   // Runtime reconciliation confirms terminal execution state separately from outcome certainty.
+   // UNVERIFIED is expected for financial outcome when no external outcome observation exists.
+   string terminal_state=JsonValue(r,"terminal_state");
+   StringToUpper(terminal_state);
+   bool has_reconciliation=(reconciliation!="" && reconciliation!="null" && reconciliation!="{");
+   bool reconciled=(has_reconciliation && (terminal_state=="COMPLETED" || terminal_state=="BLOCKED"));
+   string outcome_state=JsonValue(r,"reconciliation_state");
+   StringToUpper(outcome_state);
    if(closed=="true" && reconciled){
-      SetLabel(Obj("INFO1"),"Fechamento e reconciliação confirmados.",20,361,9,C'88,214,141');
+      string suffix=(outcome_state=="UNVERIFIED"?" Resultado financeiro ainda não verificado.":"");
+      SetLabel(Obj("INFO1"),"Fechamento e estado da execução reconciliados."+suffix,20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
    }else if(closed=="true"){
-      SetLabel(Obj("INFO1"),"Fechamento aceito; reconciliação ainda não confirmada.",20,361,9,C'255,176,0');
+      SetLabel(Obj("INFO1"),"Fechamento aceito; estado terminal ainda não confirmado.",20,361,9,C'255,176,0');
    }else{
       string message=JsonValue(r,"message");
       SetLabel(Obj("INFO1"),"Fechamento não confirmado: "+StringSubstr(message==""?"runtime não confirmou":message,0,44),20,361,9,C'255,118,118');
