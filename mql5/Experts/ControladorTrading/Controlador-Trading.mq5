@@ -350,7 +350,7 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO4"),"Estudo não autoriza operações",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
@@ -370,16 +370,16 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
-      SetLabel(Obj("SUB"),"Análise • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Análise do mercado",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar leitura",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
-      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Fonte: análise do ecossistema",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Filtros e confirmações",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Alertas não executam operações",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"Memória • histórico, WIN/LOSS, estatísticas e auditoria",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
@@ -389,8 +389,8 @@ void RenderView(){
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Histórico operacional",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatísticas de operações",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação, replay e validação isolados da operação real",20,47,9,C'150,165,185');
@@ -413,14 +413,14 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
-      SetLabel(Obj("SUB"),"Notificações • eventos do runtime sem autoridade de execução",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
-      SetLabel(Obj("SUB"),"Configurações • ativo, período gráfico e segurança",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Preferências e parâmetros",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
