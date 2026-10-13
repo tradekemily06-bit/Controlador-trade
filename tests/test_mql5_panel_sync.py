@@ -31,6 +31,21 @@ def test_mql5_sync_script_exists_and_is_self_contained():
         assert required in text
 
 
+
+
+def test_mql5_health_refresh_does_not_overwrite_active_section_content():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'SetLabel(Obj("RUNTIME")' in health
+    assert 'SetLabel(Obj("INFO1")' not in health
+
+
+def test_mql5_memory_record_counter_searches_json_key_without_extra_escaping():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    memory = panel.split("void RefreshMemory()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert 'StringFind(r,"\\"decision_id\\":",cursor)' in memory
+    assert 'HTTP "+IntegerToString(code)' not in memory
+
 def test_mql5_panel_has_single_repository_source():
     panel = ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5"
     legacy = ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5"
