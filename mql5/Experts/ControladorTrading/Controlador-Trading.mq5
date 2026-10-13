@@ -186,30 +186,30 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"INICIO",18,67,54,25);
-   SetButton(Obj("V2"),"ANAL.",74,67,54,25);
-   SetButton(Obj("V3"),"MEM",130,67,54,25);
-   SetButton(Obj("V4"),"LAB",186,67,48,25);
-   SetButton(Obj("V5"),"EST.",236,67,54,25);
-   SetButton(Obj("V6"),"ALERTA",292,67,54,25);
-   SetButton(Obj("V7"),"CONFIG",348,67,54,25);
+   SetButton(Obj("V1"),"INÍCIO",18,67,88,25);
+   SetButton(Obj("V2"),"ANÁLISE",110,67,88,25);
+   SetButton(Obj("V3"),"MEMÓRIA",202,67,100,25);
+   SetButton(Obj("V4"),"LABORATÓRIO",18,94,112,25);
+   SetButton(Obj("V5"),"ESTUDO",134,94,72,25);
+   SetButton(Obj("V6"),"NOTIFICAÇÕES",210,94,100,25);
+   SetButton(Obj("V7"),"CONFIGURAÇÕES",314,94,106,25);
 
-   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
-   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
-   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,176,0');
-   SetLabel(Obj("SCORE"),"Score: —/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
+   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,126,10,C'255,209,102');
+   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
+   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,22,C'255,176,0');
+   SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
+   SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
-   SetLabel(Obj("SYML"),"ATIVO",20,236,8,C'130,145,165');
-   SetEdit(Obj("SYM"),_Symbol,20,249,150,25);
-   SetLabel(Obj("TFL"),"TIMEFRAME",184,236,8,C'130,145,165');
-   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,249,195,25);
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
+   SetLabel(Obj("SYML"),"ATIVO / SÍMBOLO",20,258,8,C'130,145,165');
+   SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
+   SetLabel(Obj("TFL"),"PERÍODO GRÁFICO",184,258,8,C'130,145,165');
+   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
+   SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
 
-   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,294,172,30);
-   SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,294,177,30);
-   SetButton(Obj("SAVE"),"SALVAR CONFIG",20,330,172,28);
-   SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,330,177,28);
+   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,316,172,30);
+   SetButton(Obj("CYCLE"),"EXECUTAR CICLO DEMO",202,316,177,30);
+   SetButton(Obj("SAVE"),"SALVAR CONFIGURAÇÕES",20,352,172,28);
+   SetButton(Obj("CLOSE"),"ENCERRAR E RECONCILIAR",202,352,177,28);
 
    SetLabel(Obj("INFO1"),"Decisao: —",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
