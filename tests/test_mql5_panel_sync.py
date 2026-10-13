@@ -274,6 +274,8 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'pref_require_filters?"true":"false"' in save
     assert 'if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle;' in event
     assert 'if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters;' in event
+    assert 'pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig();' in event
+    assert 'pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig();' in event
     assert 'selected_mode' in save and 'DEMO' in save
 
 
