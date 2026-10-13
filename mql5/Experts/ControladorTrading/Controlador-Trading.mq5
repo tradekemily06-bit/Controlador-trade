@@ -604,15 +604,11 @@ void CloseCycle(){
    }
    string closed=JsonValue(r,"closed");
    string reconciliation=JsonValue(r,"reconciliation");
-   string reconciliation_state="";
-   if(reconciliation!="" && reconciliation!="null"){
-      reconciliation_state=JsonValue(reconciliation,"reconciliation_state");
-      if(reconciliation_state=="") reconciliation_state=JsonValue(reconciliation,"terminal_state");
-   }
-   if(reconciliation_state=="") reconciliation_state=JsonValue(r,"reconciliation_state");
-   if(reconciliation_state=="") reconciliation_state=JsonValue(r,"state");
-   StringToLower(reconciliation_state);
-   bool reconciled=(reconciliation_state=="reconciled" || reconciliation_state=="reconciled_executed" || reconciliation_state=="reconciled_closed" || reconciliation_state=="closed" || reconciliation_state=="executed");
+   // JsonValue is a flat scanner: read the explicit nested state from the full response.
+   // Never treat terminal_state or a generic "closed/executed" label as reconciliation proof.
+   string reconciliation_state=JsonValue(r,"reconciliation_state");
+   StringToUpper(reconciliation_state);
+   bool reconciled=(reconciliation_state=="MATCHED");
    if(closed=="true" && reconciled){
       SetLabel(Obj("INFO1"),"Fechamento e reconciliação confirmados.",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
