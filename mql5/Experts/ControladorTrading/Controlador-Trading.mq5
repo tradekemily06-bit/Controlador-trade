@@ -374,79 +374,57 @@ void RefreshLearning(){
    }
 }
 void RenderView(){
+   // Remove ações da tela anterior antes de montar a seção atual.
+   string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};
+   for(int i=0;i<3;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
    if(active_view=="COCKPIT"){
-      SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Motor de decisão: ecossistema",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Controle de risco: atualizando...",20,381,9,C'255,209,102');
-      SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
-      SetButton(Obj("ANALYZE"),"Analisar no serviço",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
-      RefreshSecondary();
+      SetLabel(Obj("SUB"),"Visão geral do ecossistema",20,47,9,C'150,165,185');
+      SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
+      SetLabel(Obj("INFO2"),"Decisão atual: consulte o sinal junto ao C",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Execução REAL permanece bloqueada",20,401,9,C'255,155,155');
+      SetLabel(Obj("INFO4"),"Análise atualizada pelo runtime",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Abra cada seção para consultar seus dados",20,441,9,C'205,215,230');
+      SetButton(Obj("ANALYZE"),"Atualizar análise",20,284,172,30);
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"Análise do mercado",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar leitura",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       Analyze();
-      SetLabel(Obj("INFO2"),"Controle de risco: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
-      SetLabel(Obj("INFO3"),"Fonte: análise do ecossistema",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Filtros e confirmações",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Leitura do ecossistema",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Tendência, volume e candle conforme dados disponíveis",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Filtros e contexto da análise",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Alertas não executam operações",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"Memória • histórico, WIN/LOSS, estatísticas e auditoria",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Memória • registros e histórico",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Atualizar estatísticas",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Histórico operacional",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatísticas de operações",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
+      SetLabel(Obj("INFO1"),"Memória: registros consultados no runtime",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Histórico operacional",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Registros de estudo não são lucro financeiro",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatísticas ficam na seção correspondente",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Dados financeiros exigem confirmação",20,441,9,C'205,215,230');
    }else if(active_view=="LAB"){
-      SetLabel(Obj("SUB"),"Laboratório • simulação, replay e validação isolados da operação real",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Validar ambiente",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
-      RefreshHealth();
-      RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
-      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: consultar sessões disponíveis",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Ambiente de validação",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Simulação separada da operação REAL",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay depende de sessão disponível no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nenhuma execução REAL é autorizada aqui",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"Confira o resultado retornado pelo serviço",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"Estudo • separado da autorização operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
-      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
-      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
-      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
-      SetLabel(Obj("SUB"),"Preferências e parâmetros",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Configurações do ecossistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,352,177,28);
       RefreshPreferences();
-   }
-   if(active_view!="CONFIG"){
-      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
-      if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    }
    RefreshWatermarkControl();
 }
