@@ -402,6 +402,7 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Validar ambiente",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       SetLabel(Obj("INFO1"),"Ambiente de validação",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Simulação separada da operação REAL",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay depende de sessão disponível no runtime",20,401,9,C'205,215,230');
