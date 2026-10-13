@@ -233,3 +233,10 @@ def test_mql5_signal_palette_keeps_buy_green_sell_luminous_amber():
     assert 'C\'255,176,0\'' in panel
     assert 'SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C\'255,176,0\');' in panel
     assert panel.count('color c=(signal=="COMPRA" || signal=="COMPRAR")?C\'0,220,145\':(signal=="VENDA" || signal=="VENDER")?C\'255,82,105\':C\'255,176,0\';') == 2
+
+def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
+    assert "bool created=(ObjectFind(0,name)<0);" in edit
+    assert "if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);" in edit
+    assert "ObjectSetString(0,name,OBJPROP_TEXT,text);" not in edit.replace("if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);", "")
