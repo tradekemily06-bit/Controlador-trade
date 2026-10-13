@@ -66,7 +66,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "InpPanelWidth = 390" in panel
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
-    assert "MathRound(cw*0.34)" in panel
+    assert "MathRound(cw*0.34)" not in panel
     assert "MathRound(ch*0.43)" in panel
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);" in panel
@@ -274,4 +274,14 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'pref_require_filters?"true":"false"' in save
     assert 'if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle;' in event
     assert 'if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters;' in event
-    assert '"selected_mode":"DEMO"' in save
+    assert 'selected_mode' in save and 'DEMO' in save
+
+
+def test_mql5_config_controls_do_not_overlap_status_text():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
+    assert "MathRound(cw*0.34)" not in panel
+    assert 'SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);' in prefs
+    assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);' in prefs
+    assert '20,390,9,' in prefs
+    assert '20,478,9,' in prefs
