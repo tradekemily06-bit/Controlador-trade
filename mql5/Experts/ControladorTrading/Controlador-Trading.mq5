@@ -38,9 +38,9 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // Keep the panel compact and on the left, scaling to narrow charts without covering half the chart.
+   // Keep the approved full tab labels and both control columns inside the panel.
+   // On narrow charts, use the available width instead of shrinking labels off-screen.
    panel_width=MathMin(InpPanelWidth,MathMax(180,cw-24));
-   panel_width=MathMin(panel_width,MathMax(180,(int)MathRound(cw*0.34)));
    panel_height=MathMin(InpPanelHeight,MathMax(240,ch-24));
    panel_height=MathMin(panel_height,MathMax(240,(int)MathRound(ch*0.43)));
    panel_x=12;
@@ -307,8 +307,8 @@ void RefreshPreferences(){
    StringToLower(filters);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
-   SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,284,172,30);
-   SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,284,177,30);
+   SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
+   SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
@@ -408,8 +408,8 @@ void RenderView(){
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"Configurações • ativo, período gráfico e segurança",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,284,172,30);
-      SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,284,177,30);
+      SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
+      SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshPreferences();
