@@ -40,9 +40,10 @@ void RefreshPanelLayout(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Keep the approved full tab labels and both control columns inside the panel.
    // On narrow charts, use the available width instead of shrinking labels off-screen.
-   panel_width=MathMin(InpPanelWidth,MathMax(180,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(240,ch-24));
-   panel_height=MathMin(panel_height,MathMax(240,(int)MathRound(ch*0.43)));
+   panel_width=MathMin(InpPanelWidth,MathMax(160,cw-24));
+   // Keep the expanded panel compact on short charts and leave room for the fixed C toggle.
+   panel_height=MathMin(InpPanelHeight,MathMax(120,ch-82));
+   panel_height=MathMin(panel_height,MathMax(120,(int)MathRound(ch*0.48)));
    panel_x=12;
    // When expanded, keep the panel above the fixed bottom-left C toggle.
    panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
