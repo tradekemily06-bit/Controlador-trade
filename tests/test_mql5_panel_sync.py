@@ -426,3 +426,12 @@ def test_mql5_notifications_view_only_exposes_notification_refresh():
     assert 'SetButton(Obj("CLOSE")' not in notif
     for control in ("CYCLE", "SAVE", "CLOSE"):
         assert f'ObjectDelete(0,Obj("{control}"))' in notif
+
+def test_mql5_notifications_do_not_claim_unverified_analysis_or_event_refresh():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    notifications = panel.split("void RefreshNotifications()", 1)[1].split("void RefreshLearning()", 1)[0]
+    assert '"Resumo retornado pelo serviço."' in notifications
+    assert '"Eventos detalhados não confirmados nesta resposta."' in notifications
+    assert '"Esta consulta não confirma atualização da análise."' in notifications
+    assert '"Atualização das notificações concluída"' not in notifications
+    assert '"Analise operacional atualizada pelo runtime"' not in notifications
