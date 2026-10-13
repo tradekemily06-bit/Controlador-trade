@@ -490,13 +490,21 @@ void RefreshSecondary(){
 void RefreshMemory(){
    string r; int code=0;
    if(Http("GET","/api/memory?limit=20","",r,code)){
-      string total=JsonValue(r,"total");
-      if(total=="") total=JsonValue(r,"count");
+      // The API returns {"records":[...]}; it does not promise total/count fields.
+      int returned=0;
+      int cursor=0;
+      while(true){
+         int hit=StringFind(r,"\\"decision_id\\":",cursor);
+         if(hit<0) break;
+         returned++;
+         cursor=hit+14;
+         if(returned>=20) break;
+      }
       SetLabel(Obj("INFO1"),"Memória consultada no runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Registros retornados: "+(total==""?"não informado":total),20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Registros nesta consulta: "+IntegerToString(returned),20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Estudo e simulação não são lucro financeiro",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Resultados financeiros exigem confirmação",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Histórico detalhado conforme resposta do serviço",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Histórico financeiro não confirmado não é tratado como WIN/LOSS",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Memória indisponível • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"Não foi possível consultar registros.",20,381,9,C'255,118,118');
