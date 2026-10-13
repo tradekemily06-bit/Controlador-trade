@@ -82,7 +82,8 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void SetEdit(string name,string text,int x,int y,int w,int h){
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
+   bool created=(ObjectFind(0,name)<0);
+   if(created) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
@@ -92,9 +93,9 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   // Preserve in-progress edits across chart resize and panel redraw.
+   if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   // Inputs must be selectable so symbol/timeframe can be edited directly.
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
