@@ -637,7 +637,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
    else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,284,172,30); SaveConfig(); }
+      if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
       else if(active_view=="ANALISE") Analyze();
       else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
@@ -646,7 +646,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
    }
-   else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,284,177,30); SaveConfig(); } else RunCycle(); }
+   else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
    else if(sparam==Obj("WM")) ToggleWatermark();
