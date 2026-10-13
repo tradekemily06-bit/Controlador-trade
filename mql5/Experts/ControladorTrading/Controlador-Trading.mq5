@@ -207,7 +207,7 @@ void Panel(){
    SetButton(Obj("V6"),"Notificações",210,94,100,25);
    SetButton(Obj("V7"),"Configurações",314,94,106,25);
 
-   SetLabel(Obj("RUNTIME"),"Serviço: verificando...",20,126,10,C'255,209,102');
+   SetLabel(Obj("RUNTIME"),"Sistema indisponível",20,126,10,C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
    SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
    SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
@@ -321,7 +321,7 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Configurações: serviço indisponível • HTTP "+IntegerToString(code),20,390,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Não foi possível carregar as configurações",20,390,9,C'255,118,118');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
@@ -352,7 +352,7 @@ void RefreshNotifications(){
       SetLabel(Obj("INFO4"),"Consulta HTTP concluída; conteúdo limitado ao resumo.",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Esta consulta não confirma atualização da análise.",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Notificações indisponíveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Notificações indisponíveis",20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"O serviço não confirmou o resumo.",20,381,9,C'255,118,118');
       SetLabel(Obj("INFO3"),"Eventos detalhados indisponíveis.",20,401,9,C'255,118,118');
       SetLabel(Obj("INFO4"),"Nenhuma atualização confirmada.",20,421,9,C'255,118,118');
@@ -370,7 +370,7 @@ void RefreshLearning(){
       SetLabel(Obj("INFO4"),"Estudo não autoriza operações",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Estudo indisponível",20,361,9,C'255,118,118');
    }
 }
 void RenderView(){
@@ -428,7 +428,7 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Serviço: INDISPONÍVEL / HTTP "+IntegerToString(code),20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,104,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
@@ -441,7 +441,7 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema Online":"Serviço indisponível • "+(health==""?"estado não confirmado":health),20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema Online":"Sistema INDISPONÍVEL",20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Motor de decisão: "+(engine==""?"estado não informado":engine),20,361,9,engine==""?C'255,209,102':C'205,215,230');
@@ -449,7 +449,7 @@ void RefreshHealth(){
 void RefreshMarketAssets(){
    string r; int code=0;
    if(!Http("GET","/api/market/assets","",r,code)){
-      SetLabel(Obj("MARKET"),"Ativos/mercados: indisponíveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
+      SetLabel(Obj("MARKET"),"Dados de mercado indisponíveis",20,278,8,C'255,118,118');
       return;
    }
    int total=0; int p=0;
@@ -548,7 +548,7 @@ void Analyze(bool render=true){
       if(render){
          SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
          SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
-         SetLabel(Obj("REASON"),"Runtime indisponível; sinal anterior descartado • HTTP "+IntegerToString(code),20,226,9,C'255,118,118');
+         SetLabel(Obj("REASON"),"Análise indisponível; sinal anterior descartado",20,226,9,C'255,118,118');
       }
       return;
    }
