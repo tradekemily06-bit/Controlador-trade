@@ -60,8 +60,8 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 
 def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"CONTROLADOR TRADING"' in panel
-    assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
+    assert '"Controlador Trading"' in panel
+    assert '"Ecossistema • MT5 • Demo / simulação"' in panel
     assert "RUNTIME REAL" not in panel
     assert "InpPanelWidth = 390" in panel
     assert "InpPanelHeight = 440" in panel
@@ -245,8 +245,8 @@ def test_mql5_panel_uses_complete_tab_and_configuration_names():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     for label in ("Início", "Análise", "Memória", "Laboratório", "Estudo", "Notificações", "Configurações"):
         assert f'"{label}"' in panel
-    assert '"SALVAR CONFIGURAÇÕES"' in panel
-    assert '"ENCERRAR E RECONCILIAR"' in panel
+    assert '"Salvar configurações"' in panel
+    assert '"Encerrar e reconciliar"' in panel
     assert '"Qualidade: —/100"' in panel
 
 
