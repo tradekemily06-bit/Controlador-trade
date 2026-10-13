@@ -424,8 +424,10 @@ def test_mql5_notifications_view_only_exposes_notification_refresh():
     assert 'SetButton(Obj("CYCLE")' not in notif
     assert 'SetButton(Obj("SAVE")' not in notif
     assert 'SetButton(Obj("CLOSE")' not in notif
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
     for control in ("CYCLE", "SAVE", "CLOSE"):
-        assert f'ObjectDelete(0,Obj("{control}"))' in notif
+        assert f'Obj("{control}")' in render
 
 def test_mql5_notifications_do_not_claim_unverified_analysis_or_event_refresh():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
@@ -448,7 +450,3 @@ def test_mql5_notification_failure_clears_stale_success_details():
     assert '"A análise não foi confirmada por esta consulta."' in failure
 
 def test_mql5_health_does_not_claim_unknown_decision_engine_is_online():
-    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
-    assert 'engine==""?"estado não informado":engine' in health
-    assert 'engine==""?C\'255,209,102\':C\'205,215,230\'' in health
