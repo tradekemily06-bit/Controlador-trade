@@ -146,7 +146,7 @@ void RefreshPanelToggle(){
    else if(shown_signal=="VENDA") shown_signal="VENDER";
    string shown_score=(last_score==""?"—":last_score);
    string compact_text=shown_signal+"  "+shown_score+"%";
-   color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,194,65';
+   color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,145,45';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
