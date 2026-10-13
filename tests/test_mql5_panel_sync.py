@@ -231,7 +231,7 @@ def test_mql5_signal_palette_keeps_buy_green_sell_luminous_amber():
     assert 'C\'0,220,145\'' in panel
     assert 'C\'255,82,105\'' in panel
     assert 'C\'255,176,0\'' in panel
-    assert 'SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,22,C\'255,176,0\');' in panel
+    assert 'SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C\'255,176,0\');' in panel
     assert panel.count('color c=(signal=="COMPRA" || signal=="COMPRAR")?C\'0,220,145\':(signal=="VENDA" || signal=="VENDER")?C\'255,82,105\':C\'255,176,0\';') == 2
 
 def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
@@ -240,6 +240,16 @@ def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
     assert "bool created=(ObjectFind(0,name)<0);" in edit
     assert "if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);" in edit
     assert "ObjectSetString(0,name,OBJPROP_TEXT,text);" not in edit.replace("if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);", "")
+
+def test_mql5_signal_labels_use_sentence_case_without_changing_signal_logic():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    labels = panel.split("string SignalLabel(string signal)", 1)[1].split("string NormalizeTimeframe", 1)[0]
+    assert 'return "Comprar";' in labels
+    assert 'return "Vender";' in labels
+    assert 'return "Aguardar";' in labels
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);' in panel
+    assert 'string shown_signal=SignalLabel(last_signal);' in panel
+
 
 def test_mql5_panel_uses_complete_tab_and_configuration_names():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
