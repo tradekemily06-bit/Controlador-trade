@@ -279,6 +279,19 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'selected_mode' in save and 'DEMO' in save
 
 
+def test_mql5_analysis_and_demo_cycle_use_saved_filter_preferences():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert '"confirmed\\\\\\":\\\\\\"+(pref_closed_candle?"true":"false")' not in analyze
+    assert 'pref_closed_candle?"true":"false"' in analyze
+    assert 'pref_require_filters?"true":"false"' in analyze
+    assert 'pref_closed_candle?"true":"false"' in cycle
+    assert 'pref_require_filters?"true":"false"' in cycle
+    assert '"confirmed\\\\\\":true' not in cycle
+    assert '"filters_ok\\\\\\":true' not in cycle
+
+
 def test_mql5_config_controls_do_not_overlap_status_text():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
