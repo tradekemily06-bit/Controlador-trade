@@ -428,9 +428,9 @@ void RenderView(){
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"Preferências e parâmetros",20,47,9,C'150,165,185');
