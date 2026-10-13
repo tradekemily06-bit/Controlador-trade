@@ -488,10 +488,11 @@ void SaveConfig(){
    tf=NormalizeTimeframe(tf);
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
+   int status_y=(active_view=="CONFIG"?390:361);
    if(Http("POST","/api/preferences",body,r,code))
-      SetLabel(Obj("INFO1"),"Configurações sincronizadas no serviço • HTTP "+IntegerToString(code),20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Configurações sincronizadas no serviço • HTTP "+IntegerToString(code),20,status_y,9,C'88,214,141');
    else
-      SetLabel(Obj("INFO1"),"Falha ao sincronizar configurações • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Falha ao sincronizar configurações • HTTP "+IntegerToString(code),20,status_y,9,C'255,118,118');
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
