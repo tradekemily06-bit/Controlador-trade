@@ -295,7 +295,7 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Configurações: serviço indisponível • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Configurações: serviço indisponível • HTTP "+IntegerToString(code),20,390,9,C'255,118,118');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
@@ -309,11 +309,11 @@ void RefreshPreferences(){
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
    SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
-   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca-d'água: removida",20,421,9,C'145,160,180');
-   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
+   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Marca-d'água: removida",20,456,9,C'145,160,180');
+   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,478,9,C'255,155,155');
 }
 void RefreshNotifications(){
    string r; int code=0;
