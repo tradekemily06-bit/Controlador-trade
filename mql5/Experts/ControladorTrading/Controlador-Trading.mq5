@@ -577,7 +577,9 @@ void CloseCycle(){
    string closed=JsonValue(r,"closed");
    string reconciliation_state=JsonValue(r,"reconciliation_state");
    if(reconciliation_state=="") reconciliation_state=JsonValue(r,"state");
-   if(closed=="true" && reconciliation_state!=""){
+   StringToLower(reconciliation_state);
+   bool reconciled=(reconciliation_state!="" && reconciliation_state!="null" && reconciliation_state!="unverified" && reconciliation_state!="pending" && reconciliation_state!="unknown");
+   if(closed=="true" && reconciled){
       SetLabel(Obj("INFO1"),"Fechamento e reconciliação confirmados.",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
    }else if(closed=="true"){
