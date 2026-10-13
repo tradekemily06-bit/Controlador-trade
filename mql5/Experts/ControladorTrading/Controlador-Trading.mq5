@@ -195,7 +195,7 @@ void Panel(){
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
-   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,209,102');
+   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,145,45');
    SetLabel(Obj("SCORE"),"Score: —/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
 
@@ -512,7 +512,7 @@ void Analyze(bool render=true){
    last_score=score;
    RefreshPanelToggle();
    if(!render) return;
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'88,214,141':(signal=="VENDA" || signal=="VENDER")?C'255,118,118':C'255,209,102';
+   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'88,214,141':(signal=="VENDA" || signal=="VENDER")?C'255,118,118':C'255,145,45';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
@@ -540,7 +540,7 @@ void RunCycle(){
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
+   color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,145,45';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
