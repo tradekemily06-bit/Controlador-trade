@@ -24,7 +24,7 @@ int panel_width=390;
 int panel_height=440;
 double panel_sx=1.0;
 double panel_sy=1.0;
-string last_signal="AGUARDAR";
+string last_signal="Aguardar";
 string last_score="";
 
 string Obj(string suffix){ return P+suffix; }
@@ -186,8 +186,8 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
-   SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
+   SetLabel(Obj("TITLE"),"Controlador Trading",70,27,11,clrWhite);
+   SetLabel(Obj("SUB"),"Ecossistema • MT5 • Demo / simulação",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"Início",18,67,88,25);
    SetButton(Obj("V2"),"Análise",110,67,88,25);
    SetButton(Obj("V3"),"Memória",202,67,100,25);
@@ -198,7 +198,7 @@ void Panel(){
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,126,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
-   SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,22,C'255,176,0');
+   SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
    SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
@@ -209,19 +209,19 @@ void Panel(){
    SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
 
    SetButton(Obj("ANALYZE"),"Analisar no serviço",20,316,172,30);
-   SetButton(Obj("CYCLE"),"EXECUTAR CICLO DEMO",202,316,177,30);
-   SetButton(Obj("SAVE"),"SALVAR CONFIGURAÇÕES",20,352,172,28);
-   SetButton(Obj("CLOSE"),"ENCERRAR E RECONCILIAR",202,352,177,28);
+   SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,316,177,30);
+   SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
+   SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,352,177,28);
 
-   SetLabel(Obj("INFO1"),"Decisao: —",20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO1"),"Decisão: —",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Memoria: verificando...",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
 
    SetLabel(Obj("CYCLEID"),"Ciclo: —",20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
-   SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
+   SetLabel(Obj("EXTID"),"Execução: —",20,483,8,C'145,160,180');
+   SetLabel(Obj("PRICE"),"Preço atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
    // Marca-d agua removida conforme aprovacao visual.
 }
@@ -320,7 +320,7 @@ void RefreshNotifications(){
    if(Http("GET","/api/notifications","",r,code)){
       string unread=JsonValue(r,"unread");
       string total=JsonValue(r,"total");
-      SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Notificações: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Atualizacao: HTTP "+IntegerToString(code),20,421,9,C'88,214,141');
@@ -357,8 +357,8 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
-      SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
+      SetLabel(Obj("SUB"),"Análise • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Atualizar leitura",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
@@ -368,8 +368,8 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
-      SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
+      SetLabel(Obj("SUB"),"Memória • histórico, WIN/LOSS, estatísticas e auditoria",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Atualizar estatísticas",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
@@ -380,8 +380,8 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
-      SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
+      SetLabel(Obj("SUB"),"Laboratório • simulação, replay e validação isolados da operação real",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Validar ambiente",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
@@ -393,14 +393,14 @@ void RenderView(){
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
-      SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Estudo • separado da autorização operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
-      SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Notificações • eventos do runtime sem autoridade de execução",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
@@ -442,7 +442,7 @@ void RefreshHealth(){
 void RefreshMarketAssets(){
    string r; int code=0;
    if(!Http("GET","/api/market/assets","",r,code)){
-      SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
+      SetLabel(Obj("MARKET"),"Ativos/mercados: indisponíveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
       return;
    }
    int total=0; int p=0;
@@ -453,7 +453,7 @@ void RefreshMarketAssets(){
       if(total>999) break;
    }
    string source=JsonValue(r,"source");
-   SetLabel(Obj("MARKET"),"Ativos/Mercados: "+IntegerToString(total)+" • "+(source==""?"MT5 DEMO":source),20,278,8,C'145,160,180');
+   SetLabel(Obj("MARKET"),"Ativos/mercados: "+IntegerToString(total)+" • "+(source==""?"MT5 DEMO":source),20,278,8,C'145,160,180');
 }
 void RefreshSecondary(){
    string r; int code=0;
@@ -515,7 +515,7 @@ void Analyze(bool render=true){
    runtime_ok=true;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
-   if(signal=="") signal="AGUARDAR";
+   if(signal=="") signal="Aguardar";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    last_signal=signal;
@@ -525,7 +525,7 @@ void Analyze(bool render=true){
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
    ChartRedraw();
 }
@@ -544,7 +544,7 @@ void RunCycle(){
    }
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
-   if(signal=="") signal="AGUARDAR";
+   if(signal=="") signal="Aguardar";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
@@ -553,7 +553,7 @@ void RunCycle(){
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
@@ -618,7 +618,7 @@ void OnTimer(){
    }
    ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    // Rebuild every panel control after chart resize so the background and controls keep the same geometry.
