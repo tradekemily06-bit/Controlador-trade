@@ -76,6 +76,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert 'SetButton(Obj("V7"),"CONFIG",348,67,54,25);' in panel
     assert 'SetEdit(Obj("SYM")' in panel
     assert 'SetEdit(Obj("TF")' in panel
+    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
+    assert "OBJPROP_SELECTABLE,true" in edit
+    assert "OBJPROP_READONLY,false" in edit
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
     assert "Marca d'agua: REMOVIDA" in panel
 
