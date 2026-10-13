@@ -443,10 +443,14 @@ def test_mql5_notification_failure_clears_stale_success_details():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     notifications = panel.split("void RefreshNotifications()", 1)[1].split("void RefreshLearning()", 1)[0]
     failure = notifications.split("}else{", 1)[1]
-    assert '"Notificações indisponíveis • HTTP "' in failure
+    assert '"Notificações indisponíveis"' in failure
     assert '"O serviço não confirmou o resumo."' in failure
     assert '"Eventos detalhados indisponíveis."' in failure
     assert '"Nenhuma atualização confirmada."' in failure
     assert '"A análise não foi confirmada por esta consulta."' in failure
 
 def test_mql5_health_does_not_claim_unknown_decision_engine_is_online():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'runtime_ok=(ok=="true" && health=="OK");' in health
+    assert 'runtime_ok? "Sistema ONLINE"' not in health
