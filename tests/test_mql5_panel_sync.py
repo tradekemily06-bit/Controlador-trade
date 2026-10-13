@@ -80,7 +80,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "OBJPROP_SELECTABLE,true" in edit
     assert "OBJPROP_READONLY,false" in edit
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
-    assert "Marca d'agua: REMOVIDA" in panel
+    assert "Marca-d'água: removida" in panel
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
@@ -259,3 +259,19 @@ def test_mql5_c_toggle_remains_fixed_and_opens_or_closes_panel():
     assert 'if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }' in event
     assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);' in panel
     assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);' in panel
+
+
+def test_mql5_panel_configuration_toggles_persist_real_preferences():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
+    save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "bool pref_closed_candle=true;" in panel
+    assert "bool pref_require_filters=true;" in panel
+    assert 'SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não")' in prefs
+    assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
+    assert 'pref_closed_candle?"true":"false"' in save
+    assert 'pref_require_filters?"true":"false"' in save
+    assert 'if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle;' in event
+    assert 'if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters;' in event
+    assert '"selected_mode":"DEMO"' in save
