@@ -147,7 +147,7 @@ void RefreshPanelToggle(){
    string shown_signal=SignalLabel(last_signal);
    string shown_score=(last_score==""?"—":last_score);
    string compact_text=shown_signal+"  "+shown_score+"%";
-   color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,176,0';
+   color compact_color=(shown_signal=="Comprar")?C'0,220,145':(shown_signal=="Vender")?C'255,82,105':C'255,176,0';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
@@ -554,13 +554,14 @@ void RunCycle(){
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,204,9,C'180,190,205');
+   last_signal=signal; last_score=score; RefreshPanelToggle();
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • autorizado="+(allowed==""?"false":allowed),20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO1"),"Ciclo de demonstração: "+SignalLabel(signal)+" • autorizado="+(allowed==""?"false":allowed),20,361,9,C'88,214,141');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
