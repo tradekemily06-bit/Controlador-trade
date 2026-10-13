@@ -339,3 +339,14 @@ def test_mql5_demo_cycle_status_does_not_show_success_green_when_not_authorized(
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     assert '20,361,9,allowed=="true"?C\'88,214,141\':C\'255,176,0\');' in cycle
     assert '"Ciclo de demonstração: "+SignalLabel(signal)' in cycle
+
+def test_mql5_close_cycle_requires_runtime_confirmation_before_success_or_clearing_ids():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'string closed=JsonValue(r,"closed");' in close
+    assert 'string reconciliation_state=JsonValue(r,"reconciliation_state");' in close
+    assert 'if(closed=="true" && reconciliation_state!="")' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert '"Fechamento aceito; reconciliação ainda não confirmada."' in close
+    assert '"Fechamento não confirmado: "+StringSubstr' in close
+
