@@ -344,8 +344,10 @@ def test_mql5_close_cycle_requires_runtime_confirmation_before_success_or_cleari
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
     assert 'string closed=JsonValue(r,"closed");' in close
-    assert 'string reconciliation_state=JsonValue(r,"reconciliation_state");' in close
-    assert 'bool reconciled=(reconciliation_state!="" && reconciliation_state!="null" && reconciliation_state!="unverified" && reconciliation_state!="pending" && reconciliation_state!="unknown");' in close
+    assert 'string reconciliation=JsonValue(r,"reconciliation");' in close
+    assert 'reconciliation_state=JsonValue(reconciliation,"reconciliation_state");' in close
+    assert 'reconciliation_state=JsonValue(r,"reconciliation_state");' in close
+    assert 'bool reconciled=(reconciliation_state=="reconciled" || reconciliation_state=="reconciled_executed" || reconciliation_state=="reconciled_closed" || reconciliation_state=="closed" || reconciliation_state=="executed");' in close
     assert 'if(closed=="true" && reconciled)' in close
     assert 'last_cycle_id=""; last_external_id="";' in close
     assert '"Fechamento aceito; reconciliação ainda não confirmada."' in close
