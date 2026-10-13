@@ -506,7 +506,7 @@ void Analyze(bool render=true){
       if(configured_timeframe!="") tf=configured_timeframe;
    }
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"confirmed\":"+(pref_closed_candle?"true":"false")+",\"filters_ok\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
       if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
@@ -535,7 +535,7 @@ void RunCycle(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":"+(pref_closed_candle?"true":"false")+",\"filters_ok\":"+(pref_require_filters?"true":"false")+",\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
@@ -639,7 +639,6 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
       else if(active_view=="ANALISE") Analyze();
-      else if(active_view=="CONFIG") RefreshPreferences();
       else if(active_view=="MEMORIA") RefreshSecondary();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
