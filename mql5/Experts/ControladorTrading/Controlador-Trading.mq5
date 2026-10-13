@@ -146,8 +146,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=SignalLabel(last_signal);
-   string shown_score=(last_score==""?"—":last_score);
-   string compact_text=shown_signal+"  "+shown_score+"%";
+   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));
    color compact_color=(shown_signal=="Comprar")?C'0,220,145':(shown_signal=="Vender")?C'255,82,105':C'255,176,0';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
