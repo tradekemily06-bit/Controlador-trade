@@ -447,9 +447,9 @@ def test_mql5_notifications_view_only_exposes_notification_refresh():
 def test_mql5_notifications_do_not_claim_unverified_analysis_or_event_refresh():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     notifications = panel.split("void RefreshNotifications()", 1)[1].split("void RefreshLearning()", 1)[0]
-    assert '"Resumo retornado pelo serviço."' in notifications
-    assert '"Eventos detalhados não confirmados nesta resposta."' in notifications
-    assert '"Esta consulta não confirma atualização da análise."' in notifications
+    assert '"Alertas importantes e críticos do ecossistema"' in notifications
+    assert '"Abra um alerta para conferir os detalhes."' in notifications
+    assert '"A análise de mercado é atualizada separadamente."' in notifications
     assert '"Atualização das notificações concluída"' not in notifications
     assert '"Analise operacional atualizada pelo runtime"' not in notifications
 
@@ -459,10 +459,10 @@ def test_mql5_notification_failure_clears_stale_success_details():
     notifications = panel.split("void RefreshNotifications()", 1)[1].split("void RefreshLearning()", 1)[0]
     failure = notifications.split("}else{", 1)[1]
     assert '"Notificações indisponíveis"' in failure
-    assert '"O serviço não confirmou o resumo."' in failure
-    assert '"Eventos detalhados indisponíveis."' in failure
-    assert '"Nenhuma atualização confirmada."' in failure
-    assert '"A análise não foi confirmada por esta consulta."' in failure
+    assert 'SetLabel(Obj("INFO2"),"",20,381' in failure
+    assert 'SetLabel(Obj("INFO3"),"",20,401' in failure
+    assert 'SetLabel(Obj("INFO4"),"",20,421' in failure
+    assert 'SetLabel(Obj("INFO5"),"",20,441' in failure
 
 def test_mql5_health_does_not_claim_unknown_decision_engine_is_online():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
