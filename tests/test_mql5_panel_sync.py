@@ -72,7 +72,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "MathMax(160,cw-24)" in panel
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
+    assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
+    assert 'ObjectSetInteger(0,name,OBJPROP_XSIZE,42);' in panel
+    assert 'ObjectSetInteger(0,name,OBJPROP_YSIZE,42);' in panel
     assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in panel
     assert 'SetButton(Obj("V1"),"Início",18,67,88,25);' in panel
     assert 'SetButton(Obj("V7"),"Configurações",314,94,106,25);' in panel
