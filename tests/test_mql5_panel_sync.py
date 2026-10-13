@@ -351,3 +351,15 @@ def test_mql5_close_cycle_requires_runtime_confirmation_before_success_or_cleari
     assert '"Fechamento aceito; reconciliação ainda não confirmada."' in close
     assert '"Fechamento não confirmado: "+StringSubstr' in close
 
+def test_mql5_only_displays_runtime_quality_scores_from_1_to_100():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "bool IsValidQualityScore(string score)" in panel
+    quality = panel.split("bool IsValidQualityScore(string score)", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    assert "if(score==\"\") return false;" in quality
+    assert "if(ch<'0' || ch>'9') return false;" in quality
+    assert "return value>=1 && value<=100;" in quality
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in analyze
+    assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in cycle
+
