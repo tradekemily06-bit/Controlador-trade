@@ -186,13 +186,13 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"INÍCIO",18,67,88,25);
-   SetButton(Obj("V2"),"ANÁLISE",110,67,88,25);
-   SetButton(Obj("V3"),"MEMÓRIA",202,67,100,25);
-   SetButton(Obj("V4"),"LABORATÓRIO",18,94,112,25);
-   SetButton(Obj("V5"),"ESTUDO",134,94,72,25);
-   SetButton(Obj("V6"),"NOTIFICAÇÕES",210,94,100,25);
-   SetButton(Obj("V7"),"CONFIGURAÇÕES",314,94,106,25);
+   SetButton(Obj("V1"),"Início",18,67,88,25);
+   SetButton(Obj("V2"),"Análise",110,67,88,25);
+   SetButton(Obj("V3"),"Memória",202,67,100,25);
+   SetButton(Obj("V4"),"Laboratório",18,94,112,25);
+   SetButton(Obj("V5"),"Estudo",134,94,72,25);
+   SetButton(Obj("V6"),"Notificações",210,94,100,25);
+   SetButton(Obj("V7"),"Configurações",314,94,106,25);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,126,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
@@ -200,13 +200,13 @@ void Panel(){
    SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
-   SetLabel(Obj("SYML"),"ATIVO / SÍMBOLO",20,258,8,C'130,145,165');
+   SetLabel(Obj("SYML"),"Ativo / símbolo",20,258,8,C'130,145,165');
    SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
-   SetLabel(Obj("TFL"),"PERÍODO GRÁFICO",184,258,8,C'130,145,165');
+   SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
    SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
    SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
 
-   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,316,172,30);
+   SetButton(Obj("ANALYZE"),"Analisar no serviço",20,316,172,30);
    SetButton(Obj("CYCLE"),"EXECUTAR CICLO DEMO",202,316,177,30);
    SetButton(Obj("SAVE"),"SALVAR CONFIGURAÇÕES",20,352,172,28);
    SetButton(Obj("CLOSE"),"ENCERRAR E RECONCILIAR",202,352,177,28);
@@ -293,7 +293,7 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Configuracoes: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Configurações: serviço indisponível • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
@@ -302,9 +302,9 @@ void RefreshPreferences(){
    string closed=JsonValue(r,"require_closed_candle");
    string filters=JsonValue(r,"require_filters");
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca d'agua: REMOVIDA",20,421,9,C'145,160,180');
+   SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Marca-d'água: removida",20,421,9,C'145,160,180');
    SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
 }
 void RefreshNotifications(){
@@ -343,17 +343,17 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
-      SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"Analisar no serviço",20,284,172,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
@@ -362,9 +362,9 @@ void RenderView(){
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"MEMORIA • historico, WIN/LOSS, estatisticas e auditoria",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR MEMORIA",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Atualizar estatísticas",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
@@ -374,9 +374,9 @@ void RenderView(){
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"VALIDAR AMBIENTE",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshHealth();
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
@@ -386,24 +386,24 @@ void RenderView(){
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR ENSINO",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
-      SetLabel(Obj("SUB"),"CONFIGURACOES • ativo, timeframe e seguranca",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"Configurações • ativo, período gráfico e segurança",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
-      SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshPreferences();
    }
    if(active_view!="CONFIG"){
@@ -481,9 +481,9 @@ void SaveConfig(){
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code))
-      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas no runtime • HTTP "+IntegerToString(code),20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Configurações sincronizadas no serviço • HTTP "+IntegerToString(code),20,361,9,C'88,214,141');
    else
-      SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Falha ao sincronizar configurações • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
