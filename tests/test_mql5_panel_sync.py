@@ -347,7 +347,7 @@ def test_mql5_close_cycle_requires_runtime_confirmation_before_success_or_cleari
     assert 'string reconciliation=JsonValue(r,"reconciliation");' in close
     assert 'string terminal_state=JsonValue(r,"terminal_state");' in close
     assert 'StringToUpper(terminal_state);' in close
-    assert 'bool has_reconciliation=(StringFind(r,"\"reconciliation\":{")>=0 && StringFind(r,"\"reconciliation\":null")<0);' in close
+    assert 'bool has_reconciliation=(reconciliation=="{");' in close
     assert 'bool reconciled=(has_reconciliation && (terminal_state=="COMPLETED" || terminal_state=="BLOCKED"));' in close
     assert 'string outcome_state=JsonValue(r,"reconciliation_state");' in close
     assert 'StringToUpper(outcome_state);' in close
