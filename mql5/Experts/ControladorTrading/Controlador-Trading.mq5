@@ -352,7 +352,11 @@ void RefreshNotifications(){
       SetLabel(Obj("INFO4"),"Consulta HTTP concluída; conteúdo limitado ao resumo.",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Esta consulta não confirma atualização da análise.",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Notificações indisponíveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"O serviço não confirmou o resumo.",20,381,9,C'255,118,118');
+      SetLabel(Obj("INFO3"),"Eventos detalhados indisponíveis.",20,401,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Nenhuma atualização confirmada.",20,421,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"A análise não foi confirmada por esta consulta.",20,441,9,C'255,118,118');
    }
 }
 void RefreshLearning(){
