@@ -323,3 +323,19 @@ def test_mql5_demo_cycle_updates_compact_signal_and_uses_sentence_case():
     assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);' in cycle
     assert "last_signal=signal; last_score=score; RefreshPanelToggle();" in cycle
     assert '"Ciclo de demonstração: "+SignalLabel(signal)' in cycle
+
+
+def test_mql5_signal_quality_is_labeled_as_quality_not_generic_score():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert '"Qualidade: "+(score==""?"—":score)+"/100"' in analyze
+    assert '"Qualidade: "+(score==""?"—":score)+"/100"' in cycle
+    assert '"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)' in analyze
+
+
+def test_mql5_demo_cycle_status_does_not_show_success_green_when_not_authorized():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert '20,361,9,allowed=="true"?C\'88,214,141\':C\'255,176,0\');' in cycle
+    assert '"Ciclo de demonstração: "+SignalLabel(signal)' in cycle
