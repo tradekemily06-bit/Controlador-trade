@@ -243,7 +243,7 @@ def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
 
 def test_mql5_panel_uses_complete_tab_and_configuration_names():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    for label in ("INÍCIO", "ANÁLISE", "MEMÓRIA", "LABORATÓRIO", "ESTUDO", "NOTIFICAÇÕES", "CONFIGURAÇÕES"):
+    for label in ("Início", "Análise", "Memória", "Laboratório", "Estudo", "Notificações", "Configurações"):
         assert f'"{label}"' in panel
     assert '"SALVAR CONFIGURAÇÕES"' in panel
     assert '"ENCERRAR E RECONCILIAR"' in panel
