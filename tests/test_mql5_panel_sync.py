@@ -217,7 +217,10 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert "int y=MathMax(8,ch-58);" in panel
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
     assert "if(panel_visible){" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
+    assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
+    assert 'ObjectSetInteger(0,name,OBJPROP_XSIZE,42);' in panel
+    assert 'ObjectSetInteger(0,name,OBJPROP_YSIZE,42);' in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
@@ -272,7 +275,7 @@ def test_mql5_c_toggle_remains_fixed_and_opens_or_closes_panel():
     event = panel.split("void OnChartEvent(", 1)[1]
     assert "panel_visible=!panel_visible;" in toggle
     assert "GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);" in toggle
-    assert 'if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }' in event
+    assert 'if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_LETTER")) { TogglePanel(); return; }' in event
     assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);' in panel
     assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);' in panel
 
@@ -382,7 +385,9 @@ def test_mql5_analysis_failure_clears_stale_compact_signal():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     failure = analyze.split('if(!Http("POST","/api/runtime/analysis"', 1)[1].split("\n   }", 1)[0]
-    assert 'runtime_ok=false;' in failure
+    assert 'last_signal="Aguardar";' in failure
+    assert 'last_score="";' in failure
+    assert 'runtime_ok=false;' not in failure
     assert 'last_signal="Aguardar";' in failure
     assert 'last_score="";' in failure
     assert 'RefreshPanelToggle();' in failure
