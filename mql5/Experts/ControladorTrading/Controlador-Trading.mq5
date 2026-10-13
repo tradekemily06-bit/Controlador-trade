@@ -144,9 +144,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
-   string shown_signal=last_signal;
-   if(shown_signal=="COMPRA") shown_signal="COMPRAR";
-   else if(shown_signal=="VENDA") shown_signal="VENDER";
+   string shown_signal=SignalLabel(last_signal);
    string shown_score=(last_score==""?"—":last_score);
    string compact_text=shown_signal+"  "+shown_score+"%";
    color compact_color=(shown_signal=="COMPRA" || shown_signal=="COMPRAR")?C'0,220,145':(shown_signal=="VENDA" || shown_signal=="VENDER")?C'255,82,105':C'255,176,0';
@@ -272,6 +270,11 @@ bool Http(string method,string path,string body,string &response,int &code){
    }
    response=CharArrayToString(result,0,-1,CP_UTF8);
    return code>=200 && code<300;
+}
+string SignalLabel(string signal){
+   if(signal=="COMPRA" || signal=="COMPRAR") return "Comprar";
+   if(signal=="VENDA" || signal=="VENDER") return "Vender";
+   return "Aguardar";
 }
 string NormalizeTimeframe(string tf){
    StringTrimLeft(tf);
@@ -523,7 +526,7 @@ void Analyze(bool render=true){
    RefreshPanelToggle();
    if(!render) return;
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
