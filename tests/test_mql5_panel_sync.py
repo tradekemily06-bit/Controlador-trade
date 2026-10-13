@@ -417,3 +417,12 @@ def test_mql5_signal_quality_and_reason_positions_match_after_redraw():
     assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in cycle
     assert 'StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9' in cycle
 
+def test_mql5_notifications_view_only_exposes_notification_refresh():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    notif = panel.split('}else if(active_view=="NOTIF"){', 1)[1].split('}else if(active_view=="CONFIG"){', 1)[0]
+    assert 'SetButton(Obj("ANALYZE"),"Atualizar notificações"' in notif
+    assert 'SetButton(Obj("CYCLE")' not in notif
+    assert 'SetButton(Obj("SAVE")' not in notif
+    assert 'SetButton(Obj("CLOSE")' not in notif
+    for control in ("CYCLE", "SAVE", "CLOSE"):
+        assert f'ObjectDelete(0,Obj("{control}"))' in notif
