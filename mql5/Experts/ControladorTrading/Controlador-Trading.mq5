@@ -410,8 +410,8 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Configurações • ativo, período gráfico e segurança",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Candle fechado: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
-      SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
-      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
+      SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
+      SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,352,177,28);
       RefreshPreferences();
    }
    if(active_view!="CONFIG"){
