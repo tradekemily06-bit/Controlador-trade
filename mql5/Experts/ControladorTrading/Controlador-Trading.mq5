@@ -504,7 +504,7 @@ void RefreshMemory(){
       SetLabel(Obj("INFO4"),"Resultados financeiros exigem confirmação",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Histórico financeiro não confirmado não é tratado como WIN/LOSS",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Memória indisponível • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Memória indisponível",20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"Não foi possível consultar registros.",20,381,9,C'255,118,118');
       SetLabel(Obj("INFO3"),"Nenhum dado anterior é apresentado como atualização.",20,401,9,C'255,118,118');
       SetLabel(Obj("INFO4"),"Estatísticas não são exibidas nesta seção.",20,421,9,C'205,215,230');
