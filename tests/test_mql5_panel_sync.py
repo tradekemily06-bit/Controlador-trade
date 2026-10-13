@@ -373,3 +373,12 @@ def test_mql5_analysis_failure_clears_stale_compact_signal():
     assert 'RefreshPanelToggle();' in failure
     assert '"Runtime indisponível; sinal anterior descartado • HTTP "' in failure
 
+def test_mql5_failed_demo_cycle_clears_stale_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    failure = cycle.split('if(!Http("POST","/api/runtime/cycle"', 1)[1].split("\n   }", 1)[0]
+    assert 'last_signal="Aguardar";' in failure
+    assert 'last_score="";' in failure
+    assert 'RefreshPanelToggle();' in failure
+    assert '"Ciclo não confirmado pelo runtime."' in failure
+
