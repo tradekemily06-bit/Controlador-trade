@@ -98,65 +98,13 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
 void ApplyWatermark(){
-   string legacy=Obj("WATERMARK");
-   string mark=Obj("WATERMARK_MARK");
-   string name=Obj("WATERMARK_TEXT");
-   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
-   if(!watermark_enabled){
-      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
-      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
-      return;
-   }
-   int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int center_y=MathMax(120,h/2);
-
-   // Marca horizontal, discreta e centralizada para não competir com os candles.
-   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
-   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,75,110');
-   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
-   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
-   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
-
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,22);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
-   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
-   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   // Marca-d agua removida por solicitacao do usuario.
+   string names[4]={Obj("WATERMARK"),Obj("WATERMARK_MARK"),Obj("WATERMARK_TEXT"),Obj("WM")};
+   for(int i=0;i<4;i++) if(ObjectFind(0,names[i])>=0) ObjectDelete(0,names[i]);
 }
-void RefreshWatermarkControl(){
-   watermark_enabled=false;
-   if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
-   ApplyWatermark();
-}
-void ToggleWatermark(){
-   watermark_enabled=!watermark_enabled;
-   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
-   RefreshWatermarkControl();
-   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
-   ChartRedraw();
-}
-void LoadWatermark(){
-   watermark_enabled=false;
-   if(ObjectFind(0,Obj("WATERMARK"))>=0) ObjectDelete(0,Obj("WATERMARK"));
-   if(ObjectFind(0,Obj("WATERMARK_MARK"))>=0) ObjectDelete(0,Obj("WATERMARK_MARK"));
-   if(ObjectFind(0,Obj("WATERMARK_TEXT"))>=0) ObjectDelete(0,Obj("WATERMARK_TEXT"));
-   if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
-}
+void RefreshWatermarkControl(){ ApplyWatermark(); }
+void ToggleWatermark(){ ApplyWatermark(); }
+void LoadWatermark(){ ApplyWatermark(); }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
@@ -235,11 +183,11 @@ void Panel(){
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"INICIO",18,67,54,25);
-   SetButton(Obj("V2"),"ANALISE",74,67,54,25);
+   SetButton(Obj("V2"),"ANAL.",74,67,54,25);
    SetButton(Obj("V3"),"MEM",130,67,54,25);
    SetButton(Obj("V4"),"LAB",186,67,48,25);
-   SetButton(Obj("V5"),"ESTUDO",236,67,54,25);
-   SetButton(Obj("V6"),"ALERTAS",292,67,54,25);
+   SetButton(Obj("V5"),"EST.",236,67,54,25);
+   SetButton(Obj("V6"),"ALERTA",292,67,54,25);
    SetButton(Obj("V7"),"CONFIG",348,67,54,25);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
