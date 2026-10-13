@@ -114,7 +114,7 @@ void ToggleWatermark(){ ApplyWatermark(); }
 void LoadWatermark(){ ApplyWatermark(); }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // The C toggle must stay at the same bottom-left position while the panel opens.
@@ -127,16 +127,29 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_XSIZE,42);
    ObjectSetInteger(0,name,OBJPROP_YSIZE,42);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,42);
    ObjectSetInteger(0,name,OBJPROP_STATE,false);
    ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,220,245');
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'8,18,29');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'0,190,225');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,name,OBJPROP_TEXT,"●");
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);
+   string letter=Obj("PANEL_TOGGLE_LETTER");
+   if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
+   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
+   ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,18);
+   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,220,245');
+   ObjectSetString(0,letter,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,letter,OBJPROP_TEXT,"C");
+   ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,true);
+   ObjectSetInteger(0,letter,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,letter,OBJPROP_ZORDER,1001);
    string sig=Obj("COLLAPSED_SIGNAL");
    if(ObjectFind(0,sig)<0) ObjectCreate(0,sig,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,sig,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -194,8 +207,8 @@ void Panel(){
    SetButton(Obj("V6"),"Notificações",210,94,100,25);
    SetButton(Obj("V7"),"Configurações",314,94,106,25);
 
-   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,126,10,C'255,209,102');
-   SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"Serviço: verificando...",20,126,10,C'255,209,102');
+   SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
    SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
    SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
@@ -207,12 +220,12 @@ void Panel(){
    SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
 
    SetButton(Obj("ANALYZE"),"Analisar no serviço",20,316,172,30);
-   SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,316,177,30);
+   SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,316,177,30);
    SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
    SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,352,177,28);
 
    SetLabel(Obj("INFO1"),"Decisão: —",20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Controle de risco: verificando...",20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Memoria: verificando...",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
@@ -359,31 +372,31 @@ void RefreshLearning(){
 void RenderView(){
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",20,381,9,C'255,209,102');
+      SetLabel(Obj("INFO1"),"Motor de decisão: ecossistema",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Controle de risco: atualizando...",20,381,9,C'255,209,102');
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
       SetButton(Obj("ANALYZE"),"Analisar no serviço",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"Análise do mercado",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar leitura",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       Analyze();
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      SetLabel(Obj("INFO2"),"Controle de risco: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte: análise do ecossistema",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Filtros e confirmações",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Alertas não executam operações",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"Memória • histórico, WIN/LOSS, estatísticas e auditoria",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Atualizar estatísticas",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshSecondary();
@@ -395,7 +408,7 @@ void RenderView(){
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação, replay e validação isolados da operação real",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Validar ambiente",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshHealth();
@@ -408,14 +421,14 @@ void RenderView(){
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"Estudo • separado da autorização operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
-      SetButton(Obj("CYCLE"),"Executar ciclo de demonstração",202,284,177,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo de simulação",202,284,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,320,172,28);
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       RefreshNotifications();
@@ -437,7 +450,7 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"Serviço: INDISPONÍVEL / HTTP "+IntegerToString(code),20,104,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
@@ -447,7 +460,7 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),20,104,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"Serviço: ONLINE • HTTP "+IntegerToString(code),20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
@@ -473,7 +486,7 @@ void RefreshSecondary(){
    if(Http("GET","/api/risk","",r,code)){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
+      SetLabel(Obj("INFO2"),"Controle de risco: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
    }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",20,381,9,C'255,118,118');
 
    if(Http("GET","/api/statistics","",r,code)){
@@ -680,7 +693,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_LETTER")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
