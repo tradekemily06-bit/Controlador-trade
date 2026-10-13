@@ -309,3 +309,17 @@ def test_mql5_config_controls_do_not_overlap_status_text():
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);' in prefs
     assert '20,390,9,' in prefs
     assert '20,478,9,' in prefs
+
+
+def test_mql5_compact_signal_uses_sentence_case_for_correct_signal_colors():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert 'color compact_color=(shown_signal=="Comprar")?C\'0,220,145\':(shown_signal=="Vender")?C\'255,82,105\':C\'255,176,0\';' in toggle
+
+
+def test_mql5_demo_cycle_updates_compact_signal_and_uses_sentence_case():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);' in cycle
+    assert "last_signal=signal; last_score=score; RefreshPanelToggle();" in cycle
+    assert '"Ciclo de demonstração: "+SignalLabel(signal)' in cycle
