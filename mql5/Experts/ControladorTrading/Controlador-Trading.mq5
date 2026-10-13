@@ -382,7 +382,7 @@ void RenderView(){
       SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("INFO2"),"Decisão atual: consulte o sinal junto ao C",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Execução REAL permanece bloqueada",20,401,9,C'255,155,155');
-      SetLabel(Obj("INFO4"),"Análise atualizada pelo runtime",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Sinal atual exibido ao lado do C",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Abra cada seção para consultar seus dados",20,441,9,C'205,215,230');
       SetButton(Obj("ANALYZE"),"Atualizar análise",20,284,172,30);
    }else if(active_view=="ANALISE"){
@@ -397,11 +397,7 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Memória • registros e histórico",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
       RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memória: registros consultados no runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Histórico operacional",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Registros de estudo não são lucro financeiro",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatísticas ficam na seção correspondente",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Dados financeiros exigem confirmação",20,441,9,C'205,215,230');
+      RefreshMemory();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Validar ambiente",20,284,172,30);
@@ -490,6 +486,24 @@ void RefreshSecondary(){
       if(count=="") count=JsonValue(r,"count");
       SetLabel(Obj("INFO3"),"Memoria: runtime consultado • registros "+(count==""?"disponiveis":count),20,401,9,C'205,215,230');
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
+}
+void RefreshMemory(){
+   string r; int code=0;
+   if(Http("GET","/api/memory?limit=20","",r,code)){
+      string total=JsonValue(r,"total");
+      if(total=="") total=JsonValue(r,"count");
+      SetLabel(Obj("INFO1"),"Memória consultada no runtime",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Registros retornados: "+(total==""?"não informado":total),20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Estudo e simulação não são lucro financeiro",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Resultados financeiros exigem confirmação",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Histórico detalhado conforme resposta do serviço",20,441,9,C'205,215,230');
+   }else{
+      SetLabel(Obj("INFO1"),"Memória indisponível • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"Não foi possível consultar registros.",20,381,9,C'255,118,118');
+      SetLabel(Obj("INFO3"),"Nenhum dado anterior é apresentado como atualização.",20,401,9,C'255,118,118');
+      SetLabel(Obj("INFO4"),"Estatísticas não são exibidas nesta seção.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Verifique o serviço e tente atualizar novamente.",20,441,9,C'255,118,118');
+   }
 }
 void SaveConfig(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
@@ -687,7 +701,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
       else if(active_view=="ANALISE") Analyze();
-      else if(active_view=="MEMORIA") RefreshSecondary();
+      else if(active_view=="MEMORIA") RefreshMemory();
       else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
