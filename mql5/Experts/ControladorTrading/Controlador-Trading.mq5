@@ -105,13 +105,67 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
 }
 void ApplyWatermark(){
-   // A marca-d'agua permanece desativada; nenhuma mensagem sobre ela e exibida.
-   string names[4]={Obj("WATERMARK"),Obj("WATERMARK_MARK"),Obj("WATERMARK_TEXT"),Obj("WM")};
-   for(int i=0;i<4;i++) if(ObjectFind(0,names[i])>=0) ObjectDelete(0,names[i]);
+   string legacy=Obj("WATERMARK");
+   string mark=Obj("WATERMARK_MARK");
+   string name=Obj("WATERMARK_TEXT");
+   string oldwm=Obj("WM");
+   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
+   if(ObjectFind(0,oldwm)>=0 && active_view!="CONFIG") ObjectDelete(0,oldwm);
+   if(!watermark_enabled){
+      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
+   int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
+   int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int center_y=MathMax(100,h/2);
+   // Marca inclinada e discreta, atrás dos candles, sem competir com o sinal.
+   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(45,w/2-120));
+   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y-8);
+   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,28);
+   ObjectSetInteger(0,mark,OBJPROP_ANGLE,-12);
+   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'0,90,115');
+   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
+   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
+   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
+
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-90,w/2+105));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y+16);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,17);
+   ObjectSetInteger(0,name,OBJPROP_ANGLE,-12);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,75,100');
+   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
+   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
+   ObjectSetInteger(0,name,OBJPROP_BACK,true);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
-void RefreshWatermarkControl(){ ApplyWatermark(); }
-void ToggleWatermark(){ ApplyWatermark(); }
-void LoadWatermark(){ ApplyWatermark(); }
+void RefreshWatermarkControl(){
+   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"Marca-d'água: ativada":"Marca-d'água: desativada",20,555,172,28);
+   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
+   ApplyWatermark();
+}
+void ToggleWatermark(){
+   watermark_enabled=!watermark_enabled;
+   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
+   RefreshWatermarkControl();
+   SetLabel(Obj("INFO1"),watermark_enabled?"Marca-d'água ativada no gráfico.":"Marca-d'água desativada no gráfico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   ChartRedraw();
+}
+void LoadWatermark(){
+   if(GlobalVariableCheck(WatermarkKey()))
+      watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
+   else watermark_enabled=false;
+   ApplyWatermark();
+}
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
