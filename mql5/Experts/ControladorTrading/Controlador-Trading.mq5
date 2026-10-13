@@ -321,7 +321,11 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Não foi possível carregar as configurações",20,390,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Configurações indisponíveis",20,390,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"",20,412,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"",20,434,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"",20,456,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"",20,478,9,C'205,215,230');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
