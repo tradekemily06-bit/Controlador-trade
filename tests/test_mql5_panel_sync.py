@@ -230,5 +230,5 @@ def test_mql5_signal_palette_keeps_buy_green_sell_luminous_amber():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert 'C\'0,220,145\'' in panel
     assert 'C\'255,82,105\'' in panel
-    assert 'C\'255,145,45\'' in panel
-    assert 'SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C\'255,145,45\');' in panel
+    assert 'C\'255,176,0\'' in panel
+    assert 'SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C\'255,176,0\');' in panel
