@@ -448,7 +448,7 @@ void RefreshHealth(){
    string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
-   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema Online":"Sistema INDISPONÍVEL",20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
 }
@@ -593,7 +593,7 @@ void RunCycle(){
       SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
       SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
       SetLabel(Obj("REASON"),"Ciclo não confirmado pelo runtime.",20,226,9,C'255,118,118');
-      SetLabel(Obj("INFO1"),"Ciclo bloqueado ou com falha • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado ou não confirmado pelo runtime",20,361,9,C'255,118,118');
       return;
    }
    string signal=JsonValue(r,"signal");
@@ -625,7 +625,7 @@ void CloseCycle(){
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento falhou ou foi bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Fechamento falhou ou foi bloqueado",20,361,9,C'255,118,118');
       return;
    }
    string closed=JsonValue(r,"closed");
