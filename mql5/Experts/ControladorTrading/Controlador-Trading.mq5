@@ -646,7 +646,6 @@ int OnInit(){
    }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
-   RefreshSecondary();
    RefreshMarketAssets();
    // Prime runtime market-data state immediately, even when the native panel is hidden.
    Analyze(panel_visible);
@@ -670,7 +669,7 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
-   if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
+   if(active_view=="COCKPIT") { RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    datetime current_bar=iTime(_Symbol,_Period,0);
@@ -703,7 +702,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
       else if(active_view=="ANALISE") Analyze();
       else if(active_view=="MEMORIA") RefreshMemory();
-      else if(active_view=="LAB") { RefreshHealth(); RefreshSecondary(); }
+      else if(active_view=="LAB") RefreshHealth();
       else if(active_view=="ENSINO") RefreshLearning();
       else if(active_view=="NOTIF") RefreshNotifications();
       else Analyze();
