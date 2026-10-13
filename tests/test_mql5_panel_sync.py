@@ -58,31 +58,26 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "if(!render) return;" in analyze
 
 
-def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
+def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '"CONTROLADOR TRADING"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
-    assert '"CONTROLADOR TRADING"' in panel
-    assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
     assert "InpPanelWidth = 390" in panel
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
     assert "MathRound(cw*0.34)" in panel
     assert "MathRound(ch*0.43)" in panel
-    chart_event = panel.split("void OnChartEvent", 1)[1]
-    assert "CHARTEVENT_CHART_CHANGE" in chart_event
-    assert "if(panel_visible){ Panel(); RenderView(); RefreshPanelToggle(); ChartRedraw(); }" in chart_event
-    assert "watermark_enabled=false;" in panel
+    assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
     assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in panel
-    assert 'SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);' in panel
-    assert "OBJPROP_ANGLE,18.0" not in panel
-    assert "ToggleWatermark" in panel
-    assert "GlobalVariableSet(WatermarkKey()" in panel
-
+    assert 'SetButton(Obj("V1"),"INICIO",18,67,54,25);' in panel
+    assert 'SetButton(Obj("V7"),"CONFIG",348,67,54,25);' in panel
+    assert "SetEdit(Obj("SYM")" in panel
+    assert "SetEdit(Obj("TF")" in panel
+    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
+    assert "Marca d'agua: REMOVIDA" in panel
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
