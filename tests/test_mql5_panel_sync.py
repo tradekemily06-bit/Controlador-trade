@@ -317,6 +317,9 @@ def test_mql5_compact_signal_uses_sentence_case_for_correct_signal_colors():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert 'color compact_color=(shown_signal=="Comprar")?C\'0,220,145\':(shown_signal=="Vender")?C\'255,82,105\':C\'255,176,0\';' in toggle
+    assert 'string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));' in toggle
+    assert 'shown_score' not in toggle
+    assert 'compact_text=shown_signal+"  "+shown_score+"%";' not in toggle
 
 
 def test_mql5_demo_cycle_updates_compact_signal_and_uses_sentence_case():
