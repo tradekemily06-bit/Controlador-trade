@@ -276,6 +276,16 @@ string SignalLabel(string signal){
    if(signal=="VENDA" || signal=="VENDER") return "Vender";
    return "Aguardar";
 }
+
+bool IsValidQualityScore(string score){
+   if(score=="") return false;
+   for(int i=0;i<StringLen(score);i++){
+      ushort ch=StringGetCharacter(score,i);
+      if(ch<'0' || ch>'9') return false;
+   }
+   long value=StringToInteger(score);
+   return value>=1 && value<=100;
+}
 string NormalizeTimeframe(string tf){
    StringTrimLeft(tf);
    StringTrimRight(tf);
@@ -521,6 +531,8 @@ void Analyze(bool render=true){
    if(signal=="") signal="Aguardar";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
+   bool quality_valid=IsValidQualityScore(score);
+   if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }
    last_signal=signal;
    last_score=score;
    RefreshPanelToggle();
@@ -550,6 +562,8 @@ void RunCycle(){
    if(signal=="") signal="Aguardar";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
+   bool quality_valid=IsValidQualityScore(score);
+   if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
