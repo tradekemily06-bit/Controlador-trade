@@ -608,7 +608,7 @@ void CloseCycle(){
    // UNVERIFIED is expected for financial outcome when no external outcome observation exists.
    string terminal_state=JsonValue(r,"terminal_state");
    StringToUpper(terminal_state);
-   bool has_reconciliation=(StringFind(r,"\"reconciliation\":{")>=0 && StringFind(r,"\"reconciliation\":null")<0);
+   bool has_reconciliation=(reconciliation=="{");
    bool reconciled=(has_reconciliation && (terminal_state=="COMPLETED" || terminal_state=="BLOCKED"));
    string outcome_state=JsonValue(r,"reconciliation_state");
    StringToUpper(outcome_state);
