@@ -42,7 +42,8 @@ void RefreshPanelLayout(){
    panel_height=MathMin(InpPanelHeight,MathMax(240,ch-24));
    panel_height=MathMin(panel_height,MathMax(240,(int)MathRound(ch*0.43)));
    panel_x=12;
-   panel_y=18;
+   // When expanded, keep the panel above the fixed bottom-left C toggle.
+   panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -161,12 +162,11 @@ void RefreshPanelToggle(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int x=panel_visible?panel_x+10:12;
-   int y=panel_visible?panel_y+8:MathMax(8,ch-58);
-   if(panel_visible){
-      x=MathMax(8,MathMin(x,MathMax(8,cw-54)));
-      y=MathMax(8,MathMin(y,MathMax(8,ch-54)));
-   }
+   // The C toggle must stay at the same bottom-left position while the panel opens.
+   int x=12;
+   int y=MathMax(8,ch-58);
+   x=MathMax(8,MathMin(x,MathMax(8,cw-54)));
+   y=MathMax(8,MathMin(y,MathMax(8,ch-54)));
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
@@ -181,7 +181,7 @@ void RefreshPanelToggle(){
    ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_ZORDER,100);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);
    string sig=Obj("COLLAPSED_SIGNAL");
    if(ObjectFind(0,sig)<0) ObjectCreate(0,sig,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,sig,OBJPROP_CORNER,CORNER_LEFT_UPPER);
