@@ -363,3 +363,13 @@ def test_mql5_only_displays_runtime_quality_scores_from_1_to_100():
     assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in analyze
     assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in cycle
 
+def test_mql5_analysis_failure_clears_stale_compact_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    failure = analyze.split('if(!Http("POST","/api/runtime/analysis"', 1)[1].split("\n   }", 1)[0]
+    assert 'runtime_ok=false;' in failure
+    assert 'last_signal="Aguardar";' in failure
+    assert 'last_score="";' in failure
+    assert 'RefreshPanelToggle();' in failure
+    assert '"Runtime indisponível; sinal anterior descartado • HTTP "' in failure
+
