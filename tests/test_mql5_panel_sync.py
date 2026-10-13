@@ -521,3 +521,15 @@ def test_mql5_panel_uses_navy_cyan_ecosystem_palette_and_contrasting_c():
     assert "ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'10,20,35');" in panel
     assert "ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,145,175');" in panel
     assert "ObjectSetInteger(0,letter,OBJPROP_COLOR,C'10,20,35');" in panel
+
+def test_mql5_health_status_stays_below_navigation_tabs():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshMarketAssets()", 1)[0]
+    assert 'SetLabel(Obj("RUNTIME"),"Sistema indisponível",20,126,10' in base
+    assert 'SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10' in health
+    assert 'SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10' in health
+    assert '20,146,10,C\'88,214,141\'' in health
+    assert '20,104,10' not in health
+    assert '20,124,10' not in health
+
