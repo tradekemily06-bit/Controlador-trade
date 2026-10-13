@@ -234,13 +234,13 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"CONTROLADOR TRADING",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"⌂",18,67,54,25);
-   SetButton(Obj("V2"),"A",74,67,54,25);
-   SetButton(Obj("V3"),"M",130,67,54,25);
-   SetButton(Obj("V4"),"L",186,67,48,25);
-   SetButton(Obj("V5"),"E",236,67,54,25);
-   SetButton(Obj("V6"),"🔔",292,67,54,25);
-   SetButton(Obj("V7"),"⚙",348,67,54,25);
+   SetButton(Obj("V1"),"INICIO",18,67,54,25);
+   SetButton(Obj("V2"),"ANALISE",74,67,54,25);
+   SetButton(Obj("V3"),"MEM",130,67,54,25);
+   SetButton(Obj("V4"),"LAB",186,67,48,25);
+   SetButton(Obj("V5"),"ESTUDO",236,67,54,25);
+   SetButton(Obj("V6"),"ALERTAS",292,67,54,25);
+   SetButton(Obj("V7"),"CONFIG",348,67,54,25);
 
    SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
@@ -352,7 +352,7 @@ void RefreshPreferences(){
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca d'agua: "+(watermark_enabled?"ATIVADA":"DESATIVADA")+" • persistencia local MT5",20,421,9,watermark_enabled?C'88,214,141':C'145,160,180');
+   SetLabel(Obj("INFO4"),"Marca d'agua: REMOVIDA",20,421,9,C'145,160,180');
    SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
 }
 void RefreshNotifications(){
@@ -447,7 +447,7 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
-      SetLabel(Obj("SUB"),"CONFIG • preferencias, seguranca e marca d'agua",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"CONFIGURACOES • ativo, timeframe e seguranca",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
