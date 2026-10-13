@@ -395,4 +395,5 @@ def test_mql5_signal_quality_and_reason_positions_match_after_redraw():
     assert 'StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9' in analyze
     assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in cycle
     assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in cycle
+    assert 'StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9' in cycle
 
