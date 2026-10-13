@@ -562,6 +562,12 @@ void RunCycle(){
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo de demonstração no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
+      last_signal="Aguardar";
+      last_score="";
+      RefreshPanelToggle();
+      SetLabel(Obj("SIGNAL"),"Aguardar",20,154,22,C'255,176,0');
+      SetLabel(Obj("SCORE"),"Qualidade: —/100",20,184,10,clrWhite);
+      SetLabel(Obj("REASON"),"Ciclo não confirmado pelo runtime.",20,204,9,C'255,118,118');
       SetLabel(Obj("INFO1"),"Ciclo bloqueado ou com falha • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
       return;
    }
