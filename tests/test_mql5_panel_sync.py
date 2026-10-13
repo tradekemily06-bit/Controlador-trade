@@ -101,7 +101,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "OBJPROP_READONLY,false" in edit
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
     assert "Marca-d'água: removida" not in panel
-    assert 'runtime_ok?"Sistema Online":"Serviço indisponível"' in panel
+    assert 'runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL"' in panel
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
@@ -504,3 +504,13 @@ def test_mql5_preferences_failure_clears_stale_values():
     assert '"Configurações indisponíveis"' in failure
     for label in ("INFO2", "INFO3", "INFO4", "INFO5"):
         assert f'SetLabel(Obj("{label}"),"",20,' in failure
+
+
+def test_mql5_cycle_and_close_failures_hide_transport_codes_from_panel_copy():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert "Ciclo bloqueado ou não confirmado pelo runtime" in cycle
+    assert "Fechamento falhou ou foi bloqueado" in close
+    assert "HTTP "+IntegerToString(code)" not in cycle
+    assert "HTTP "+IntegerToString(code)" not in close
