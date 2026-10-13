@@ -466,7 +466,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema Online":"Serviço indisponível • "+(health==""?"estado não confirmado":health),20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO1"),"Motor de decisão: "+(engine==""?"estado não informado":engine),20,361,9,engine==""?C'255,209,102':C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
