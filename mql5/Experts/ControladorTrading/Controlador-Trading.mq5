@@ -144,7 +144,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
    ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
    ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,220,245');
+   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'10,20,35');
    ObjectSetString(0,letter,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,letter,OBJPROP_TEXT,"C");
    ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,true);
@@ -191,8 +191,8 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
-   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'55,65,85');
+   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'10,20,35');
+   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,145,175');
    ObjectSetInteger(0,bg,OBJPROP_BACK,false);
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
