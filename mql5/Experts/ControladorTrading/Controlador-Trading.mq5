@@ -94,8 +94,11 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   // Inputs must be selectable so symbol/timeframe can be edited directly.
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
+   ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
 }
 void ApplyWatermark(){
    // Marca-d agua removida por solicitacao do usuario.
