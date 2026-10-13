@@ -347,10 +347,10 @@ void RefreshNotifications(){
       string unread=JsonValue(r,"unread");
       string total=JsonValue(r,"total");
       SetLabel(Obj("INFO1"),"Notificações: "+(total==""?"resumo recebido":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Resumo retornado pelo serviço.",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Eventos detalhados não confirmados nesta resposta.",20,401,9,C'255,209,102');
-      SetLabel(Obj("INFO4"),"Consulta HTTP concluída; conteúdo limitado ao resumo.",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Esta consulta não confirma atualização da análise.",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Alertas importantes e críticos do ecossistema",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Abra um alerta para conferir os detalhes.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"A análise de mercado é atualizada separadamente.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Notificações indisponíveis",20,361,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"O serviço não confirmou o resumo.",20,381,9,C'255,118,118');
@@ -371,6 +371,10 @@ void RefreshLearning(){
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Estudo indisponível",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO2"),"",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }
 }
 void RenderView(){
@@ -552,7 +556,8 @@ void Analyze(bool render=true){
    }
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
-   if(signal=="") signal="Aguardar";
+   StringToUpper(signal);
+   if(signal=="") signal="AGUARDAR";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    bool quality_valid=IsValidQualityScore(score);
@@ -589,7 +594,8 @@ void RunCycle(){
    }
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
-   if(signal=="") signal="Aguardar";
+   StringToUpper(signal);
+   if(signal=="") signal="AGUARDAR";
    string score=JsonValue(r,"score");
    string reason=JsonValue(r,"reason");
    bool quality_valid=IsValidQualityScore(score);
