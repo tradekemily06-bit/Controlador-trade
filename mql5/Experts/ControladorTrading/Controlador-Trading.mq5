@@ -436,7 +436,7 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
@@ -448,8 +448,8 @@ void RefreshHealth(){
    string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
-   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
+   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
 }
 void RefreshMarketAssets(){
