@@ -454,13 +454,16 @@ void RefreshHealth(){
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
-   runtime_ok=true;
+   string health=JsonValue(r,"health");
+   string ok=JsonValue(r,"ok");
+   StringToUpper(health);
+   runtime_ok=(ok=="true" && health=="OK");
    string mode=JsonValue(r,"mode");
    string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Serviço: ONLINE • HTTP "+IntegerToString(code),20,104,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema Online":"Serviço indisponível • "+(health==""?"estado não confirmado":health),20,104,10,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
@@ -535,7 +538,6 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"confirmed\":"+(pref_closed_candle?"true":"false")+",\"filters_ok\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      runtime_ok=false;
       last_signal="Aguardar";
       last_score="";
       RefreshPanelToggle();
@@ -546,7 +548,6 @@ void Analyze(bool render=true){
       }
       return;
    }
-   runtime_ok=true;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="Aguardar";
@@ -660,6 +661,7 @@ void OnDeinit(const int reason){
    DeletePanel();
 }
 void OnTimer(){
+   RefreshHealth();
    if(!panel_visible){
       RefreshPanelToggle();
       datetime hidden_bar=iTime(_Symbol,_Period,0);
@@ -671,7 +673,6 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
-   RefreshHealth();
    if(active_view=="COCKPIT") { RefreshSecondary(); RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
