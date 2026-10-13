@@ -345,14 +345,16 @@ def test_mql5_close_cycle_requires_runtime_confirmation_before_success_or_cleari
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
     assert 'string closed=JsonValue(r,"closed");' in close
     assert 'string reconciliation=JsonValue(r,"reconciliation");' in close
-    assert 'string reconciliation_state=JsonValue(r,"reconciliation_state");' in close
-    assert 'StringToUpper(reconciliation_state);' in close
-    assert 'bool reconciled=(reconciliation_state=="MATCHED");' in close
-    assert 'JsonValue(reconciliation,"terminal_state")' not in close
-    assert 'JsonValue(r,"state")' not in close
+    assert 'string terminal_state=JsonValue(r,"terminal_state");' in close
+    assert 'StringToUpper(terminal_state);' in close
+    assert 'bool has_reconciliation=(reconciliation!="" && reconciliation!="null" && reconciliation!="{");' in close
+    assert 'bool reconciled=(has_reconciliation && (terminal_state=="COMPLETED" || terminal_state=="BLOCKED"));' in close
+    assert 'string outcome_state=JsonValue(r,"reconciliation_state");' in close
+    assert 'StringToUpper(outcome_state);' in close
     assert 'if(closed=="true" && reconciled)' in close
     assert 'last_cycle_id=""; last_external_id="";' in close
-    assert '"Fechamento aceito; reconciliação ainda não confirmada."' in close
+    assert '"Fechamento aceito; estado terminal ainda não confirmado."' in close
+    assert '" Resultado financeiro ainda não verificado."' in close
     assert '"Fechamento não confirmado: "+StringSubstr' in close
 
 def test_mql5_only_displays_runtime_quality_scores_from_1_to_100():
