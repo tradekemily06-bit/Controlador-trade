@@ -555,7 +555,7 @@ void RunCycle(){
    string allowed=JsonValue(r,"execution_allowed");
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,154,22,c);
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
+   SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,204,9,C'180,190,205');
    last_signal=signal; last_score=score; RefreshPanelToggle();
    last_cycle_id=cid; last_external_id=eid;
