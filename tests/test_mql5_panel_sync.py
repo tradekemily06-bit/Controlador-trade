@@ -382,3 +382,17 @@ def test_mql5_failed_demo_cycle_clears_stale_signal():
     assert 'RefreshPanelToggle();' in failure
     assert '"Ciclo não confirmado pelo runtime."' in failure
 
+def test_mql5_signal_quality_and_reason_positions_match_after_redraw():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22' in base
+    assert 'SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10' in base
+    assert 'SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9' in base
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in analyze
+    assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in analyze
+    assert 'StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9' in analyze
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in cycle
+    assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in cycle
+
