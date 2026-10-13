@@ -183,7 +183,7 @@ def test_mql5_sync_resolves_unique_data_folder_when_terminal_processes_duplicate
     assert "$dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath" in text
     assert "Mais de uma instância corresponde ao MT5 configurado" not in text
 
-def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
+def test_mql5_panel_hide_preserves_c_toggle_and_deinit_removes_all_objects():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     delete = panel.split("void DeletePanel(", 1)[1].split("string JsonValue", 1)[0]
     toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility", 1)[0]
@@ -192,13 +192,10 @@ def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
     hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
 
     assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
-    assert 'n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT")' in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
     assert "else DeletePanel(true,true);" in toggle
-    assert "ApplyWatermark();" in hidden
+    assert "ApplyWatermark();" not in hidden
     assert "DeletePanel();" in deinit
-
-
 
 def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
