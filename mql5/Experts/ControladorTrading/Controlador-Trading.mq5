@@ -105,7 +105,7 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
 }
 void ApplyWatermark(){
-   // Marca-d agua removida por solicitacao do usuario.
+   // A marca-d'agua permanece desativada; nenhuma mensagem sobre ela e exibida.
    string names[4]={Obj("WATERMARK"),Obj("WATERMARK_MARK"),Obj("WATERMARK_TEXT"),Obj("WM")};
    for(int i=0;i<4;i++) if(ObjectFind(0,names[i])>=0) ObjectDelete(0,names[i]);
 }
@@ -221,7 +221,7 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execução: —",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preço atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
-   // Marca-d agua removida conforme aprovacao visual.
+   // Nenhuma marca-d'agua ou mensagem relacionada e exibida no painel.
 }
 void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
@@ -325,7 +325,7 @@ void RefreshPreferences(){
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca-d'água: removida",20,456,9,C'145,160,180');
+   SetLabel(Obj("INFO4"),runtime_ok?"Sistema Online":"Serviço indisponível",20,456,9,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,478,9,C'255,155,155');
 }
 void RefreshNotifications(){
