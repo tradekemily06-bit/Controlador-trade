@@ -225,3 +225,10 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+def test_mql5_signal_palette_keeps_buy_green_sell_red_and_wait_orange():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'C\'0,220,145\'' in panel
+    assert 'C\'255,82,105\'' in panel
+    assert 'C\'255,145,45\'' in panel
+    assert 'SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C\'255,145,45\');' in panel
