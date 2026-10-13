@@ -495,3 +495,12 @@ def test_mql5_notifications_view_avoids_transport_diagnostics_as_user_content():
     assert "Consulta HTTP concluída" not in notifications
     assert "conteúdo limitado ao resumo" not in notifications
     assert 'SetLabel(Obj("INFO2"),"Alertas importantes e críticos do ecossistema"' in notifications
+
+
+def test_mql5_preferences_failure_clears_stale_values():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    preferences = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
+    failure = preferences.split('if(!Http("GET","/api/preferences"', 1)[1].split("   }", 1)[0]
+    assert '"Configurações indisponíveis"' in failure
+    for label in ("INFO2", "INFO3", "INFO4", "INFO5"):
+        assert f'SetLabel(Obj("{label}"),"",20,' in failure
