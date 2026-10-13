@@ -240,3 +240,22 @@ def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
     assert "bool created=(ObjectFind(0,name)<0);" in edit
     assert "if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);" in edit
     assert "ObjectSetString(0,name,OBJPROP_TEXT,text);" not in edit.replace("if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);", "")
+
+def test_mql5_panel_uses_complete_tab_and_configuration_names():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    for label in ("INÍCIO", "ANÁLISE", "MEMÓRIA", "LABORATÓRIO", "ESTUDO", "NOTIFICAÇÕES", "CONFIGURAÇÕES"):
+        assert f'"{label}"' in panel
+    assert '"SALVAR CONFIGURAÇÕES"' in panel
+    assert '"ENCERRAR E RECONCILIAR"' in panel
+    assert '"Qualidade: —/100"' in panel
+
+
+def test_mql5_c_toggle_remains_fixed_and_opens_or_closes_panel():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility()", 1)[0]
+    event = panel.split("void OnChartEvent(", 1)[1]
+    assert "panel_visible=!panel_visible;" in toggle
+    assert "GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);" in toggle
+    assert 'if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }' in event
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);' in panel
+    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);' in panel
