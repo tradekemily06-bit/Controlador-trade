@@ -522,7 +522,15 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"confirmed\":"+(pref_closed_candle?"true":"false")+",\"filters_ok\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      runtime_ok=false;
+      last_signal="Aguardar";
+      last_score="";
+      RefreshPanelToggle();
+      if(render){
+         SetLabel(Obj("SIGNAL"),"Aguardar",20,154,22,C'255,176,0');
+         SetLabel(Obj("SCORE"),"Qualidade: —/100",20,184,10,clrWhite);
+         SetLabel(Obj("REASON"),"Runtime indisponível; sinal anterior descartado • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      }
       return;
    }
    runtime_ok=true;
