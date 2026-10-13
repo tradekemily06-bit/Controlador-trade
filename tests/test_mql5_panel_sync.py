@@ -212,8 +212,9 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int x=panel_visible?panel_x+10:12;" in panel
-    assert "int y=panel_visible?panel_y+8:MathMax(8,ch-58);" in panel
+    assert "int x=12;" in panel
+    assert "int y=MathMax(8,ch-58);" in panel
+    assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
     assert "if(panel_visible){" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"Ⓒ");' in panel
 
