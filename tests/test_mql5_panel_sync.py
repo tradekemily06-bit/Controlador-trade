@@ -82,7 +82,8 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "OBJPROP_SELECTABLE,true" in edit
     assert "OBJPROP_READONLY,false" in edit
     assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
-    assert "Marca-d'água: removida" in panel
+    assert "Marca-d'água: removida" not in panel
+    assert 'runtime_ok?"Sistema Online":"Serviço indisponível"' in panel
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
