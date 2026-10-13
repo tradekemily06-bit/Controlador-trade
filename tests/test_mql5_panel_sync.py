@@ -512,5 +512,5 @@ def test_mql5_cycle_and_close_failures_hide_transport_codes_from_panel_copy():
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
     assert "Ciclo bloqueado ou não confirmado pelo runtime" in cycle
     assert "Fechamento falhou ou foi bloqueado" in close
-    assert "HTTP "+IntegerToString(code)" not in cycle
-    assert "HTTP "+IntegerToString(code)" not in close
+    assert 'HTTP "+IntegerToString(code)' not in cycle
+    assert 'HTTP "+IntegerToString(code)' not in close
