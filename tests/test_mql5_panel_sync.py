@@ -514,3 +514,10 @@ def test_mql5_cycle_and_close_failures_hide_transport_codes_from_panel_copy():
     assert "Fechamento falhou ou foi bloqueado" in close
     assert 'HTTP "+IntegerToString(code)' not in cycle
     assert 'HTTP "+IntegerToString(code)' not in close
+
+
+def test_mql5_panel_uses_navy_cyan_ecosystem_palette_and_contrasting_c():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'10,20,35');" in panel
+    assert "ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,145,175');" in panel
+    assert "ObjectSetInteger(0,letter,OBJPROP_COLOR,C'10,20,35');" in panel
