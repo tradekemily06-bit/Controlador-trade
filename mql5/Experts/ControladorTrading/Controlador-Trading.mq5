@@ -396,7 +396,6 @@ void RenderView(){
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"Memória • registros e histórico",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
-      RefreshSecondary();
       RefreshMemory();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
