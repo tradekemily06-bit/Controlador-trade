@@ -88,6 +88,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
     assert 'Obj("SIDEBAR_BG")' in panel
     assert 'Obj("CONTENT_BG")' in panel
+    assert 'Obj("PANEL_TOGGLE_FILL")' in panel
+    assert "C'5,15,27'" in panel
+    assert 'if(name==Obj("SUB")){' in panel
     assert 'SetButton(Obj("V10")' in panel
     assert 'SetEdit(Obj("SYM")' in panel
     assert 'SetEdit(Obj("TF")' in panel
@@ -96,8 +99,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "WATERMARK_TEXT" not in panel
     assert 'Obj("WM")' not in panel
     assert "watermark_enabled" not in panel
-    assert "ToggleWatermark" not in panel
-def test_mql5_sync_script_has_single_retry_helper_definition():
+    assert "ToggleWatermark" not in paneldef test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
     assert text.count("function Copy-WithRetry") == 1
     assert text.count("function Restore-File") == 1
