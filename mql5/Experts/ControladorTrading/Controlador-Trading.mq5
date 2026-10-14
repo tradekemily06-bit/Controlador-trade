@@ -103,6 +103,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    bool nav=(name==Obj("V1") || name==Obj("V2") || name==Obj("V3") || name==Obj("V4") ||
              name==Obj("V5") || name==Obj("V6") || name==Obj("V7"));
    int button_x=SX(x), button_y=SY(y), button_w=SW(w), button_h=SH(h);
+   if(panel_compact && name==Obj("WM")) button_y=panel_y+266;
    int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy)));
    // Narrow charts use a compact two-row navigation, with readable short labels
    // rather than seven horizontally compressed full-length buttons.
