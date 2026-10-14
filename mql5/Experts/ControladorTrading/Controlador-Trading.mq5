@@ -14,7 +14,6 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
-bool watermark_enabled=false;
 bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
@@ -29,7 +28,6 @@ string last_signal="Aguardar";
 string last_score="";
 
 string Obj(string suffix){ return P+suffix; }
-string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
@@ -110,7 +108,6 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    bool nav=(name==Obj("V1") || name==Obj("V2") || name==Obj("V3") || name==Obj("V4") ||
              name==Obj("V5") || name==Obj("V6") || name==Obj("V7"));
    int button_x=SX(x), button_y=SY(y), button_w=SW(w), button_h=SH(h);
-   if(panel_compact && name==Obj("WM")) button_y=panel_y+MathMax(0,panel_height-32);
    int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy)));
    // Narrow charts use a compact two-row navigation, with readable short labels
    // rather than seven horizontally compressed full-length buttons.
@@ -170,68 +167,6 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
-}
-void ApplyWatermark(){
-   string legacy=Obj("WATERMARK");
-   string mark=Obj("WATERMARK_MARK");
-   string name=Obj("WATERMARK_TEXT");
-   string oldwm=Obj("WM");
-   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
-   if(ObjectFind(0,oldwm)>=0 && active_view!="CONFIG") ObjectDelete(0,oldwm);
-   if(!watermark_enabled){
-      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
-      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
-      return;
-   }
-   int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int center_y=MathMax(100,h/2);
-   // Marca inclinada e discreta, atrás dos candles, sem competir com o sinal.
-   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(45,w/2-120));
-   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y-8);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,32);
-   ObjectSetInteger(0,mark,OBJPROP_ANGLE,-12);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'0,115,145');
-   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
-   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
-   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
-
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-90,w/2+105));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y+16);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,19);
-   ObjectSetInteger(0,name,OBJPROP_ANGLE,-12);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,95,120');
-   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
-   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-}
-void RefreshWatermarkControl(){
-   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"Marca-d'água: ativada":"Marca-d'água: desativada",20,555,172,28);
-   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
-   ApplyWatermark();
-}
-void ToggleWatermark(){
-   watermark_enabled=!watermark_enabled;
-   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
-   RefreshWatermarkControl();
-   SetLabel(Obj("INFO1"),watermark_enabled?"Marca-d'água ativada no gráfico.":"Marca-d'água desativada no gráfico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
-   ChartRedraw();
-}
-void LoadWatermark(){
-   if(GlobalVariableCheck(WatermarkKey()))
-      watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
-   else watermark_enabled=false;
-   ApplyWatermark();
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
@@ -363,7 +298,6 @@ void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
       if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
-      if(preserveWatermark && (n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveToggle) RefreshPanelToggle();
@@ -551,7 +485,6 @@ void RenderView(){
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
       RefreshPreferences();
    }
-   RefreshWatermarkControl();
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -772,7 +705,6 @@ void CloseCycle(){
 }
 int OnInit(){
    active_view="COCKPIT";
-   LoadWatermark();
    LoadPanelVisibility();
    if(panel_visible){
       Panel();
@@ -814,7 +746,6 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
@@ -846,5 +777,4 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
-   else if(sparam==Obj("WM")) ToggleWatermark();
 }
