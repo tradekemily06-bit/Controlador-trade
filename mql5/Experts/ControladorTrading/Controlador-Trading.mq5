@@ -35,7 +35,7 @@ int SidebarWidth(){ return MathMin(142,MathMax(68,(int)MathRound(panel_width*0.3
 double ContentScale(){ return (double)MathMax(1,panel_width-SidebarWidth()-16)/430.0; }
 int ContentX(int x){ return panel_x+SidebarWidth()+8+(int)MathRound(x*ContentScale()); }
 int ContentW(int w){ return MathMax(1,(int)MathRound(w*ContentScale())); }
-int ContentY(int y){ return panel_y+8+(int)MathRound(y*((double)MathMax(120,panel_height-24)/540.0)); }
+int ContentY(int y){ return panel_y+5+(int)MathRound(y*((double)MathMax(140,panel_height-12)/540.0)); }
 int CompactY(int y){ return (int)MathRound(y*panel_sy); }
 int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
@@ -69,10 +69,19 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    int px=ContentX(x);
    int py=ContentY(y);
    int fs=MathMax(8,(int)MathRound(size*MathMin(panel_sx,0.92)));
+   // Keep compact-panel text inside its area rather than letting long lines spill over the chart.
+   bool bounded=(StringFind(name,Obj("INFO"))==0 || name==Obj("REASON") ||
+                 name==Obj("MARKET") || name==Obj("SAFE") || name==Obj("PRICE") ||
+                 name==Obj("CYCLEID") || name==Obj("EXTID") || name==Obj("LEVERAGE") ||
+                 name==Obj("MODE") || name==Obj("RUNTIME") || name==Obj("SYML") || name==Obj("TFL"));
+   if(bounded){
+      int max_chars=MathMax(14,(int)MathFloor((panel_width-SidebarWidth()-28)/6.2));
+      if(StringLen(text)>max_chars) text=StringSubstr(text,0,max_chars-1)+"…";
+   }
    if(name==Obj("TITLE")){
-      px=panel_x+62; py=panel_y+13; fs=11;
+      px=panel_x+58; py=panel_y+13; fs=(panel_width<390?9:11);
    }else if(name==Obj("SIGNAL")){
-      px=panel_x+MathMin(218,MathMax(125,panel_width-160)); py=panel_y+10; fs=9;
+      px=panel_x+MathMin(218,MathMax(155,panel_width-185)); py=panel_y+10; fs=9;
       string signal_name=SignalLabel(text);
       if(signal_name=="Comprar") text="↑  COMPRAR";
       else if(signal_name=="Vender") text="↓  VENDER";
@@ -221,7 +230,7 @@ void RefreshPanelToggle(){
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=SignalLabel(last_signal);
    string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));
-   color compact_color=(shown_signal=="Comprar")?C'0,255,70':(shown_signal=="Vender")?C'255,45,65':C'255,176,0';
+   color compact_color=SignalColor(last_signal);
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
@@ -314,8 +323,9 @@ void Panel(){
 
    SetLabel(Obj("TITLE"),"Controlador Trading",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
-   SetLabel(Obj("SIGNAL"),last_signal,20,176,10,C'0,255,70');
-   SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,clrWhite);
+   SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
+   SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
+   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
 
    SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
    SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
@@ -403,9 +413,23 @@ bool Http(string method,string path,string body,string &response,int &code){
    return code>=200 && code<300;
 }
 string SignalLabel(string signal){
-   if(signal=="COMPRA" || signal=="COMPRAR") return "Comprar";
-   if(signal=="VENDA" || signal=="VENDER") return "Vender";
+   string normalized=signal;
+   StringToUpper(normalized);
+   if(normalized=="COMPRA" || normalized=="COMPRAR") return "Comprar";
+   if(normalized=="VENDA" || normalized=="VENDER") return "Vender";
    return "Aguardar";
+}
+color SignalColor(string signal){
+   string normalized=signal;
+   StringToUpper(normalized);
+   if(normalized=="COMPRA" || normalized=="COMPRAR") return C'0,255,70';
+   if(normalized=="VENDA" || normalized=="VENDER") return C'255,45,65';
+   return C'255,176,0';
+}
+string CurrentLeverageText(){
+   long leverage=AccountInfoInteger(ACCOUNT_LEVERAGE);
+   if(leverage<=0) return "Alavancagem da conta: indisponível";
+   return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);
 }
 
 bool IsValidQualityScore(string score){
@@ -506,10 +530,10 @@ void RenderView(){
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"Visão geral do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
-      SetLabel(Obj("INFO2"),"Decisão atual: consulte o sinal junto ao C",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Execução REAL permanece bloqueada",20,401,9,C'255,155,155');
-      SetLabel(Obj("INFO4"),"Sinal atual exibido ao lado do C",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Abra cada seção para consultar seus dados",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
       SetButton(Obj("ANALYZE"),"Atualizar análise",20,284,172,30);
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"Análise do mercado",20,47,9,C'150,165,185');
@@ -831,6 +855,7 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
+   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
