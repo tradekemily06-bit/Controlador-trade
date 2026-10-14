@@ -70,7 +70,7 @@ void RefreshPanelLayout(){
    panel_height=MathMin(InpPanelHeight,MathMin(available_height,proportional_height));
    // A compact panel shorter than 288 px clips its lower controls. Prefer a usable
    // 288 px panel whenever the chart has enough room; very short charts remain capped.
-   if(ch>=354) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));
+   if(ch>=370) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));
    panel_x=12;
    // When expanded, keep the panel above the fixed bottom-left C toggle.
    panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
