@@ -549,3 +549,30 @@ def test_mql5_watermark_is_optional_persistent_angled_and_branded():
     assert 'watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);' in load
     assert 'SetButton(Obj("WM"),watermark_enabled?"Marca-d\'água: ativada":"Marca-d\'água: desativada"' in watermark
 
+
+
+def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_secondary_rows():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    scale = panel.split("int SX(", 1)[1].split("void RefreshPanelLayout()", 1)[0]
+    label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
+    assert "bool panel_compact=false;" in panel
+    assert "panel_compact=(panel_height<390 || panel_width<350);" in panel
+    assert "int CompactY(int y)" in scale
+    assert "if(!panel_compact) return (int)MathRound(y*panel_sy);" in scale
+    assert "if(y<=320) return 211;" in scale
+    assert "if(y<=352) return 235;" in scale
+    assert "return 258;" in scale
+    assert 'StringFind(name,Obj("INFO1"))==0' in label
+    assert 'StringFind(name,Obj("INFO5"))==0' in label
+    assert 'StringFind(name,Obj("CYCLEID"))==0' in label
+    assert 'if(panel_compact && secondary) text="";' in label
+    assert "panel_compact?MathMax(21" in scale
+
+
+def test_mql5_compact_watermark_toggle_stays_inside_short_panel():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    scale = panel.split("int SX(", 1)[1].split("void RefreshPanelLayout()", 1)[0]
+    watermark = panel.split("void RefreshWatermarkControl()", 1)[1].split("void ToggleWatermark()", 1)[0]
+    assert "if(y<=555) return 258;" in scale
+    assert "return 260;" in scale
+    assert 'SetButton(Obj("WM"),watermark_enabled?"Marca-d\'água: ativada":"Marca-d\'água: desativada",20,555,172,28);' in watermark
