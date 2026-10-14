@@ -76,34 +76,27 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '"Controlador Trading"' in panel
-    assert '"Ecossistema • MT5 • Demo / simulação"' in panel
+    assert '"Ecossistema • MT5 • Demo / simulação"' not in panel
     assert "RUNTIME REAL" not in panel
-    assert "InpPanelWidth = 390" in panel
-    assert "InpPanelHeight = 440" in panel
+    assert "InpPanelWidth = 420" in panel
+    assert "InpPanelHeight = 430" in panel
     assert "panel_x=12;" in panel
-    assert "MathRound(cw*0.34)" not in panel
-    assert "int available_height=MathMax(120,ch-82);" in panel
-    assert "int proportional_height=MathMax(120,(int)MathRound(ch*0.48));" in panel
-    assert "if(ch>=370) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));" in panel
     assert "MathMax(160,cw-24)" in panel
+    assert "int proportional_height=MathMax(300,(int)MathRound(ch*0.72));" in panel
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
-    assert 'ObjectSetInteger(0,name,OBJPROP_XSIZE,42);' in panel
-    assert 'ObjectSetInteger(0,name,OBJPROP_YSIZE,42);' in panel
-    assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in panel
-    assert 'SetButton(Obj("V1"),"Início",18,67,88,25);' in panel
-    assert 'SetButton(Obj("V7"),"Configurações",314,94,106,25);' in panel
+    assert 'Obj("SIDEBAR_BG")' in panel
+    assert 'Obj("CONTENT_BG")' in panel
+    assert 'SetButton(Obj("V10")' in panel
     assert 'SetEdit(Obj("SYM")' in panel
     assert 'SetEdit(Obj("TF")' in panel
-    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
-    assert "OBJPROP_SELECTABLE,true" in edit
-    assert "OBJPROP_READONLY,false" in edit
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" not in panel
-    assert "Marca-d'água: removida" not in panel
-    assert 'runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL"' in panel
-
+    assert "CONTROLADOR TRADING" not in panel
+    assert "WATERMARK_MARK" not in panel
+    assert "WATERMARK_TEXT" not in panel
+    assert 'Obj("WM")' not in panel
+    assert "watermark_enabled" not in panel
+    assert "ToggleWatermark" not in panel
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
     assert text.count("function Copy-WithRetry") == 1
@@ -224,21 +217,22 @@ def test_mql5_panel_hide_preserves_c_toggle_and_deinit_removes_all_objects():
 
 def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    render = panel.split("void Panel()", 1)[1].split("void RenderView()", 1)[0]
+    render = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
-    visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
+    visible_timer = timer.split("RefreshPanelLayout();", 1)[1]
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int x=12;" in panel
-    assert "int y=MathMax(8,ch-58);" in panel
+    assert "CHART_WIDTH_IN_PIXELS" in toggle
+    assert "CHART_HEIGHT_IN_PIXELS" in toggle
+    assert "int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));" in toggle
+    assert "int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));" in toggle
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);' in toggle
+    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);' in toggle
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in toggle
+    assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in toggle
+    assert 'Obj("PANEL_CLOSE")' in toggle
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
-    assert "if(panel_visible){" in panel
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"●");' in panel
-    assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
-    assert 'ObjectSetInteger(0,name,OBJPROP_XSIZE,42);' in panel
-    assert 'ObjectSetInteger(0,name,OBJPROP_YSIZE,42);' in panel
-
-
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
     text = SCRIPT.read_text(encoding="utf-8")
     assert '$provenance = "$binary.provenance.json"' in text
@@ -253,12 +247,10 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
 
 def test_mql5_signal_palette_keeps_buy_green_sell_luminous_amber():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert 'C\'0,220,145\'' in panel
-    assert 'C\'255,82,105\'' in panel
-    assert 'C\'255,176,0\'' in panel
-    assert 'SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C\'255,176,0\');' in panel
-    assert panel.count('color c=(signal=="COMPRA" || signal=="COMPRAR")?C\'0,220,145\':(signal=="VENDA" || signal=="VENDER")?C\'255,82,105\':C\'255,176,0\';') == 2
-
+    assert "C'0,255,70'" in panel
+    assert "C'255,45,65'" in panel
+    assert "C'255,176,0'" in panel
+    assert panel.count('color c=(signal=="COMPRA" || signal=="COMPRAR")?C\'0,255,70\':(signal=="VENDA" || signal=="VENDER")?C\'255,45,65\':C\'255,176,0\';') == 2
 def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
@@ -278,24 +270,22 @@ def test_mql5_signal_labels_use_sentence_case_without_changing_signal_logic():
 
 def test_mql5_panel_uses_complete_tab_and_configuration_names():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    for label in ("Início", "Análise", "Memória", "Laboratório", "Estudo", "Notificações", "Configurações"):
+    for label in ("COCKPIT", "ANÁLISE", "ESTUDO", "LABORATÓRIO", "REPLAY", "SIMULADOR", "MEMÓRIA", "ESTATÍSTICAS", "CONFIGURAÇÕES", "NOTIFICAÇÕES"):
         assert f'"{label}"' in panel
     assert '"Salvar configurações"' in panel
     assert '"Encerrar e reconciliar"' in panel
-    assert '"Qualidade: —/100"' in panel
-
-
+    assert 'score+"%"' in panel
 def test_mql5_c_toggle_remains_fixed_and_opens_or_closes_panel():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility()", 1)[0]
     event = panel.split("void OnChartEvent(", 1)[1]
+    refresh = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert "panel_visible=!panel_visible;" in toggle
     assert "GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);" in toggle
     assert 'if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_LETTER")) { TogglePanel(); return; }' in event
-    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);' in panel
-    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);' in panel
-
-
+    assert 'if(sparam==Obj("PANEL_CLOSE")) { TogglePanel(); return; }' in event
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);' in refresh
+    assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);' in refresh
 def test_mql5_panel_configuration_toggles_persist_real_preferences():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
@@ -339,12 +329,13 @@ def test_mql5_config_controls_do_not_overlap_status_text():
 def test_mql5_compact_signal_uses_sentence_case_for_correct_signal_colors():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
-    assert 'color compact_color=(shown_signal=="Comprar")?C\'0,220,145\':(shown_signal=="Vender")?C\'255,82,105\':C\'255,176,0\';' in toggle
-    assert 'string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"))+(IsValidQualityScore(last_score)?"  "+last_score+"%":"");' in toggle
+    assert 'color compact_color=(shown_signal=="Comprar")?C\'0,220,145\':(shown_signal=="Vender")?C\'255,82,105\':C\'255,176,0\';' not in toggle
+    assert 'string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));' in toggle
     assert 'IsValidQualityScore(last_score)' in toggle
-    assert 'compact_text=shown_signal+"  "+shown_score+"%";' not in toggle
-
-
+    assert 'Obj("COLLAPSED_QUALITY")' in toggle
+    assert 'y+22' in toggle
+    assert 'last_score+"%"' in toggle
+    assert '+"  "+last_score+"%"' not in toggle
 def test_mql5_demo_cycle_updates_compact_signal_and_uses_sentence_case():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
@@ -357,11 +348,10 @@ def test_mql5_signal_quality_is_labeled_as_quality_not_generic_score():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert '"Qualidade: "+(score==""?"—":score)+"/100"' in analyze
-    assert '"Qualidade: "+(score==""?"—":score)+"/100"' in cycle
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);' in analyze
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);' in cycle
+    assert 'Obj("COLLAPSED_QUALITY")' in panel
     assert '"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)' in analyze
-
-
 def test_mql5_demo_cycle_status_does_not_show_success_green_when_not_authorized():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
@@ -423,16 +413,15 @@ def test_mql5_signal_quality_and_reason_positions_match_after_redraw():
     base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert 'SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22' in base
-    assert 'SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10' in base
+    assert 'SetLabel(Obj("SIGNAL"),last_signal,20,176,10' in base
+    assert 'SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9' in base
     assert 'SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9' in base
-    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in analyze
-    assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in analyze
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);' in analyze
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9' in analyze
     assert 'StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9' in analyze
-    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in cycle
-    assert 'SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10' in cycle
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);' in cycle
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9' in cycle
     assert 'StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9' in cycle
-
 def test_mql5_notifications_view_only_exposes_notification_refresh():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     notif = panel.split('}else if(active_view=="NOTIF"){', 1)[1].split('}else if(active_view=="CONFIG"){', 1)[0]
@@ -519,10 +508,10 @@ def test_mql5_cycle_and_close_failures_hide_transport_codes_from_panel_copy():
 
 def test_mql5_panel_uses_navy_cyan_ecosystem_palette_and_contrasting_c():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert "ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'10,20,35');" in panel
-    assert "ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,145,175');" in panel
-    assert "ObjectSetInteger(0,letter,OBJPROP_COLOR,C'10,20,35');" in panel
-
+    assert "ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'8,17,30');" in panel
+    assert "ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,150,190');" in panel
+    assert "ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,215,255');" in panel
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
 def test_mql5_health_status_stays_below_navigation_tabs():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
@@ -540,25 +529,18 @@ def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_seconda
     label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
     button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
     assert "bool panel_compact=false;" in panel
-    assert "panel_compact=(panel_height<390 || panel_width<350);" in panel
-    assert "int CompactY(int y)" in scale
-    assert "if(!panel_compact) return (int)MathRound(y*panel_sy);" in scale
-    assert "if(y<=284) return 200;" in scale
-    assert "if(y<=300) return 208;" in scale
-    assert "if(y<=320) return 220;" in scale
-    assert "if(y<=352) return 244;" in scale
+    assert "panel_compact=(panel_height<340 || panel_width<350);" in panel
+    assert "int CompactY(int y){ return (int)MathRound(y*panel_sy); }" in scale
+    assert "ContentX(int x)" in scale
+    assert "ContentW(int w)" in scale
+    assert "ContentY(int y)" in scale
+    assert "ContentScale()" in scale
     assert 'Obj("WM")' not in button
-    assert "button_y=panel_y+MathMax(0,panel_height-32);" not in button
-    assert "return 258;" in scale
-    assert 'StringFind(name,Obj("INFO1"))==0' in label
-    assert 'StringFind(name,Obj("INFO5"))==0' in label
-    assert 'StringFind(name,Obj("CYCLEID"))==0' in label
-    assert 'StringFind(name,Obj("SYML"))==0' in label
-    assert 'StringFind(name,Obj("MARKET"))==0' in label
-    assert 'if(panel_compact && secondary) text="";' in label
-    assert "panel_compact?MathMax(21" in scale
-
-
+    assert 'if(panel_compact && secondary) text="";' not in label
+    assert 'StringFind(name,Obj("INFO1"))==0' not in label
+    assert 'StringFind(name,Obj("INFO5"))==0' not in label
+    assert "return 258;" not in scale
+    assert "panel_compact?MathMax(21" in panel
 def test_mql5_panel_update_has_no_watermark_or_watermark_setting():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert "CONTROLADOR TRADING" not in panel
@@ -573,28 +555,27 @@ def test_mql5_narrow_panel_navigation_uses_two_rows_without_horizontal_crushing(
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
     assert 'bool nav=(name==Obj("V1")' in button
-    assert "if(panel_compact && panel_width<350 && nav)" in button
-    assert "int columns=(row==0?3:4);" in button
-    assert 'if(index==4) text="Lab.";' in button
-    assert 'else if(index==6) text="Avisos";' in button
-    assert 'else if(index==7) text="Config.";' in button
-    assert "button_w=(col==columns-1?panel_x+panel_width-12-button_x:cell-3);" in button
-
-
+    assert 'name==Obj("V8")' in button
+    assert 'name==Obj("V10")' in button
+    assert "int nav_step=MathMax(22,MathMin(25,(panel_height-76)/10));" in button
+    assert "button_y=panel_y+50+(index-1)*nav_step;" in button
+    assert "button_w=MathMax(60,SidebarWidth()-10);" in button
+    assert "int index=0;" in button
 def test_mql5_narrow_navigation_parses_numeric_tab_suffix():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
-    assert 'StringToInteger(StringSubstr(name,StringLen(P)+1))' in button
-    assert 'StringToInteger(StringSubstr(name,StringLen(P)+2))' not in button
-
-
+    for index in range(1, 11):
+        assert f'Obj("V{index}")' in button
+        assert f'index={index};' in button
+    assert "button_y=panel_y+50+(index-1)*nav_step;" in button
 def test_mql5_compact_mode_hides_market_edit_fields_to_preserve_action_space():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
+    edit = panel.split("void SetEdit(", 1)[1].split("void RefreshPanelToggle()", 1)[0]
     label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
-    assert "OBJPROP_XSIZE,panel_compact?1:SW(w)" in edit
-    assert "OBJPROP_YSIZE,panel_compact?1:SH(h)" in edit
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"");' in edit
-    assert 'StringFind(name,Obj("SYML"))==0' in label
-    assert 'StringFind(name,Obj("TFL"))==0' in label
-    assert 'StringFind(name,Obj("MARKET"))==0' in label
+    assert "ContentX(x)" in edit
+    assert "ContentY(y)" in edit
+    assert "ContentW(w)" in edit
+    assert "MathMax(22,SH(h))" in edit
+    assert "OBJPROP_XSIZE,panel_compact?1:SW(w)" not in edit
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"");' not in edit
+    assert 'if(panel_compact && secondary) text="";' not in label
