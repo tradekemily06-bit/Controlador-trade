@@ -169,11 +169,25 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));
    int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));
+   // Dark filled center under the cyan outline: keeps chart grid from showing through the C.
+   string fill=Obj("PANEL_TOGGLE_FILL");
+   if(ObjectFind(0,fill)<0) ObjectCreate(0,fill,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,fill,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,fill,OBJPROP_XDISTANCE,x+21);
+   ObjectSetInteger(0,fill,OBJPROP_YDISTANCE,y+21);
+   ObjectSetInteger(0,fill,OBJPROP_FONTSIZE,39);
+   ObjectSetInteger(0,fill,OBJPROP_COLOR,C'5,15,27');
+   ObjectSetString(0,fill,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,fill,OBJPROP_TEXT,"●");
+   ObjectSetInteger(0,fill,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,fill,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,fill,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,fill,OBJPROP_ZORDER,999);
+   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);
