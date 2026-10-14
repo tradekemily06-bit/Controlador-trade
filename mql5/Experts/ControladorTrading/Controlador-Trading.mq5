@@ -737,7 +737,9 @@ void Analyze(bool render=true){
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
    SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
-   SetLabel(Obj("INFO1"),"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
+   // Keep the compact market signal in the chart header; show analysis detail only on the Analysis tab.
+   if(active_view=="ANALISE")
+      SetLabel(Obj("INFO1"),"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
    ChartRedraw();
 }
 void RunCycle(){
