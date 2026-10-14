@@ -89,7 +89,9 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    bool secondary=(StringFind(name,Obj("INFO1"))==0 || StringFind(name,Obj("INFO2"))==0 ||
                    StringFind(name,Obj("INFO3"))==0 || StringFind(name,Obj("INFO4"))==0 || StringFind(name,Obj("INFO5"))==0 ||
                    StringFind(name,Obj("CYCLEID"))==0 || StringFind(name,Obj("EXTID"))==0 ||
-                   StringFind(name,Obj("PRICE"))==0 || StringFind(name,Obj("SAFE"))==0);
+                   StringFind(name,Obj("PRICE"))==0 || StringFind(name,Obj("SAFE"))==0 ||
+                   StringFind(name,Obj("SYML"))==0 || StringFind(name,Obj("TFL"))==0 ||
+                   StringFind(name,Obj("MARKET"))==0);
    if(panel_compact && secondary) text="";
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(size*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
@@ -145,8 +147,13 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,panel_compact?1:SW(w));
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,panel_compact?1:SH(h));
+   if(panel_compact){
+      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,panel_x+panel_width+20);
+      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,panel_y);
+      ObjectSetString(0,name,OBJPROP_TEXT,"");
+   }
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
