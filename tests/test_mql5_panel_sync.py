@@ -533,3 +533,19 @@ def test_mql5_health_status_stays_below_navigation_tabs():
     assert '20,104,10' not in health
     assert '20,124,10' not in health
 
+def test_mql5_watermark_is_optional_persistent_angled_and_branded():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    toggle = panel.split("void ToggleWatermark()", 1)[1].split("void LoadWatermark()", 1)[0]
+    load = panel.split("void LoadWatermark()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    assert 'ObjectSetInteger(0,mark,OBJPROP_ANGLE,-12);' in watermark
+    assert 'ObjectSetInteger(0,name,OBJPROP_ANGLE,-12);' in watermark
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");' in watermark
+    assert 'ObjectSetInteger(0,mark,OBJPROP_BACK,true);' in watermark
+    assert 'if(!watermark_enabled)' in watermark
+    assert 'watermark_enabled=!watermark_enabled;' in toggle
+    assert 'GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);' in toggle
+    assert 'GlobalVariableCheck(WatermarkKey())' in load
+    assert 'watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);' in load
+    assert 'SetButton(Obj("WM"),watermark_enabled?"Marca-d\'água: ativada":"Marca-d\'água: desativada"' in watermark
+
