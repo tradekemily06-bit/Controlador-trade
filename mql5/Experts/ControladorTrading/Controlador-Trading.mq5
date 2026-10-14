@@ -86,8 +86,8 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
-   bool secondary=(StringFind(name,Obj("INFO2"))==0 || StringFind(name,Obj("INFO3"))==0 ||
-                   StringFind(name,Obj("INFO4"))==0 || StringFind(name,Obj("INFO5"))==0 ||
+   bool secondary=(StringFind(name,Obj("INFO1"))==0 || StringFind(name,Obj("INFO2"))==0 ||
+                   StringFind(name,Obj("INFO3"))==0 || StringFind(name,Obj("INFO4"))==0 || StringFind(name,Obj("INFO5"))==0 ||
                    StringFind(name,Obj("CYCLEID"))==0 || StringFind(name,Obj("EXTID"))==0 ||
                    StringFind(name,Obj("PRICE"))==0 || StringFind(name,Obj("SAFE"))==0);
    if(panel_compact && secondary) text="";
