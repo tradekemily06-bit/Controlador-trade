@@ -31,8 +31,10 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int ContentX(int x){ return panel_x+150+(int)MathRound(x*((double)MathMax(120,panel_width-162)/430.0)); }
-int ContentW(int w){ return MathMax(1,(int)MathRound(w*((double)MathMax(120,panel_width-162)/430.0))); }
+int SidebarWidth(){ return MathMin(142,MathMax(68,(int)MathRound(panel_width*0.34))); }
+double ContentScale(){ return (double)MathMax(1,panel_width-SidebarWidth()-16)/430.0; }
+int ContentX(int x){ return panel_x+SidebarWidth()+8+(int)MathRound(x*ContentScale()); }
+int ContentW(int w){ return MathMax(1,(int)MathRound(w*ContentScale())); }
 int ContentY(int y){ return panel_y+8+(int)MathRound(y*((double)MathMax(120,panel_height-24)/540.0)); }
 int CompactY(int y){ return (int)MathRound(y*panel_sy); }
 int SY(int y){ return panel_y+CompactY(y); }
@@ -41,7 +43,7 @@ int SH(int h){ return panel_compact?MathMax(21,(int)MathRound(h*panel_sy)):MathM
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(300,cw-24));
+   panel_width=MathMin(InpPanelWidth,MathMax(160,cw-24));
    int available_height=MathMax(190,ch-78);
    int proportional_height=MathMax(300,(int)MathRound(ch*0.72));
    panel_height=MathMin(InpPanelHeight,MathMin(available_height,proportional_height));
@@ -67,13 +69,13 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    if(name==Obj("TITLE")){
       px=panel_x+62; py=panel_y+13; fs=11;
    }else if(name==Obj("SIGNAL")){
-      px=panel_x+218; py=panel_y+10; fs=9;
+      px=panel_x+MathMin(218,MathMax(125,panel_width-160)); py=panel_y+10; fs=9;
       string signal_name=SignalLabel(text);
       if(signal_name=="Comprar") text="↑  COMPRAR";
       else if(signal_name=="Vender") text="↓  VENDER";
       else text="AGUARDAR";
    }else if(name==Obj("SCORE")){
-      px=panel_x+295; py=panel_y+26; fs=9;
+      px=panel_x+MathMax(205,panel_width-85); py=panel_y+26; fs=9;
       if(StringFind(text,"Qualidade:")==0) text="";
    }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -121,7 +123,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       int nav_step=MathMax(22,MathMin(25,(panel_height-76)/10));
       button_x=panel_x+8;
       button_y=panel_y+50+(index-1)*nav_step;
-      button_w=138;
+      button_w=MathMax(60,SidebarWidth()-10);
       button_h=22;
       button_font=8;
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
@@ -270,7 +272,7 @@ void Panel(){
    ObjectSetInteger(0,side,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,side,OBJPROP_XDISTANCE,panel_x+5);
    ObjectSetInteger(0,side,OBJPROP_YDISTANCE,panel_y+48);
-   ObjectSetInteger(0,side,OBJPROP_XSIZE,142);
+   ObjectSetInteger(0,side,OBJPROP_XSIZE,SidebarWidth());
    ObjectSetInteger(0,side,OBJPROP_YSIZE,panel_height-57);
    ObjectSetInteger(0,side,OBJPROP_BGCOLOR,C'7,20,34');
    ObjectSetInteger(0,side,OBJPROP_BORDER_COLOR,C'22,62,80');
@@ -282,9 +284,9 @@ void Panel(){
    string content=Obj("CONTENT_BG");
    if(ObjectFind(0,content)<0) ObjectCreate(0,content,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,content,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,content,OBJPROP_XDISTANCE,panel_x+150);
+   ObjectSetInteger(0,content,OBJPROP_XDISTANCE,panel_x+SidebarWidth()+8);
    ObjectSetInteger(0,content,OBJPROP_YDISTANCE,panel_y+48);
-   ObjectSetInteger(0,content,OBJPROP_XSIZE,panel_width-158);
+   ObjectSetInteger(0,content,OBJPROP_XSIZE,panel_width-SidebarWidth()-16);
    ObjectSetInteger(0,content,OBJPROP_YSIZE,panel_height-57);
    ObjectSetInteger(0,content,OBJPROP_BGCOLOR,C'5,15,27');
    ObjectSetInteger(0,content,OBJPROP_BORDER_COLOR,C'18,54,72');
