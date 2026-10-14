@@ -87,7 +87,7 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
       else if(signal_name=="Vender") text="↓  VENDER";
       else text="AGUARDAR";
    }else if(name==Obj("SCORE")){
-      px=panel_x+MathMin(218,MathMax(125,panel_width-160))+10; py=panel_y+26; fs=9;
+      px=panel_x+MathMin(218,MathMax(155,panel_width-185))+10; py=panel_y+26; fs=9;
       if(StringFind(text,"Qualidade:")==0) text="";
    }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
