@@ -813,6 +813,8 @@ void CloseCycle(){
    }
 }
 int OnInit(){
+   // Clean any stale CTP visual objects left by a prior EA build on this chart.
+   DeletePanel();
    active_view="COCKPIT";
    LoadPanelVisibility();
    if(panel_visible){
