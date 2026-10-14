@@ -46,10 +46,10 @@ int CompactY(int y){
    if(y<=226) return 159;
    if(y<=258) return 177;
    if(y<=271) return 191;
-   if(y<=284) return 188;
-   if(y<=300) return 199;
-   if(y<=320) return 211;
-   if(y<=352) return 235;
+   if(y<=284) return 200;
+   if(y<=300) return 208;
+   if(y<=320) return 220;
+   if(y<=352) return 244;
    if(y<=361) return 258;
    if(y<=555) return 258;
    return 260;
@@ -100,12 +100,36 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
 }
 void SetButton(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
+   bool nav=(name==Obj("V1") || name==Obj("V2") || name==Obj("V3") || name==Obj("V4") ||
+             name==Obj("V5") || name==Obj("V6") || name==Obj("V7"));
+   int button_x=SX(x), button_y=SY(y), button_w=SW(w), button_h=SH(h);
+   int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy)));
+   // Narrow charts use a compact two-row navigation, with readable short labels
+   // rather than seven horizontally compressed full-length buttons.
+   if(panel_compact && panel_width<350 && nav){
+      int index=(int)StringToInteger(StringSubstr(name,StringLen(P)+1));
+      if(index>=1 && index<=7){
+         int row=(index<=3?0:1);
+         int col=(row==0?index-1:index-4);
+         int columns=(row==0?3:4);
+         int inner=panel_width-24;
+         int cell=inner/columns;
+         button_x=panel_x+12+col*cell;
+         button_y=panel_y+(row==0?44:66);
+         button_w=(col==columns-1?panel_x+panel_width-12-button_x:cell-3);
+         button_h=21;
+         button_font=8;
+         if(index==4) text="Lab.";
+         else if(index==6) text="Avisos";
+         else if(index==7) text="Config.";
+      }
+   }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,SW(w));
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,button_x);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,button_y);
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,button_w);
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,button_h);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,button_font);
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
