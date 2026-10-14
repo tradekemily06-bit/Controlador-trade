@@ -712,7 +712,7 @@ void RunCycle(){
       last_signal="Aguardar";
       last_score="";
       RefreshPanelToggle();
-      SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
+      SetLabel(Obj("SIGNAL"),"Aguardar",20,176,10,C'255,176,0');
       SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
       SetLabel(Obj("REASON"),"Ciclo não confirmado pelo runtime.",20,226,9,C'255,118,118');
       SetLabel(Obj("INFO1"),"Ciclo bloqueado ou não confirmado pelo runtime",20,361,9,C'255,118,118');
@@ -730,7 +730,7 @@ void RunCycle(){
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
-   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);
+   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
    SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9,C'180,190,205');
    last_signal=signal; last_score=score; RefreshPanelToggle();
