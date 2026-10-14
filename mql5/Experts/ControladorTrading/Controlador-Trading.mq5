@@ -735,7 +735,7 @@ void Analyze(bool render=true){
    if(!render) return;
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
-   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);
+   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
    ChartRedraw();
