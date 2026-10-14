@@ -580,3 +580,50 @@ def test_mql5_compact_mode_hides_market_edit_fields_to_preserve_action_space():
     assert "OBJPROP_XSIZE,panel_compact?1:SW(w)" not in edit
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"");' not in edit
     assert 'if(panel_compact && secondary) text="";' not in label
+
+def test_mql5_awaiting_signal_is_amber_even_after_panel_redraw():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    colors = panel.split("color SignalColor(string signal)", 1)[1].split("string CurrentLeverageText()", 1)[0]
+    assert 'SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));' in base
+    assert 'color compact_color=SignalColor(last_signal);' in toggle
+    assert 'return C\'255,176,0\';' in colors
+
+
+def test_mql5_open_panel_shows_actual_account_leverage_not_a_hardcoded_value():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    leverage = panel.split("string CurrentLeverageText()", 1)[1].split("bool IsValidQualityScore", 1)[0]
+    assert "AccountInfoInteger(ACCOUNT_LEVERAGE)" in leverage
+    assert 'return "Alavancagem da conta: indisponível";' in leverage
+    assert 'return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);' in leverage
+    assert 'SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9' in panel
+
+
+def test_mql5_collapse_and_init_clean_panel_only_objects_before_rebuilding_compact_view():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    init = panel.split("int OnInit()", 1)[1].split("void OnDeinit", 1)[0]
+    delete = panel.split("void DeletePanel(", 1)[1].split("string JsonValue", 1)[0]
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert "DeletePanel();" in init
+    assert 'if(StringFind(n,P)!=0) continue;' in delete
+    assert "ObjectDelete(0,n);" in delete
+    assert 'ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);' in toggle
+    assert 'ObjectSetString(0,quality,OBJPROP_TEXT,(panel_visible || !IsValidQualityScore(last_score))?"":last_score+"%");' in toggle
+    assert 'else if(ObjectFind(0,close_name)>=0) ObjectDelete(0,close_name);' in toggle
+
+
+def test_mql5_panel_hides_redundant_chart_signal_explanations_from_cockpit():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cockpit = panel.split('if(active_view=="COCKPIT"){', 1)[1].split('}else if(active_view=="ANALISE"){', 1)[0]
+    assert '"Decisão atual: consulte o sinal junto ao C"' not in panel
+    assert '"Sinal atual exibido ao lado do C"' not in panel
+    assert 'SetLabel(Obj("INFO2"),"",20,381' in cockpit
+    assert 'SetLabel(Obj("INFO4"),"",20,421' in cockpit
+
+
+def test_mql5_source_does_not_embed_pr415_file_name_as_chart_text():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "ControladorTradingPR415" not in panel
+    assert '"label"' not in panel.lower()
+
