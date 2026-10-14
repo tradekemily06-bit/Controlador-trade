@@ -108,7 +108,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    // Narrow charts use a compact two-row navigation, with readable short labels
    // rather than seven horizontally compressed full-length buttons.
    if(panel_compact && panel_width<350 && nav){
-      int index=(int)StringToInteger(StringSubstr(name,StringLen(P)+1));
+      int index=(int)StringToInteger(StringSubstr(name,StringLen(P)+2));
       if(index>=1 && index<=7){
          int row=(index<=3?0:1);
          int col=(row==0?index-1:index-4);
