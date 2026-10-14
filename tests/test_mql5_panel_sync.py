@@ -597,5 +597,5 @@ def test_mql5_narrow_panel_navigation_uses_two_rows_without_horizontal_crushing(
 def test_mql5_narrow_navigation_parses_numeric_tab_suffix():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
-    assert 'StringToInteger(StringSubstr(name,StringLen(P)+2))' in button
-    assert 'StringToInteger(StringSubstr(name,StringLen(P)+1))' not in button
+    assert 'StringToInteger(StringSubstr(name,StringLen(P)+1))' in button
+    assert 'StringToInteger(StringSubstr(name,StringLen(P)+2))' not in button
