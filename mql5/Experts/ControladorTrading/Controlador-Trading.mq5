@@ -834,6 +834,7 @@ int OnInit(){
 void OnDeinit(const int reason){
    EventKillTimer();
    DeletePanel();
+   ChartRedraw();
 }
 void OnTimer(){
    RefreshHealth();
