@@ -63,9 +63,14 @@ void RefreshPanelLayout(){
    // Keep the approved full tab labels and both control columns inside the panel.
    // On narrow charts, use the available width instead of shrinking labels off-screen.
    panel_width=MathMin(InpPanelWidth,MathMax(160,cw-24));
-   // Keep the expanded panel compact on short charts and leave room for the fixed C toggle.
-   panel_height=MathMin(InpPanelHeight,MathMax(120,ch-82));
-   panel_height=MathMin(panel_height,MathMax(120,(int)MathRound(ch*0.48)));
+   // The compact layout occupies up to 288 px; keep its controls inside the panel.
+   // If the chart is taller, cap the panel at 48% and leave the fixed C toggle clear.
+   int available_height=MathMax(120,ch-82);
+   int proportional_height=MathMax(120,(int)MathRound(ch*0.48));
+   panel_height=MathMin(InpPanelHeight,MathMin(available_height,proportional_height));
+   // A compact panel shorter than 288 px clips its lower controls. Prefer a usable
+   // 288 px panel whenever the chart has enough room; very short charts remain capped.
+   if(ch>=354) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));
    panel_x=12;
    // When expanded, keep the panel above the fixed bottom-left C toggle.
    panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
