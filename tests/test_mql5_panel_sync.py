@@ -555,6 +555,7 @@ def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_seconda
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     scale = panel.split("int SX(", 1)[1].split("void RefreshPanelLayout()", 1)[0]
     label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
+    button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
     assert "bool panel_compact=false;" in panel
     assert "panel_compact=(panel_height<390 || panel_width<350);" in panel
     assert "int CompactY(int y)" in scale
