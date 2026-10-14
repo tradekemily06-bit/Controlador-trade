@@ -349,11 +349,10 @@ def test_mql5_signal_quality_is_labeled_as_quality_not_generic_score():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);' in analyze
-    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);' in cycle
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);' in analyze
+    assert 'SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);' in cycle
     assert 'Obj("COLLAPSED_QUALITY")' in panel
-    assert '"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)' in analyze
-def test_mql5_demo_cycle_status_does_not_show_success_green_when_not_authorized():
+    assert '"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)' in analyzedef test_mql5_demo_cycle_status_does_not_show_success_green_when_not_authorized():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     assert '20,361,9,allowed=="true"?C\'88,214,141\':C\'255,176,0\');' in cycle
