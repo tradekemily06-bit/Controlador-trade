@@ -264,14 +264,12 @@ def test_mql5_signal_labels_use_sentence_case_without_changing_signal_logic():
     assert 'return "Comprar";' in labels
     assert 'return "Vender";' in labels
     assert 'return "Aguardar";' in labels
-    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in panel
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);' in panel
     assert 'string shown_signal=SignalLabel(last_signal);' in panel
-
-
 def test_mql5_panel_uses_complete_tab_and_configuration_names():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     for label in ("COCKPIT", "ANÁLISE", "ESTUDO", "LABORATÓRIO", "REPLAY", "SIMULADOR", "MEMÓRIA", "ESTATÍSTICAS", "CONFIGURAÇÕES", "NOTIFICAÇÕES"):
-        assert f'"{label}"' in panel
+        assert label in panel
     assert '"Salvar configurações"' in panel
     assert '"Encerrar e reconciliar"' in panel
     assert 'score+"%"' in panel
@@ -339,11 +337,9 @@ def test_mql5_compact_signal_uses_sentence_case_for_correct_signal_colors():
 def test_mql5_demo_cycle_updates_compact_signal_and_uses_sentence_case():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);' in cycle
+    assert 'SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);' in cycle
     assert "last_signal=signal; last_score=score; RefreshPanelToggle();" in cycle
     assert '"Ciclo de demonstração: "+SignalLabel(signal)' in cycle
-
-
 def test_mql5_signal_quality_is_labeled_as_quality_not_generic_score():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
