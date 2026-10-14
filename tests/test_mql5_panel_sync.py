@@ -82,8 +82,9 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "InpPanelHeight = 440" in panel
     assert "panel_x=12;" in panel
     assert "MathRound(cw*0.34)" not in panel
-    assert "MathRound(ch*0.48)" in panel
-    assert "MathMax(120,ch-82)" in panel
+    assert "int available_height=MathMax(120,ch-82);" in panel
+    assert "int proportional_height=MathMax(120,(int)MathRound(ch*0.48));" in panel
+    assert "if(ch>=370) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));" in panel
     assert "MathMax(160,cw-24)" in panel
     assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
     assert "ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);" in panel
