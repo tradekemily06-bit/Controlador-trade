@@ -565,7 +565,8 @@ def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_seconda
     assert "if(y<=300) return 208;" in scale
     assert "if(y<=320) return 220;" in scale
     assert "if(y<=352) return 244;" in scale
-    assert 'if(panel_compact && name==Obj("WM")) button_y=panel_y+266;' in button
+    assert 'if(panel_compact && name==Obj("WM")) button_y=panel_y+MathMax(0,panel_height-32);' in button
+    assert "button_y=panel_y+MathMax(0,panel_height-32);" in button
     assert "return 258;" in scale
     assert 'StringFind(name,Obj("INFO1"))==0' in label
     assert 'StringFind(name,Obj("INFO5"))==0' in label
