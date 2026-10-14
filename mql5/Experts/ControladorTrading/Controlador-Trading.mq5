@@ -24,6 +24,7 @@ int panel_width=390;
 int panel_height=440;
 double panel_sx=1.0;
 double panel_sy=1.0;
+bool panel_compact=false;
 string last_signal="Aguardar";
 string last_score="";
 
@@ -32,9 +33,30 @@ string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return panel_y+(int)MathRound(y*panel_sy); }
+int CompactY(int y){
+   if(!panel_compact) return (int)MathRound(y*panel_sy);
+   if(y<=27) return 14;
+   if(y<=47) return 29;
+   if(y<=67) return 44;
+   if(y<=94) return 66;
+   if(y<=126) return 84;
+   if(y<=146) return 101;
+   if(y<=176) return 121;
+   if(y<=206) return 143;
+   if(y<=226) return 159;
+   if(y<=258) return 177;
+   if(y<=271) return 191;
+   if(y<=284) return 205;
+   if(y<=300) return 218;
+   if(y<=320) return 231;
+   if(y<=352) return 251;
+   if(y<=361) return 260;
+   if(y<=555) return 264;
+   return 278;
+}
+int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
-int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
+int SH(int h){ return panel_compact?MathMax(21,(int)MathRound(h*panel_sy)):MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
@@ -49,6 +71,9 @@ void RefreshPanelLayout(){
    panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
+   // At small heights, use a dedicated compact vertical map instead of
+   // squeezing every row until the fixed minimum font sizes collide.
+   panel_compact=(panel_height<390 || panel_width<350);
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
@@ -61,6 +86,11 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
+   bool secondary=(StringFind(name,Obj("INFO2"))==0 || StringFind(name,Obj("INFO3"))==0 ||
+                   StringFind(name,Obj("INFO4"))==0 || StringFind(name,Obj("INFO5"))==0 ||
+                   StringFind(name,Obj("CYCLEID"))==0 || StringFind(name,Obj("EXTID"))==0 ||
+                   StringFind(name,Obj("PRICE"))==0 || StringFind(name,Obj("SAFE"))==0);
+   if(panel_compact && secondary) text="";
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(size*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
