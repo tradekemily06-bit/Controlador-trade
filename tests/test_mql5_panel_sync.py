@@ -569,6 +569,8 @@ def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_seconda
     assert 'StringFind(name,Obj("INFO1"))==0' in label
     assert 'StringFind(name,Obj("INFO5"))==0' in label
     assert 'StringFind(name,Obj("CYCLEID"))==0' in label
+    assert 'StringFind(name,Obj("SYML"))==0' in label
+    assert 'StringFind(name,Obj("MARKET"))==0' in label
     assert 'if(panel_compact && secondary) text="";' in label
     assert "panel_compact?MathMax(21" in scale
 
@@ -599,3 +601,15 @@ def test_mql5_narrow_navigation_parses_numeric_tab_suffix():
     button = panel.split("void SetButton(", 1)[1].split("void SetEdit(", 1)[0]
     assert 'StringToInteger(StringSubstr(name,StringLen(P)+1))' in button
     assert 'StringToInteger(StringSubstr(name,StringLen(P)+2))' not in button
+
+
+def test_mql5_compact_mode_hides_market_edit_fields_to_preserve_action_space():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
+    label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
+    assert "OBJPROP_XSIZE,panel_compact?1:SW(w)" in edit
+    assert "OBJPROP_YSIZE,panel_compact?1:SH(h)" in edit
+    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"");' in edit
+    assert 'StringFind(name,Obj("SYML"))==0' in label
+    assert 'StringFind(name,Obj("TFL"))==0' in label
+    assert 'StringFind(name,Obj("MARKET"))==0' in label
