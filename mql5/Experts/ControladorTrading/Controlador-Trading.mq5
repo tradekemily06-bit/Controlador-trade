@@ -46,13 +46,13 @@ int CompactY(int y){
    if(y<=226) return 159;
    if(y<=258) return 177;
    if(y<=271) return 191;
-   if(y<=284) return 205;
-   if(y<=300) return 218;
-   if(y<=320) return 231;
-   if(y<=352) return 251;
-   if(y<=361) return 260;
-   if(y<=555) return 264;
-   return 278;
+   if(y<=284) return 188;
+   if(y<=300) return 199;
+   if(y<=320) return 211;
+   if(y<=352) return 235;
+   if(y<=361) return 258;
+   if(y<=555) return 258;
+   return 260;
 }
 int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
