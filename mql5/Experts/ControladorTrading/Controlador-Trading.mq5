@@ -61,11 +61,14 @@ void RefreshPanelLayout(){
    }
 }
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
+   if(name==Obj("SUB")){
+      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
+      return;
+   }
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    int px=ContentX(x);
    int py=ContentY(y);
    int fs=MathMax(8,(int)MathRound(size*MathMin(panel_sx,0.92)));
-   if(name==Obj("SUB")) text="";
    if(name==Obj("TITLE")){
       px=panel_x+62; py=panel_y+13; fs=11;
    }else if(name==Obj("SIGNAL")){
@@ -75,7 +78,7 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
       else if(signal_name=="Vender") text="↓  VENDER";
       else text="AGUARDAR";
    }else if(name==Obj("SCORE")){
-      px=panel_x+MathMax(205,panel_width-85); py=panel_y+26; fs=9;
+      px=panel_x+MathMin(218,MathMax(125,panel_width-160))+10; py=panel_y+26; fs=9;
       if(StringFind(text,"Qualidade:")==0) text="";
    }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
