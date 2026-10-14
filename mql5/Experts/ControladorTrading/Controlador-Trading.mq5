@@ -674,7 +674,7 @@ void Analyze(bool render=true){
       last_score="";
       RefreshPanelToggle();
       if(render){
-         SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
+         SetLabel(Obj("SIGNAL"),"Aguardar",20,176,10,C'255,176,0');
          SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
          SetLabel(Obj("REASON"),"Análise indisponível; sinal anterior descartado",20,226,9,C'255,118,118');
       }
@@ -693,7 +693,7 @@ void Analyze(bool render=true){
    RefreshPanelToggle();
    if(!render) return;
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
-   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);
+   SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
    SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
@@ -713,7 +713,7 @@ void RunCycle(){
       last_score="";
       RefreshPanelToggle();
       SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
-      SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
+      SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
       SetLabel(Obj("REASON"),"Ciclo não confirmado pelo runtime.",20,226,9,C'255,118,118');
       SetLabel(Obj("INFO1"),"Ciclo bloqueado ou não confirmado pelo runtime",20,361,9,C'255,118,118');
       return;
@@ -729,9 +729,9 @@ void RunCycle(){
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
+   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);
-   SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10,clrWhite);
+   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9,C'180,190,205');
    last_signal=signal; last_score=score; RefreshPanelToggle();
    last_cycle_id=cid; last_external_id=eid;
