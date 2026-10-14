@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 390;
-input int    InpPanelHeight = 440;
+input int    InpPanelWidth = 420;
+input int    InpPanelHeight = 430;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -31,72 +31,55 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int CompactY(int y){
-   if(!panel_compact) return (int)MathRound(y*panel_sy);
-   if(y<=27) return 14;
-   if(y<=47) return 29;
-   if(y<=67) return 44;
-   if(y<=94) return 66;
-   if(y<=126) return 84;
-   if(y<=146) return 101;
-   if(y<=176) return 121;
-   if(y<=206) return 143;
-   if(y<=226) return 159;
-   if(y<=258) return 177;
-   if(y<=271) return 191;
-   if(y<=284) return 200;
-   if(y<=300) return 208;
-   if(y<=320) return 220;
-   if(y<=352) return 244;
-   if(y<=361) return 258;
-   if(y<=555) return 258;
-   return 260;
-}
+int ContentX(int x){ return panel_x+150+(int)MathRound(x*((double)MathMax(120,panel_width-162)/430.0)); }
+int ContentW(int w){ return MathMax(1,(int)MathRound(w*((double)MathMax(120,panel_width-162)/430.0))); }
+int ContentY(int y){ return panel_y+8+(int)MathRound(y*((double)MathMax(120,panel_height-24)/540.0)); }
+int CompactY(int y){ return (int)MathRound(y*panel_sy); }
 int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return panel_compact?MathMax(21,(int)MathRound(h*panel_sy)):MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // Keep the approved full tab labels and both control columns inside the panel.
-   // On narrow charts, use the available width instead of shrinking labels off-screen.
-   panel_width=MathMin(InpPanelWidth,MathMax(160,cw-24));
-   // The compact layout occupies up to 288 px; keep its controls inside the panel.
-   // If the chart is taller, cap the panel at 48% and leave the fixed C toggle clear.
-   int available_height=MathMax(120,ch-82);
-   int proportional_height=MathMax(120,(int)MathRound(ch*0.48));
+   panel_width=MathMin(InpPanelWidth,MathMax(300,cw-24));
+   int available_height=MathMax(190,ch-78);
+   int proportional_height=MathMax(300,(int)MathRound(ch*0.72));
    panel_height=MathMin(InpPanelHeight,MathMin(available_height,proportional_height));
-   // A compact panel shorter than 288 px clips its lower controls. Prefer a usable
-   // 288 px panel whenever the chart has enough room; very short charts remain capped.
-   if(ch>=370) panel_height=MathMin(InpPanelHeight,MathMin(available_height,MathMax(288,proportional_height)));
    panel_x=12;
-   // When expanded, keep the panel above the fixed bottom-left C toggle.
    panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
    panel_sx=(double)panel_width/430.0;
-   panel_sy=(double)panel_height/620.0;
-   // At small heights, use a dedicated compact vertical map instead of
-   // squeezing every row until the fixed minimum font sizes collide.
-   panel_compact=(panel_height<390 || panel_width<350);
+   panel_sy=(double)panel_height/540.0;
+   panel_compact=(panel_height<340 || panel_width<350);
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
 }
 void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
+   int px=ContentX(x);
+   int py=ContentY(y);
+   int fs=MathMax(8,(int)MathRound(size*MathMin(panel_sx,0.92)));
+   if(name==Obj("SUB")) text="";
+   if(name==Obj("TITLE")){
+      px=panel_x+62; py=panel_y+13; fs=11;
+   }else if(name==Obj("SIGNAL")){
+      px=panel_x+218; py=panel_y+10; fs=9;
+      string signal_name=SignalLabel(text);
+      if(signal_name=="Comprar") text="↑  COMPRAR";
+      else if(signal_name=="Vender") text="↓  VENDER";
+      else text="AGUARDAR";
+   }else if(name==Obj("SCORE")){
+      px=panel_x+295; py=panel_y+26; fs=9;
+      if(StringFind(text,"Qualidade:")==0) text="";
+   }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
-   bool secondary=(StringFind(name,Obj("INFO1"))==0 || StringFind(name,Obj("INFO2"))==0 ||
-                   StringFind(name,Obj("INFO3"))==0 || StringFind(name,Obj("INFO4"))==0 || StringFind(name,Obj("INFO5"))==0 ||
-                   StringFind(name,Obj("CYCLEID"))==0 || StringFind(name,Obj("EXTID"))==0 ||
-                   StringFind(name,Obj("PRICE"))==0 || StringFind(name,Obj("SAFE"))==0 ||
-                   StringFind(name,Obj("SYML"))==0 || StringFind(name,Obj("TFL"))==0 ||
-                   StringFind(name,Obj("MARKET"))==0);
-   if(panel_compact && secondary) text="";
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(size*MathMin(panel_sx,panel_sy))));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,px);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,py);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,fs);
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
@@ -106,28 +89,45 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
 void SetButton(string name,string text,int x,int y,int w,int h){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
    bool nav=(name==Obj("V1") || name==Obj("V2") || name==Obj("V3") || name==Obj("V4") ||
-             name==Obj("V5") || name==Obj("V6") || name==Obj("V7"));
-   int button_x=SX(x), button_y=SY(y), button_w=SW(w), button_h=SH(h);
-   int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy)));
-   // Narrow charts use a compact two-row navigation, with readable short labels
-   // rather than seven horizontally compressed full-length buttons.
-   if(panel_compact && panel_width<350 && nav){
-      int index=(int)StringToInteger(StringSubstr(name,StringLen(P)+1));
-      if(index>=1 && index<=7){
-         int row=(index<=3?0:1);
-         int col=(row==0?index-1:index-4);
-         int columns=(row==0?3:4);
-         int inner=panel_width-24;
-         int cell=inner/columns;
-         button_x=panel_x+12+col*cell;
-         button_y=panel_y+(row==0?44:66);
-         button_w=(col==columns-1?panel_x+panel_width-12-button_x:cell-3);
-         button_h=21;
-         button_font=8;
-         if(index==4) text="Lab.";
-         else if(index==6) text="Avisos";
-         else if(index==7) text="Config.";
-      }
+             name==Obj("V5") || name==Obj("V6") || name==Obj("V7") || name==Obj("V8") ||
+             name==Obj("V9") || name==Obj("V10"));
+   int button_x=ContentX(x), button_y=ContentY(y), button_w=ContentW(w), button_h=SH(h);
+   int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92)));
+   int index=0;
+   if(name==Obj("V1")) index=1;
+   else if(name==Obj("V2")) index=2;
+   else if(name==Obj("V3")) index=3;
+   else if(name==Obj("V4")) index=4;
+   else if(name==Obj("V5")) index=5;
+   else if(name==Obj("V6")) index=6;
+   else if(name==Obj("V7")) index=7;
+   else if(name==Obj("V8")) index=8;
+   else if(name==Obj("V9")) index=9;
+   else if(name==Obj("V10")) index=10;
+   bool selected=false;
+   if(index==1 && active_view=="COCKPIT") selected=true;
+   if(index==2 && active_view=="ANALISE") selected=true;
+   if(index==3 && active_view=="ENSINO") selected=true;
+   if(index==4 && active_view=="LAB") selected=true;
+   if(index==5 && active_view=="REPLAY") selected=true;
+   if(index==6 && active_view=="SIMULADOR") selected=true;
+   if(index==7 && active_view=="MEMORIA") selected=true;
+   if(index==8 && active_view=="ESTATISTICAS") selected=true;
+   if(index==9 && active_view=="CONFIG") selected=true;
+   if(index==10 && active_view=="NOTIF") selected=true;
+   color button_bg=C'12,25,40';
+   color button_border=C'30,65,83';
+   if(nav){
+      int nav_step=MathMax(22,MathMin(25,(panel_height-76)/10));
+      button_x=panel_x+8;
+      button_y=panel_y+50+(index-1)*nav_step;
+      button_w=138;
+      button_h=22;
+      button_font=8;
+      if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
+   }else{
+      button_bg=C'20,38,54';
+      button_border=C'48,86,105';
    }
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,button_x);
@@ -135,9 +135,9 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_XSIZE,button_w);
    ObjectSetInteger(0,name,OBJPROP_YSIZE,button_h);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,button_font);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetInteger(0,name,OBJPROP_COLOR,selected?C'0,225,255':clrWhite);
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,button_bg);
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,button_border);
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
@@ -147,20 +147,14 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    bool created=(ObjectFind(0,name)<0);
    if(created) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,SX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,SY(y));
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,panel_compact?1:SW(w));
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,panel_compact?1:SH(h));
-   if(panel_compact){
-      ObjectSetInteger(0,name,OBJPROP_XDISTANCE,panel_x+panel_width+20);
-      ObjectSetInteger(0,name,OBJPROP_YDISTANCE,panel_y);
-      ObjectSetString(0,name,OBJPROP_TEXT,"");
-   }
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,ContentX(x));
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,ContentY(y));
+   ObjectSetInteger(0,name,OBJPROP_XSIZE,ContentW(w));
+   ObjectSetInteger(0,name,OBJPROP_YSIZE,MathMax(22,SH(h)));
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
-   // Preserve in-progress edits across chart resize and panel redraw.
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,90,112');
    if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
@@ -173,24 +167,17 @@ void RefreshPanelToggle(){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // The C toggle must stay at the same bottom-left position while the panel opens.
-   int x=12;
-   int y=MathMax(8,ch-58);
-   x=MathMax(8,MathMin(x,MathMax(8,cw-54)));
-   y=MathMax(8,MathMin(y,MathMax(8,ch-54)));
+   int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));
+   int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,42);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,42);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,42);
-   ObjectSetInteger(0,name,OBJPROP_STATE,false);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,220,245');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,name,OBJPROP_TEXT,"●");
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,43);
+   ObjectSetInteger(0,name,OBJPROP_STATE,false);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,C'0,215,255');
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
+   ObjectSetString(0,name,OBJPROP_TEXT,"◯");
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,name,OBJPROP_ZORDER,1000);
@@ -199,8 +186,8 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
    ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
-   ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'10,20,35');
+   ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,20);
+   ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,215,255');
    ObjectSetString(0,letter,OBJPROP_FONT,"Segoe UI");
    ObjectSetString(0,letter,OBJPROP_TEXT,"C");
    ObjectSetInteger(0,letter,OBJPROP_SELECTABLE,true);
@@ -212,16 +199,41 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,62);
    ObjectSetInteger(0,sig,OBJPROP_YDISTANCE,y+3);
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
-   ObjectSetInteger(0,sig,OBJPROP_COLOR,C'0,220,245');
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=SignalLabel(last_signal);
-   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"))+(IsValidQualityScore(last_score)?"  "+last_score+"%":"");
-   color compact_color=(shown_signal=="Comprar")?C'0,220,145':(shown_signal=="Vender")?C'255,82,105':C'255,176,0';
+   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));
+   color compact_color=(shown_signal=="Comprar")?C'0,255,70':(shown_signal=="Vender")?C'255,45,65':C'255,176,0';
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
    ObjectSetInteger(0,sig,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,sig,OBJPROP_HIDDEN,true);
    ObjectSetInteger(0,sig,OBJPROP_ZORDER,100);
+   string quality=Obj("COLLAPSED_QUALITY");
+   if(ObjectFind(0,quality)<0) ObjectCreate(0,quality,OBJ_LABEL,0,0,0);
+   ObjectSetInteger(0,quality,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,94);
+   ObjectSetInteger(0,quality,OBJPROP_YDISTANCE,y+22);
+   ObjectSetInteger(0,quality,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,quality,OBJPROP_COLOR,compact_color);
+   ObjectSetString(0,quality,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,quality,OBJPROP_TEXT,(panel_visible || !IsValidQualityScore(last_score))?"":last_score+"%");
+   ObjectSetInteger(0,quality,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,quality,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,quality,OBJPROP_ZORDER,100);
+   string close_name=Obj("PANEL_CLOSE");
+   if(panel_visible){
+      if(ObjectFind(0,close_name)<0) ObjectCreate(0,close_name,OBJ_LABEL,0,0,0);
+      ObjectSetInteger(0,close_name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+      ObjectSetInteger(0,close_name,OBJPROP_XDISTANCE,panel_x+panel_width-27);
+      ObjectSetInteger(0,close_name,OBJPROP_YDISTANCE,panel_y+5);
+      ObjectSetInteger(0,close_name,OBJPROP_FONTSIZE,20);
+      ObjectSetInteger(0,close_name,OBJPROP_COLOR,C'0,215,255');
+      ObjectSetString(0,close_name,OBJPROP_FONT,"Segoe UI");
+      ObjectSetString(0,close_name,OBJPROP_TEXT,"×");
+      ObjectSetInteger(0,close_name,OBJPROP_SELECTABLE,true);
+      ObjectSetInteger(0,close_name,OBJPROP_HIDDEN,true);
+      ObjectSetInteger(0,close_name,OBJPROP_ZORDER,1001);
+   }else if(ObjectFind(0,close_name)>=0) ObjectDelete(0,close_name);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -242,31 +254,63 @@ void Panel(){
    if(ObjectFind(0,bg)<0) ObjectCreate(0,bg,OBJ_RECTANGLE_LABEL,0,0,0);
    ObjectSetInteger(0,bg,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    RefreshPanelLayout();
-   RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
    ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'10,20,35');
-   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,145,175');
+   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'8,17,30');
+   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'0,150,190');
    ObjectSetInteger(0,bg,OBJPROP_BACK,false);
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,bg,OBJPROP_ZORDER,0);
+
+   string side=Obj("SIDEBAR_BG");
+   if(ObjectFind(0,side)<0) ObjectCreate(0,side,OBJ_RECTANGLE_LABEL,0,0,0);
+   ObjectSetInteger(0,side,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,side,OBJPROP_XDISTANCE,panel_x+5);
+   ObjectSetInteger(0,side,OBJPROP_YDISTANCE,panel_y+48);
+   ObjectSetInteger(0,side,OBJPROP_XSIZE,142);
+   ObjectSetInteger(0,side,OBJPROP_YSIZE,panel_height-57);
+   ObjectSetInteger(0,side,OBJPROP_BGCOLOR,C'7,20,34');
+   ObjectSetInteger(0,side,OBJPROP_BORDER_COLOR,C'22,62,80');
+   ObjectSetInteger(0,side,OBJPROP_BACK,false);
+   ObjectSetInteger(0,side,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,side,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,side,OBJPROP_ZORDER,1);
+
+   string content=Obj("CONTENT_BG");
+   if(ObjectFind(0,content)<0) ObjectCreate(0,content,OBJ_RECTANGLE_LABEL,0,0,0);
+   ObjectSetInteger(0,content,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,content,OBJPROP_XDISTANCE,panel_x+150);
+   ObjectSetInteger(0,content,OBJPROP_YDISTANCE,panel_y+48);
+   ObjectSetInteger(0,content,OBJPROP_XSIZE,panel_width-158);
+   ObjectSetInteger(0,content,OBJPROP_YSIZE,panel_height-57);
+   ObjectSetInteger(0,content,OBJPROP_BGCOLOR,C'5,15,27');
+   ObjectSetInteger(0,content,OBJPROP_BORDER_COLOR,C'18,54,72');
+   ObjectSetInteger(0,content,OBJPROP_BACK,false);
+   ObjectSetInteger(0,content,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,content,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,content,OBJPROP_ZORDER,1);
 
    SetLabel(Obj("TITLE"),"Controlador Trading",70,27,11,clrWhite);
-   SetLabel(Obj("SUB"),"Ecossistema • MT5 • Demo / simulação",20,47,9,C'150,165,185');
-   SetButton(Obj("V1"),"Início",18,67,88,25);
-   SetButton(Obj("V2"),"Análise",110,67,88,25);
-   SetButton(Obj("V3"),"Memória",202,67,100,25);
-   SetButton(Obj("V4"),"Laboratório",18,94,112,25);
-   SetButton(Obj("V5"),"Estudo",134,94,72,25);
-   SetButton(Obj("V6"),"Notificações",210,94,100,25);
-   SetButton(Obj("V7"),"Configurações",314,94,106,25);
+   SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
+   SetLabel(Obj("SIGNAL"),last_signal,20,176,10,C'0,255,70');
+   SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,clrWhite);
+
+   SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
+   SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
+   SetButton(Obj("V3"),"▣  ESTUDO",202,67,100,25);
+   SetButton(Obj("V4"),"⚗  LABORATÓRIO",18,94,112,25);
+   SetButton(Obj("V5"),"◷  REPLAY",134,94,72,25);
+   SetButton(Obj("V6"),"◉  SIMULADOR",210,94,100,25);
+   SetButton(Obj("V7"),"▤  MEMÓRIA",314,94,106,25);
+   SetButton(Obj("V8"),"▥  ESTATÍSTICAS",18,121,112,25);
+   SetButton(Obj("V9"),"⚙  CONFIGURAÇÕES",134,121,130,25);
+   SetButton(Obj("V10"),"♧  NOTIFICAÇÕES",268,121,130,25);
 
    SetLabel(Obj("RUNTIME"),"Sistema indisponível",20,126,10,C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
-   SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
-   SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
    SetLabel(Obj("SYML"),"Ativo / símbolo",20,258,8,C'130,145,165');
@@ -282,15 +326,15 @@ void Panel(){
 
    SetLabel(Obj("INFO1"),"Decisão: —",20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Controle de risco: verificando...",20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Memoria: verificando...",20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
-   SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
+   SetLabel(Obj("INFO3"),"Memória: verificando...",20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Estatísticas: verificando...",20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"Notícias: verificando...",20,441,9,C'205,215,230');
 
    SetLabel(Obj("CYCLEID"),"Ciclo: —",20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execução: —",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preço atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
-   // Nenhuma marca-d'agua ou mensagem relacionada e exibida no painel.
+   RefreshPanelToggle();
 }
 void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
@@ -474,6 +518,28 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Estudo • separado da autorização operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
       RefreshLearning();
+   }else if(active_view=="REPLAY"){
+      SetLabel(Obj("SUB"),"Replay • histórico de sessões",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Verificar runtime",20,284,172,30);
+      SetLabel(Obj("INFO1"),"Replay depende de sessão registrada no runtime.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Nenhuma reprodução é presumida sem sessão.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"O histórico pode ser consultado na Memória.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Execução REAL permanece bloqueada.",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
+   }else if(active_view=="SIMULADOR"){
+      SetLabel(Obj("SUB"),"Simulador • apenas DEMO/simulação",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Atualizar análise",20,284,172,30);
+      SetButton(Obj("CYCLE"),"Executar ciclo DEMO",202,284,177,30);
+      SetButton(Obj("CLOSE"),"Encerrar ciclo",202,320,177,28);
+      SetLabel(Obj("INFO1"),"Ciclo enviado ao runtime de simulação.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Resultados só contam após reconciliação.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Estudo não representa lucro financeiro.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Nenhuma ordem REAL é autorizada aqui.",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
+   }else if(active_view=="ESTATISTICAS"){
+      SetLabel(Obj("SUB"),"Estatísticas • dados do runtime",20,47,9,C'150,165,185');
+      SetButton(Obj("ANALYZE"),"Atualizar estatísticas",20,284,172,30);
+      RefreshSecondary();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar notificações",20,284,172,30);
@@ -607,7 +673,7 @@ void Analyze(bool render=true){
       RefreshPanelToggle();
       if(render){
          SetLabel(Obj("SIGNAL"),"Aguardar",20,176,22,C'255,176,0');
-         SetLabel(Obj("SCORE"),"Qualidade: —/100",20,206,10,clrWhite);
+         SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
          SetLabel(Obj("REASON"),"Análise indisponível; sinal anterior descartado",20,226,9,C'255,118,118');
       }
       return;
@@ -624,9 +690,9 @@ void Analyze(bool render=true){
    last_score=score;
    RefreshPanelToggle();
    if(!render) return;
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,220,145':(signal=="VENDA" || signal=="VENDER")?C'255,82,105':C'255,176,0';
+   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,22,c);
-   SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":score)+"/100",20,206,10,clrWhite);
+   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisão: "+SignalLabel(signal)+" • qualidade "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
    ChartRedraw();
@@ -758,15 +824,21 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_LETTER")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_CLOSE")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
-   else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("V3")) { active_view="ENSINO"; RenderView(); }
    else if(sparam==Obj("V4")) { active_view="LAB"; RenderView(); }
-   else if(sparam==Obj("V5")) { active_view="ENSINO"; RenderView(); }
-   else if(sparam==Obj("V6")) { active_view="NOTIF"; RenderView(); }
-   else if(sparam==Obj("V7")) { active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("V5")) { active_view="REPLAY"; RenderView(); }
+   else if(sparam==Obj("V6")) { active_view="SIMULADOR"; RenderView(); }
+   else if(sparam==Obj("V7")) { active_view="MEMORIA"; RenderView(); }
+   else if(sparam==Obj("V8")) { active_view="ESTATISTICAS"; RenderView(); }
+   else if(sparam==Obj("V9")) { active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("V10")) { active_view="NOTIF"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
-      if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
+      if(active_view=="REPLAY") RefreshHealth();
+      else if(active_view=="ESTATISTICAS") RefreshSecondary();
+      else if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle; SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig(); }
       else if(active_view=="ANALISE") Analyze();
       else if(active_view=="MEMORIA") RefreshMemory();
       else if(active_view=="LAB") RefreshHealth();
