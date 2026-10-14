@@ -534,24 +534,6 @@ def test_mql5_health_status_stays_below_navigation_tabs():
     assert '20,104,10' not in health
     assert '20,124,10' not in health
 
-def test_mql5_watermark_is_optional_persistent_angled_and_branded():
-    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    watermark = panel.split("void ApplyWatermark()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
-    toggle = panel.split("void ToggleWatermark()", 1)[1].split("void LoadWatermark()", 1)[0]
-    load = panel.split("void LoadWatermark()", 1)[1].split("void RefreshPanelToggle()", 1)[0]
-    assert 'ObjectSetInteger(0,mark,OBJPROP_ANGLE,-12);' in watermark
-    assert 'ObjectSetInteger(0,name,OBJPROP_ANGLE,-12);' in watermark
-    assert 'ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");' in watermark
-    assert 'ObjectSetInteger(0,mark,OBJPROP_BACK,true);' in watermark
-    assert 'if(!watermark_enabled)' in watermark
-    assert 'watermark_enabled=!watermark_enabled;' in toggle
-    assert 'GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);' in toggle
-    assert 'GlobalVariableCheck(WatermarkKey())' in load
-    assert 'watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);' in load
-    assert 'SetButton(Obj("WM"),watermark_enabled?"Marca-d\'água: ativada":"Marca-d\'água: desativada"' in watermark
-
-
-
 def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_secondary_rows():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     scale = panel.split("int SX(", 1)[1].split("void RefreshPanelLayout()", 1)[0]
@@ -577,13 +559,14 @@ def test_mql5_compact_layout_uses_dedicated_vertical_positions_and_hides_seconda
     assert "panel_compact?MathMax(21" in scale
 
 
-def test_mql5_compact_watermark_toggle_stays_inside_short_panel():
+def test_mql5_panel_update_has_no_watermark_or_watermark_setting():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    scale = panel.split("int SX(", 1)[1].split("void RefreshPanelLayout()", 1)[0]
-    watermark = panel.split("void RefreshWatermarkControl()", 1)[1].split("void ToggleWatermark()", 1)[0]
-    assert "if(y<=555) return 258;" in scale
-    assert "return 260;" in scale
-    assert 'SetButton(Obj("WM"),watermark_enabled?"Marca-d\'água: ativada":"Marca-d\'água: desativada",20,555,172,28);' in watermark
+    assert "CONTROLADOR TRADING" not in panel
+    assert "WATERMARK_MARK" not in panel
+    assert "WATERMARK_TEXT" not in panel
+    assert 'Obj("WM")' not in panel
+    assert "watermark_enabled" not in panel
+    assert "ToggleWatermark" not in panel
 
 
 def test_mql5_narrow_panel_navigation_uses_two_rows_without_horizontal_crushing():
