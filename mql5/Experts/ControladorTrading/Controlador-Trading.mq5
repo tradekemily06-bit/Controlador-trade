@@ -342,7 +342,7 @@ void Panel(){
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
-   SetLabel(Obj("SYML"),"Ativo / símbolo",20,258,8,C'130,145,165');
+   SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
    SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
    SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
    SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
@@ -834,6 +834,9 @@ int OnInit(){
    return(INIT_SUCCEEDED);
 }
 void OnDeinit(const int reason){
+   // Persist only the user-controlled visibility state before the EA is unloaded.
+   // Runtime refreshes, chart changes and analysis must never decide to close the panel.
+   GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
    EventKillTimer();
    DeletePanel();
    ChartRedraw();
