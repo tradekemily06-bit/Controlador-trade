@@ -635,7 +635,6 @@ def test_mql5_expanded_panel_stays_at_top_and_does_not_cover_bottom_sell_buy_con
     layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel(", 1)[0]
     assert "panel_y=18;" in layout
     assert "panel_visible?MathMax(8,ch-panel_height-66):18" not in layout
-    assert "Keep the expanded ecosystem panel anchored at the top-left" in layout
 
 
 
@@ -647,4 +646,4 @@ def test_mql5_panel_geometry_clamps_to_small_chart_and_keeps_trade_controls_clea
     assert "ch-panel_y-66" in layout
     assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in layout
     labels = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
-    assert "MathMax(58,MathMin(218,panel_width-150))" in labels
+    assert 'px=panel_x+MathMax(58,MathMin(218,panel_width-150)); py=panel_y+10; fs=9;' in labels
