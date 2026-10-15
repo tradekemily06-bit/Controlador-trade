@@ -48,7 +48,8 @@ void RefreshPanelLayout(){
    int proportional_height=MathMax(300,(int)MathRound(ch*0.72));
    panel_height=MathMin(InpPanelHeight,MathMin(available_height,proportional_height));
    panel_x=12;
-   panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;
+   // Keep the expanded ecosystem panel anchored at the top-left so it never covers the chart's bottom trade controls (SELL/BUY).
+   panel_y=18;
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/540.0;
    panel_compact=(panel_height<340 || panel_width<350);
