@@ -559,7 +559,8 @@ def test_mql5_narrow_panel_navigation_uses_two_rows_without_horizontal_crushing(
     assert 'bool nav=(name==Obj("V1")' in button
     assert 'name==Obj("V8")' in button
     assert 'name==Obj("V10")' in button
-    assert "int nav_step=MathMax(22,MathMin(25,(panel_height-76)/10));" in button
+    assert "int nav_step=MathMax(13,MathMin(25,(panel_height-60)/10));" in button
+    assert "button_h=MathMin(22,MathMax(12,nav_step-1));" in button
     assert "button_y=panel_y+50+(index-1)*nav_step;" in button
     assert "button_w=MathMax(60,SidebarWidth()-10);" in button
     assert "int index=0;" in button
