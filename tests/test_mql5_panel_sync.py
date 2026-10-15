@@ -81,8 +81,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "InpPanelWidth = 420" in panel
     assert "InpPanelHeight = 430" in panel
     assert "panel_x=12;" in panel
-    assert "MathMax(160,cw-24)" in panel
-    assert "int proportional_height=MathMax(300,(int)MathRound(ch*0.72));" in panel
+    assert "panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));" in panel
+    assert "int available_height=MathMax(1,ch-panel_y-66);" in panel
+    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.72));" in panel
+    assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in panel
     assert "panel_y=18;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
@@ -635,3 +637,14 @@ def test_mql5_expanded_panel_stays_at_top_and_does_not_cover_bottom_sell_buy_con
     assert "panel_visible?MathMax(8,ch-panel_height-66):18" not in layout
     assert "Keep the expanded ecosystem panel anchored at the top-left" in layout
 
+
+
+def test_mql5_panel_geometry_clamps_to_small_chart_and_keeps_trade_controls_clear():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel(", 1)[0]
+    assert "panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));" in layout
+    assert "panel_y=18;" in layout
+    assert "ch-panel_y-66" in layout
+    assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in layout
+    labels = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
+    assert "MathMax(58,MathMin(218,panel_width-150))" in labels
