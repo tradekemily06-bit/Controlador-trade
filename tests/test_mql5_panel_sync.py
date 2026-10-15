@@ -645,4 +645,4 @@ def test_mql5_panel_geometry_clamps_to_small_chart_and_keeps_trade_controls_clea
     assert "panel_y=18;" in layout
     assert "ch-panel_y-66" in layout
     assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in layout
-    assert 'px=panel_x+MathMax(58,MathMin(218,panel_width-150)); py=panel_y+10; fs=9;' in panel
+    assert 'px=panel_x+MathMin(218,MathMax(155,panel_width-185)); py=panel_y+10; fs=9;' in panel
