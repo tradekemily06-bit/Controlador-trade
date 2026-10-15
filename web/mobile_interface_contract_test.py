@@ -39,5 +39,5 @@ def test_mobile_ui_keeps_real_execution_blocked():
 def test_mobile_workspace_navigation_and_watermark_remain_compact():
     assert 'href="#painel">Cockpit</a>' in HTML
     assert "workspace-hidden" in HTML
-    assert 'class="watermark-mark"' in HTML
+    assert 'class="watermark-mark"' not in HTML
     assert "transform:rotate(-18deg)" not in HTML
