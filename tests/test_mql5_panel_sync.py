@@ -83,7 +83,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "panel_x=12;" in panel
     assert "MathMax(160,cw-24)" in panel
     assert "int proportional_height=MathMax(300,(int)MathRound(ch*0.72));" in panel
-    assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
+    assert "panel_y=18;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
     assert 'Obj("SIDEBAR_BG")' in panel
@@ -182,12 +182,10 @@ def test_web_dashboard_uses_compact_separate_workspaces_without_runtime_view_per
     assert "default_view" not in web
 
 
-def test_web_watermark_is_centered_horizontal_and_includes_brand_mark():
+def test_web_watermark_is_not_rendered_until_approved_design_is_implemented():
     web = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-    assert '<div class="watermark-brand">' in web
-    assert 'class="watermark-mark"' in web
-    assert "transform:rotate(-18deg)" not in web
-    assert "opacity:.035" in web
+    assert 'class="watermark-mark"' not in web
+    assert '<div class="watermark-brand">' not in web
 
 def test_mql5_sync_parses_numeric_error_and_warning_counts():
     text = SCRIPT.read_text(encoding="utf-8")
@@ -237,7 +235,7 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in toggle
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in toggle
     assert 'Obj("PANEL_CLOSE")' in toggle
-    assert "panel_y=panel_visible?MathMax(8,ch-panel_height-66):18;" in panel
+    assert "panel_y=18;" in panel
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
     text = SCRIPT.read_text(encoding="utf-8")
     assert '$provenance = "$binary.provenance.json"' in text
