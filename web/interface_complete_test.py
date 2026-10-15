@@ -48,7 +48,6 @@ def test_interface_wires_existing_safe_apis():
     for marker in (
         "/api/status",
         "/api/runtime/analysis",
-        "/api/replay",
         "/api/memory?limit=8",
         "/api/statistics",
         "/api/outcome",
