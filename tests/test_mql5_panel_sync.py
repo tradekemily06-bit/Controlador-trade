@@ -629,3 +629,11 @@ def test_mql5_source_does_not_embed_pr415_file_name_as_chart_text():
     assert "ControladorTradingPR415" not in panel
     assert '"label"' not in panel.lower()
 
+
+def test_mql5_expanded_panel_stays_at_top_and_does_not_cover_bottom_sell_buy_controls():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    layout = panel.split("void RefreshPanelLayout()", 1)[1].split("void SetLabel(", 1)[0]
+    assert "panel_y=18;" in layout
+    assert "panel_visible?MathMax(8,ch-panel_height-66):18" not in layout
+    assert "Keep the expanded ecosystem panel anchored at the top-left" in layout
+
