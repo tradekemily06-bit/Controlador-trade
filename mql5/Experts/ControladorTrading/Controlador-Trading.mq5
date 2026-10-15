@@ -132,11 +132,12 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    color button_bg=C'12,25,40';
    color button_border=C'30,65,83';
    if(nav){
-      int nav_step=MathMax(22,MathMin(25,(panel_height-76)/10));
+      // Fit all ten navigation items inside the panel, including short chart windows.
+      int nav_step=MathMax(13,MathMin(25,(panel_height-60)/10));
       button_x=panel_x+8;
       button_y=panel_y+50+(index-1)*nav_step;
       button_w=MathMax(60,SidebarWidth()-10);
-      button_h=22;
+      button_h=MathMin(22,MathMax(12,nav_step-1));
       button_font=8;
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
    }else{
