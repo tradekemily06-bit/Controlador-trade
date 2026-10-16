@@ -221,7 +221,7 @@ def test_mql5_panel_hide_preserves_c_toggle_and_deinit_removes_all_objects():
 
     assert "bool preserveToggle=false)" in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
-    assert "else DeletePanel(true,true);" in toggle
+    assert "else DeletePanel(true);" in toggle
     assert "ApplyWatermark();" not in hidden
     assert "DeletePanel();" in deinit
 
