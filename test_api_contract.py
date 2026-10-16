@@ -270,5 +270,5 @@ def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     assert status == "200 OK"
     assert payload["ok"] is True
     assert payload["live"] is True
-    assert payload["execution_allowed"] is False
-    assert payload["real"] == "DESABILITADO"
+    assert "execution_allowed" not in payload
+    assert "real" not in payload
