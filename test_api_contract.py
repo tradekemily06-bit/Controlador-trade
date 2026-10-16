@@ -226,6 +226,7 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
         for i in range(130)
     )
     fake = SimpleNamespace(
+        timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
         analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),
         quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),
         decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),
