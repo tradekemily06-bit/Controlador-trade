@@ -66,10 +66,10 @@ def test_controller_health_gate_uses_current_safe_health_contract():
     text = _read("deployment/start_controlador_runtime.ps1")
     for required in (
         "$payload.execution_allowed -ne $false",
-        '$payload.real -ne "DESABILITADO"',
+        "$payload.real -ne 'DESABILITADO'",
         "$payload.operational_observability.execution",
         "$op.allowed -ne $false",
-        '$op.real -ne "DISABLED"',
+        "$op.real -ne 'DISABLED'",
         "$payload.real_runtime",
         "$realRuntime.real_execution_allowed -ne $false",
         "$realRuntime.explicitly_enabled -ne $false",
