@@ -170,7 +170,7 @@ function Invoke-RuntimeHttpProbe {
         [int]$TimeoutSeconds
     )
     # Use Python urllib with proxy auto-detection disabled. On this Windows
-    # runtime, PowerShell's Invoke-WebRequest can stall far beyond its timeout;
+    # runtime, PowerShell's built-in web-request cmdlet can stall far beyond its timeout;
     # the local liveness probe must be cheap and predictably bounded.
     $probeCode = @'
 import json, sys, urllib.request
