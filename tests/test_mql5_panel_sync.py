@@ -559,10 +559,12 @@ def test_mql5_narrow_panel_navigation_uses_two_rows_without_horizontal_crushing(
     assert 'bool nav=(name==Obj("V1")' in button
     assert 'name==Obj("V8")' in button
     assert 'name==Obj("V10")' in button
-    assert "int nav_step=MathMax(13,MathMin(25,(panel_height-60)/10));" in button
-    assert "button_h=MathMin(22,MathMax(12,nav_step-1));" in button
+    assert "int nav_area=MathMax(1,panel_height-58);" in button
+    assert "int nav_step=MathMax(1,MathMin(25,nav_area/10));" in button
+    assert "button_h=MathMax(1,MathMin(22,nav_step-1));" in button
     assert "button_y=panel_y+50+(index-1)*nav_step;" in button
-    assert "button_w=MathMax(60,SidebarWidth()-10);" in button
+    assert "if(panel_height<180){ button_font=6; }" in button
+    assert "button_w=MathMax(1,SidebarWidth()-10);" in button
     assert "int index=0;" in button
 def test_mql5_narrow_navigation_parses_numeric_tab_suffix():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
