@@ -314,8 +314,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             while (-not $process.HasExited) {
                 if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                     Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
-                    Stop-Mt5Process -Process $process
-                    break
+                    if (Stop-Mt5Process -Process $process -ControlledStop) {
+                        break
+                    }
+                    Write-SupervisorLog 'Parada controlada bloqueada por segurança; supervisor continuará monitorando.'
+                    Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 30
+                    continue
                 }
                 if (Test-Mt5TerminalHealth) {
                     $healthFailures = 0
@@ -327,8 +332,12 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
                     }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
-                        Stop-Mt5Process -Process $process
-                        break
+                        if (Stop-Mt5Process -Process $process) {
+                            break
+                        }
+                        $healthFailures = 0
+                        Start-Sleep -Seconds 30
+                        continue
                     }
                 }
                 Start-Sleep -Seconds $HealthPollSeconds
@@ -339,7 +348,10 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
                 Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
             }
-            Stop-Mt5Process -Process $process
+            if (-not (Stop-Mt5Process -Process $process)) {
+                Start-Sleep -Seconds 30
+                continue
+            }
         }
     }
 
@@ -371,7 +383,14 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         continue
     }
 
-    Write-SupervisorLog 'MT5 não está saudável; iniciando/reiniciando.'
+    if (-not (Test-SafeRepairAuthorization -Action 'start_mt5_terminal' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour)) {
+        $reason = "Inicialização automática do MT5 bloqueada pela política: $script:LastRepairAuthorizationDiagnostic"
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        Start-Sleep -Seconds 30
+        continue
+    }
+    Write-SupervisorLog 'MT5 não está saudável; política autorizou inicialização/reinício controlado.'
     Start-Process -FilePath $Mt5TerminalPath -WorkingDirectory (Split-Path -Parent $Mt5TerminalPath) | Out-Null
     $restartTimes.Add($now)
     Save-RestartHistory
@@ -385,8 +404,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
-                Stop-Mt5Process -Process $processAfterStart
-                break
+                if (Stop-Mt5Process -Process $processAfterStart -ControlledStop) {
+                    break
+                }
+                Write-SupervisorLog 'Parada controlada bloqueada por segurança; supervisor continuará monitorando.'
+                Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 30
+                continue
             }
             if (Test-Mt5TerminalHealth) {
                 $healthFailures = 0
@@ -398,8 +422,12 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
                     }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
-                    Stop-Mt5Process -Process $processAfterStart
-                    break
+                    if (Stop-Mt5Process -Process $processAfterStart) {
+                        break
+                    }
+                    $healthFailures = 0
+                    Start-Sleep -Seconds 30
+                    continue
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
@@ -411,7 +439,10 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
-        Stop-Mt5Process -Process $processAfterStart
+        if (-not (Stop-Mt5Process -Process $processAfterStart)) {
+            Start-Sleep -Seconds 30
+            continue
+        }
     }
     if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
