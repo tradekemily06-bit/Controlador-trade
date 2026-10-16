@@ -67,3 +67,10 @@ def test_blocks_during_cooldown_or_maintenance_lock():
         result = SelfRepairPolicy.evaluate(safe_request(**changes))
         assert result.decision is RepairDecision.ALERT_AND_BLOCK
         assert result.allowed is False
+
+
+def test_unknown_repair_action_fails_closed():
+    result = SelfRepairPolicy.evaluate(safe_request(action="send_real_order"))
+    assert result.decision is RepairDecision.ALERT_AND_BLOCK
+    assert result.allowed is False
+    assert "lista permitida" in result.reason
