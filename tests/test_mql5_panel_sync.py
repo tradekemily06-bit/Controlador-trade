@@ -253,3 +253,15 @@ def test_mql5_panel_explains_unavailable_market_data_without_showing_stale_signa
     assert 'last_unavailable_reason=UnavailableReason(r);' in panel
     assert "last_analysis_available=false" in panel
     assert "last_unavailable_reason" in panel
+
+
+def test_mql5_panel_refreshes_analysis_when_chart_context_changes():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    init = panel.split("int OnInit()", 1)[1].split("void OnDeinit", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+    assert "string last_analysis_symbol=\"\";" in panel
+    assert "int last_analysis_period=0;" in panel
+    assert "last_analysis_symbol=_Symbol;" in init
+    assert "last_analysis_period=(int)_Period;" in init
+    assert "bool context_changed=(_Symbol!=last_analysis_symbol || (int)_Period!=last_analysis_period);" in timer
+    assert timer.count("Analyze(false);") >= 2
