@@ -188,16 +188,11 @@ def application(environ, start_response):
 
     try:
         if path == "/api/health/live" and method == "GET":
-            # Liveness only: this must not wait on broker, SQLite, risk or
-            # operational-observability checks. Safety remains enforced by gates.
+            # Liveness only: do not query broker, database, risk or observability.
             return _json_response(
                 start_response,
                 HTTPStatus.OK,
-                {
-                    "ok": True,
-                    "live": True,
-                    "service": "controlador",
-                },
+                {"ok": True, "live": True, "service": "controlador"},
                 request_id,
                 environ,
             )
@@ -385,18 +380,34 @@ def application(environ, start_response):
                     environ,
                 )
             snapshot = orchestration.snapshot
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            # The user-facing signal must reflect the final ecosystem gates.
+            # Preserve the technical candidate separately for audit; a strong
+            # candidate is not a BUY/SELL presentation when context or risk says wait.
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
+            snapshot_data = snapshot.as_dict()
+            snapshot_data["candidate_signal"] = snapshot_data.get("signal", candidate_signal)
+            snapshot_data["signal"] = display_signal
+            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and decision_value == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
                     "symbol": orchestration.analysis.symbol,
                     "timeframe": orchestration.analysis.timeframe,
                 },
-                "signal": orchestration.analysis.signal.value,
+                "signal": display_signal,
                 "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
-                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                "reason": display_reason,
+                "decision": decision_value,
                 "analysis": {
-                    "signal": orchestration.analysis.signal.value,
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
                     "score": orchestration.analysis.score,
                     "reason": orchestration.analysis.reason,
                     "confirmed": orchestration.analysis.confirmed,
@@ -406,13 +417,13 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
                 },
                 "decision_detail": {
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                     "reason": orchestration.decision.reason,
                 },
-                "snapshot": snapshot.as_dict(),
+                "snapshot": snapshot_data,
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),
