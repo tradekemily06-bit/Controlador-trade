@@ -27,6 +27,7 @@ bool panel_compact=false;
 string last_signal="Aguardar";
 string last_score="";
 bool last_analysis_available=false;
+string last_unavailable_reason="Runtime ou dados de mercado indisponíveis; sinal anterior descartado";
 
 string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
@@ -336,7 +337,7 @@ void Panel(){
    if(!last_analysis_available){
       SetLabel(Obj("SIGNAL"),"ANÁLISE INDISPONÍVEL",20,176,10,C'255,118,118');
       SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
-      SetLabel(Obj("REASON"),"Dados/runtime indisponíveis; sinal anterior descartado",20,226,9,C'255,118,118');
+      SetLabel(Obj("REASON"),StringSubstr(last_unavailable_reason==""?"Runtime ou dados de mercado indisponíveis; sinal anterior descartado":last_unavailable_reason,0,62),20,226,9,C'255,118,118');
    }else{
       SetLabel(Obj("SIGNAL"),SignalLabel(last_signal),20,176,10,SignalColor(last_signal));
       SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
@@ -423,6 +424,19 @@ string JsonObjectValue(string json,string object_key,string field_key){
    if(close<0) return "";
    string nested_json=StringSubstr(json,open,close-open+1);
    return JsonValue(nested_json,field_key);
+}
+string UnavailableReason(string response){
+   string detail=JsonValue(response,"detail");
+   if(detail=="") detail=JsonValue(response,"error");
+   if(StringFind(detail,"STALE")>=0) return "Dados de mercado desatualizados; sinal anterior descartado";
+   if(StringFind(detail,"GAP")>=0) return "Dados de mercado com lacunas; sinal anterior descartado";
+   if(StringFind(detail,"INVALID")>=0) return "Dados de mercado inválidos; sinal anterior descartado";
+   if(StringFind(detail,"NOT_CONNECTED")>=0 || StringFind(detail,"RuntimeError")>=0)
+      return "Runtime/MT5 indisponível; sinal anterior descartado";
+   if(StringFind(detail,"MT5MarketDataError")>=0 || StringFind(detail,"Terminal: Call failed")>=0 ||
+      StringFind(detail,"dados indisponíveis")>=0 || StringFind(detail,"indisponíveis")>=0)
+      return "Fonte de dados MT5 indisponível; sinal anterior descartado";
+   return "Runtime ou dados de mercado indisponíveis; sinal anterior descartado";
 }
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
@@ -750,11 +764,12 @@ void Analyze(bool render=true){
       last_analysis_available=false;
       last_signal="Indisponível";
       last_score="";
+      last_unavailable_reason=UnavailableReason(r);
       RefreshPanelToggle();
       if(render){
          SetLabel(Obj("SIGNAL"),"ANÁLISE INDISPONÍVEL",20,176,10,C'255,118,118');
          SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
-         SetLabel(Obj("REASON"),"Dados/runtime indisponíveis; sinal anterior descartado",20,226,9,C'255,118,118');
+         SetLabel(Obj("REASON"),StringSubstr(last_unavailable_reason,0,62),20,226,9,C'255,118,118');
       }
       return;
    }
@@ -771,9 +786,11 @@ void Analyze(bool render=true){
       last_score="";
       if(!signal_valid) reason="ANÁLISE INDISPONÍVEL: sinal ausente ou inválido.";
       else reason="ANÁLISE INDISPONÍVEL: qualidade ausente ou fora de 1 a 100.";
+      last_unavailable_reason=reason;
    }else{
       score=DisplayQualityScore(score);
       last_analysis_available=true;
+      last_unavailable_reason="";
       last_signal=signal;
       last_score=score;
    }
