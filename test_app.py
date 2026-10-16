@@ -91,6 +91,7 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
         automation_lifecycle=None,
     )
     fake_result = SimpleNamespace(stopped=True, stop_reason="blocked", cycles=(cycle,))
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
     monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: fake_result)
 
     status, data = call_app(
