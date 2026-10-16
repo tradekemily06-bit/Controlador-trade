@@ -17,7 +17,7 @@ class StrategyInput:
     volume: float
     confirmation: float
     confirmed: bool
-    filters_ok: bool = True
+    filters_ok: bool = False
     symbol: str | None = None
     timeframe: str | None = None
 
