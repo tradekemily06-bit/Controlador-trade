@@ -414,6 +414,10 @@ def test_mql5_failed_demo_cycle_clears_stale_signal():
     failure = cycle.split('if(!Http("POST","/api/runtime/cycle"', 1)[1].split("\n   }", 1)[0]
     assert 'last_signal="ANALISE_INDISPONIVEL";' in failure
     assert 'last_score="";' in failure
+    assert 'last_cycle_id="";' in failure
+    assert 'last_external_id="";' in failure
+    assert '"Ciclo: não confirmado"' in failure
+    assert '"Execução: não confirmada"' in failure
     assert 'RefreshPanelToggle();' in failure
     assert '"Ciclo não confirmado; sinal anterior descartado."' in failure
 
