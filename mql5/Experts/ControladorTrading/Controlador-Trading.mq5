@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 420;
-input int    InpPanelHeight = 430;
+input int    InpPanelWidth = 350;
+input int    InpPanelHeight = 380;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -19,8 +19,8 @@ bool pref_closed_candle=true;
 bool pref_require_filters=true;
 int panel_x=0;
 int panel_y=18;
-int panel_width=390;
-int panel_height=440;
+int panel_width=350;
+int panel_height=380;
 double panel_sx=1.0;
 double panel_sy=1.0;
 bool panel_compact=false;
@@ -48,7 +48,7 @@ void RefreshPanelLayout(){
    panel_x=12;
    panel_y=18;
    int available_height=MathMax(1,ch-panel_y-66);
-   int proportional_height=MathMax(1,(int)MathRound(ch*0.72));
+   int proportional_height=MathMax(1,(int)MathRound(ch*0.48));
    panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/540.0;
