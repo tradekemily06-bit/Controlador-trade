@@ -42,6 +42,13 @@ class SelfRepairPolicy:
     execution permissions, or bypass recovery/reconciliation gates.
     """
 
+    ALLOWED_ACTIONS = frozenset({
+        "clear_stale_local_cache",
+        "restart_controller",
+        "start_mt5_terminal",
+        "restart_mt5_terminal",
+    })
+
     @staticmethod
     def evaluate(request: RepairRequest) -> RepairAuthorization:
         if not isinstance(request, RepairRequest):
@@ -53,6 +60,8 @@ class SelfRepairPolicy:
 
         if not isinstance(request.action, str) or not request.action.strip():
             return SelfRepairPolicy._blocked("ação de reparo ausente ou inválida")
+        if request.action not in SelfRepairPolicy.ALLOWED_ACTIONS:
+            return SelfRepairPolicy._blocked("ação de reparo não está na lista permitida")
         if any(
             not isinstance(value, bool)
             for value in (
