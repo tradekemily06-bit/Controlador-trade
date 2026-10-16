@@ -46,7 +46,7 @@ class SignalQualityEvaluator:
             analysis.confirmed is True
             and analysis.signal in (Signal.COMPRA, Signal.VENDA)
         )
-        quality_score = abs(score - 50.0) * 2.0
+        quality_score = max(1.0, abs(score - 50.0) * 2.0)
 
         if quality_score >= 80:
             level = SignalLevel.FORTE
