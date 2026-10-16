@@ -242,3 +242,14 @@ def test_demo_cycle_never_overwrites_current_market_signal():
     assert "last_signal=" not in cycle
     assert "last_score=" not in cycle
     assert "RefreshPanelToggle()" not in cycle
+
+
+def test_mql5_panel_explains_unavailable_market_data_without_showing_stale_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "string UnavailableReason(string response)" in panel
+    assert 'StringFind(detail,"STALE")' in panel
+    assert 'StringFind(detail,"GAP")' in panel
+    assert 'StringFind(detail,"INVALID")' in panel
+    assert 'last_unavailable_reason=UnavailableReason(r);' in panel
+    assert "last_analysis_available=false" in panel
+    assert "last_unavailable_reason" in panel
