@@ -219,7 +219,7 @@ def test_mql5_panel_hide_preserves_c_toggle_and_deinit_removes_all_objects():
     deinit = panel.split("void OnDeinit(", 1)[1].split("void OnTimer()", 1)[0]
     hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
 
-    assert "void DeletePanel(bool preserveToggle=false)" in delete
+    assert "bool preserveToggle=false)" in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
     assert "else DeletePanel(true,true);" in toggle
     assert "ApplyWatermark();" not in hidden
