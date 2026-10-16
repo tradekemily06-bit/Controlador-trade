@@ -322,6 +322,20 @@ def application(environ, start_response):
                 filters_ok=bool(data.get("filters_ok", True)),
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
+            if not result.cycles:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "ciclo indisponível",
+                        "detail": result.stop_reason or "nenhum ciclo concluído pelo runtime",
+                        "stopped": result.stopped,
+                        "stop_reason": result.stop_reason,
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
             cycle = result.cycles[-1]
             execution = cycle.execution
             orchestration = cycle.orchestration

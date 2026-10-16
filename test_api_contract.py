@@ -384,6 +384,27 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
     assert payload["execution_allowed"] is False
 
 
+def test_runtime_cycle_with_no_completed_cycle_returns_unavailable_without_signal(monkeypatch):
+    import app
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "run_mt5_cycle",
+        lambda **_: SimpleNamespace(stopped=True, stop_reason="sem ciclo concluído", cycles=[]),
+    )
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/cycle",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert "signal" not in payload
+    assert payload["detail"] == "sem ciclo concluído"
+
+
 def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     import app
 
