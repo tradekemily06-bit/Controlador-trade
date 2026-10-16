@@ -260,3 +260,15 @@ def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch)
     assert payload["execution_allowed"] is False
     assert payload["detail"] == "dados indisponíveis"
     assert "signal" not in payload
+
+
+def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
+    import app
+
+    with patch.object(app.SERVICE, "system_status", side_effect=AssertionError("slow diagnostics called")):
+        status, _, payload = ApiContractTests().request("/api/health/live")
+    assert status == "200 OK"
+    assert payload["ok"] is True
+    assert payload["live"] is True
+    assert payload["execution_allowed"] is False
+    assert payload["real"] == "DESABILITADO"
