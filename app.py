@@ -367,18 +367,30 @@ def application(environ, start_response):
                     environ,
                 )
             snapshot = orchestration.snapshot
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            # The user-facing signal must reflect the final ecosystem gates.
+            # Preserve the technical candidate separately for audit; a strong
+            # candidate is not a BUY/SELL presentation when context or risk says wait.
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
                     "symbol": orchestration.analysis.symbol,
                     "timeframe": orchestration.analysis.timeframe,
                 },
-                "signal": orchestration.analysis.signal.value,
+                "signal": display_signal,
                 "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
-                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                "reason": display_reason,
+                "decision": decision_value,
                 "analysis": {
-                    "signal": orchestration.analysis.signal.value,
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
                     "score": orchestration.analysis.score,
                     "reason": orchestration.analysis.reason,
                     "confirmed": orchestration.analysis.confirmed,
@@ -388,7 +400,7 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
                 },
                 "decision_detail": {
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
