@@ -78,12 +78,12 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert '"Controlador Trading"' in panel
     assert '"Ecossistema • MT5 • Demo / simulação"' not in panel
     assert "RUNTIME REAL" not in panel
-    assert "InpPanelWidth = 420" in panel
-    assert "InpPanelHeight = 430" in panel
+    assert "InpPanelWidth = 350" in panel
+    assert "InpPanelHeight = 380" in panel
     assert "panel_x=12;" in panel
     assert "panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));" in panel
     assert "int available_height=MathMax(1,ch-panel_y-66);" in panel
-    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.72));" in panel
+    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in panel
     assert "panel_y=18;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
@@ -690,3 +690,12 @@ def test_mql5_shows_analysis_unavailable_separately_from_wait():
     assert 'shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL"' in panel
     assert 'last_signal="ANALISE_INDISPONIVEL";' in panel
     assert 'SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);' in panel
+
+
+def test_mql5_open_panel_is_capped_below_half_chart_height():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "input int    InpPanelWidth = 350;" in panel
+    assert "input int    InpPanelHeight = 380;" in panel
+    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
+    assert "int panel_width=350;" in panel
+    assert "int panel_height=380;" in panel
