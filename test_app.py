@@ -1,9 +1,10 @@
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app import application
+from data.models import Candle
 
 
 def call_app(path, method="GET", payload=None):
@@ -74,7 +75,13 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
         ),
         quality=SimpleNamespace(score=1.0, level=SimpleNamespace(value="FRACA"), actionable=False),
         snapshot=SimpleNamespace(market_context=None),
-        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=(1, 2, 3)),
+        market_data=SimpleNamespace(
+            source="IC Markets MT5 DEMO",
+            candles=tuple(
+                Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+                for i in range(3)
+            ),
+        ),
         senior_context=SimpleNamespace(cycle_id="senior-cycle-001"),
     )
     cycle = SimpleNamespace(
