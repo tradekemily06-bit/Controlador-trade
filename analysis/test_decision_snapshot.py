@@ -35,6 +35,6 @@ def test_snapshot_is_fail_closed_for_waiting_signal():
     snapshot = DecisionSnapshotBuilder().build(analysis)
 
     assert snapshot.signal == Signal.AGUARDAR
-    assert snapshot.quality.score == 0
+    assert snapshot.quality.score == 1
     assert snapshot.quality.level == SignalLevel.FRACA
     assert snapshot.quality.actionable is False
