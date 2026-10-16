@@ -80,9 +80,12 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
       if(StringLen(text)>max_chars) text=StringSubstr(text,0,max_chars-1)+"…";
    }
    if(name==Obj("TITLE")){
+      // At narrow widths, prioritize the live signal; the C control already identifies the ecosystem.
+      if(panel_width<320) text="";
       px=panel_x+58; py=panel_y+13; fs=(panel_width<390?9:11);
    }else if(name==Obj("SIGNAL")){
-      px=panel_x+MathMin(218,MathMax(155,panel_width-185)); py=panel_y+10; fs=9;
+      // Keep the signal inside the panel and away from the title at every supported width.
+      px=panel_x+(panel_width<320?MathMax(52,panel_width-112):MathMin(218,MathMax(155,panel_width-185))); py=panel_y+10; fs=9;
       string signal_name=SignalLabel(text);
       if(signal_name=="Comprar") text="↑  COMPRAR";
       else if(signal_name=="Vender") text="↓  VENDER";
@@ -301,7 +304,7 @@ void Panel(){
    ObjectSetInteger(0,side,OBJPROP_XDISTANCE,panel_x+5);
    ObjectSetInteger(0,side,OBJPROP_YDISTANCE,panel_y+48);
    ObjectSetInteger(0,side,OBJPROP_XSIZE,SidebarWidth());
-   ObjectSetInteger(0,side,OBJPROP_YSIZE,panel_height-57);
+   ObjectSetInteger(0,side,OBJPROP_YSIZE,MathMax(1,panel_height-57));
    ObjectSetInteger(0,side,OBJPROP_BGCOLOR,C'7,20,34');
    ObjectSetInteger(0,side,OBJPROP_BORDER_COLOR,C'22,62,80');
    ObjectSetInteger(0,side,OBJPROP_BACK,false);
@@ -315,7 +318,7 @@ void Panel(){
    ObjectSetInteger(0,content,OBJPROP_XDISTANCE,panel_x+SidebarWidth()+8);
    ObjectSetInteger(0,content,OBJPROP_YDISTANCE,panel_y+48);
    ObjectSetInteger(0,content,OBJPROP_XSIZE,panel_width-SidebarWidth()-16);
-   ObjectSetInteger(0,content,OBJPROP_YSIZE,panel_height-57);
+   ObjectSetInteger(0,content,OBJPROP_YSIZE,MathMax(1,panel_height-57));
    ObjectSetInteger(0,content,OBJPROP_BGCOLOR,C'5,15,27');
    ObjectSetInteger(0,content,OBJPROP_BORDER_COLOR,C'18,54,72');
    ObjectSetInteger(0,content,OBJPROP_BACK,false);
