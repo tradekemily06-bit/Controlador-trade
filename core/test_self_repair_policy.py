@@ -26,6 +26,13 @@ def test_allows_only_prevalidated_bounded_local_repair():
     assert result.allowed is True
 
 
+def test_allows_explicitly_allowlisted_supervisor_recovery_actions():
+    for action in ("restart_controller", "start_mt5_terminal", "restart_mt5_terminal"):
+        result = SelfRepairPolicy.evaluate(safe_request(action=action, max_attempts=6))
+        assert result.decision is RepairDecision.ALLOW_BOUNDED_REPAIR
+        assert result.allowed is True
+
+
 def test_blocks_non_reversible_or_external_repairs():
     for changes in (
         {"reversible": False},
