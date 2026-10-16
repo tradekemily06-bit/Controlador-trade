@@ -143,9 +143,9 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       button_y=panel_y+50+(index-1)*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
       button_h=MathMax(1,MathMin(22,nav_step-1));
-      if(panel_height<180){ button_font=6; }
+      if(panel_height<180) button_font=6;
+      else if(panel_height<240) button_font=7;
       else button_font=8;
-      button_font=8;
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
    }else{
       button_bg=C'20,38,54';
