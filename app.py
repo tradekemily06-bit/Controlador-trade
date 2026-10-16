@@ -508,7 +508,7 @@ def application(environ, start_response):
                 else (orchestration.analysis.reason if decision_value == "EXECUTAR" else orchestration.decision.reason)
             )
             snapshot_data = snapshot.as_dict()
-            snapshot_data["candidate_signal"] = snapshot_data.get("candidate_signal", candidate_signal)
+            snapshot_data["candidate_signal"] = snapshot_data.get("candidate_signal") or candidate_signal
             snapshot_data["signal"] = display_signal
             snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and display_decision == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
