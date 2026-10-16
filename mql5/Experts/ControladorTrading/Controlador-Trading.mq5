@@ -844,7 +844,11 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execução: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo de demonstração: "+SignalLabel(signal)+" • autorizado="+(allowed==""?"false":allowed),20,361,9,allowed=="true"?C'88,214,141':C'255,176,0');
+   if(!quality_valid){
+      SetLabel(Obj("INFO1"),"Análise indisponível; resultado do ciclo precisa ser confirmado",20,361,9,C'255,176,0');
+   }else{
+      SetLabel(Obj("INFO1"),"Ciclo de demonstração: "+SignalLabel(signal)+" • autorizado="+(allowed==""?"false":allowed),20,361,9,allowed=="true"?C'88,214,141':C'255,176,0');
+   }
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
