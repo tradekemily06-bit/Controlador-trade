@@ -58,22 +58,21 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "if(!render) return;" in analyze
 
 
-def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
+def test_mql5_panel_uses_controlador_trading_brand_without_chart_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '"Controlador-Trading"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert '"CONTROLADOR TRADING"' in panel
-    assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
+    assert "watermark" not in panel.lower()
+    assert "WATERMARK_MARK" not in panel
+    assert "ApplyWatermark" not in panel
+    assert "ToggleWatermark" not in panel
     assert "InpPanelWidth = 280" in panel
     assert "InpPanelHeight = 380" in panel
     assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
     assert "MathRound(cw*0.22)" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
-    assert "ToggleWatermark" in panel
-    assert "GlobalVariableSet(WatermarkKey()" in panel
 
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
@@ -184,21 +183,18 @@ def test_mql5_sync_resolves_unique_data_folder_when_terminal_processes_duplicate
     assert "$dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath" in text
     assert "Mais de uma instância corresponde ao MT5 configurado" not in text
 
-def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
+def test_mql5_panel_hide_preserves_toggle_and_deinit_removes_all_objects():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     delete = panel.split("void DeletePanel(", 1)[1].split("string JsonValue", 1)[0]
     toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility", 1)[0]
-    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     deinit = panel.split("void OnDeinit(", 1)[1].split("void OnTimer()", 1)[0]
-    hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
 
-    assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
-    assert 'n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT")' in delete
+    assert "bool preserveToggle=false" in delete
+    assert 'if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;' in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
-    assert "else DeletePanel(true,true);" in toggle
-    assert "ApplyWatermark();" in hidden
+    assert "else DeletePanel(true);" in toggle
     assert "DeletePanel();" in deinit
-
+    assert "watermark" not in panel.lower()
 
 
 def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
@@ -222,3 +218,23 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_live_signal_uses_nested_quality_score_and_explicit_unavailable_state():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    assert 'JsonObjectValue(r,"quality","score")' in analyze
+    assert 'string score=JsonValue(r,"score")' not in analyze
+    assert "last_analysis_available=false" in analyze
+    assert "last_analysis_available=true" in analyze
+    assert "ANÁLISE INDISPONÍVEL" in analyze
+    assert "MathFloor(StringToDouble(score)" in panel
+    assert 'last_analysis_available?(shown_signal=="Comprar"' in panel
+
+
+def test_demo_cycle_never_overwrites_current_market_signal():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert "last_signal=" not in cycle
+    assert "last_score=" not in cycle
+    assert "RefreshPanelToggle()" not in cycle
