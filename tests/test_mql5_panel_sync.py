@@ -61,7 +61,7 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 def test_mql5_panel_uses_controlador_trading_brand_without_chart_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     assert '#property description "Controlador Trading - interface nativa do ecossistema no grafico MT5."' in panel
-    assert "Modo: Demonstração / Simulação" in panel
+    assert "Modo: DEMONSTRAÇÃO / SIMULAÇÃO" in panel
     assert "RUNTIME REAL" not in panel
     assert '"Controlador Trading"' in panel
     assert "watermark" not in panel.lower()
