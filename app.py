@@ -349,7 +349,7 @@ def application(environ, start_response):
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
             confirmed = data.get("confirmed", False)
-            filters_ok = data.get("filters_ok", True)
+            filters_ok = data.get("filters_ok", False)
             if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
                 raise ValueError("confirmed e filters_ok devem ser booleanos JSON")
             mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
