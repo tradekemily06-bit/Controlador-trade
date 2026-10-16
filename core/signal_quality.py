@@ -58,7 +58,7 @@ class SignalQualityEvaluator:
         return SignalQuality(
             score=quality_score,
             level=level,
-            actionable=True,
+            actionable=actionable,
         )
 
 
