@@ -62,7 +62,13 @@ def test_orchestrator_preserves_full_pipeline_without_execution():
     )
     assert result.market_data.source == "test"
     assert result.analysis.symbol == "TEST"
-    assert result.snapshot.signal == result.analysis.signal.value
+    assert result.snapshot.signal == (
+        result.analysis.signal.value
+        if result.decision.decision == FinalDecision.EXECUTAR
+        else "AGUARDAR"
+    )
+    assert result.snapshot.candidate_signal == result.analysis.signal.value
+    assert result.snapshot.actionable is (result.decision.decision == FinalDecision.EXECUTAR)
     assert result.snapshot.decision == result.decision.decision
     assert result.timestamp.tzinfo is not None
 
