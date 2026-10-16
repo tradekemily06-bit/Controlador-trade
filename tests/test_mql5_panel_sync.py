@@ -101,6 +101,7 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "WATERMARK_TEXT" not in panel
     assert 'Obj("WM")' not in panel
     assert "watermark_enabled" not in panel
+    assert "preserveWatermark" not in panel
     assert "ToggleWatermark" not in panel
 
 
@@ -218,7 +219,7 @@ def test_mql5_panel_hide_preserves_c_toggle_and_deinit_removes_all_objects():
     deinit = panel.split("void OnDeinit(", 1)[1].split("void OnTimer()", 1)[0]
     hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
 
-    assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
+    assert "void DeletePanel(bool preserveToggle=false)" in delete
     assert "if(preserveToggle) RefreshPanelToggle();" in delete
     assert "else DeletePanel(true,true);" in toggle
     assert "ApplyWatermark();" not in hidden
