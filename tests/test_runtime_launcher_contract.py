@@ -175,3 +175,16 @@ def test_mt5_supervisor_requires_empty_demo_trade_state_for_automatic_stop():
     assert "maintenance.lock" in text
     assert "Reparo automático do MT5 bloqueado pela política" in text
     assert "Inicialização automática do MT5 bloqueada pela política" in text
+
+
+def test_supervisors_resolve_relative_paths_against_project_root():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
+        assert "[System.IO.Path]::IsPathRooted($PythonExe)" in text
+        assert "$projectPython = Join-Path $ProjectRoot $PythonExe" in text
+        assert "[System.IO.Path]::IsPathRooted($RuntimeDir)" in text
+        assert "$RuntimeDir = Join-Path $ProjectRoot $RuntimeDir" in text
