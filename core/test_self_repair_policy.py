@@ -47,6 +47,13 @@ def test_never_authorizes_repair_that_touches_execution_state():
     assert result.allowed is False
 
 
+def test_blocks_unknown_action_even_when_all_claimed_properties_look_safe():
+    result = SelfRepairPolicy.evaluate(safe_request(action="restart_mt5_or_change_risk"))
+    assert result.decision is RepairDecision.ALERT_AND_BLOCK
+    assert result.allowed is False
+    assert "lista explicitamente autorizada" in result.reason
+
+
 def test_blocks_after_attempt_limit():
     result = SelfRepairPolicy.evaluate(safe_request(attempts_used=1, max_attempts=1))
     assert result.decision is RepairDecision.ALERT_AND_BLOCK
