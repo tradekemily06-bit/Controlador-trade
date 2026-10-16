@@ -27,10 +27,14 @@ if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
 }
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
+$RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
+$env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) { $ProjectRoot } else { "$ProjectRoot;$($env:PYTHONPATH)" }
+Set-Location $ProjectRoot
 
 $logPath = Join-Path $RuntimeDir 'mt5-supervisor.log'
 $statusPath = Join-Path $RuntimeDir 'mt5-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'mt5.supervisor.stop'
+$maintenanceLockPath = Join-Path $RuntimeDir 'maintenance.lock'
 $restartHistoryPath = Join-Path $RuntimeDir 'mt5-supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
 
@@ -73,6 +77,56 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     $tmp = "$statusPath.tmp"
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+}
+
+function Test-SafeRepairAuthorization {
+    param(
+        [string]$Action,
+        [int]$AttemptsUsed,
+        [int]$MaxAttempts,
+        [bool]$RequiresHumanSupervision = $false
+    )
+    $script:LastRepairAuthorizationDiagnostic = ''
+    $now = Get-Date
+    while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
+        $restartTimes.RemoveAt(0)
+    }
+    $AttemptsUsed = $restartTimes.Count
+    $cooldownElapsed = $true
+    if ($restartTimes.Count -gt 0) {
+        $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
+    }
+    $maintenanceLockClear = -not (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf)
+    $policyPath = Join-Path $ProjectRoot 'deployment\authorize_self_repair.py'
+    if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+        $script:LastRepairAuthorizationDiagnostic = 'política de autorreparo ausente; reparo bloqueado'
+        return $false
+    }
+    try {
+        $policyArgs = @(
+            $policyPath,
+            '--action', $Action,
+            '--attempts-used', [string]$AttemptsUsed,
+            '--max-attempts', [string]$MaxAttempts,
+            '--local-only', 'true',
+            '--reversible', 'true',
+            '--deterministic', 'true',
+            '--prevalidated', 'true',
+            '--external-side-effects', 'false',
+            '--touches-execution-state', 'false',
+            '--requires-human-supervision', ([string]$RequiresHumanSupervision).ToLowerInvariant(),
+            '--cooldown-elapsed', ([string]$cooldownElapsed).ToLowerInvariant(),
+            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant()
+        )
+        $policyOutput = & $PythonExe @policyArgs 2>&1
+        $policyExitCode = $LASTEXITCODE
+        $payload = ([string](@($policyOutput | ForEach-Object { [string]$_ } | Select-Object -Last 1))) | ConvertFrom-Json
+        $script:LastRepairAuthorizationDiagnostic = [string]$payload.reason
+        return ($policyExitCode -eq 0 -and $payload.allowed -eq $true)
+    } catch {
+        $script:LastRepairAuthorizationDiagnostic = "falha ao avaliar política de autorreparo: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function Test-Mt5TerminalHealth {
@@ -168,8 +222,17 @@ try:
     demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
     expected = os.path.normcase(os.path.realpath(path))
     actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+    positions = mt5.positions_get() if ok and account is not None else None
+    orders = mt5.orders_get() if ok and account is not None else None
     if ok and terminal is not None and actual == expected and account is not None and demo_mode is not None:
-        state = "DEMO" if getattr(account, "trade_mode", None) == demo_mode else "NON_DEMO"
+        if getattr(account, "trade_mode", None) != demo_mode:
+            state = "NON_DEMO"
+        elif positions is None or orders is None:
+            state = "UNKNOWN"
+        elif len(positions) > 0 or len(orders) > 0:
+            state = "DEMO_WITH_OPEN_TRADES"
+        else:
+            state = "DEMO"
 finally:
     mt5.shutdown()
 print(state)
@@ -179,7 +242,7 @@ print(state)
         $result = & $PythonExe -c $oneLineAccountCode $Mt5TerminalPath 2>$null
         if ($LASTEXITCODE -ne 0) { return 'UNKNOWN' }
         $state = [string]($result | Select-Object -Last 1)
-        if ($state.Trim() -in @('DEMO', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
+        if ($state.Trim() -in @('DEMO', 'DEMO_WITH_OPEN_TRADES', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
         return 'UNKNOWN'
     } catch {
         return 'UNKNOWN'
