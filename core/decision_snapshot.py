@@ -97,7 +97,7 @@ class DecisionSnapshot:
         """Converte o snapshot para dados simples, adequados à auditoria."""
         return {
             "signal": self.signal,
-            "candidate_signal": self.candidate_signal or self.signal,
+            "candidate_signal": self.candidate_signal,
             "analysis_score": self.analysis_score,
             "confirmed": self.confirmed,
             "quality_score": self.quality_score,
