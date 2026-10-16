@@ -136,6 +136,10 @@ function Sync-Mt5Panel {
 
 function Test-Mt5Demo {
     param([int]$WaitSeconds)
+    if (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf) {
+        Write-StartupLog 'Pré-verificação MT5 ignorada: bloqueio de manutenção ativo; Controlador iniciará com execução bloqueada.'
+        return $false
+    }
     $deadline = (Get-Date).AddSeconds($WaitSeconds)
     while ((Get-Date) -lt $deadline) {
         try {
