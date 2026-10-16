@@ -87,7 +87,11 @@ def test_controller_supervisor_requires_health_before_healthy():
     assert "Test-ControllerHealth" in startup
     assert "Wait-ControllerHealth" in startup
     assert "Write-SupervisorStatus 'STARTING'" in startup
-    assert "Write-SupervisorStatus 'HEALTHY' 'app.py ativo e /api/health respondeu 2xx.'" in startup
+    assert "function Test-ControllerSafety" in startup
+    assert "http://127.0.0.1:8000/api/health/live" in startup
+    assert "Write-SupervisorStatus 'HEALTHY' 'app.py ativo; liveness e health detalhado confirmados; REAL bloqueado.'" in startup
+    assert "Write-SupervisorStatus 'ATTENTION'" in startup
+    assert "Liveness do Controlador permaneceu indisponível" in startup
     assert "Start-Process" in startup
     assert "health_url = $healthUrl" in startup
 
