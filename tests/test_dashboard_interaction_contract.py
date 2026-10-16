@@ -14,8 +14,6 @@ def test_dashboard_primary_controls_are_wired_to_click_or_change_handlers():
         "const mt5Toggle=$('mt5PanelToggle'),mt5Panel=$('mt5SidePanel');mt5Toggle.onclick=",
         "$('refreshChart').onclick=refreshMarketChart",
         "$('saveOperationMode').onclick=async()",
-        "$('realPrepare').onclick=async()",
-        "$('realConfirm').onclick=async()",
         "$('runtimeCycle').onclick=runRuntimeCycle",
         "$('analyze').onclick=async()",
         "$('replayBtn').onclick=async()",
@@ -26,6 +24,11 @@ def test_dashboard_primary_controls_are_wired_to_click_or_change_handlers():
     )
     for binding in required_bindings:
         assert binding in WEB, f"Dashboard control lost its interaction binding: {binding}"
+
+    assert "Execução REAL desabilitada" in WEB
+    assert "realPrepare" not in WEB and "realConfirm" not in WEB
+    assert "Replay histórico indisponível" in WEB
+    assert 'class="watermark"' not in WEB
 
 
 def test_dashboard_navigation_targets_are_supported_and_react_to_hash_changes():
@@ -79,7 +82,6 @@ def test_mql5_visible_buttons_dispatch_chart_click_events():
         "CYCLE",
         "SAVE",
         "CLOSE",
-        "WM",
     )
     assert "if(id!=CHARTEVENT_OBJECT_CLICK) return;" in handler
     for button in required_buttons:
