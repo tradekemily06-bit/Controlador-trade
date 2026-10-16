@@ -255,7 +255,7 @@ def test_mql5_signal_palette_keeps_buy_green_sell_luminous_amber():
     assert "C'0,255,70'" in panel
     assert "C'255,45,65'" in panel
     assert "C'255,176,0'" in panel
-    assert panel.count('color c=(signal=="COMPRA" || signal=="COMPRAR")?C\'0,255,70\':(signal=="VENDA" || signal=="VENDER")?C\'255,45,65\':C\'255,176,0\';') == 2
+    assert panel.count("color c=SignalColor(signal);") == 2
 def test_mql5_panel_preserves_in_progress_config_edits_on_redraw():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     edit = panel.split("void SetEdit(", 1)[1].split("void ApplyWatermark()", 1)[0]
@@ -405,7 +405,7 @@ def test_mql5_failed_demo_cycle_clears_stale_signal():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     failure = cycle.split('if(!Http("POST","/api/runtime/cycle"', 1)[1].split("\n   }", 1)[0]
-    assert 'last_signal="Aguardar";' in failure
+    assert 'last_signal="ANALISE_INDISPONIVEL";' in failure
     assert 'last_score="";' in failure
     assert 'RefreshPanelToggle();' in failure
     assert '"Ciclo não confirmado; sinal anterior descartado."' in failure
@@ -502,7 +502,7 @@ def test_mql5_cycle_and_close_failures_hide_transport_codes_from_panel_copy():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
-    assert "Ciclo bloqueado ou não confirmado pelo runtime" in cycle
+    assert "Ciclo indisponível; runtime não confirmou resultado" in cycle
     assert "Fechamento falhou ou foi bloqueado" in close
     assert 'HTTP "+IntegerToString(code)' not in cycle
     assert 'HTTP "+IntegerToString(code)' not in close
