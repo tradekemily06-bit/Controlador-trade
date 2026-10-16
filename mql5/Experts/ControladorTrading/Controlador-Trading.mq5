@@ -807,10 +807,14 @@ void RunCycle(){
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
       last_signal="ANALISE_INDISPONIVEL";
       last_score="";
+      last_cycle_id="";
+      last_external_id="";
       RefreshPanelToggle();
       SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
       SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
       SetLabel(Obj("REASON"),"Ciclo não confirmado; sinal anterior descartado.",20,226,9,C'255,118,118');
+      SetLabel(Obj("CYCLEID"),"Ciclo: não confirmado",20,391,8,C'255,118,118');
+      SetLabel(Obj("EXTID"),"Execução: não confirmada",20,406,8,C'255,118,118');
       SetLabel(Obj("INFO1"),"Ciclo indisponível; runtime não confirmou resultado",20,361,9,C'255,118,118');
       return;
    }
@@ -818,10 +822,14 @@ void RunCycle(){
    if(runtime==""){
       last_signal="ANALISE_INDISPONIVEL";
       last_score="";
+      last_cycle_id="";
+      last_external_id="";
       RefreshPanelToggle();
       SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
       SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
       SetLabel(Obj("REASON"),"Resposta do runtime inválida; sinal descartado.",20,226,9,C'255,118,118');
+      SetLabel(Obj("CYCLEID"),"Ciclo: não confirmado",20,391,8,C'255,118,118');
+      SetLabel(Obj("EXTID"),"Execução: não confirmada",20,406,8,C'255,118,118');
       SetLabel(Obj("INFO1"),"Resposta do ciclo inválida",20,361,9,C'255,118,118');
       return;
    }
