@@ -403,3 +403,85 @@ def test_runtime_cycle_with_no_completed_cycle_returns_unavailable_without_signa
     assert payload["execution_allowed"] is False
     assert "signal" not in payload
     assert payload["detail"] == "sem ciclo concluído"
+
+
+def _leverage_mode_orchestration():
+    candidate = SimpleNamespace(
+        signal=SimpleNamespace(value="COMPRA"),
+        score=92.0,
+        reason="candidato técnico de compra",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    return SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        analysis=candidate,
+        quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        decision=SimpleNamespace(decision="EXECUTAR", reason="gates de mercado aprovados"),
+        snapshot=SimpleNamespace(
+            as_dict=lambda: {"signal": "COMPRA", "candidate_signal": "COMPRA", "actionable": True},
+            market_context=SimpleNamespace(context=SimpleNamespace(value="FAVORAVEL")),
+        ),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        senior_context=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("preferences", "expected_reason"),
+    [
+        ({"selected_mode": "REAL", "leverage_enabled": False}, "Modo REAL selecionado"),
+        ({"selected_mode": "DEMO", "leverage_enabled": True}, "Modo de alavancagem selecionado"),
+    ],
+)
+def test_analysis_mode_preferences_block_direction_but_keep_quality(monkeypatch, preferences, expected_reason):
+    import app
+
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: preferences)
+    monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: _leverage_mode_orchestration())
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    assert status == "200 OK"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["decision"] == "AGUARDAR"
+    assert payload["analysis"]["candidate_signal"] == "COMPRA"
+    assert payload["quality"]["score"] == 84.0
+    assert payload["quality"]["actionable"] is False
+    assert expected_reason in payload["reason"]
+    assert payload["execution_allowed"] is False
+
+
+@pytest.mark.parametrize(
+    ("preferences", "expected_reason"),
+    [
+        ({"selected_mode": "REAL", "leverage_enabled": False}, "Modo REAL selecionado"),
+        ({"selected_mode": "DEMO", "leverage_enabled": True}, "Modo de alavancagem selecionado"),
+    ],
+)
+def test_cycle_mode_preferences_block_execution_without_losing_analysis(monkeypatch, preferences, expected_reason):
+    import app
+
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: preferences)
+    monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: _leverage_mode_orchestration())
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **_: pytest.fail("blocked mode must not execute a cycle"))
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/cycle",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    runtime = payload["runtime"]
+    assert status == "200 OK"
+    assert runtime["signal"] == "AGUARDAR"
+    assert runtime["candidate_signal"] == "COMPRA"
+    assert runtime["quality"]["score"] == 84.0
+    assert runtime["quality"]["actionable"] is False
+    assert expected_reason in runtime["reason"]
+    assert runtime["execution"]["accepted"] is False
+    assert payload["execution_allowed"] is False
