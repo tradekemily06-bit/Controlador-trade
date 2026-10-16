@@ -35,7 +35,7 @@ int SidebarWidth(){ return MathMin(142,MathMax(68,(int)MathRound(panel_width*0.3
 double ContentScale(){ return (double)MathMax(1,panel_width-SidebarWidth()-16)/430.0; }
 int ContentX(int x){ return panel_x+SidebarWidth()+8+(int)MathRound(x*ContentScale()); }
 int ContentW(int w){ return MathMax(1,(int)MathRound(w*ContentScale())); }
-int ContentY(int y){ return panel_y+5+(int)MathRound(y*((double)MathMax(140,panel_height-12)/540.0)); }
+int ContentY(int y){ return panel_y+50+(int)MathRound(y*((double)MathMax(1,panel_height-62)/540.0)); }
 int CompactY(int y){ return (int)MathRound(y*panel_sy); }
 int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
@@ -137,11 +137,14 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    color button_border=C'30,65,83';
    if(nav){
       // Fit all ten navigation items inside the panel, including short chart windows.
-      int nav_step=MathMax(13,MathMin(25,(panel_height-60)/10));
+      int nav_area=MathMax(1,panel_height-58);
+      int nav_step=MathMax(1,MathMin(25,nav_area/10));
       button_x=panel_x+8;
       button_y=panel_y+50+(index-1)*nav_step;
-      button_w=MathMax(60,SidebarWidth()-10);
-      button_h=MathMin(22,MathMax(12,nav_step-1));
+      button_w=MathMax(1,SidebarWidth()-10);
+      button_h=MathMax(1,MathMin(22,nav_step-1));
+      if(panel_height<180){ button_font=6; }
+      else button_font=8;
       button_font=8;
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
    }else{
