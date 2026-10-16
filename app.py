@@ -348,6 +348,10 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            confirmed = data.get("confirmed", False)
+            filters_ok = data.get("filters_ok", True)
+            if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+                raise ValueError("confirmed e filters_ok devem ser booleanos JSON")
             mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
             if mode_block_reason:
                 from execution.icmarkets_mt5_market_data import MT5MarketDataError
@@ -356,8 +360,8 @@ def application(environ, start_response):
                         symbol=str(data.get("symbol", "")),
                         timeframe=str(data.get("timeframe", "5m")),
                         limit=int(data.get("limit", 100)),
-                        confirmed=data.get("confirmed"),
-                        filters_ok=data.get("filters_ok"),
+                        confirmed=confirmed,
+                        filters_ok=filters_ok,
                     )
                 except (MT5MarketDataError, RuntimeError) as exc:
                     return _json_response(
@@ -380,8 +384,8 @@ def application(environ, start_response):
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                confirmed=confirmed,
+                filters_ok=filters_ok,
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             if not result.cycles:
@@ -463,14 +467,20 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
+            confirmed = data.get("confirmed")
+            filters_ok = data.get("filters_ok")
+            if confirmed is not None and not isinstance(confirmed, bool):
+                raise ValueError("confirmed deve ser booleano JSON ou null")
+            if filters_ok is not None and not isinstance(filters_ok, bool):
+                raise ValueError("filters_ok deve ser booleano JSON ou null")
             from execution.icmarkets_mt5_market_data import MT5MarketDataError
             try:
                 orchestration = SERVICE.analyze_mt5_market(
                     symbol=str(data.get("symbol", "")),
                     timeframe=str(data.get("timeframe", "5m")),
                     limit=int(data.get("limit", 100)),
-                    confirmed=data.get("confirmed"),
-                    filters_ok=data.get("filters_ok"),
+                    confirmed=confirmed,
+                    filters_ok=filters_ok,
                 )
             except (MT5MarketDataError, RuntimeError) as exc:
                 return _json_response(
