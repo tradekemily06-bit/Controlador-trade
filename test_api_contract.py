@@ -260,3 +260,22 @@ def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch)
     assert payload["execution_allowed"] is False
     assert payload["detail"] == "dados indisponíveis"
     assert "signal" not in payload
+
+
+def test_runtime_analysis_runtime_failure_returns_unavailable_without_signal(monkeypatch):
+    import app
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("snapshot STALE")),
+    )
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert "signal" not in payload
+    assert "STALE" in payload["detail"]
