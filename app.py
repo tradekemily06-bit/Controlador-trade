@@ -345,15 +345,36 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
-            orchestration = SERVICE.analyze_mt5_market(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=int(data.get("limit", 100)),
-                confirmed=data.get("confirmed"),
-                filters_ok=data.get("filters_ok"),
-            )
+            try:
+                orchestration = SERVICE.analyze_mt5_market(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=int(data.get("limit", 100)),
+                    confirmed=data.get("confirmed"),
+                    filters_ok=data.get("filters_ok"),
+                )
+            except Exception as exc:
+                from execution.icmarkets_mt5_market_data import MT5MarketDataError
+                if isinstance(exc, MT5MarketDataError):
+                    return _json_response(
+                        start_response,
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {
+                            "error": "dados de mercado indisponíveis",
+                            "detail": str(exc),
+                            "execution_allowed": False,
+                        },
+                        request_id,
+                        environ,
+                    )
+                raise
             snapshot = orchestration.snapshot
             return _json_response(start_response, HTTPStatus.OK, {
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.market_data.symbol,
+                    "timeframe": orchestration.market_data.timeframe,
+                },
                 "signal": orchestration.analysis.signal.value,
                 "score": orchestration.analysis.score,
                 "reason": orchestration.analysis.reason,
