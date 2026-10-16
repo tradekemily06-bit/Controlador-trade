@@ -80,3 +80,41 @@ def test_invalid_market_payload_is_reported_as_unavailable_and_invalidates_state
     assert status["health"] == "NOT_CONNECTED"
     assert status["safe_for_analysis"] is False
     assert status["source"] is None
+
+
+def test_stale_market_snapshot_never_returns_or_records_directional_analysis():
+    state = _healthy_state()
+    now = datetime(2026, 1, 1, 0, 10, tzinfo=timezone.utc)
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    stale_candles = tuple(
+        Candle(base + timedelta(minutes=i), 100, 101, 99, 100, 1)
+        for i in range(3)
+    )
+    orchestration = SimpleNamespace(
+        timestamp=now,
+        market_data=SimpleNamespace(
+            source="TEST_PROVIDER",
+            candles=stale_candles,
+        ),
+        analysis=SimpleNamespace(signal=SimpleNamespace(value="COMPRA")),
+    )
+    service = object.__new__(ConfiguredEcosystemService)
+    service.trading_runtime = SimpleNamespace(
+        market_data_state=state,
+        orchestrator=SimpleNamespace(evaluate=lambda *args, **kwargs: orchestration),
+    )
+    service.operational_runtime = object()
+    service.execution_provider = "ic_markets_mt5_demo"
+    service.preferences = SimpleNamespace(
+        preferences=SimpleNamespace(require_closed_candle=True, require_filters=True)
+    )
+    service.mt5_operational_adapter = SimpleNamespace(read_operational_state=lambda: None)
+    service._record_analysis = lambda _: pytest.fail("análise insegura não pode ser registrada")
+
+    with pytest.raises(RuntimeError, match="dados de mercado não seguros para análise: STALE"):
+        service.analyze_mt5_market(symbol="EURUSD", timeframe="1m", limit=20)
+
+    status = state.status()
+    assert status["health"] == "STALE"
+    assert status["safe_for_analysis"] is False
+    assert status["source"] == "TEST_PROVIDER"
