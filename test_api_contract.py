@@ -262,6 +262,73 @@ def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch)
     assert "signal" not in payload
 
 
+def test_runtime_analysis_runtime_failure_returns_unavailable_without_signal(monkeypatch):
+    import app
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("snapshot STALE")),
+    )
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert "signal" not in payload
+    assert "STALE" in payload["detail"]
+
+
+def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(monkeypatch):
+    import app
+
+    candles = tuple(
+        SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, tzinfo=timezone.utc) + timedelta(minutes=i),
+            open=1.1, high=1.101, low=1.099, close=1.1005, volume=10
+        )
+        for i in range(20)
+    )
+    candidate = SimpleNamespace(
+        signal=SimpleNamespace(value="COMPRA"),
+        score=92.0,
+        reason="candidato técnico de compra",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    fake = SimpleNamespace(
+        timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
+        analysis=candidate,
+        quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
+        snapshot=SimpleNamespace(as_dict=lambda: {"candidate_signal": "COMPRA"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=candles),
+    )
+    monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: fake)
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    assert status == "200 OK"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["analysis"]["signal"] == "AGUARDAR"
+    assert payload["analysis"]["candidate_signal"] == "COMPRA"
+    assert payload["quality"]["score"] == 84.0
+    assert payload["quality"]["level"] == "FORTE"
+    assert payload["quality"]["actionable"] is False
+    assert payload["snapshot"]["signal"] == "AGUARDAR"
+    assert payload["snapshot"]["candidate_signal"] == "COMPRA"
+    assert payload["snapshot"]["actionable"] is False
+    assert payload["reason"] == "risco operacional não aprovado"
+    assert payload["execution_allowed"] is False
+
+
 def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     import app
 
