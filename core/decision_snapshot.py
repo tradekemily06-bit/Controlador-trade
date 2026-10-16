@@ -15,7 +15,6 @@ class DecisionSnapshot:
     """Registro imutável e explicável dos fatores de uma decisão."""
 
     signal: str
-    candidate_signal: str
     analysis_score: float
     confirmed: bool
     quality_score: float
@@ -31,6 +30,7 @@ class DecisionSnapshot:
     consecutive_losses: int | None
     symbol: str | None
     timeframe: str | None
+    candidate_signal: str | None = None
 
     @classmethod
     def from_results(
@@ -81,7 +81,7 @@ class DecisionSnapshot:
         context = self.market_context or "INDISPONÍVEL"
         direction = self.market_direction or "INDISPONÍVEL"
         return (
-            f"Sinal={self.signal}; candidato={self.candidate_signal}; score={self.analysis_score:.2f}; "
+            f"Sinal={self.signal}; candidato={self.candidate_signal or self.signal}; score={self.analysis_score:.2f}; "
             f"confirmado={self.confirmed}; qualidade={self.quality_level} "
             f"({self.quality_score:.2f}); decisão={self.decision}; "
             f"contexto={context}; direção={direction}; "
@@ -93,7 +93,7 @@ class DecisionSnapshot:
         """Converte o snapshot para dados simples, adequados à auditoria."""
         return {
             "signal": self.signal,
-            "candidate_signal": self.candidate_signal,
+            "candidate_signal": self.candidate_signal or self.signal,
             "analysis_score": self.analysis_score,
             "confirmed": self.confirmed,
             "quality_score": self.quality_score,
