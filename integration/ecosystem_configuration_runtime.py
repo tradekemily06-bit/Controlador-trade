@@ -286,6 +286,7 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        market_data_report = None
         try:
             operational_state = self.mt5_operational_adapter.read_operational_state()
             orchestration = self.trading_runtime.orchestrator.evaluate(
@@ -297,7 +298,7 @@ class ConfiguredEcosystemService(EcosystemService):
             )
             if self.trading_runtime.market_data_state is not None:
                 from core.p122_broker_market_data import BrokerMarketDataSnapshot
-                self.trading_runtime.market_data_state.update(
+                market_data_report = self.trading_runtime.market_data_state.update(
                     BrokerMarketDataSnapshot(
                         symbol=request.symbol,
                         timeframe=request.timeframe,
@@ -319,6 +320,13 @@ class ConfiguredEcosystemService(EcosystemService):
                     f"dados/contexto de mercado indisponíveis: {type(exc).__name__}"
                 ) from exc
             raise
+        if market_data_report is not None and not market_data_report.safe_for_analysis:
+            # Keep the factual STALE/GAP/INVALID report for operational alerts,
+            # but never return or persist a directional signal from unsafe data.
+            raise RuntimeError(
+                f"dados de mercado não seguros para análise: "
+                f"{market_data_report.health.value}: {market_data_report.message}"
+            )
         self._record_analysis(orchestration.analysis)
         return orchestration
 
