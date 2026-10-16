@@ -47,11 +47,11 @@ class SelfRepairPolicy:
 
     # Keep the initial allowlist intentionally narrow. Adding an action requires
     # a separately reviewed implementation and tests proving its bounded scope.
+    # Process/terminal recovery remains blocked until the supervisor can
+    # prove execution is quiescent and reconcile broker state. A caller-provided
+    # boolean is not sufficient evidence that restarting MT5 is safe.
     ALLOWED_ACTIONS = frozenset({
         "clear_stale_local_cache",
-        "restart_controller",
-        "start_mt5_terminal",
-        "restart_mt5_terminal",
     })
 
     @staticmethod
