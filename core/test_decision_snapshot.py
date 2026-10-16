@@ -161,3 +161,24 @@ def test_snapshot_distinguishes_blocked_final_signal_from_candidate():
     assert snapshot.as_dict()["candidate_signal"] == "COMPRA"
     assert "Sinal=AGUARDAR" in snapshot.explain()
     assert "candidato=COMPRA" in snapshot.explain()
+
+
+def test_blocked_decision_never_exposes_directional_signal_as_final_or_actionable():
+    snapshot = DecisionSnapshot.from_results(
+        analysis=make_analysis(),
+        quality=make_quality(),
+        decision=DecisionResult(
+            decision=FinalDecision.BLOQUEAR,
+            signal=Signal.COMPRA,
+            reason="Risco bloqueou a operação.",
+        ),
+        market_context=make_context(),
+        operational_state=make_state(),
+    )
+
+    assert snapshot.signal == "AGUARDAR"
+    assert snapshot.candidate_signal == "COMPRA"
+    assert snapshot.actionable is False
+    assert snapshot.as_dict()["signal"] == "AGUARDAR"
+    assert snapshot.as_dict()["actionable"] is False
+    assert "Sinal=AGUARDAR" in snapshot.explain()
