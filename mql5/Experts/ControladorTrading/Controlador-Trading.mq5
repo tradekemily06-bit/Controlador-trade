@@ -743,10 +743,17 @@ void SaveConfig(){
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
-   if(Http("POST","/api/preferences",body,r,code))
+   if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Configurações sincronizadas",20,status_y,9,C'88,214,141');
-   else
+      Analyze(false);
+   }else{
+      last_analysis_available=false;
+      last_signal="Indisponível";
+      last_score="";
+      last_unavailable_reason="Preferências não sincronizadas; sinal anterior descartado";
+      RefreshPanelToggle();
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
+   }
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
