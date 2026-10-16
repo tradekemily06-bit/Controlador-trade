@@ -43,13 +43,17 @@ class DecisionSnapshot:
         operational_state: OperationalState | None,
     ) -> "DecisionSnapshot":
         return cls(
-            signal=decision.signal.value,
+            signal=(
+                decision.signal.value
+                if decision.decision == "EXECUTAR"
+                else "AGUARDAR"
+            ),
             candidate_signal=analysis.signal.value,
             analysis_score=analysis.score,
             confirmed=analysis.confirmed,
             quality_score=quality.score,
             quality_level=quality.level.value,
-            actionable=quality.actionable,
+            actionable=quality.actionable and decision.decision == "EXECUTAR",
             decision=decision.decision,
             decision_reason=decision.reason,
             market_context=(
