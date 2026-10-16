@@ -290,7 +290,7 @@ class ConfiguredEcosystemService(EcosystemService):
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
         effective_confirmed = prefs.require_closed_candle if confirmed is None else confirmed
-        effective_filters = prefs.require_filters if filters_ok is None else filters_ok
+        effective_filters = (not prefs.require_filters) if filters_ok is None else filters_ok
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         if self.trading_runtime.market_data_state is None:
             raise RuntimeError(
