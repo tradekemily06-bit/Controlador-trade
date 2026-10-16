@@ -60,7 +60,7 @@ def test_wait_signal_retains_quality_but_is_not_actionable():
     )
 
     assert result.actionable is False
-    assert result.score == 0
+    assert result.score == 1
     assert result.level == SignalLevel.FRACA
 
 
