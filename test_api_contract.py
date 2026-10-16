@@ -306,7 +306,7 @@ def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(m
         analysis=candidate,
         quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
         decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
-        snapshot=SimpleNamespace(as_dict=lambda: {"candidate_signal": "COMPRA"}),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "candidate_signal": "COMPRA"}),
         market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=candles),
     )
     monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: fake)
