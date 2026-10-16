@@ -14,6 +14,8 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
+string last_analysis_symbol="";
+int last_analysis_period=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
@@ -890,6 +892,8 @@ int OnInit(){
    // Prime runtime market-data state immediately, even when the native panel is hidden.
    Analyze(panel_visible);
    last_analysis_bar=iTime(_Symbol,_Period,0);
+   last_analysis_symbol=_Symbol;
+   last_analysis_period=(int)_Period;
    return(INIT_SUCCEEDED);
 }
 void OnDeinit(const int reason){
@@ -905,7 +909,13 @@ void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
       datetime hidden_bar=iTime(_Symbol,_Period,0);
-      if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
+      bool context_changed=(_Symbol!=last_analysis_symbol || (int)_Period!=last_analysis_period);
+      if(context_changed){
+         last_analysis_symbol=_Symbol;
+         last_analysis_period=(int)_Period;
+         last_analysis_bar=hidden_bar;
+         Analyze(false);
+      }else if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
          last_analysis_bar=hidden_bar;
          Analyze(false);
       }
@@ -917,7 +927,13 @@ void OnTimer(){
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    datetime current_bar=iTime(_Symbol,_Period,0);
-   if(current_bar>0 && current_bar!=last_analysis_bar){
+   bool context_changed=(_Symbol!=last_analysis_symbol || (int)_Period!=last_analysis_period);
+   if(context_changed){
+      last_analysis_symbol=_Symbol;
+      last_analysis_period=(int)_Period;
+      last_analysis_bar=current_bar;
+      Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
+   }else if(current_bar>0 && current_bar!=last_analysis_bar){
       last_analysis_bar=current_bar;
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
