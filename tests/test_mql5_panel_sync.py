@@ -229,7 +229,7 @@ def test_mql5_live_signal_uses_nested_quality_score_and_explicit_unavailable_sta
     assert "last_analysis_available=true" in analyze
     assert "ANÁLISE INDISPONÍVEL" in analyze
     assert "MathFloor(StringToDouble(score)" in panel
-    assert 'last_analysis_available?(shown_signal=="Comprar"' in panel
+    assert '!last_analysis_available?(cw<300?"INDISPONÍVEL":"ANÁLISE INDISPONÍVEL")' in panel
 
 
 def test_demo_cycle_never_overwrites_current_market_signal():
