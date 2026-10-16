@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.p122_broker_market_data import BrokerMarketDataSnapshot
 from core.p23_market_data_integrity import MarketDataHealth, MarketDataIntegrity, MarketDataIntegrityReport
@@ -73,9 +73,14 @@ class MarketDataRuntimeIntegrity:
         if interval is None:
             interval = _TIMEFRAME_SECONDS.get(snapshot.timeframe.strip().lower())
 
+        # Candle.timestamp is the bar's opening time (MT5 copy_rates_* contract),
+        # and the adapter excludes the currently forming bar. Evaluate freshness
+        # from the expected close boundary instead of treating the open time as
+        # if it were the last completed instant.
+        assessment_now = now - timedelta(seconds=interval) if interval is not None else now
         report: MarketDataIntegrityReport = self.integrity.assess(
             snapshot.candles,
-            now=now,
+            now=assessment_now,
             expected_interval_seconds=interval,
         )
         return MarketDataRuntimeReport(

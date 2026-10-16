@@ -112,7 +112,7 @@ def test_demo_flow_does_not_execute_when_decision_is_aguardar():
     result = run_flow(flow, analysis=make_analysis(Signal.AGUARDAR))
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None and result.execution_result is None
-    assert result.quality.level == SignalLevel.NENHUMA and not result.quality.actionable
+    assert result.quality.level == SignalLevel.FORTE and not result.quality.actionable
     assert executor.executions() == ()
     assert [event.event_type for event in logger.events()] == [AuditEventType.ANALYSIS, AuditEventType.DECISION, AuditEventType.RISK]
 

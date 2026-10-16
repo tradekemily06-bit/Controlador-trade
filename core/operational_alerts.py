@@ -151,6 +151,14 @@ def build_operational_incidents(observability: Mapping[str, Any]) -> list[Operat
                     source="runtime_health",
                     message=f"supervisor de {component} está recuperando o processo.",
                 ))
+            elif state == "ATTENTION":
+                incidents.append(OperationalIncident(
+                    code=f"SUPERVISOR_{str(component).upper()}_ATTENTION",
+                    severity="WARNING",
+                    status=state,
+                    source="runtime_health",
+                    message=f"supervisor de {component} requer supervisão: {state_payload.get('reason', 'motivo não informado')}",
+                ))
             elif state == "UNKNOWN":
                 incidents.append(OperationalIncident(
                     code=f"SUPERVISOR_{str(component).upper()}_UNKNOWN",

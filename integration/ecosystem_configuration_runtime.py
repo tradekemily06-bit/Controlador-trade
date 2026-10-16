@@ -286,25 +286,50 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
-        operational_state = self.mt5_operational_adapter.read_operational_state()
-        orchestration = self.trading_runtime.orchestrator.evaluate(
-            request,
-            operational_state=operational_state,
-            market_context=None,
-            confirmed=effective_confirmed,
-            filters_ok=effective_filters,
-        )
-        if self.trading_runtime.market_data_state is not None:
-            from core.p122_broker_market_data import BrokerMarketDataSnapshot
-            self.trading_runtime.market_data_state.update(
-                BrokerMarketDataSnapshot(
-                    symbol=request.symbol,
-                    timeframe=request.timeframe,
-                    candles=tuple(orchestration.market_data.candles),
-                    source=orchestration.market_data.source,
-                    received_at=orchestration.timestamp,
-                ),
-                now=orchestration.timestamp,
+        if self.trading_runtime.market_data_state is None:
+            raise RuntimeError(
+                "integridade dos dados de mercado não conectada; análise indisponível"
+            )
+        market_data_report = None
+        try:
+            operational_state = self.mt5_operational_adapter.read_operational_state()
+            orchestration = self.trading_runtime.orchestrator.evaluate(
+                request,
+                operational_state=operational_state,
+                market_context=None,
+                confirmed=effective_confirmed,
+                filters_ok=effective_filters,
+            )
+            if self.trading_runtime.market_data_state is not None:
+                from core.p122_broker_market_data import BrokerMarketDataSnapshot
+                market_data_report = self.trading_runtime.market_data_state.update(
+                    BrokerMarketDataSnapshot(
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
+                        candles=tuple(orchestration.market_data.candles),
+                        source=orchestration.market_data.source,
+                        received_at=orchestration.timestamp,
+                    ),
+                    now=orchestration.timestamp,
+                )
+        except Exception as exc:
+            # Never leave the previous successful market snapshot looking current.
+            state = self.trading_runtime.market_data_state
+            if state is not None:
+                state.invalidate(f"ciclo de análise indisponível: {type(exc).__name__}")
+            # Input validation above already ran before this try. A ValueError
+            # here comes from the fetched market/runtime cycle, not the request.
+            if isinstance(exc, ValueError):
+                raise RuntimeError(
+                    f"dados/contexto de mercado indisponíveis: {type(exc).__name__}"
+                ) from exc
+            raise
+        if market_data_report is not None and not market_data_report.safe_for_analysis:
+            # Keep the factual STALE/GAP/INVALID report for operational alerts,
+            # but never return or persist a directional signal from unsafe data.
+            raise RuntimeError(
+                f"dados de mercado não seguros para análise: "
+                f"{market_data_report.health.value}: {market_data_report.message}"
             )
         self._record_analysis(orchestration.analysis)
         return orchestration

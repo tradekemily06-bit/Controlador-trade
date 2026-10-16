@@ -158,7 +158,11 @@ def application(environ, start_response):
     # O supervisor local precisa consultar o health com frequência. Esse probe é
     # somente leitura e só pode ser isento do rate limit quando vem do loopback.
     # O limite continua valendo para health remoto e para toda a API restante.
-    is_local_health_probe = method == "GET" and path == "/api/health" and str(environ.get("REMOTE_ADDR") or "") in {"127.0.0.1", "::1"}
+    is_local_health_probe = (
+        method == "GET"
+        and path in {"/api/health", "/api/health/live"}
+        and str(environ.get("REMOTE_ADDR") or "") in {"127.0.0.1", "::1"}
+    )
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
@@ -183,6 +187,15 @@ def application(environ, start_response):
                 )
 
     try:
+        if path == "/api/health/live" and method == "GET":
+            # Liveness only: do not query broker, database, risk or observability.
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {"ok": True, "live": True, "service": "controlador"},
+                request_id,
+                environ,
+            )
         if path == "/api/health" and method == "GET":
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
@@ -311,20 +324,49 @@ def application(environ, start_response):
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            orchestration = cycle.orchestration
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
-                "decision": cycle.orchestration.decision.decision,
-                "signal": cycle.orchestration.analysis.signal.value,
-                "score": cycle.orchestration.analysis.score,
-                "reason": cycle.orchestration.decision.reason,
-                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
-                "market_data_source": cycle.orchestration.market_data.source,
-                "candles": len(cycle.orchestration.market_data.candles),
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "decision": decision_value,
+                "signal": display_signal,
+                "candidate_signal": candidate_signal,
+                "score": orchestration.analysis.score,
+                "reason": display_reason,
+                "analysis": {
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                    "confirmed": orchestration.analysis.confirmed,
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "quality": {
+                    "score": orchestration.quality.score,
+                    "level": orchestration.quality.level.value,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
+                },
+                "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+                "market_data_source": orchestration.market_data.source,
+                "candles": len(orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
                 "cycle_id": (
-                    cycle.orchestration.senior_context.cycle_id
-                    if cycle.orchestration.senior_context is not None
+                    orchestration.senior_context.cycle_id
+                    if orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
                 "external_id": execution.external_id if execution else None,
@@ -345,21 +387,56 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
-            orchestration = SERVICE.analyze_mt5_market(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=int(data.get("limit", 100)),
-                confirmed=data.get("confirmed"),
-                filters_ok=data.get("filters_ok"),
-            )
+            from execution.icmarkets_mt5_market_data import MT5MarketDataError
+            try:
+                orchestration = SERVICE.analyze_mt5_market(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=int(data.get("limit", 100)),
+                    confirmed=data.get("confirmed"),
+                    filters_ok=data.get("filters_ok"),
+                )
+            except (MT5MarketDataError, RuntimeError) as exc:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "dados de mercado indisponíveis",
+                        "detail": str(exc),
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
             snapshot = orchestration.snapshot
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            # The user-facing signal must reflect the final ecosystem gates.
+            # Preserve the technical candidate separately for audit; a strong
+            # candidate is not a BUY/SELL presentation when context or risk says wait.
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
+            snapshot_data = snapshot.as_dict()
+            snapshot_data["candidate_signal"] = snapshot_data.get("signal", candidate_signal)
+            snapshot_data["signal"] = display_signal
+            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and decision_value == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
-                "signal": orchestration.analysis.signal.value,
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "signal": display_signal,
                 "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
-                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                "reason": display_reason,
+                "decision": decision_value,
                 "analysis": {
-                    "signal": orchestration.analysis.signal.value,
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
                     "score": orchestration.analysis.score,
                     "reason": orchestration.analysis.reason,
                     "confirmed": orchestration.analysis.confirmed,
@@ -369,13 +446,13 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
                 },
                 "decision_detail": {
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                     "reason": orchestration.decision.reason,
                 },
-                "snapshot": snapshot.as_dict(),
+                "snapshot": snapshot_data,
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),

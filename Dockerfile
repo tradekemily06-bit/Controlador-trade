@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/python:3.12-slim
+FROM docker.io/library/python:3.12-slim
 
 WORKDIR /app
 
@@ -18,6 +18,6 @@ USER app
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '7860') + '/api/health', timeout=3).read()" || exit 1
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '7860') + '/api/health/live', timeout=3).read()" || exit 1
 
 CMD ["python", "app.py"]

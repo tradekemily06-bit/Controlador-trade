@@ -86,6 +86,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_mt5_runtime_analysis_is_read_only_and_exposes_market_snapshot(self):
         fake = SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
             analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),
             quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),
             decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),
@@ -109,6 +110,8 @@ class ApiContractTests(unittest.TestCase):
             )
         self.assertEqual(status, "200 OK")
         self.assertEqual(payload["analysis"]["signal"], "AGUARDAR")
+        self.assertEqual(payload["analysis_cycle"]["timestamp"], "2026-10-08T12:00:00+00:00")
+        self.assertEqual(payload["analysis_cycle"]["symbol"], "EURUSD")
         self.assertEqual(payload["market_data"]["source"], "IC Markets MT5 DEMO")
         self.assertEqual(payload["market_data"]["candles"], 20)
         self.assertFalse(payload["execution_allowed"])
@@ -223,6 +226,7 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
         for i in range(130)
     )
     fake = SimpleNamespace(
+        timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
         analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),
         quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),
         decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),
@@ -236,3 +240,157 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
     assert len(payload["market_data"]["ohlcv"]) == 120
     assert payload["market_data"]["ohlcv"][0]["open"] == candles[-120].open
     assert payload["execution_allowed"] is False
+
+
+def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch):
+    import app
+    from execution.icmarkets_mt5_market_data import MT5MarketDataError
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: (_ for _ in ()).throw(MT5MarketDataError("dados indisponíveis")),
+    )
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert payload["detail"] == "dados indisponíveis"
+    assert "signal" not in payload
+
+
+def test_runtime_analysis_runtime_failure_returns_unavailable_without_signal(monkeypatch):
+    import app
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("snapshot STALE")),
+    )
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert "signal" not in payload
+    assert "STALE" in payload["detail"]
+
+
+def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(monkeypatch):
+    import app
+
+    candles = tuple(
+        SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, tzinfo=timezone.utc) + timedelta(minutes=i),
+            open=1.1, high=1.101, low=1.099, close=1.1005, volume=10
+        )
+        for i in range(20)
+    )
+    candidate = SimpleNamespace(
+        signal=SimpleNamespace(value="COMPRA"),
+        score=92.0,
+        reason="candidato técnico de compra",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    fake = SimpleNamespace(
+        timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
+        analysis=candidate,
+        quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
+        snapshot=SimpleNamespace(as_dict=lambda: {"candidate_signal": "COMPRA"}),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=candles),
+    )
+    monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: fake)
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    assert status == "200 OK"
+    assert payload["signal"] == "AGUARDAR"
+    assert payload["analysis"]["signal"] == "AGUARDAR"
+    assert payload["analysis"]["candidate_signal"] == "COMPRA"
+    assert payload["quality"]["score"] == 84.0
+    assert payload["quality"]["level"] == "FORTE"
+    assert payload["quality"]["actionable"] is False
+    assert payload["snapshot"]["signal"] == "AGUARDAR"
+    assert payload["snapshot"]["candidate_signal"] == "COMPRA"
+    assert payload["snapshot"]["actionable"] is False
+    assert payload["reason"] == "risco operacional não aprovado"
+    assert payload["execution_allowed"] is False
+
+
+def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
+    import app
+
+    candidate = SimpleNamespace(
+        signal=SimpleNamespace(value="COMPRA"),
+        score=92.0,
+        reason="candidato técnico de compra",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    market_context = SimpleNamespace(context=SimpleNamespace(value="FAVORAVEL"))
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        analysis=candidate,
+        quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
+        snapshot=SimpleNamespace(market_context=market_context),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        senior_context=None,
+    )
+    execution = SimpleNamespace(
+        accepted=False,
+        status=SimpleNamespace(value="BLOCKED"),
+        message="execução bloqueada",
+        external_id=None,
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=execution,
+        plan=SimpleNamespace(request_id="request-test"),
+        automation_lifecycle=None,
+    )
+    result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **_: result)
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/cycle",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    runtime = payload["runtime"]
+    assert status == "200 OK"
+    assert runtime["signal"] == "AGUARDAR"
+    assert runtime["candidate_signal"] == "COMPRA"
+    assert runtime["analysis"]["signal"] == "AGUARDAR"
+    assert runtime["quality"]["score"] == 84.0
+    assert runtime["quality"]["level"] == "FORTE"
+    assert runtime["quality"]["actionable"] is False
+    assert runtime["analysis_cycle"]["timestamp"] == "2026-10-16T12:00:00+00:00"
+    assert runtime["reason"] == "risco operacional não aprovado"
+    assert payload["execution_allowed"] is False
+
+
+def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
+    import app
+
+    with patch.object(app.SERVICE, "system_status", side_effect=AssertionError("slow diagnostics called")):
+        status, _, payload = ApiContractTests().request("/api/health/live")
+    assert status == "200 OK"
+    assert payload["ok"] is True
+    assert payload["live"] is True
+    assert "execution_allowed" not in payload
+    assert "real" not in payload
