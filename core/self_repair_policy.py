@@ -35,13 +35,18 @@ class RepairAuthorization:
 
 
 class SelfRepairPolicy:
-    """Fail-closed authorization boundary for bounded, low-risk self-repair.
+    """Fail-closed authorization boundary for explicitly allowlisted repairs.
 
     This class only decides whether a proposed repair meets the safety contract.
     It does not execute repairs, restart processes, contact providers, alter
     execution permissions, or bypass recovery/reconciliation gates.
+
+    A repair name is not evidence of safety. New repair actions must be reviewed
+    and explicitly allowlisted before this policy can authorize them.
     """
 
+    # Keep the initial allowlist intentionally narrow. Adding an action requires
+    # a separately reviewed implementation and tests proving its bounded scope.
     ALLOWED_ACTIONS = frozenset({
         "clear_stale_local_cache",
         "restart_controller",
@@ -61,7 +66,9 @@ class SelfRepairPolicy:
         if not isinstance(request.action, str) or not request.action.strip():
             return SelfRepairPolicy._blocked("ação de reparo ausente ou inválida")
         if request.action not in SelfRepairPolicy.ALLOWED_ACTIONS:
-            return SelfRepairPolicy._blocked("ação de reparo não está na lista permitida")
+            return SelfRepairPolicy._blocked(
+                "ação de reparo não consta na lista explicitamente autorizada"
+            )
         if any(
             not isinstance(value, bool)
             for value in (
@@ -116,7 +123,7 @@ class SelfRepairPolicy:
         return RepairAuthorization(
             RepairDecision.ALLOW_BOUNDED_REPAIR,
             True,
-            "reparo local, reversível, determinístico, previamente validado e dentro do limite",
+            "reparo explicitamente autorizado, local, reversível, determinístico, previamente validado e dentro do limite",
         )
 
     @staticmethod
