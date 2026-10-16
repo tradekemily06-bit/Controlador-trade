@@ -368,7 +368,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         automation_lifecycle=None,
     )
     result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **_: result)
+    call_args = {}
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (call_args.update(kwargs) or result))
 
     status, _, payload = ApiContractTests().request(
         "/api/runtime/cycle",
@@ -376,6 +377,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
     )
 
+    assert call_args["confirmed"] is False
+    assert call_args["filters_ok"] is False
     runtime = payload["runtime"]
     assert status == "200 OK"
     assert runtime["signal"] == "AGUARDAR"
