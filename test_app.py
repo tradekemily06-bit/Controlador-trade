@@ -1,5 +1,6 @@
 import io
 import json
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from app import application
@@ -61,8 +62,17 @@ def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
 
     execution = SimpleNamespace(accepted=False, status=SimpleNamespace(value="BLOCKED"), message="blocked", external_id=None)
     orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
         decision=SimpleNamespace(decision="AGUARDAR", reason="blocked"),
-        analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=0),
+        analysis=SimpleNamespace(
+            signal=SimpleNamespace(value="AGUARDAR"),
+            score=50.0,
+            reason="blocked",
+            confirmed=False,
+            symbol="EURUSD",
+            timeframe="5m",
+        ),
+        quality=SimpleNamespace(score=1.0, level=SimpleNamespace(value="FRACA"), actionable=False),
         snapshot=SimpleNamespace(market_context=None),
         market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=(1, 2, 3)),
         senior_context=SimpleNamespace(cycle_id="senior-cycle-001"),
