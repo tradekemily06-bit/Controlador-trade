@@ -237,7 +237,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=SignalLabel(last_signal);
-   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));
+   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":(shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL":"AGUARDAR")));
    color compact_color=SignalColor(last_signal);
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
@@ -425,6 +425,7 @@ string SignalLabel(string signal){
    StringToUpper(normalized);
    if(normalized=="COMPRA" || normalized=="COMPRAR") return "Comprar";
    if(normalized=="VENDA" || normalized=="VENDER") return "Vender";
+   if(normalized=="ANALISE_INDISPONIVEL") return "Análise indisponível";
    return "Aguardar";
 }
 color SignalColor(string signal){
@@ -432,6 +433,7 @@ color SignalColor(string signal){
    StringToUpper(normalized);
    if(normalized=="COMPRA" || normalized=="COMPRAR") return C'0,255,70';
    if(normalized=="VENDA" || normalized=="VENDER") return C'255,45,65';
+   if(normalized=="ANALISE_INDISPONIVEL") return C'255,118,118';
    return C'255,176,0';
 }
 string CurrentLeverageText(){
@@ -440,6 +442,16 @@ string CurrentLeverageText(){
    return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);
 }
 
+string NormalizeQualityScore(string raw){
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
+   if(raw=="") return "";
+   double value=StringToDouble(raw);
+   if(!MathIsValidNumber(value) || value<1.0 || value>100.0) return "";
+   int rounded=(int)MathRound(value);
+   if(rounded<1 || rounded>100) return "";
+   return IntegerToString(rounded);
+}
 bool IsValidQualityScore(string score){
    if(score=="") return false;
    for(int i=0;i<StringLen(score);i++){
@@ -448,6 +460,39 @@ bool IsValidQualityScore(string score){
    }
    long value=StringToInteger(score);
    return value>=1 && value<=100;
+}
+string JsonObject(string json,string key){
+   string needle="\"" + key + "\":";
+   int p=StringFind(json,needle);
+   if(p<0) return "";
+   p+=StringLen(needle);
+   while(p<StringLen(json) && (StringGetCharacter(json,p)==' ' || StringGetCharacter(json,p)=='\n' || StringGetCharacter(json,p)=='\r')) p++;
+   if(p>=StringLen(json) || StringGetCharacter(json,p)!='{') return "";
+   int start=p;
+   int depth=0;
+   bool in_string=false;
+   bool escape_next=false;
+   for(int i=p;i<StringLen(json);i++){
+      ushort ch=StringGetCharacter(json,i);
+      if(in_string){
+         if(escape_next) escape_next=false;
+         else if(ch=='\\') escape_next=true;
+         else if(ch=='"') in_string=false;
+         continue;
+      }
+      if(ch=='"'){ in_string=true; continue; }
+      if(ch=='{') depth++;
+      else if(ch=='}'){
+         depth--;
+         if(depth==0) return StringSubstr(json,start,i-start+1);
+      }
+   }
+   return "";
+}
+string JsonNestedValue(string json,string object_key,string key){
+   string object_json=JsonObject(json,object_key);
+   if(object_json=="") return "";
+   return JsonValue(object_json,key);
 }
 string NormalizeTimeframe(string tf){
    StringTrimLeft(tf);
@@ -719,13 +764,13 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"confirmed\":"+(pref_closed_candle?"true":"false")+",\"filters_ok\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      last_signal="Aguardar";
+      last_signal="ANALISE_INDISPONIVEL";
       last_score="";
       RefreshPanelToggle();
       if(render){
-         SetLabel(Obj("SIGNAL"),"Aguardar",20,176,10,C'255,176,0');
+         SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
          SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
-         SetLabel(Obj("REASON"),"Análise indisponível; sinal anterior descartado",20,226,9,C'255,118,118');
+         SetLabel(Obj("REASON"),"Falha no runtime; sinal anterior descartado",20,226,9,C'255,118,118');
       }
       return;
    }
@@ -733,15 +778,15 @@ void Analyze(bool render=true){
    if(signal=="") signal=JsonValue(r,"decision");
    StringToUpper(signal);
    if(signal=="") signal="AGUARDAR";
-   string score=JsonValue(r,"score");
+   string score=NormalizeQualityScore(JsonNestedValue(r,"quality","score"));
    string reason=JsonValue(r,"reason");
    bool quality_valid=IsValidQualityScore(score);
-   if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }
+   if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score=""; reason="Qualidade indisponível; análise não pode ser apresentada com segurança."; }
    last_signal=signal;
    last_score=score;
    RefreshPanelToggle();
    if(!render) return;
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
+   color c=SignalColor(signal);
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
    SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
@@ -760,27 +805,38 @@ void RunCycle(){
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Executando ciclo de demonstração no runtime...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
-      last_signal="Aguardar";
+      last_signal="ANALISE_INDISPONIVEL";
       last_score="";
       RefreshPanelToggle();
-      SetLabel(Obj("SIGNAL"),"Aguardar",20,176,10,C'255,176,0');
+      SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
       SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
-      SetLabel(Obj("REASON"),"Ciclo não confirmado pelo runtime.",20,226,9,C'255,118,118');
-      SetLabel(Obj("INFO1"),"Ciclo bloqueado ou não confirmado pelo runtime",20,361,9,C'255,118,118');
+      SetLabel(Obj("REASON"),"Ciclo não confirmado; sinal anterior descartado.",20,226,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Ciclo indisponível; runtime não confirmou resultado",20,361,9,C'255,118,118');
       return;
    }
-   string signal=JsonValue(r,"signal");
-   if(signal=="") signal=JsonValue(r,"decision");
+   string runtime=JsonObject(r,"runtime");
+   if(runtime==""){
+      last_signal="ANALISE_INDISPONIVEL";
+      last_score="";
+      RefreshPanelToggle();
+      SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
+      SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+      SetLabel(Obj("REASON"),"Resposta do runtime inválida; sinal descartado.",20,226,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Resposta do ciclo inválida",20,361,9,C'255,118,118');
+      return;
+   }
+   string signal=JsonValue(runtime,"signal");
+   if(signal=="") signal=JsonValue(runtime,"decision");
    StringToUpper(signal);
    if(signal=="") signal="AGUARDAR";
-   string score=JsonValue(r,"score");
-   string reason=JsonValue(r,"reason");
+   string score=NormalizeQualityScore(JsonNestedValue(runtime,"quality","score"));
+   string reason=JsonValue(runtime,"reason");
    bool quality_valid=IsValidQualityScore(score);
-   if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }
-   string cid=JsonValue(r,"cycle_id");
-   string eid=JsonValue(r,"external_id");
+   if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score=""; reason="Qualidade indisponível; análise não pode ser apresentada com segurança."; }
+   string cid=JsonValue(runtime,"cycle_id");
+   string eid=JsonValue(runtime,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
+   color c=SignalColor(signal);
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
    SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9,C'180,190,205');
