@@ -23,10 +23,16 @@ class OperationalSafetyStore:
         if not isinstance(data, dict):
             raise ValueError("snapshot persistido inválido.")
         try:
+            decision = str(data["decision"])
+            stored_signal = str(data["signal"])
+            final_signal = stored_signal if decision == "EXECUTAR" else "AGUARDAR"
             return DecisionSnapshot(
-                signal=str(data["signal"]), analysis_score=data["analysis_score"], confirmed=data["confirmed"],
-                quality_score=data["quality_score"], quality_level=str(data["quality_level"]), actionable=data["actionable"],
-                decision=str(data["decision"]), decision_reason=str(data["decision_reason"]),
+                signal=final_signal,
+                candidate_signal=str(data.get("candidate_signal", stored_signal)),
+                analysis_score=data["analysis_score"], confirmed=data["confirmed"],
+                quality_score=data["quality_score"], quality_level=str(data["quality_level"]),
+                actionable=data["actionable"] is True and decision == "EXECUTAR",
+                decision=decision, decision_reason=str(data["decision_reason"]),
                 market_context=data.get("market_context"), market_direction=data.get("market_direction"),
                 market_score=data.get("market_score"), operational_state_available=data["operational_state_available"],
                 trades_today=data.get("trades_today"), consecutive_losses=data.get("consecutive_losses"),
