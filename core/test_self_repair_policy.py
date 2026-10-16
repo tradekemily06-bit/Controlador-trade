@@ -55,3 +55,13 @@ def test_invalid_request_fails_closed():
     result = SelfRepairPolicy.evaluate(object())
     assert result.decision is RepairDecision.ALERT_AND_BLOCK
     assert result.allowed is False
+
+
+def test_blocks_during_cooldown_or_maintenance_lock():
+    for changes in (
+        {"cooldown_elapsed": False},
+        {"maintenance_lock_clear": False},
+    ):
+        result = SelfRepairPolicy.evaluate(safe_request(**changes))
+        assert result.decision is RepairDecision.ALERT_AND_BLOCK
+        assert result.allowed is False
