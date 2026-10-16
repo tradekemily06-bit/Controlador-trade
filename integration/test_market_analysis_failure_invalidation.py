@@ -55,3 +55,28 @@ def test_failed_mt5_operational_read_invalidates_previous_market_state():
     assert status["safe_for_analysis"] is False
     assert status["source"] is None
     assert status["message"] == "ciclo de análise indisponível: RuntimeError"
+
+
+def test_invalid_market_payload_is_reported_as_unavailable_and_invalidates_state():
+    state = _healthy_state()
+    service = object.__new__(ConfiguredEcosystemService)
+    service.trading_runtime = SimpleNamespace(
+        market_data_state=state,
+        orchestrator=SimpleNamespace(
+            evaluate=lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("provider returned no candles"))
+        ),
+    )
+    service.operational_runtime = object()
+    service.execution_provider = "ic_markets_mt5_demo"
+    service.preferences = SimpleNamespace(
+        preferences=SimpleNamespace(require_closed_candle=True, require_filters=True)
+    )
+    service.mt5_operational_adapter = SimpleNamespace(read_operational_state=lambda: None)
+
+    with pytest.raises(RuntimeError, match="dados/contexto de mercado indisponíveis: ValueError"):
+        service.analyze_mt5_market(symbol="EURUSD", timeframe="1m", limit=20)
+
+    status = state.status()
+    assert status["health"] == "NOT_CONNECTED"
+    assert status["safe_for_analysis"] is False
+    assert status["source"] is None
