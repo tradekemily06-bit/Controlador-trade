@@ -26,6 +26,13 @@ def test_allows_only_prevalidated_bounded_local_repair():
     assert result.allowed is True
 
 
+def test_allows_explicitly_allowlisted_supervisor_recovery_actions():
+    for action in ("restart_controller", "start_mt5_terminal", "restart_mt5_terminal"):
+        result = SelfRepairPolicy.evaluate(safe_request(action=action, max_attempts=6))
+        assert result.decision is RepairDecision.ALLOW_BOUNDED_REPAIR
+        assert result.allowed is True
+
+
 def test_blocks_non_reversible_or_external_repairs():
     for changes in (
         {"reversible": False},
@@ -45,6 +52,13 @@ def test_never_authorizes_repair_that_touches_execution_state():
     result = SelfRepairPolicy.evaluate(safe_request(touches_execution_state=True))
     assert result.decision is RepairDecision.ALERT_AND_BLOCK
     assert result.allowed is False
+
+
+def test_blocks_unknown_action_even_when_all_claimed_properties_look_safe():
+    result = SelfRepairPolicy.evaluate(safe_request(action="restart_mt5_or_change_risk"))
+    assert result.decision is RepairDecision.ALERT_AND_BLOCK
+    assert result.allowed is False
+    assert "lista explicitamente autorizada" in result.reason
 
 
 def test_blocks_after_attempt_limit():
@@ -67,10 +81,3 @@ def test_blocks_during_cooldown_or_maintenance_lock():
         result = SelfRepairPolicy.evaluate(safe_request(**changes))
         assert result.decision is RepairDecision.ALERT_AND_BLOCK
         assert result.allowed is False
-
-
-def test_unknown_repair_action_fails_closed():
-    result = SelfRepairPolicy.evaluate(safe_request(action="send_real_order"))
-    assert result.decision is RepairDecision.ALERT_AND_BLOCK
-    assert result.allowed is False
-    assert "lista permitida" in result.reason
