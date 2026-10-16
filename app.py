@@ -197,8 +197,6 @@ def application(environ, start_response):
                     "ok": True,
                     "live": True,
                     "service": "controlador",
-                    "execution_allowed": False,
-                    "real": "DESABILITADO",
                 },
                 request_id,
                 environ,
