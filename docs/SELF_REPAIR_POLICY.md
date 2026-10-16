@@ -6,12 +6,9 @@ O ecossistema só pode autorizar um autorreparo automático quando a ação est�
 
 ## Lista autorizada atual
 
-- `clear_stale_local_cache`: limpar cache local obsoleto que possa ser reconstruído sem perda.
-- `restart_controller`: reiniciar o processo local do Controlador somente após falha persistente de liveness e com orçamento/cooldown válidos.
-- `start_mt5_terminal`: iniciar o terminal configurado quando ausente ou não saudável, após a política confirmar orçamento/cooldown.
-- `restart_mt5_terminal`: reiniciar o terminal configurado somente após confirmar a conta DEMO, o caminho do terminal e ausência de posições e ordens abertas.
+- `clear_stale_local_cache`: limpar cache local obsoleto, reconstruível e sem perda de estado.
 
-Os três reparos de runtime dependem da validação adicional do supervisor; a lista, por si só, não comprova segurança. Qualquer campo falso, ausente ou inválido bloqueia o reparo. Se posições/ordens não puderem ser consultadas com segurança, ou houver posições/ordens abertas durante uma recuperação automática, o supervisor deve bloquear e encaminhar para supervisão humana. Uma parada controlada solicitada pelo usuário é tratada separadamente da recuperação automática.
+Iniciar/reiniciar o Controlador ou o terminal MT5 **não está autorizado nesta fase**. Essas ações só podem ser consideradas depois que o supervisor provar liveness/health, estado DEMO, reconciliação com o broker e ausência de ordens/posições ativas; um campo booleano enviado pelo chamador não comprova esses fatos. Até essa integração ser validada, falha de processo/terminal deve gerar alerta e bloqueio, sem autorreparo automático. Uma parada controlada solicitada pelo usuário é tratada separadamente da recuperação automática.
 
 Uma ação nova só pode ser adicionada após revisão da implementação e testes específicos. Um nome de ação nunca é prova suficiente de segurança.
 
