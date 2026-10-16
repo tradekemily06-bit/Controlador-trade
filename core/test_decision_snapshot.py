@@ -58,6 +58,7 @@ def test_snapshot_preserves_all_decision_inputs_and_result():
     )
 
     assert snapshot.signal == "COMPRA"
+    assert snapshot.candidate_signal == "COMPRA"
     assert snapshot.analysis_score == 90.0
     assert snapshot.confirmed is True
     assert snapshot.quality_score == 80.0
@@ -139,3 +140,24 @@ def test_snapshot_as_dict_and_explain_are_consistent():
     assert "qualidade=FORTE" in explanation
     assert "decisão=EXECUTAR" in explanation
     assert "contexto=FAVORAVEL" in explanation
+
+
+def test_snapshot_distinguishes_blocked_final_signal_from_candidate():
+    snapshot = DecisionSnapshot.from_results(
+        analysis=make_analysis(),
+        quality=make_quality(),
+        decision=DecisionResult(
+            decision=FinalDecision.AGUARDAR,
+            signal=Signal.AGUARDAR,
+            reason="Sinal direcional inconsistente; aguardando.",
+        ),
+        market_context=None,
+        operational_state=None,
+    )
+
+    assert snapshot.signal == "AGUARDAR"
+    assert snapshot.candidate_signal == "COMPRA"
+    assert snapshot.as_dict()["signal"] == "AGUARDAR"
+    assert snapshot.as_dict()["candidate_signal"] == "COMPRA"
+    assert "Sinal=AGUARDAR" in snapshot.explain()
+    assert "candidato=COMPRA" in snapshot.explain()
