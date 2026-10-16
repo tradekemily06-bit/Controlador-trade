@@ -169,6 +169,7 @@ function Invoke-RuntimeHttpProbe {
         [string]$Uri,
         [int]$TimeoutSeconds
     )
+    $script:LastRuntimeHttpProbeDiagnostic = ''
     # Use Python urllib with proxy auto-detection disabled. On this Windows
     # runtime, PowerShell's built-in web-request cmdlet can stall far beyond its timeout;
     # the local liveness probe must be cheap and predictably bounded.
@@ -197,12 +198,15 @@ except Exception as exc:
     $probeExitCode = $LASTEXITCODE
     $lastLine = [string](@($probeOutput | ForEach-Object { [string]$_ } | Select-Object -Last 1))
     if ($probeExitCode -ne 0) {
-        throw "probe HTTP local falhou: $lastLine"
+        $script:LastRuntimeHttpProbeDiagnostic = "probe HTTP local falhou: $lastLine"
+        throw $script:LastRuntimeHttpProbeDiagnostic
     }
     $result = $lastLine | ConvertFrom-Json
     if ($null -eq $result.status -or $null -eq $result.body) {
-        throw "resposta inválida do probe HTTP local: $lastLine"
+        $script:LastRuntimeHttpProbeDiagnostic = "resposta inválida do probe HTTP local: $lastLine"
+        throw $script:LastRuntimeHttpProbeDiagnostic
     }
+    $script:LastRuntimeHttpProbeDiagnostic = "HTTP $([int]$result.status)"
     return [pscustomobject]@{
         StatusCode = [int]$result.status
         Content = [string]$result.body
@@ -213,15 +217,24 @@ function Test-ControllerHealth {
     # Cheap liveness probe. A slow diagnostic/status route must not be treated
     # as a dead process and must not trigger a restart loop.
     $livenessUrl = 'http://127.0.0.1:8000/api/health/live'
+    $script:LastControllerLivenessDiagnostic = ''
     try {
         $response = Invoke-RuntimeHttpProbe -Uri $livenessUrl -TimeoutSeconds 3
-        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { return $false }
+        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+            $script:LastControllerLivenessDiagnostic = "liveness retornou HTTP $($response.StatusCode)"
+            return $false
+        }
         $payload = $response.Content | ConvertFrom-Json
-        return (
-            $payload.ok -eq $true -and
-            $payload.live -eq $true
-        )
+        if ($payload.ok -ne $true -or $payload.live -ne $true) {
+            $script:LastControllerLivenessDiagnostic = "contrato liveness inválido: $($response.Content)"
+            return $false
+        }
+        return $true
     } catch {
+        $script:LastControllerLivenessDiagnostic = $_.Exception.Message
+        if ([string]::IsNullOrWhiteSpace($script:LastControllerLivenessDiagnostic)) {
+            $script:LastControllerLivenessDiagnostic = $script:LastRuntimeHttpProbeDiagnostic
+        }
         return $false
     }
 }
@@ -432,7 +445,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 $healthFailures = 0
             } else {
                 $healthFailures++
-                Write-StartupLog "Liveness do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
+                Write-StartupLog "Liveness do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo; detalhe=$script:LastControllerLivenessDiagnostic."
                 if ($healthFailures -ge $HealthFailureThreshold) {
                     if (Test-SafeRepairAuthorization -Action 'restart_controller' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour) {
                         Write-StartupLog 'Liveness do Controlador permaneceu indisponível; política autorizou recuperação supervisionada.'
@@ -474,7 +487,7 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         if (Test-Path -LiteralPath $appStdoutPath) { Get-Content -LiteralPath $appStdoutPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
         if (Test-Path -LiteralPath $appStderrPath) { Get-Content -LiteralPath $appStderrPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
         $appExitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
-        Write-StartupLog "Controlador não alcançou /api/health/live; código observado=$appExitCode."
+        Write-StartupLog "Controlador não alcançou /api/health/live; código observado=$appExitCode; detalhe=$script:LastControllerLivenessDiagnostic."
     }
 
     if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
