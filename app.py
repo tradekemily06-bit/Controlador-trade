@@ -345,6 +345,7 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
+            from execution.icmarkets_mt5_market_data import MT5MarketDataError
             try:
                 orchestration = SERVICE.analyze_mt5_market(
                     symbol=str(data.get("symbol", "")),
@@ -353,21 +354,18 @@ def application(environ, start_response):
                     confirmed=data.get("confirmed"),
                     filters_ok=data.get("filters_ok"),
                 )
-            except Exception as exc:
-                from execution.icmarkets_mt5_market_data import MT5MarketDataError
-                if isinstance(exc, MT5MarketDataError):
-                    return _json_response(
-                        start_response,
-                        HTTPStatus.SERVICE_UNAVAILABLE,
-                        {
-                            "error": "dados de mercado indisponíveis",
-                            "detail": str(exc),
-                            "execution_allowed": False,
-                        },
-                        request_id,
-                        environ,
-                    )
-                raise
+            except MT5MarketDataError as exc:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "dados de mercado indisponíveis",
+                        "detail": str(exc),
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
             snapshot = orchestration.snapshot
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
