@@ -101,6 +101,21 @@ def test_aguarda_quando_nao_existe_sinal():
     assert result.decision == FinalDecision.AGUARDAR
 
 
+def test_bloqueia_direcao_malformada_mesmo_com_gates_favoraveis():
+    # AnalysisResult é um dataclass sem validação de tipos em runtime.
+    # Uma string "COMPRA" não pode atravessar os gates como se fosse Signal.COMPRA.
+    analysis = AnalysisResult(signal="COMPRA", score=100, reason="Entrada malformada.", confirmed=True)
+    result = DecisionEngine(RiskManager(daily_loss_limit=100)).evaluate(
+        analysis=analysis,
+        market_context=favorable_context(MarketDirection.ALTA),
+        operational_state=operational_state(),
+        senior_context=senior_context(),
+    )
+    assert result.decision == FinalDecision.AGUARDAR
+    assert result.signal == Signal.AGUARDAR
+    assert "inválida" in result.reason
+
+
 def test_bloqueia_por_limite_de_operacoes():
     analysis = AnalysisResult(signal=Signal.COMPRA, score=85, reason="Score forte.", confirmed=True)
     result = DecisionEngine(RiskManager(max_operations=5)).evaluate(
