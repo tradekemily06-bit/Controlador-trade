@@ -204,7 +204,7 @@ class TradingRuntime:
         max_cycles: int = 1,
         request_id_factory: Callable[[int], str] | None = None,
         confirmed: bool = False,
-        filters_ok: bool = True,
+        filters_ok: bool = False,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
