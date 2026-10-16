@@ -417,7 +417,7 @@ def application(environ, start_response):
                     "symbol": orchestration.analysis.symbol,
                     "timeframe": orchestration.analysis.timeframe,
                 },
-                "decision": display_decision,
+                "decision": decision_value,
                 "signal": display_signal,
                 "candidate_signal": candidate_signal,
                 "score": orchestration.analysis.score,
@@ -434,7 +434,7 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable and display_decision == "EXECUTAR",
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
                 },
                 "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
                 "market_data_source": orchestration.market_data.source,
@@ -510,7 +510,7 @@ def application(environ, start_response):
                 "signal": display_signal,
                 "score": orchestration.analysis.score,
                 "reason": display_reason,
-                "decision": decision_value,
+                "decision": display_decision,
                 "analysis": {
                     "signal": display_signal,
                     "candidate_signal": candidate_signal,
