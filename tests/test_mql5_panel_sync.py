@@ -280,3 +280,13 @@ def test_mql5_sync_can_preserve_previous_ea_until_visual_approval():
     assert "[switch]$KeepBackup" in text
     assert "if (-not $KeepBackup)" in text
     assert "Backup anterior preservado para rollback até a validação visual:" in text
+
+
+def test_mql5_sync_requires_confirmed_demo_account_and_matching_data_folder():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "function Assert-Mt5DemoAccount" in text
+    assert "ACCOUNT_TRADE_MODE_DEMO" in text
+    assert "TERMINAL_PATH_MISMATCH" in text
+    assert "DATA_PATH_MISMATCH" in text
+    assert "Assert-Mt5DemoAccount -TerminalPath $Mt5TerminalPath -ExpectedDataPath $dataPath" in text
+    assert text.index("Assert-Mt5DemoAccount -TerminalPath $Mt5TerminalPath") < text.index("$sourceHash =")
