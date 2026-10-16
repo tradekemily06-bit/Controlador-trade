@@ -51,6 +51,7 @@ New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $logPath = Join-Path $RuntimeDir 'controlador-startup.log'
 $statusPath = Join-Path $RuntimeDir 'controlador-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'controlador.supervisor.stop'
+$maintenanceLockPath = Join-Path $RuntimeDir 'maintenance.lock'
 $restartHistoryPath = Join-Path $RuntimeDir 'controlador-supervisor-restart-history.json'
 $appStdoutPath = Join-Path $RuntimeDir 'controlador-app.stdout.log'
 $appStderrPath = Join-Path $RuntimeDir 'controlador-app.stderr.log'
@@ -188,6 +189,55 @@ function Test-ControllerSafety {
     }
 }
 
+function Test-SafeRepairAuthorization {
+    param(
+        [string]$Action,
+        [int]$AttemptsUsed,
+        [int]$MaxAttempts,
+        [bool]$RequiresHumanSupervision = $false
+    )
+    $script:LastRepairAuthorizationDiagnostic = ''
+    $now = Get-Date
+    while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
+        $restartTimes.RemoveAt(0)
+    }
+    $cooldownElapsed = $true
+    if ($restartTimes.Count -gt 0) {
+        $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
+    }
+    $maintenanceLockClear = -not (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf)
+    $policyPath = Join-Path $ProjectRoot 'deployment\authorize_self_repair.py'
+    if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+        $script:LastRepairAuthorizationDiagnostic = 'política de autorreparo ausente; reparo bloqueado'
+        return $false
+    }
+    try {
+        $policyArgs = @(
+            $policyPath,
+            '--action', $Action,
+            '--attempts-used', [string]$AttemptsUsed,
+            '--max-attempts', [string]$MaxAttempts,
+            '--local-only', 'true',
+            '--reversible', 'true',
+            '--deterministic', 'true',
+            '--prevalidated', 'true',
+            '--external-side-effects', 'false',
+            '--touches-execution-state', 'false',
+            '--requires-human-supervision', ([string]$RequiresHumanSupervision).ToLowerInvariant(),
+            '--cooldown-elapsed', ([string]$cooldownElapsed).ToLowerInvariant(),
+            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant()
+        )
+        $policyOutput = & $PythonExe @policyArgs 2>&1
+        $policyExitCode = $LASTEXITCODE
+        $payload = ([string](@($policyOutput | ForEach-Object { [string]$_ } | Select-Object -Last 1))) | ConvertFrom-Json
+        $script:LastRepairAuthorizationDiagnostic = [string]$payload.reason
+        return ($policyExitCode -eq 0 -and $payload.allowed -eq $true)
+    } catch {
+        $script:LastRepairAuthorizationDiagnostic = "falha ao avaliar política de autorreparo: $($_.Exception.Message)"
+        return $false
+    }
+}
+
 function Wait-ControllerHealth {
     param(
         [System.Diagnostics.Process]$Process,
@@ -289,9 +339,15 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 $healthFailures++
                 Write-StartupLog "Liveness do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                 if ($healthFailures -ge $HealthFailureThreshold) {
-                    Write-StartupLog 'Liveness do Controlador permaneceu indisponível; iniciando recuperação supervisionada.'
-                    Stop-ControllerProcess -Process $process -Reason 'Liveness não respondeu; encerrando processo para recuperação limpa'
-                    break
+                    if (Test-SafeRepairAuthorization -Action 'restart_controller' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour) {
+                        Write-StartupLog 'Liveness do Controlador permaneceu indisponível; política autorizou recuperação supervisionada.'
+                        Stop-ControllerProcess -Process $process -Reason 'Liveness não respondeu; encerrando processo para recuperação limpa'
+                        break
+                    }
+                    Write-StartupLog "Reparo automático do Controlador bloqueado pela política: $script:LastRepairAuthorizationDiagnostic"
+                    Write-SupervisorStatus 'ATTENTION' "Liveness indisponível, mas reparo automático bloqueado: $script:LastRepairAuthorizationDiagnostic"
+                    $healthFailures = 0
+                    Start-Sleep -Seconds 30
                 }
             }
 
