@@ -105,7 +105,7 @@ def test_controller_supervisor_hardens_python_import_path():
 
 def test_controller_supervisor_recovers_unhealthy_existing_process():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
-    assert "Instância existente não respondeu /api/health/live" in startup
+    assert "Instância existente não respondeu liveness" in startup
     assert "taskkill.exe /PID $existingController.ProcessId /T /F" in startup
     assert "RESTART_LIMIT_EXCEEDED" in startup
 
