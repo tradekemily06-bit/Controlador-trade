@@ -79,6 +79,55 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _mode_execution_block_reason(preferences: dict) -> str:
+    selected_mode = str(preferences.get("selected_mode", "DEMO")).upper()
+    if selected_mode == "REAL":
+        return "Modo REAL selecionado; execução REAL permanece bloqueada até validação e autorização explícita."
+    if preferences.get("leverage_enabled") is True:
+        return "Modo de alavancagem selecionado; execução bloqueada até perfil e orçamento de risco validados."
+    return ""
+
+
+def _blocked_cycle_payload(orchestration, reason: str) -> dict:
+    candidate_signal = orchestration.analysis.signal.value
+    return {
+        "stopped": True,
+        "stop_reason": reason,
+        "analysis_cycle": {
+            "timestamp": orchestration.timestamp.isoformat(),
+            "symbol": orchestration.analysis.symbol,
+            "timeframe": orchestration.analysis.timeframe,
+        },
+        "decision": "AGUARDAR",
+        "signal": "AGUARDAR",
+        "candidate_signal": candidate_signal,
+        "score": orchestration.analysis.score,
+        "reason": reason,
+        "analysis": {
+            "signal": "AGUARDAR",
+            "candidate_signal": candidate_signal,
+            "score": orchestration.analysis.score,
+            "reason": orchestration.analysis.reason,
+            "confirmed": orchestration.analysis.confirmed,
+            "symbol": orchestration.analysis.symbol,
+            "timeframe": orchestration.analysis.timeframe,
+        },
+        "quality": {
+            "score": orchestration.quality.score,
+            "level": orchestration.quality.level.value,
+            "actionable": False,
+        },
+        "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+        "market_data_source": orchestration.market_data.source,
+        "candles": len(orchestration.market_data.candles),
+        "request_id": None,
+        "cycle_id": None,
+        "external_id": None,
+        "execution_status": "BLOCKED",
+        "execution": {"accepted": False, "status": "BLOCKED", "message": reason, "external_id": None},
+    }
+
+
 def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     """Authorize remote mutations through the deployment's trusted identity boundary."""
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
@@ -299,6 +348,32 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
+            if mode_block_reason:
+                from execution.icmarkets_mt5_market_data import MT5MarketDataError
+                try:
+                    orchestration = SERVICE.analyze_mt5_market(
+                        symbol=str(data.get("symbol", "")),
+                        timeframe=str(data.get("timeframe", "5m")),
+                        limit=int(data.get("limit", 100)),
+                        confirmed=data.get("confirmed"),
+                        filters_ok=data.get("filters_ok"),
+                    )
+                except (MT5MarketDataError, RuntimeError) as exc:
+                    return _json_response(
+                        start_response,
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "dados de mercado indisponíveis", "detail": str(exc), "execution_allowed": False},
+                        request_id,
+                        environ,
+                    )
+                return _json_response(
+                    start_response,
+                    HTTPStatus.OK,
+                    {"runtime": _blocked_cycle_payload(orchestration, mode_block_reason), "execution_allowed": False},
+                    request_id,
+                    environ,
+                )
             result = SERVICE.run_mt5_cycle(
                 symbol=str(data.get("symbol", "")),
                 timeframe=str(data.get("timeframe", "5m")),
@@ -342,7 +417,7 @@ def application(environ, start_response):
                     "symbol": orchestration.analysis.symbol,
                     "timeframe": orchestration.analysis.timeframe,
                 },
-                "decision": decision_value,
+                "decision": display_decision,
                 "signal": display_signal,
                 "candidate_signal": candidate_signal,
                 "score": orchestration.analysis.score,
@@ -359,7 +434,7 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
+                    "actionable": orchestration.quality.actionable and display_decision == "EXECUTAR",
                 },
                 "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
                 "market_data_source": orchestration.market_data.source,
@@ -412,19 +487,20 @@ def application(environ, start_response):
             snapshot = orchestration.snapshot
             decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
             candidate_signal = orchestration.analysis.signal.value
-            # The user-facing signal must reflect the final ecosystem gates.
-            # Preserve the technical candidate separately for audit; a strong
-            # candidate is not a BUY/SELL presentation when context or risk says wait.
-            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
+            # Preserve the technical candidate for audit, but show AGUARDAR when
+            # market gates, REAL safety, or the unvalidated leverage mode block action.
+            display_decision = "AGUARDAR" if mode_block_reason else decision_value
+            display_signal = candidate_signal if display_decision == "EXECUTAR" else "AGUARDAR"
             display_reason = (
-                orchestration.analysis.reason
-                if decision_value == "EXECUTAR"
-                else orchestration.decision.reason
+                mode_block_reason
+                if mode_block_reason
+                else (orchestration.analysis.reason if decision_value == "EXECUTAR" else orchestration.decision.reason)
             )
             snapshot_data = snapshot.as_dict()
             snapshot_data["candidate_signal"] = snapshot_data.get("signal", candidate_signal)
             snapshot_data["signal"] = display_signal
-            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and decision_value == "EXECUTAR"
+            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and display_decision == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
