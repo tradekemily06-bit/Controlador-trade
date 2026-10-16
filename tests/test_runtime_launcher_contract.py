@@ -151,3 +151,26 @@ def test_controller_supervisor_preserves_mql5_sync_failure_details():
     assert "terminou com código $syncExitCode" in text
 
 
+
+
+def test_controller_supervisor_separates_liveness_and_safety_and_uses_repair_policy():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "http://127.0.0.1:8000/api/health/live" in text
+    assert "function Test-ControllerSafety" in text
+    assert "function Test-SafeRepairAuthorization" in text
+    assert "authorize_self_repair.py" in text
+    assert "maintenance.lock" in text
+    assert "Write-SupervisorStatus 'ATTENTION'" in text
+    assert "Liveness do Controlador permaneceu indisponível" in text
+
+
+def test_mt5_supervisor_requires_empty_demo_trade_state_for_automatic_stop():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "function Test-SafeRepairAuthorization" in text
+    assert "authorize_self_repair.py" in text
+    assert "positions = mt5.positions_get()" in text
+    assert "orders = mt5.orders_get()" in text
+    assert "DEMO_WITH_OPEN_TRADES" in text
+    assert "maintenance.lock" in text
+    assert "Reparo automático do MT5 bloqueado pela política" in text
+    assert "Inicialização automática do MT5 bloqueada pela política" in text
