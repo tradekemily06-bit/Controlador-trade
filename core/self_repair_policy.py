@@ -18,13 +18,13 @@ class RepairRequest:
     reversible: bool
     deterministic: bool
     prevalidated: bool
-    external_side_effects: bool = False
-    touches_execution_state: bool = False
-    requires_human_supervision: bool = False
-    cooldown_elapsed: bool = True
-    maintenance_lock_clear: bool = True
-    attempts_used: int = 0
-    max_attempts: int = 1
+    external_side_effects: bool
+    touches_execution_state: bool
+    requires_human_supervision: bool
+    cooldown_elapsed: bool
+    maintenance_lock_clear: bool
+    attempts_used: int
+    max_attempts: int
 
 
 @dataclass(frozen=True)
