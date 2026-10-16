@@ -50,3 +50,26 @@ def test_invalid_selected_mode_is_rejected():
     except ValueError:
         return
     raise AssertionError("selected_mode inválido deveria ser rejeitado")
+
+
+def test_leverage_toggle_is_persistable_but_does_not_grant_execution_authority():
+    store = EcosystemPreferencesStore()
+    result = store.update(leverage_enabled=True)
+    assert result.leverage_enabled is True
+    assert result.real_execution_enabled is False
+    assert result.autonomous_operation_enabled is False
+
+
+def test_invalid_leverage_toggle_type_is_rejected():
+    store = EcosystemPreferencesStore()
+    with pytest.raises(ValueError):
+        store.update(leverage_enabled="ON")
+
+
+def test_leverage_toggle_survives_preferences_round_trip_without_authority():
+    store = EcosystemPreferencesStore.from_dict({"leverage_enabled": True, "selected_mode": "REAL"})
+    value = store.preferences
+    assert value.leverage_enabled is True
+    assert value.selected_mode == "REAL"
+    assert value.real_execution_enabled is False
+    assert value.autonomous_operation_enabled is False
