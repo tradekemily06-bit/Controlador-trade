@@ -196,3 +196,17 @@ def test_controller_skips_mt5_preflight_while_maintenance_lock_is_active():
     assert "maintenanceLockPath" in function
     assert "return $false" in function
     assert "run_preflight(mt5)" in function
+
+
+
+def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webrequest():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    for required in (
+        "function Invoke-RuntimeHttpProbe",
+        "urllib.request",
+        "urllib.request.ProxyHandler({})",
+        "Invoke-RuntimeHttpProbe -Uri $livenessUrl -TimeoutSeconds 3",
+        "Invoke-RuntimeHttpProbe -Uri $healthUrl -TimeoutSeconds 8",
+    ):
+        assert required in text
+    assert "Invoke-WebRequest" not in text
