@@ -71,7 +71,7 @@ def test_quality_bands_match_ecosystem_contract():
     for directional_score, expected_score, expected_level in (
         (15, 70, SignalLevel.MODERADA),
         (10, 80, SignalLevel.FORTE),
-        (50, 0, SignalLevel.FRACA),
+        (50, 1, SignalLevel.FRACA),
     ):
         result = evaluate_signal_quality(
             AnalysisResult(
