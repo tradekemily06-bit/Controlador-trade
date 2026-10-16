@@ -312,6 +312,12 @@ class ConfiguredEcosystemService(EcosystemService):
             state = self.trading_runtime.market_data_state
             if state is not None:
                 state.invalidate(f"ciclo de análise indisponível: {type(exc).__name__}")
+            # Input validation above already ran before this try. A ValueError
+            # here comes from the fetched market/runtime cycle, not the request.
+            if isinstance(exc, ValueError):
+                raise RuntimeError(
+                    f"dados/contexto de mercado indisponíveis: {type(exc).__name__}"
+                ) from exc
             raise
         self._record_analysis(orchestration.analysis)
         return orchestration
