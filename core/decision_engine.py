@@ -49,6 +49,16 @@ class DecisionEngine:
         operations_count=None,
         consecutive_losses=None,
     ) -> DecisionResult:
+        # Valida o objeto e o enum antes de qualquer gate que possa conduzir
+        # a EXECUTAR. Dataclasses não validam tipos em runtime: um produtor
+        # alternativo pode fornecer "COMPRA" como string ou um sinal desconhecido.
+        if not isinstance(analysis, AnalysisResult) or not isinstance(analysis.signal, Signal):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=Signal.AGUARDAR,
+                reason="Análise ou direção inválida; execução bloqueada.",
+            )
+
         if operational_state is None:
             return DecisionResult(
                 decision=FinalDecision.AGUARDAR,
@@ -61,16 +71,6 @@ class DecisionEngine:
                 decision=FinalDecision.AGUARDAR,
                 signal=analysis.signal,
                 reason="Estado operacional inválido.",
-            )
-
-        # Valida o objeto e o enum antes de qualquer gate que possa conduzir
-        # a EXECUTAR. Dataclasses não validam tipos em runtime: um produtor
-        # alternativo pode fornecer "COMPRA" como string ou um sinal desconhecido.
-        if not isinstance(analysis, AnalysisResult) or not isinstance(analysis.signal, Signal):
-            return DecisionResult(
-                decision=FinalDecision.AGUARDAR,
-                signal=Signal.AGUARDAR,
-                reason="Análise ou direção inválida; execução bloqueada.",
             )
 
         # Defesa independente do pipeline: nenhum produtor de AnalysisResult
