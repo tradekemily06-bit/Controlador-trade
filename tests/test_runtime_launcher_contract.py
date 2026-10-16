@@ -188,3 +188,11 @@ def test_supervisors_resolve_relative_paths_against_project_root():
         assert "$projectPython = Join-Path $ProjectRoot $PythonExe" in text
         assert "[System.IO.Path]::IsPathRooted($RuntimeDir)" in text
         assert "$RuntimeDir = Join-Path $ProjectRoot $RuntimeDir" in text
+
+
+def test_controller_skips_mt5_preflight_while_maintenance_lock_is_active():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    function = text.split("function Test-Mt5Demo {", 1)[1].split("function Test-ControllerHealth {", 1)[0]
+    assert "maintenanceLockPath" in function
+    assert "return $false" in function
+    assert "run_preflight(mt5)" in function
