@@ -273,3 +273,10 @@ def test_mql5_preferences_changes_refresh_or_invalidate_current_analysis():
     assert "Analyze(false);" in save
     assert "last_analysis_available=false;" in save
     assert "Preferências não sincronizadas; sinal anterior descartado" in save
+
+
+def test_mql5_sync_can_preserve_previous_ea_until_visual_approval():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert "[switch]$KeepBackup" in text
+    assert "if (-not $KeepBackup)" in text
+    assert "Backup anterior preservado para rollback até a validação visual:" in text
