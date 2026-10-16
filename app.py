@@ -354,7 +354,7 @@ def application(environ, start_response):
                     confirmed=data.get("confirmed"),
                     filters_ok=data.get("filters_ok"),
                 )
-            except MT5MarketDataError as exc:
+            except (MT5MarketDataError, RuntimeError) as exc:
                 return _json_response(
                     start_response,
                     HTTPStatus.SERVICE_UNAVAILABLE,
