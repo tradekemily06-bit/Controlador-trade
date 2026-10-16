@@ -201,6 +201,7 @@ function Test-SafeRepairAuthorization {
     while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
         $restartTimes.RemoveAt(0)
     }
+    $AttemptsUsed = $restartTimes.Count
     $cooldownElapsed = $true
     if ($restartTimes.Count -gt 0) {
         $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
@@ -299,9 +300,15 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             $process = Get-Process -Id $existingController.ProcessId -ErrorAction Stop
             Write-SupervisorStatus 'STARTING' 'Instância existente responde ao liveness; validando segurança detalhada sem reinício automático.'
         } else {
-            Write-StartupLog 'Instância existente não respondeu /api/health/live; encerrando-a para recuperação limpa.'
-            & taskkill.exe /PID $existingController.ProcessId /T /F 2>$null | Out-Null
-            Start-Sleep -Seconds 2
+            if (Test-SafeRepairAuthorization -Action 'restart_controller' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour) {
+                Write-StartupLog "Instância existente não respondeu liveness; política autorizou encerramento para recuperação limpa."
+                & taskkill.exe /PID $existingController.ProcessId /T /F 2>$null | Out-Null
+                Start-Sleep -Seconds 2
+            } else {
+                Write-StartupLog "Instância existente não responde, mas o reparo foi bloqueado: $script:LastRepairAuthorizationDiagnostic"
+                $process = Get-Process -Id $existingController.ProcessId -ErrorAction SilentlyContinue
+                Write-SupervisorStatus 'ATTENTION' "Instância existente não responde ao liveness; reparo automático bloqueado: $script:LastRepairAuthorizationDiagnostic"
+            }
         }
     }
 
@@ -366,11 +373,20 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         }
         $appExitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
     } else {
-        if (-not $process.HasExited) { Stop-ControllerProcess -Process $process }
+        if (-not $process.HasExited) {
+            if (Test-SafeRepairAuthorization -Action 'restart_controller' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour) {
+                Stop-ControllerProcess -Process $process -Reason 'Liveness não respondeu durante inicialização; encerrando processo para recuperação limpa'
+            } else {
+                Write-StartupLog "Inicialização sem liveness, mas o reparo foi bloqueado: $script:LastRepairAuthorizationDiagnostic"
+                Write-SupervisorStatus 'ATTENTION' "app.py não respondeu ao liveness; reparo automático bloqueado: $script:LastRepairAuthorizationDiagnostic"
+                Start-Sleep -Seconds 30
+                continue
+            }
+        }
         if (Test-Path -LiteralPath $appStdoutPath) { Get-Content -LiteralPath $appStdoutPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
         if (Test-Path -LiteralPath $appStderrPath) { Get-Content -LiteralPath $appStderrPath -ErrorAction SilentlyContinue | Add-Content -LiteralPath $logPath }
         $appExitCode = if ($process.HasExited) { $process.ExitCode } else { -1 }
-        Write-StartupLog "Controlador não alcançou /api/health; código observado=$appExitCode."
+        Write-StartupLog "Controlador não alcançou /api/health/live; código observado=$appExitCode."
     }
 
     if (Test-Path -LiteralPath $stopPath -PathType Leaf) { break }
