@@ -45,16 +45,29 @@ $stopPath = Join-Path $RuntimeDir 'mt5.supervisor.stop'
 $maintenanceLockPath = Join-Path $RuntimeDir 'maintenance.lock'
 $restartHistoryPath = Join-Path $RuntimeDir 'mt5-supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
+$script:RestartHistoryValid = $true
+$script:RestartHistoryError = ''
 
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
-        foreach ($item in @($items)) {
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+        $rawHistory = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($rawHistory)) {
+            throw 'arquivo de histórico vazio'
         }
+        $items = $rawHistory | ConvertFrom-Json -ErrorAction Stop
+        foreach ($item in @($items)) {
+            $parsedTime = [datetime]::MinValue
+            if (-not [datetime]::TryParse([string]$item, [ref]$parsedTime)) {
+                throw 'timestamp inválido no histórico de reinícios'
+            }
+            $restartTimes.Add($parsedTime.ToLocalTime())
+        }
+        $restartTimes.Sort()
     } catch {
-        $restartTimes.Clear()
+        # Corrupt history must never reset the restart budget and enable retries.
+        $script:RestartHistoryValid = $false
+        $script:RestartHistoryError = $_.Exception.Message
     }
 }
 
@@ -311,6 +324,17 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
+    if (-not $script:RestartHistoryValid) {
+        $reason = "Histórico de reinícios inválido; recuperação automática bloqueada até correção manual: $script:RestartHistoryError"
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
+            Start-Sleep -Seconds 30
+        }
+        $finalState = 'STOPPED'
+        $finalReason = 'Parada controlada após bloqueio por histórico de reinícios inválido.'
+        break
+    }
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
     $process = Get-ConfiguredMt5Process
 
