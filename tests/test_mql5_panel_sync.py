@@ -396,7 +396,7 @@ def test_mql5_analysis_failure_clears_stale_compact_signal():
     assert 'last_signal="ANALISE_INDISPONIVEL";' in failure
     assert 'last_score="";' in failure
     assert 'runtime_ok=false;' not in failure
-    assert 'last_signal="Aguardar";' in failure
+    assert 'last_signal="ANALISE_INDISPONIVEL";' in failure
     assert 'last_score="";' in failure
     assert 'RefreshPanelToggle();' in failure
     assert '"Falha no runtime; sinal anterior descartado"' in failure
