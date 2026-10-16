@@ -4,7 +4,8 @@ param(
     [string]$MetaEditorPath = '',
     [string]$Mt5TerminalPath = '',
     [string]$Mt5DataPath = $env:CONTROLADOR_MT5_DATA_PATH,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$KeepBackup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -318,9 +319,16 @@ if ($metaEditorExitCode -ne 0) {
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+if (-not $KeepBackup) {
+    Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host "Backup anterior preservado para rollback até a validação visual:"
+    Write-Host $backupSource
+    Write-Host $backupBinary
+    Write-Host $backupProvenance
+}
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
 Write-Host "Proveniência: $provenance"
