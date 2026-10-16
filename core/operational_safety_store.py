@@ -28,7 +28,7 @@ class OperationalSafetyStore:
             final_signal = stored_signal if decision == "EXECUTAR" else "AGUARDAR"
             return DecisionSnapshot(
                 signal=final_signal,
-                candidate_signal=(data.get("candidate_signal") if isinstance(data.get("candidate_signal"), str) else None),
+                candidate_signal=(data.get("candidate_signal") if isinstance(data.get("candidate_signal"), str) else (stored_signal if decision != "EXECUTAR" else None)),
                 analysis_score=data["analysis_score"], confirmed=data["confirmed"],
                 quality_score=data["quality_score"], quality_level=str(data["quality_level"]),
                 actionable=data["actionable"] is True and decision == "EXECUTAR",
