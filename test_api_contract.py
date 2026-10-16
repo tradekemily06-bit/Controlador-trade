@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import application
+from data.models import Candle
 
 
 class ApiContractTests(unittest.TestCase):
@@ -348,7 +349,10 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
         decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
         snapshot=SimpleNamespace(market_context=market_context),
-        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(20)
+        )),
         senior_context=None,
     )
     execution = SimpleNamespace(
@@ -424,7 +428,10 @@ def _leverage_mode_orchestration():
             as_dict=lambda: {"signal": "COMPRA", "candidate_signal": "COMPRA", "actionable": True},
             market_context=SimpleNamespace(context=SimpleNamespace(value="FAVORAVEL")),
         ),
-        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(
+            Candle(datetime(2026, 10, 16, 11, tzinfo=timezone.utc) + timedelta(minutes=i), 100, 101, 99, 100, 1)
+            for i in range(20)
+        )),
         senior_context=None,
     )
 
