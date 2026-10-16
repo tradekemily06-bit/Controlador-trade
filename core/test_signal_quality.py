@@ -19,7 +19,7 @@ def test_strong_buy_is_strong():
     assert result.level == SignalLevel.FORTE
 
 
-def test_moderate_sell_is_moderate():
+def test_quality_below_70_is_weak_even_for_directional_sell():
     result = evaluate_signal_quality(
         AnalysisResult(
             signal=Signal.VENDA,
@@ -31,7 +31,7 @@ def test_moderate_sell_is_moderate():
 
     assert result.actionable is True
     assert result.score == 60
-    assert result.level == SignalLevel.MODERADA
+    assert result.level == SignalLevel.FRACA
 
 
 def test_unconfirmed_signal_is_not_actionable():
@@ -45,11 +45,11 @@ def test_unconfirmed_signal_is_not_actionable():
     )
 
     assert result.actionable is False
-    assert result.score == 0
-    assert result.level == SignalLevel.NENHUMA
+    assert result.score == 100
+    assert result.level == SignalLevel.FORTE
 
 
-def test_wait_signal_has_no_quality():
+def test_wait_signal_retains_quality_but_is_not_actionable():
     result = evaluate_signal_quality(
         AnalysisResult(
             signal=Signal.AGUARDAR,
@@ -61,7 +61,29 @@ def test_wait_signal_has_no_quality():
 
     assert result.actionable is False
     assert result.score == 0
-    assert result.level == SignalLevel.NENHUMA
+    assert result.level == SignalLevel.FRACA
+
+
+def test_quality_bands_match_ecosystem_contract():
+    from core.models import AnalysisResult, Signal
+    from core.signal_quality import evaluate_signal_quality
+
+    for directional_score, expected_score, expected_level in (
+        (15, 70, SignalLevel.MODERADA),
+        (10, 80, SignalLevel.FORTE),
+        (50, 0, SignalLevel.FRACA),
+    ):
+        result = evaluate_signal_quality(
+            AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=directional_score,
+                reason="Teste de qualidade.",
+                confirmed=False,
+            )
+        )
+        assert result.score == expected_score
+        assert result.level is expected_level
+        assert result.actionable is False
 
 
 def test_invalid_scores_fail_closed():
