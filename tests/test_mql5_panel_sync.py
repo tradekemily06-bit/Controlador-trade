@@ -645,4 +645,14 @@ def test_mql5_panel_geometry_clamps_to_small_chart_and_keeps_trade_controls_clea
     assert "panel_y=18;" in layout
     assert "ch-panel_y-66" in layout
     assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in layout
-    assert 'px=panel_x+MathMin(218,MathMax(155,panel_width-185)); py=panel_y+10; fs=9;' in panel
+    assert 'px=panel_x+(panel_width<320?MathMax(52,panel_width-112):MathMin(218,MathMax(155,panel_width-185))); py=panel_y+10; fs=9;' in panel
+
+
+def test_mql5_narrow_header_prioritizes_signal_and_panel_background_dimensions_stay_positive():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    label = panel.split("void SetLabel(", 1)[1].split("void SetButton(", 1)[0]
+    layout = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
+    assert "if(panel_width<320) text=\"\";" in label
+    assert "panel_width<320?MathMax(52,panel_width-112)" in label
+    assert "OBJPROP_YSIZE,MathMax(1,panel_height-57)" in layout
+    assert layout.count("OBJPROP_YSIZE,MathMax(1,panel_height-57)") == 2
