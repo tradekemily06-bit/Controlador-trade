@@ -286,26 +286,33 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
-        operational_state = self.mt5_operational_adapter.read_operational_state()
-        orchestration = self.trading_runtime.orchestrator.evaluate(
-            request,
-            operational_state=operational_state,
-            market_context=None,
-            confirmed=effective_confirmed,
-            filters_ok=effective_filters,
-        )
-        if self.trading_runtime.market_data_state is not None:
-            from core.p122_broker_market_data import BrokerMarketDataSnapshot
-            self.trading_runtime.market_data_state.update(
-                BrokerMarketDataSnapshot(
-                    symbol=request.symbol,
-                    timeframe=request.timeframe,
-                    candles=tuple(orchestration.market_data.candles),
-                    source=orchestration.market_data.source,
-                    received_at=orchestration.timestamp,
-                ),
-                now=orchestration.timestamp,
+        try:
+            operational_state = self.mt5_operational_adapter.read_operational_state()
+            orchestration = self.trading_runtime.orchestrator.evaluate(
+                request,
+                operational_state=operational_state,
+                market_context=None,
+                confirmed=effective_confirmed,
+                filters_ok=effective_filters,
             )
+            if self.trading_runtime.market_data_state is not None:
+                from core.p122_broker_market_data import BrokerMarketDataSnapshot
+                self.trading_runtime.market_data_state.update(
+                    BrokerMarketDataSnapshot(
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
+                        candles=tuple(orchestration.market_data.candles),
+                        source=orchestration.market_data.source,
+                        received_at=orchestration.timestamp,
+                    ),
+                    now=orchestration.timestamp,
+                )
+        except Exception as exc:
+            # Never leave the previous successful market snapshot looking current.
+            state = self.trading_runtime.market_data_state
+            if state is not None:
+                state.invalidate(f"ciclo de análise indisponível: {type(exc).__name__}")
+            raise
         self._record_analysis(orchestration.analysis)
         return orchestration
 
