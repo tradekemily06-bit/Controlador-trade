@@ -137,31 +137,53 @@ function Test-Mt5Demo {
 }
 
 function Test-ControllerHealth {
+    # Cheap liveness probe. A slow diagnostic/status route must not be treated
+    # as a dead process and must not trigger a restart loop.
+    $livenessUrl = 'http://127.0.0.1:8000/api/health/live'
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 3 -ErrorAction Stop
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $livenessUrl -TimeoutSec 3 -ErrorAction Stop
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { return $false }
+        $payload = $response.Content | ConvertFrom-Json
+        return (
+            $payload.ok -eq $true -and
+            $payload.live -eq $true -and
+            $payload.execution_allowed -eq $false -and
+            $payload.real -eq 'DESABILITADO'
+        )
+    } catch {
+        return $false
+    }
+}
+
+function Test-ControllerSafety {
+    # Detailed safety/operational diagnostics may be slow. A failure here keeps
+    # the process alive but marks ATTENTION; only failed liveness can restart it.
+    $script:LastControllerSafetyDiagnostic = ''
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 8 -ErrorAction Stop
+        if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
+            $script:LastControllerSafetyDiagnostic = "health detalhado retornou HTTP $($response.StatusCode)"
+            return $false
+        }
 
         $payload = $response.Content | ConvertFrom-Json
+        if ($payload.ok -ne $true) { $script:LastControllerSafetyDiagnostic = 'health detalhado não confirmou ok=true'; return $false }
+        if ($payload.execution_allowed -ne $false) { $script:LastControllerSafetyDiagnostic = 'execution_allowed não está bloqueado'; return $false }
+        if ($payload.real -ne 'DESABILITADO') { $script:LastControllerSafetyDiagnostic = 'REAL não está declarado DESABILITADO'; return $false }
 
-        # Contrato canonico atual do /api/health.
-        if ($payload.ok -ne $true) { return $false }
-        if ($payload.execution_allowed -ne $false) { return $false }
-        if ($payload.real -ne "DESABILITADO") { return $false }
-
-        # Estado operacional detalhado.
         $op = $payload.operational_observability.execution
-        if ($null -eq $op) { return $false }
-        if ($op.allowed -ne $false) { return $false }
-        if ($op.real -ne "DISABLED") { return $false }
+        if ($null -eq $op) { $script:LastControllerSafetyDiagnostic = 'observabilidade operacional de execução ausente'; return $false }
+        if ($op.allowed -ne $false) { $script:LastControllerSafetyDiagnostic = 'gate operacional não confirmou bloqueio'; return $false }
+        if ($op.real -ne 'DISABLED') { $script:LastControllerSafetyDiagnostic = 'gate operacional não confirmou REAL desabilitado'; return $false }
 
-        # Camada independente de REAL.
         $realRuntime = $payload.real_runtime
-        if ($null -eq $realRuntime) { return $false }
-        if ($realRuntime.real_execution_allowed -ne $false) { return $false }
-        if ($realRuntime.explicitly_enabled -ne $false) { return $false }
+        if ($null -eq $realRuntime) { $script:LastControllerSafetyDiagnostic = 'estado REAL independente ausente'; return $false }
+        if ($realRuntime.real_execution_allowed -ne $false) { $script:LastControllerSafetyDiagnostic = 'runtime REAL não confirmou bloqueio'; return $false }
+        if ($realRuntime.explicitly_enabled -ne $false) { $script:LastControllerSafetyDiagnostic = 'runtime REAL está explicitamente habilitado'; return $false }
 
         return $true
     } catch {
+        $script:LastControllerSafetyDiagnostic = "diagnóstico detalhado indisponível: $($_.Exception.Message)"
         return $false
     }
 }
@@ -222,12 +244,12 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     $process = $null
     if ($null -ne $existingController) {
-        Write-StartupLog "Instância existente detectada (PID $($existingController.ProcessId)); verificando /api/health antes de declarar HEALTHY."
+        Write-StartupLog "Instância existente detectada (PID $($existingController.ProcessId)); verificando /api/health/live."
         if (Test-ControllerHealth) {
             $process = Get-Process -Id $existingController.ProcessId -ErrorAction Stop
-            Write-SupervisorStatus 'HEALTHY' 'Instância existente detectada e /api/health respondeu 2xx; entrando no monitoramento contínuo.'
+            Write-SupervisorStatus 'STARTING' 'Instância existente responde ao liveness; validando segurança detalhada sem reinício automático.'
         } else {
-            Write-StartupLog 'Instância existente não respondeu /api/health; encerrando-a para evitar estado falso/duplicado.'
+            Write-StartupLog 'Instância existente não respondeu /api/health/live; encerrando-a para recuperação limpa.'
             & taskkill.exe /PID $existingController.ProcessId /T /F 2>$null | Out-Null
             Start-Sleep -Seconds 2
         }
@@ -245,9 +267,16 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     $healthy = Wait-ControllerHealth -Process $process -WaitSeconds $HealthWaitSeconds
     if ($healthy) {
-        Write-StartupLog "Controlador saudável: /api/health respondeu 2xx (PID $($process.Id))."
-        Write-SupervisorStatus 'HEALTHY' 'app.py ativo e /api/health respondeu 2xx.'
+        Write-StartupLog "Controlador respondeu ao liveness (PID $($process.Id)); verificando segurança detalhada separadamente."
+        $safetyReady = Test-ControllerSafety
+        if ($safetyReady) {
+            Write-SupervisorStatus 'HEALTHY' 'app.py ativo; liveness e health detalhado confirmados; REAL bloqueado.'
+        } else {
+            Write-StartupLog "Health detalhado requer atenção: $script:LastControllerSafetyDiagnostic"
+            Write-SupervisorStatus 'ATTENTION' "app.py está vivo; health detalhado indisponível ou inseguro: $script:LastControllerSafetyDiagnostic. Execução permanece bloqueada."
+        }
         $healthFailures = 0
+        $safetyProbeCounter = 0
         while (-not $process.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-StartupLog 'Parada controlada detectada enquanto o Controlador estava saudável.'
@@ -258,11 +287,23 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                 $healthFailures = 0
             } else {
                 $healthFailures++
-                Write-StartupLog "Health do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
+                Write-StartupLog "Liveness do Controlador falhou ($healthFailures/$HealthFailureThreshold) enquanto o processo permanecia ativo."
                 if ($healthFailures -ge $HealthFailureThreshold) {
-                    Write-StartupLog 'Health do Controlador permaneceu indisponível; iniciando recuperação supervisionada.'
-                    Stop-ControllerProcess -Process $process
+                    Write-StartupLog 'Liveness do Controlador permaneceu indisponível; iniciando recuperação supervisionada.'
+                    Stop-ControllerProcess -Process $process -Reason 'Liveness não respondeu; encerrando processo para recuperação limpa'
                     break
+                }
+            }
+
+            $safetyProbeCounter++
+            if ($safetyProbeCounter -ge 10) {
+                $safetyProbeCounter = 0
+                $safetyReady = Test-ControllerSafety
+                if ($safetyReady) {
+                    Write-SupervisorStatus 'HEALTHY' 'app.py ativo; liveness e health detalhado confirmados; REAL bloqueado.'
+                } else {
+                    Write-StartupLog "Health detalhado requer atenção: $script:LastControllerSafetyDiagnostic"
+                    Write-SupervisorStatus 'ATTENTION' "app.py está vivo; health detalhado indisponível ou inseguro: $script:LastControllerSafetyDiagnostic. Execução permanece bloqueada."
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
