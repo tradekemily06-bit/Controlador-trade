@@ -11,6 +11,8 @@ def safe_request(**overrides):
         "external_side_effects": False,
         "touches_execution_state": False,
         "requires_human_supervision": False,
+        "cooldown_elapsed": True,
+        "maintenance_lock_clear": True,
         "attempts_used": 0,
         "max_attempts": 1,
     }
