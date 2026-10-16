@@ -151,12 +151,57 @@ function Test-Mt5Demo {
     return $false
 }
 
+function Invoke-RuntimeHttpProbe {
+    param(
+        [string]$Uri,
+        [int]$TimeoutSeconds
+    )
+    # Use Python urllib with proxy auto-detection disabled. On this Windows
+    # runtime, PowerShell's Invoke-WebRequest can stall far beyond its timeout;
+    # the local liveness probe must be cheap and predictably bounded.
+    $probeCode = @'
+import json, sys, urllib.request
+url = sys.argv[1]
+timeout = float(sys.argv[2])
+request = urllib.request.Request(url, headers={"Connection": "close", "User-Agent": "ControladorSupervisor/1.0"})
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+try:
+    with opener.open(request, timeout=timeout) as response:
+        print(json.dumps({
+            "status": int(response.status),
+            "body": response.read().decode("utf-8", errors="replace")
+        }, separators=(",", ":")))
+except Exception as exc:
+    print(json.dumps({
+        "error": type(exc).__name__,
+        "message": str(exc)
+    }, separators=(",", ":")))
+    raise SystemExit(1)
+'@
+    $encodedProbeCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($probeCode))
+    $oneLineProbeCode = "import base64;exec(compile(base64.b64decode('$encodedProbeCode'),'<runtime-http-probe>','exec'))"
+    $probeOutput = & $PythonExe -c $oneLineProbeCode $Uri $TimeoutSeconds 2>&1
+    $probeExitCode = $LASTEXITCODE
+    $lastLine = [string](@($probeOutput | ForEach-Object { [string]$_ } | Select-Object -Last 1))
+    if ($probeExitCode -ne 0) {
+        throw "probe HTTP local falhou: $lastLine"
+    }
+    $result = $lastLine | ConvertFrom-Json
+    if ($null -eq $result.status -or $null -eq $result.body) {
+        throw "resposta inválida do probe HTTP local: $lastLine"
+    }
+    return [pscustomobject]@{
+        StatusCode = [int]$result.status
+        Content = [string]$result.body
+    }
+}
+
 function Test-ControllerHealth {
     # Cheap liveness probe. A slow diagnostic/status route must not be treated
     # as a dead process and must not trigger a restart loop.
     $livenessUrl = 'http://127.0.0.1:8000/api/health/live'
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $livenessUrl -TimeoutSec 3 -ErrorAction Stop
+        $response = Invoke-RuntimeHttpProbe -Uri $livenessUrl -TimeoutSeconds 3
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) { return $false }
         $payload = $response.Content | ConvertFrom-Json
         return (
@@ -173,7 +218,7 @@ function Test-ControllerSafety {
     # the process alive but marks ATTENTION; only failed liveness can restart it.
     $script:LastControllerSafetyDiagnostic = ''
     try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -TimeoutSec 8 -ErrorAction Stop
+        $response = Invoke-RuntimeHttpProbe -Uri $healthUrl -TimeoutSeconds 8
         if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300) {
             $script:LastControllerSafetyDiagnostic = "health detalhado retornou HTTP $($response.StatusCode)"
             return $false
