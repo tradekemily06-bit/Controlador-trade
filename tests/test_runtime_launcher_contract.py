@@ -210,3 +210,17 @@ def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webreques
     ):
         assert required in text
     assert "Invoke-WebRequest" not in text
+
+
+
+def test_supervisors_fail_closed_when_restart_history_is_corrupt():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "$script:RestartHistoryValid = $true" in text
+        assert "$script:RestartHistoryValid = $false" in text
+        assert "ConvertFrom-Json -ErrorAction Stop" in text
+        assert "Histórico de reinícios inválido; recuperação automática bloqueada" in text
+        assert "timestamp inválido no histórico de reinícios" in text
