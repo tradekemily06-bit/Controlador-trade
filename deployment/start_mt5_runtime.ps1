@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 
 if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
     $resolvedPython = Get-Command $PythonExe -ErrorAction SilentlyContinue
@@ -19,15 +20,22 @@ if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
         throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."
     }
     $PythonExe = $resolvedPython.Source
+} elseif (-not [System.IO.Path]::IsPathRooted($PythonExe)) {
+    $projectPython = Join-Path $ProjectRoot $PythonExe
+    if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
+        $PythonExe = [System.IO.Path]::GetFullPath($projectPython)
+    }
 }
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
 }
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
+} elseif (-not [System.IO.Path]::IsPathRooted($RuntimeDir)) {
+    $RuntimeDir = Join-Path $ProjectRoot $RuntimeDir
 }
-New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
+New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
 $env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) { $ProjectRoot } else { "$ProjectRoot;$($env:PYTHONPATH)" }
 Set-Location $ProjectRoot
 
