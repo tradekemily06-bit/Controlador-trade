@@ -64,7 +64,7 @@ class TradingOrchestrator:
         market_context: MarketContextResult | None,
         senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
-        filters_ok: bool = True,
+        filters_ok: bool = False,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
