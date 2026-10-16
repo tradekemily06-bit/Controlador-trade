@@ -4,7 +4,8 @@ param(
     [string]$MetaEditorPath = '',
     [string]$Mt5TerminalPath = '',
     [string]$Mt5DataPath = $env:CONTROLADOR_MT5_DATA_PATH,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$KeepBackup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -179,6 +180,53 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
 }
 
 $dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath
+
+function Assert-Mt5DemoAccount([string]$TerminalPath, [string]$ExpectedDataPath) {
+    $code = @'
+import json
+import os
+import sys
+import MetaTrader5 as mt5
+terminal_path = sys.argv[1]
+expected_data_path = sys.argv[2]
+state = "UNKNOWN"
+try:
+    ok = mt5.initialize(path=terminal_path)
+    terminal = mt5.terminal_info() if ok else None
+    account = mt5.account_info() if ok else None
+    demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+    if ok and terminal is not None and account is not None and demo_mode is not None:
+        actual_terminal = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(terminal_path))))
+        actual_data = os.path.normcase(os.path.realpath(getattr(terminal, "data_path", "")))
+        expected_terminal = os.path.normcase(os.path.realpath(terminal_path))
+        expected_data = os.path.normcase(os.path.realpath(expected_data_path))
+        if actual_terminal != expected_terminal:
+            state = "TERMINAL_PATH_MISMATCH"
+        elif actual_data != expected_data:
+            state = "DATA_PATH_MISMATCH"
+        elif getattr(account, "trade_mode", None) != demo_mode:
+            state = "NON_DEMO"
+        else:
+            state = "DEMO"
+finally:
+    mt5.shutdown()
+print(json.dumps({"state": state}))
+'@
+    $encodedCode = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($code))
+    $oneLineCode = "import base64;exec(compile(base64.b64decode('$encodedCode'),'<mt5-demo-check>','exec'))"
+    $result = & $PythonExe -c $oneLineCode $TerminalPath $ExpectedDataPath 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $result) {
+        throw 'Sincronização cancelada: não foi possível confirmar a conta DEMO e a pasta de dados do terminal.'
+    }
+    try { $payload = $result | ConvertFrom-Json } catch {
+        throw 'Sincronização cancelada: resposta da verificação DEMO inválida.'
+    }
+    if ([string]$payload.state -ne 'DEMO') {
+        throw "Sincronização cancelada: terminal não confirmou DEMO na pasta configurada (estado=$($payload.state))."
+    }
+}
+
+Assert-Mt5DemoAccount -TerminalPath $Mt5TerminalPath -ExpectedDataPath $dataPath
 $terminalInstallPath = Split-Path -Parent $Mt5TerminalPath
 $destinationDir = Join-Path $dataPath 'MQL5\Experts\ControladorTrading'
 $destination = Join-Path $destinationDir 'Controlador-Trading.mq5'
@@ -318,9 +366,16 @@ if ($metaEditorExitCode -ne 0) {
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+if (-not $KeepBackup) {
+    Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+} else {
+    Write-Host "Backup anterior preservado para rollback até a validação visual:"
+    Write-Host $backupSource
+    Write-Host $backupBinary
+    Write-Host $backupProvenance
+}
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
 Write-Host "Proveniência: $provenance"
