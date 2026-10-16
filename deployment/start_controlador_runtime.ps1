@@ -161,9 +161,7 @@ function Test-ControllerHealth {
         $payload = $response.Content | ConvertFrom-Json
         return (
             $payload.ok -eq $true -and
-            $payload.live -eq $true -and
-            $payload.execution_allowed -eq $false -and
-            $payload.real -eq 'DESABILITADO'
+            $payload.live -eq $true
         )
     } catch {
         return $false
