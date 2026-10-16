@@ -250,18 +250,37 @@ print(state)
 }
 
 function Stop-Mt5Process {
-    param([System.Diagnostics.Process]$Process)
-    if ($null -eq $Process -or $Process.HasExited) { return }
+    param(
+        [System.Diagnostics.Process]$Process,
+        [switch]$ControlledStop
+    )
+    if ($null -eq $Process -or $Process.HasExited) { return $true }
     $accountSafetyState = Get-Mt5AccountSafetyState
-    if ($accountSafetyState -ne 'DEMO') {
-        $reason = "MT5 não será encerrado automaticamente: conta/caminho não confirmados como DEMO (estado=$accountSafetyState)."
+    if ($accountSafetyState -notin @('DEMO', 'DEMO_WITH_OPEN_TRADES') -or
+        ($accountSafetyState -eq 'DEMO_WITH_OPEN_TRADES' -and -not $ControlledStop)) {
+        $reason = "MT5 não será encerrado automaticamente: conta, posições ou ordens não confirmadas em estado seguro (estado=$accountSafetyState)."
         Write-SupervisorLog $reason
-        Write-SupervisorStatus 'FAILED' $reason
-        throw $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        return $false
     }
-    Write-SupervisorLog "MT5 DEMO não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
+
+    if (-not $ControlledStop) {
+        if (-not (Test-SafeRepairAuthorization -Action 'restart_mt5_terminal' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour)) {
+            $reason = "Reparo automático do MT5 bloqueado pela política: $script:LastRepairAuthorizationDiagnostic"
+            Write-SupervisorLog $reason
+            Write-SupervisorStatus 'ATTENTION' $reason
+            return $false
+        }
+    }
+
+    if ($ControlledStop) {
+        Write-SupervisorLog "Parada controlada solicitada; terminal confirmado DEMO (estado=$accountSafetyState)."
+    } else {
+        Write-SupervisorLog "MT5 DEMO sem posições/ordens abertas não passou no health gate; política autorizou encerramento do PID $($Process.Id)."
+    }
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 3
+    return $true
 }
 
 function Wait-Mt5Health {
