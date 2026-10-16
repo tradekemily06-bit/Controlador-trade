@@ -43,6 +43,12 @@ O Agendador de Tarefas também recebe uma política de reinício para falha da p
 
 A supervisão não autoriza execução. No supervisor do MT5, o health contínuo verifica conexão real do terminal e conta DEMO; disponibilidade de cotação/símbolo é tratada separadamente como condição de mercado/dados. Assim, fechamento de mercado ou ausência temporária de tick não deve ser confundido com terminal morto nem provocar reinício desnecessário do MT5. Antes de cada nova inicialização do Controlador, o preflight DEMO é repetido; se o MT5 não estiver seguro, o Controlador pode iniciar para manter a interface/observabilidade, mas a execução continua sujeita aos gates existentes e permanece bloqueada quando qualquer pré-requisito estiver inseguro.
 
+O supervisor do Controlador separa dois tipos de verificação:
+- `/api/health/live` é uma verificação leve de que o processo HTTP está respondendo. Ela não consulta corretora, banco, risco ou observabilidade e é usada para decidir se o processo precisa de reinício.
+- `/api/health` continua sendo o diagnóstico detalhado de segurança e operação. Se esse diagnóstico ficar lento, indisponível ou apontar atenção, o supervisor marca `ATTENTION` e mantém a execução bloqueada; não mata um processo que ainda responde ao liveness só porque o diagnóstico detalhado demorou.
+
+Somente a falha persistente do liveness pode acionar a recuperação do processo. A resposta de liveness nunca concede permissão de execução nem declara a conta DEMO saudável.
+
 Cada supervisor grava um estado pequeno e não secreto em `CONTROLADOR_RUNTIME_DIR`:
 - `controlador-supervisor-status.json`
 - `mt5-supervisor-status.json`
