@@ -226,3 +226,10 @@ def test_supervisors_fail_closed_when_restart_history_is_corrupt():
         assert "ConvertFrom-Json -ErrorAction Stop" in text
         assert "Histórico de reinícios inválido; recuperação automática bloqueada" in text
         assert "timestamp inválido no histórico de reinícios" in text
+
+
+
+def test_container_healthcheck_uses_lightweight_liveness_endpoint():
+    text = _read("Dockerfile")
+    assert "/api/health/live" in text
+    assert "'/api/health'" not in text
