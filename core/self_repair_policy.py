@@ -21,6 +21,8 @@ class RepairRequest:
     external_side_effects: bool = False
     touches_execution_state: bool = False
     requires_human_supervision: bool = False
+    cooldown_elapsed: bool = True
+    maintenance_lock_clear: bool = True
     attempts_used: int = 0
     max_attempts: int = 1
 
@@ -61,6 +63,8 @@ class SelfRepairPolicy:
                 request.external_side_effects,
                 request.touches_execution_state,
                 request.requires_human_supervision,
+                request.cooldown_elapsed,
+                request.maintenance_lock_clear,
             )
         ):
             return SelfRepairPolicy._blocked("atributos de segurança inválidos")
@@ -92,6 +96,10 @@ class SelfRepairPolicy:
             blockers.append("reparo afeta estado de execução ou operações")
         if request.requires_human_supervision:
             blockers.append("reparo exige supervisão humana")
+        if not request.cooldown_elapsed:
+            blockers.append("período de espera controlada ainda não terminou")
+        if not request.maintenance_lock_clear:
+            blockers.append("bloqueio de manutenção está ativo")
 
         if blockers:
             return SelfRepairPolicy._blocked("; ".join(blockers))
