@@ -421,8 +421,8 @@ string JsonObjectValue(string json,string object_key,string field_key){
    if(open<0) return "";
    int close=StringFind(json,"}",open);
    if(close<0) return "";
-   string object=StringSubstr(json,open,close-open+1);
-   return JsonValue(object,field_key);
+   string nested_json=StringSubstr(json,open,close-open+1);
+   return JsonValue(nested_json,field_key);
 }
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
