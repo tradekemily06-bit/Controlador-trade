@@ -322,5 +322,8 @@ def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(m
     assert payload["quality"]["score"] == 84.0
     assert payload["quality"]["level"] == "FORTE"
     assert payload["quality"]["actionable"] is False
+    assert payload["snapshot"]["signal"] == "AGUARDAR"
+    assert payload["snapshot"]["candidate_signal"] == "COMPRA"
+    assert payload["snapshot"]["actionable"] is False
     assert payload["reason"] == "risco operacional não aprovado"
     assert payload["execution_allowed"] is False
