@@ -333,7 +333,7 @@ def test_mql5_compact_signal_uses_sentence_case_for_correct_signal_colors():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert 'color compact_color=(shown_signal=="Comprar")?C\'0,220,145\':(shown_signal=="Vender")?C\'255,82,105\':C\'255,176,0\';' not in toggle
-    assert 'string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));' in toggle
+    assert 'string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":(shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL":"AGUARDAR")));' in toggle
     assert 'IsValidQualityScore(last_score)' in toggle
     assert 'Obj("COLLAPSED_QUALITY")' in toggle
     assert 'y+22' in toggle
@@ -386,20 +386,20 @@ def test_mql5_only_displays_runtime_quality_scores_from_1_to_100():
     assert "return value>=1 && value<=100;" in quality
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
-    assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in analyze
-    assert 'if(!quality_valid){ signal="Aguardar"; score=""; reason="Qualidade indisponível ou fora de 1 a 100; sinal retido em Aguardar."; }' in cycle
+    assert 'if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score=""; reason="Qualidade indisponível; análise não pode ser apresentada com segurança."; }' in analyze
+    assert 'if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score=""; reason="Qualidade indisponível; análise não pode ser apresentada com segurança."; }' in cycle
 
 def test_mql5_analysis_failure_clears_stale_compact_signal():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
     failure = analyze.split('if(!Http("POST","/api/runtime/analysis"', 1)[1].split("\n   }", 1)[0]
-    assert 'last_signal="Aguardar";' in failure
+    assert 'last_signal="ANALISE_INDISPONIVEL";' in failure
     assert 'last_score="";' in failure
     assert 'runtime_ok=false;' not in failure
     assert 'last_signal="Aguardar";' in failure
     assert 'last_score="";' in failure
     assert 'RefreshPanelToggle();' in failure
-    assert '"Análise indisponível; sinal anterior descartado"' in failure
+    assert '"Falha no runtime; sinal anterior descartado"' in failure
 
 def test_mql5_failed_demo_cycle_clears_stale_signal():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
@@ -408,7 +408,7 @@ def test_mql5_failed_demo_cycle_clears_stale_signal():
     assert 'last_signal="Aguardar";' in failure
     assert 'last_score="";' in failure
     assert 'RefreshPanelToggle();' in failure
-    assert '"Ciclo não confirmado pelo runtime."' in failure
+    assert '"Ciclo não confirmado; sinal anterior descartado."' in failure
 
 def test_mql5_signal_quality_and_reason_positions_match_after_redraw():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
@@ -469,8 +469,8 @@ def test_mql5_normalizes_signal_case_before_rendering_current_market_decision():
     cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
     assert analyze.count("StringToUpper(signal);") == 1
     assert cycle.count("StringToUpper(signal);") == 1
-    assert 'if(!quality_valid){ signal="Aguardar"; score="";' in analyze
-    assert 'if(!quality_valid){ signal="Aguardar"; score="";' in cycle
+    assert 'if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score="";' in analyze
+    assert 'if(!quality_valid){ signal="ANALISE_INDISPONIVEL"; score="";' in cycle
 
 
 def test_mql5_study_failure_clears_stale_content_from_previous_refresh():
@@ -658,3 +658,24 @@ def test_mql5_narrow_header_prioritizes_signal_and_panel_background_dimensions_s
     assert "panel_width<320?MathMax(52,panel_width-112)" in label
     assert "OBJPROP_YSIZE,MathMax(1,panel_height-57)" in layout
     assert layout.count("OBJPROP_YSIZE,MathMax(1,panel_height-57)") == 2
+
+
+def test_mql5_reads_quality_from_nested_api_contract_and_cycle_wrapper():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'NormalizeQualityScore(JsonNestedValue(r,"quality","score"))' in analyze
+    assert 'string runtime=JsonObject(r,"runtime");' in cycle
+    assert 'NormalizeQualityScore(JsonNestedValue(runtime,"quality","score"))' in cycle
+    assert 'string allowed=JsonValue(r,"execution_allowed");' in cycle
+    assert 'JsonValue(runtime,"cycle_id")' in cycle
+    assert "double value=StringToDouble(raw);" in panel
+    assert "return IntegerToString(rounded);" in panel
+
+
+def test_mql5_shows_analysis_unavailable_separately_from_wait():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert 'return "Análise indisponível";' in panel
+    assert 'shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL"' in panel
+    assert 'last_signal="ANALISE_INDISPONIVEL";' in panel
+    assert 'SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);' in panel
