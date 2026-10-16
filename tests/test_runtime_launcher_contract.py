@@ -207,6 +207,8 @@ def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webreques
         "urllib.request.ProxyHandler({})",
         "Invoke-RuntimeHttpProbe -Uri $livenessUrl -TimeoutSeconds 3",
         "Invoke-RuntimeHttpProbe -Uri $healthUrl -TimeoutSeconds 8",
+        "$script:LastControllerLivenessDiagnostic",
+        "detalhe=$script:LastControllerLivenessDiagnostic",
     ):
         assert required in text
     assert "Invoke-WebRequest" not in text
