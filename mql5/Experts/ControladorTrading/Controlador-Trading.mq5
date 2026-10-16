@@ -277,7 +277,7 @@ void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
    if(panel_visible){ Panel(); RenderView(); Analyze(true); }
-   else DeletePanel(true,true);
+   else DeletePanel(true);
    RefreshPanelToggle();
    ChartRedraw();
 }
@@ -381,7 +381,7 @@ void Panel(){
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
    RefreshPanelToggle();
 }
-void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
+void DeletePanel(bool preserveToggle=false){
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
