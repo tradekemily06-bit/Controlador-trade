@@ -86,6 +86,7 @@ class ApiContractTests(unittest.TestCase):
 
     def test_mt5_runtime_analysis_is_read_only_and_exposes_market_snapshot(self):
         fake = SimpleNamespace(
+            timestamp=datetime(2026, 10, 8, 12, tzinfo=timezone.utc),
             analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=62.0, reason="leitura demo", confirmed=True, symbol="EURUSD", timeframe="5m"),
             quality=SimpleNamespace(score=61.0, level=SimpleNamespace(value="MODERADA"), actionable=False),
             decision=SimpleNamespace(decision="AGUARDAR", reason="sem autorização de execução"),
@@ -109,6 +110,8 @@ class ApiContractTests(unittest.TestCase):
             )
         self.assertEqual(status, "200 OK")
         self.assertEqual(payload["analysis"]["signal"], "AGUARDAR")
+        self.assertEqual(payload["analysis_cycle"]["timestamp"], "2026-10-08T12:00:00+00:00")
+        self.assertEqual(payload["analysis_cycle"]["symbol"], "EURUSD")
         self.assertEqual(payload["market_data"]["source"], "IC Markets MT5 DEMO")
         self.assertEqual(payload["market_data"]["candles"], 20)
         self.assertFalse(payload["execution_allowed"])
@@ -236,3 +239,23 @@ def test_mt5_runtime_analysis_exposes_limited_ohlcv_for_chart(monkeypatch):
     assert len(payload["market_data"]["ohlcv"]) == 120
     assert payload["market_data"]["ohlcv"][0]["open"] == candles[-120].open
     assert payload["execution_allowed"] is False
+
+
+def test_mt5_market_data_failure_returns_unavailable_not_old_signal(monkeypatch):
+    import app
+    from execution.icmarkets_mt5_market_data import MT5MarketDataError
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: (_ for _ in ()).throw(MT5MarketDataError("dados indisponíveis")),
+    )
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/analysis",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+    assert status == "503 Service Unavailable"
+    assert payload["execution_allowed"] is False
+    assert payload["detail"] == "dados indisponíveis"
+    assert "signal" not in payload
