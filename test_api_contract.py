@@ -327,3 +327,58 @@ def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(m
     assert payload["snapshot"]["actionable"] is False
     assert payload["reason"] == "risco operacional não aprovado"
     assert payload["execution_allowed"] is False
+
+
+def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
+    import app
+
+    candidate = SimpleNamespace(
+        signal=SimpleNamespace(value="COMPRA"),
+        score=92.0,
+        reason="candidato técnico de compra",
+        confirmed=True,
+        symbol="EURUSD",
+        timeframe="5m",
+    )
+    market_context = SimpleNamespace(context=SimpleNamespace(value="FAVORAVEL"))
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 16, 12, tzinfo=timezone.utc),
+        analysis=candidate,
+        quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
+        decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
+        snapshot=SimpleNamespace(market_context=market_context),
+        market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=tuple(range(20))),
+        senior_context=None,
+    )
+    execution = SimpleNamespace(
+        accepted=False,
+        status=SimpleNamespace(value="BLOCKED"),
+        message="execução bloqueada",
+        external_id=None,
+    )
+    cycle = SimpleNamespace(
+        orchestration=orchestration,
+        execution=execution,
+        plan=SimpleNamespace(request_id="request-test"),
+        automation_lifecycle=None,
+    )
+    result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **_: result)
+
+    status, _, payload = ApiContractTests().request(
+        "/api/runtime/cycle",
+        method="POST",
+        payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
+    )
+
+    runtime = payload["runtime"]
+    assert status == "200 OK"
+    assert runtime["signal"] == "AGUARDAR"
+    assert runtime["candidate_signal"] == "COMPRA"
+    assert runtime["analysis"]["signal"] == "AGUARDAR"
+    assert runtime["quality"]["score"] == 84.0
+    assert runtime["quality"]["level"] == "FORTE"
+    assert runtime["quality"]["actionable"] is False
+    assert runtime["analysis_cycle"]["timestamp"] == "2026-10-16T12:00:00+00:00"
+    assert runtime["reason"] == "risco operacional não aprovado"
+    assert payload["execution_allowed"] is False
