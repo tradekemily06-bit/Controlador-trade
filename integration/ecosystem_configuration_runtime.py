@@ -286,6 +286,10 @@ class ConfiguredEcosystemService(EcosystemService):
         effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
         effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
+        if self.trading_runtime.market_data_state is None:
+            raise RuntimeError(
+                "integridade dos dados de mercado não conectada; análise indisponível"
+            )
         market_data_report = None
         try:
             operational_state = self.mt5_operational_adapter.read_operational_state()
