@@ -50,3 +50,33 @@ def test_gap_snapshot_is_not_safe() -> None:
     assert report.health.value == "GAP"
     assert report.safe_for_analysis is False
     assert state.status()["gap_count"] == 1
+
+
+def test_failed_latest_cycle_invalidates_previously_healthy_snapshot() -> None:
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    state.update(
+        snapshot(0, 1, 2),
+        now=datetime(2026, 1, 1, 0, 3, tzinfo=timezone.utc),
+        expected_interval_seconds=60,
+    )
+    assert state.status()["health"] == "HEALTHY"
+
+    state.invalidate("ciclo de análise indisponível: MT5MarketDataError")
+    status = state.status()
+    assert status["health"] == "NOT_CONNECTED"
+    assert status["safe_for_analysis"] is False
+    assert status["source"] is None
+    assert status["message"] == "ciclo de análise indisponível: MT5MarketDataError"
+
+
+def test_successful_update_clears_previous_unavailable_reason() -> None:
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    state.invalidate("falha de teste")
+    state.update(
+        snapshot(0, 1, 2),
+        now=datetime(2026, 1, 1, 0, 3, tzinfo=timezone.utc),
+        expected_interval_seconds=60,
+    )
+    assert state.status()["health"] == "HEALTHY"
+    assert "message" in state.status()
+    assert state.status()["source"] == "TEST_PROVIDER"
