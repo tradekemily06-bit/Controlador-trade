@@ -265,3 +265,11 @@ def test_mql5_panel_refreshes_analysis_when_chart_context_changes():
     assert "last_analysis_period=(int)_Period;" in init
     assert "bool context_changed=(_Symbol!=last_analysis_symbol || (int)_Period!=last_analysis_period);" in timer
     assert timer.count("Analyze(false);") >= 2
+
+
+def test_mql5_preferences_changes_refresh_or_invalidate_current_analysis():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(bool render=true)", 1)[0]
+    assert "Analyze(false);" in save
+    assert "last_analysis_available=false;" in save
+    assert "Preferências não sincronizadas; sinal anterior descartado" in save
