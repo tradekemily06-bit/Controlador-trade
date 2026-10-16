@@ -372,8 +372,8 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
-                    "symbol": orchestration.market_data.symbol,
-                    "timeframe": orchestration.market_data.timeframe,
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
                 },
                 "signal": orchestration.analysis.signal.value,
                 "score": orchestration.analysis.score,
