@@ -39,23 +39,18 @@ class SignalQualityEvaluator:
                 actionable=False,
             )
 
+        # Quality describes the evidence strength of this analysis cycle,
+        # not permission to trade. Waiting/unconfirmed analyses retain a score,
+        # while actionable remains false unless a confirmed directional signal exists.
         actionable = (
             analysis.confirmed is True
             and analysis.signal in (Signal.COMPRA, Signal.VENDA)
         )
-
-        if not actionable:
-            return SignalQuality(
-                score=0.0,
-                level=SignalLevel.NENHUMA,
-                actionable=False,
-            )
-
         quality_score = abs(score - 50.0) * 2.0
 
         if quality_score >= 80:
             level = SignalLevel.FORTE
-        elif quality_score >= 60:
+        elif quality_score >= 70:
             level = SignalLevel.MODERADA
         else:
             level = SignalLevel.FRACA
