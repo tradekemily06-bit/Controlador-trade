@@ -325,6 +325,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
     }
 
     if ($null -eq $process) {
+        if ($restartTimes.Count -gt 0 -and
+            -not (Test-SafeRepairAuthorization -Action 'restart_controller' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour)) {
+            Write-StartupLog "Nova inicialização automática do Controlador bloqueada pela política: $script:LastRepairAuthorizationDiagnostic"
+            Write-SupervisorStatus 'ATTENTION' "Nova inicialização bloqueada pela política de autorreparo: $script:LastRepairAuthorizationDiagnostic"
+            Start-Sleep -Seconds 30
+            continue
+        }
         Write-StartupLog 'Iniciando app.py sob supervisão.'
         if (Test-Path -LiteralPath $appStdoutPath) { Remove-Item -LiteralPath $appStdoutPath -Force -ErrorAction SilentlyContinue }
         if (Test-Path -LiteralPath $appStderrPath) { Remove-Item -LiteralPath $appStderrPath -Force -ErrorAction SilentlyContinue }
