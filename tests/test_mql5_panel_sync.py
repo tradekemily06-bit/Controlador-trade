@@ -60,18 +60,20 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
 
 def test_mql5_panel_uses_controlador_trading_brand_without_chart_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"Controlador-Trading"' in panel
-    assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
+    assert '#property description "Controlador Trading - interface nativa do ecossistema no grafico MT5."' in panel
+    assert "Modo: Demonstração / Simulação" in panel
     assert "RUNTIME REAL" not in panel
-    assert '"CONTROLADOR TRADING"' in panel
+    assert '"Controlador Trading"' in panel
     assert "watermark" not in panel.lower()
     assert "WATERMARK_MARK" not in panel
     assert "ApplyWatermark" not in panel
     assert "ToggleWatermark" not in panel
-    assert "InpPanelWidth = 280" in panel
-    assert "InpPanelHeight = 380" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.22)" in panel
+    assert "InpPanelWidth = 420" in panel
+    assert "InpPanelHeight = 430" in panel
+    assert "panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));" in panel
+    assert "panel_x=12;" in panel
+    assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in panel
+    assert "panel_compact=(panel_height<340 || panel_width<350);" in panel
     assert "OBJPROP_ANGLE,18.0" not in panel
 
 
@@ -204,7 +206,9 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
+    assert "int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));" in panel
+    assert "int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));" in panel
+    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,43);" in panel
 
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
