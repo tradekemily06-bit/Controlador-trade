@@ -237,6 +237,8 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
+        if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+            raise ValueError("confirmed e filters_ok devem ser booleanos")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -267,6 +269,10 @@ class ConfiguredEcosystemService(EcosystemService):
         filters_ok: bool | None = None,
     ) -> Any:
         """Analyze the current MT5 DEMO market snapshot without executing an order."""
+        if confirmed is not None and not isinstance(confirmed, bool):
+            raise ValueError("confirmed deve ser booleano ou None")
+        if filters_ok is not None and not isinstance(filters_ok, bool):
+            raise ValueError("filters_ok deve ser booleano ou None")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -283,8 +289,8 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
-        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        effective_confirmed = prefs.require_closed_candle if confirmed is None else confirmed
+        effective_filters = prefs.require_filters if filters_ok is None else filters_ok
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         if self.trading_runtime.market_data_state is None:
             raise RuntimeError(
