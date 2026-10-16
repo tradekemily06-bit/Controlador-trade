@@ -378,6 +378,10 @@ def application(environ, start_response):
                 if decision_value == "EXECUTAR"
                 else orchestration.decision.reason
             )
+            snapshot_data = snapshot.as_dict()
+            snapshot_data["candidate_signal"] = snapshot_data.get("signal", candidate_signal)
+            snapshot_data["signal"] = display_signal
+            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and decision_value == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
                 "analysis_cycle": {
                     "timestamp": orchestration.timestamp.isoformat(),
@@ -406,7 +410,7 @@ def application(environ, start_response):
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                     "reason": orchestration.decision.reason,
                 },
-                "snapshot": snapshot.as_dict(),
+                "snapshot": snapshot_data,
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),
