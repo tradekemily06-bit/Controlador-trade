@@ -44,7 +44,7 @@ def test_gap_snapshot_is_not_safe() -> None:
     state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
     report = state.update(
         snapshot(0, 2),
-        now=datetime(2026, 1, 1, 0, 2, tzinfo=timezone.utc),
+        now=datetime(2026, 1, 1, 0, 3, tzinfo=timezone.utc),
         expected_interval_seconds=60,
     )
     assert report.health.value == "GAP"
@@ -80,3 +80,20 @@ def test_successful_update_clears_previous_unavailable_reason() -> None:
     assert state.status()["health"] == "HEALTHY"
     assert "message" in state.status()
     assert state.status()["source"] == "TEST_PROVIDER"
+
+
+def test_freshness_uses_completed_bar_boundary_for_five_minute_candles() -> None:
+    state = MarketDataRuntimeState(MarketDataRuntimeIntegrity())
+    report = state.update(
+        snapshot(0, timeframe="5m"),
+        now=datetime(2026, 1, 1, 0, 9, tzinfo=timezone.utc),
+    )
+    assert report.health.value == "HEALTHY"
+    assert report.safe_for_analysis is True
+
+    report = state.update(
+        snapshot(0, timeframe="5m"),
+        now=datetime(2026, 1, 1, 0, 10, 1, tzinfo=timezone.utc),
+    )
+    assert report.health.value == "STALE"
+    assert report.safe_for_analysis is False
