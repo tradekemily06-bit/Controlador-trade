@@ -311,20 +311,49 @@ def application(environ, start_response):
             )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            orchestration = cycle.orchestration
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
-                "decision": cycle.orchestration.decision.decision,
-                "signal": cycle.orchestration.analysis.signal.value,
-                "score": cycle.orchestration.analysis.score,
-                "reason": cycle.orchestration.decision.reason,
-                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
-                "market_data_source": cycle.orchestration.market_data.source,
-                "candles": len(cycle.orchestration.market_data.candles),
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "decision": decision_value,
+                "signal": display_signal,
+                "candidate_signal": candidate_signal,
+                "score": orchestration.analysis.score,
+                "reason": display_reason,
+                "analysis": {
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                    "confirmed": orchestration.analysis.confirmed,
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "quality": {
+                    "score": orchestration.quality.score,
+                    "level": orchestration.quality.level.value,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
+                },
+                "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+                "market_data_source": orchestration.market_data.source,
+                "candles": len(orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
                 "cycle_id": (
-                    cycle.orchestration.senior_context.cycle_id
-                    if cycle.orchestration.senior_context is not None
+                    orchestration.senior_context.cycle_id
+                    if orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
                 "external_id": execution.external_id if execution else None,
