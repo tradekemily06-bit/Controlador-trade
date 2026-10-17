@@ -33,7 +33,7 @@ def test_process_and_terminal_recovery_require_confirmed_execution_quiescence():
         assert result.allowed is False
         assert "posições/ordens abertas não foi confirmado" in result.reason
 
-    unknown = SelfRepairPolicy.evaluate(safe_request(action="start_mt5_terminal", max_attempts=6))
+    unknown = SelfRepairPolicy.evaluate(safe_request(action="restart_mt5_or_change_risk", max_attempts=6))
     assert unknown.decision is RepairDecision.ALERT_AND_BLOCK
     assert "lista explicitamente autorizada" in unknown.reason
 
@@ -102,3 +102,11 @@ def test_blocks_during_cooldown_or_maintenance_lock():
         result = SelfRepairPolicy.evaluate(safe_request(**changes))
         assert result.decision is RepairDecision.ALERT_AND_BLOCK
         assert result.allowed is False
+
+
+def test_allows_bounded_terminal_start_without_stopping_existing_execution():
+    result = SelfRepairPolicy.evaluate(
+        safe_request(action="start_mt5_terminal", max_attempts=6, execution_quiescent=False)
+    )
+    assert result.decision is RepairDecision.ALLOW_BOUNDED_REPAIR
+    assert result.allowed is True
