@@ -314,3 +314,13 @@ def test_mql5_close_cycle_requires_server_confirmation_before_clearing_ids():
     assert 'if(closed=="true" && reconciliation!="")' in close
     assert 'last_cycle_id=""; last_external_id="";' in close
     assert "Fechamento nao confirmado; ciclo mantido para verificacao." in close
+
+def test_mql5_cycle_reads_nested_runtime_payload_and_requires_accepted_execution():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'JsonObjectValue(r,"runtime","signal")' in cycle
+    assert 'JsonObjectValue(runtime_payload,"quality","score")' in cycle
+    assert 'JsonObjectValue(runtime_payload,"execution","accepted")' in cycle
+    assert 'allowed!="true" || accepted!="true" || cid=="" || eid==""' in cycle
+    assert 'last_cycle_id=cid; last_external_id=eid;' in cycle
+    assert "Ciclo DEMO bloqueado ou sem execucao aceita" in cycle
