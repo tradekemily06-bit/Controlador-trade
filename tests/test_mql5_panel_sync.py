@@ -58,23 +58,38 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "if(!render) return;" in analyze
 
 
-def test_mql5_panel_uses_controlador_trading_brand_and_watermark_toggle():
+def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"Controlador-Trading"' in panel
+    assert '"Controlador Trading"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
-    assert '"CONTROLADOR TRADING"' in panel
-    assert '"WATERMARK_MARK"' in panel
-    assert "ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30)" in panel
-    assert "ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18)" in panel
-    assert "InpPanelWidth = 280" in panel
-    assert "InpPanelHeight = 380" in panel
-    assert "panel_x=MathMax(12,cw-panel_width-12);" in panel
-    assert "MathRound(cw*0.22)" in panel
-    assert "OBJPROP_ANGLE,18.0" not in panel
-    assert "ToggleWatermark" in panel
-    assert "GlobalVariableSet(WatermarkKey()" in panel
+    assert "InpPanelWidth = 360" in panel
+    assert "InpPanelHeight = 440" in panel
+    assert "bool panel_visible=false" in panel
+    assert 'SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●"' in panel
+    assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
+    assert 'return "↑ COMPRAR";' in panel
+    assert 'return "↓ VENDER";' in panel
+    assert 'JsonObjectValue(r,"quality","score")' in panel
+    assert "UpdateCompactSignal(signal,score,true)" in panel
+    assert "watermark" not in panel.lower()
+    assert "WATERMARK" not in panel
 
+def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
+    save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(bool render=true)", 1)[0]
+    events = panel.split("void OnChartEvent", 1)[1]
+
+    assert 'Obj("MODE_TOGGLE")' in prefs
+    assert 'Obj("LEVERAGE_TOGGLE")' in prefs
+    assert '"ALAVANCAGEM: ON"' in prefs
+    assert '"ALAVANCAGEM: OFF"' in prefs
+    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
+    assert "leverage_enabled=!leverage_enabled" in events
+    assert "selected_mode" in save
+    assert "leverage_enabled" in save
+    assert 'SetLabel(Obj("INFO5"),"REAL: BLOQUEADO' in prefs
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
@@ -180,32 +195,31 @@ def test_mql5_sync_resolves_unique_data_folder_when_terminal_processes_duplicate
     assert "$dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath" in text
     assert "Mais de uma instância corresponde ao MT5 configurado" not in text
 
-def test_mql5_panel_hide_preserves_watermark_and_deinit_removes_all_objects():
+def test_mql5_panel_hide_preserves_compact_c_signal_and_deinit_removes_all_objects():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     delete = panel.split("void DeletePanel(", 1)[1].split("string JsonValue", 1)[0]
     toggle = panel.split("void TogglePanel()", 1)[1].split("void LoadPanelVisibility", 1)[0]
-    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     deinit = panel.split("void OnDeinit(", 1)[1].split("void OnTimer()", 1)[0]
-    hidden = timer.split("if(!panel_visible){", 1)[1].split("return;", 1)[0]
 
-    assert "bool preserveWatermark=false,bool preserveToggle=false" in delete
-    assert 'n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT")' in delete
-    assert "if(preserveToggle) RefreshPanelToggle();" in delete
-    assert "else DeletePanel(true,true);" in toggle
-    assert "ApplyWatermark();" in hidden
+    assert "bool preserveCompact=false" in delete
+    assert 'n==Obj("PANEL_TOGGLE_BG")' in delete
+    assert 'n==Obj("COMPACT_SIGNAL")' in delete
+    assert 'n==Obj("COMPACT_SCORE")' in delete
+    assert "if(preserveCompact) RefreshPanelToggle();" in delete
+    assert "else DeletePanel(true);" in toggle
     assert "DeletePanel();" in deinit
+    assert "watermark" not in panel.lower()
 
-
-
-def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
+def test_mql5_panel_toggle_tracks_fixed_lower_chart_position():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     render = panel.split("void Panel()", 1)[1].split("void RenderView()", 1)[0]
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);" in panel
-
+    assert "int cy=MathMax(42,ch-46);" in panel
+    assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
+    assert 'SetCompactLabel(Obj("COMPACT_SIGNAL")' in panel
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
     text = SCRIPT.read_text(encoding="utf-8")
