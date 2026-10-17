@@ -215,6 +215,20 @@ def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webreques
 
 
 
+def test_supervisor_recovery_authorization_requires_live_quiescence_evidence():
+    controller = _read("deployment/start_controlador_runtime.ps1")
+    mt5 = _read("deployment/start_mt5_runtime.ps1")
+
+    assert "function Test-Mt5ExecutionQuiescent" in controller
+    assert "positions = mt5.positions_get()" in controller
+    assert "orders = mt5.orders_get()" in controller
+    assert "$executionQuiescent = Test-Mt5ExecutionQuiescent" in controller
+    assert "'--execution-quiescent'" in controller
+    assert "'--execution-quiescent'" in mt5
+    assert "$executionQuiescent = ((Get-Mt5AccountSafetyState) -eq 'DEMO')" in mt5
+    assert "$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'" in mt5
+    assert "$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'" in mt5
+
 def test_supervisors_fail_closed_when_restart_history_is_corrupt():
     for path in (
         "deployment/start_controlador_runtime.ps1",
