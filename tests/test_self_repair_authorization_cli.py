@@ -41,7 +41,10 @@ def test_self_repair_cli_blocks_external_or_exhausted_repair(capsys):
     assert payload["allowed"] is False
 
 
-def test_self_repair_cli_allows_controller_restart_only_with_quiescence(capsys):
+def test_self_repair_cli_allows_controller_restart_only_with_quiescence(capsys, monkeypatch):
+    monkeypatch.setenv('CONTROLADOR_EXECUTION_PROVIDER', 'ic_markets_mt5_demo')
+    for name in ('CONTROLADOR_REAL_EXPLICITLY_ENABLED', 'CONTROLADOR_REAL_EXECUTION_ALLOWED', 'CONTROLADOR_REAL_AUDIT_VERIFIED', 'CONTROLADOR_REAL_RISK_APPROVED'):
+        monkeypatch.setenv(name, 'false')
     assert main(_args(**{"--action": "restart_controller"})) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is True
@@ -52,7 +55,10 @@ def test_self_repair_cli_allows_controller_restart_only_with_quiescence(capsys):
     assert "posições/ordens abertas" in payload["reason"]
 
 
-def test_self_repair_cli_allows_terminal_start_without_restart_quiescence(capsys):
+def test_self_repair_cli_allows_terminal_start_without_restart_quiescence(capsys, monkeypatch):
+    monkeypatch.setenv('CONTROLADOR_EXECUTION_PROVIDER', 'ic_markets_mt5_demo')
+    for name in ('CONTROLADOR_REAL_EXPLICITLY_ENABLED', 'CONTROLADOR_REAL_EXECUTION_ALLOWED', 'CONTROLADOR_REAL_AUDIT_VERIFIED', 'CONTROLADOR_REAL_RISK_APPROVED'):
+        monkeypatch.setenv(name, 'false')
     assert main(_args(**{"--action": "start_mt5_terminal", "--execution-quiescent": "false"})) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is True
