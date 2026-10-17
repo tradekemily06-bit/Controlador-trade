@@ -103,7 +103,7 @@ def test_mql5_compact_signal_normalizes_runtime_decisions_and_keeps_approved_c_s
     assert 'SetCompactLabel(Obj("COMPACT_SCORE"),"—%",94,28,9' in panel
     assert 'n==Obj("PANEL_TOGGLE_RING")' in panel
     assert "watermark" not in panel.lower()
-    assert '"Controlador Trading"' in panel
+    assert '"Controlador-Trading"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert "InpPanelWidth = 360" in panel
