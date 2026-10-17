@@ -59,7 +59,7 @@ $previewSource = Join-Path $previewFolder 'Controlador-Trading-Preview.mq5'
 $previewBinary = Join-Path $previewFolder 'Controlador-Trading-Preview.ex5'
 $compileLog = Join-Path $previewFolder 'Controlador-Trading-Preview.compile.log'
 
-[System.IO.File]::WriteAllText($previewSource, $sourceText, (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText($previewSource, $sourceText, ([System.Text.UTF8Encoding]::new($false)))
 if (Test-Path -LiteralPath $previewBinary -PathType Leaf) {
     Remove-Item -LiteralPath $previewBinary -Force
 }
