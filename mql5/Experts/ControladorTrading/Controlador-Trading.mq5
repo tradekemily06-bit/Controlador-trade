@@ -95,12 +95,12 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
-void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
+void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false,ENUM_ANCHOR_POINT anchor=ANCHOR_CENTER){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    // Anchor the compact controls to the chart's lower-left corner. Opening
    // the panel must never reposition the C, signal, or score.
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,anchor);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
@@ -170,15 +170,16 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
 }
 void RefreshPanelToggle(){
-   int cx=28;
-   // Fixed distance from the lower edge in both open and closed states.
-   int cy=46;
+   int cx=29;
+   // Match the preserved reference position: circle center is 33 px above chart bottom.
+   int cy=33;
    // Preserve the approved C treatment: dark circular fill, cyan ring and cyan letter.
    SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,39,C'5,15,27',false);
    SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',false);
-   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,20,C'0,215,255',true);
-   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
-   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy,20,C'0,215,255',true);
+   // Keep signal and quality close to the C, using the reference's two-line arrangement.
+   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",62,46,11,C'255,209,102',false,ANCHOR_LEFT_LOWER);
+   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",94,28,9,C'205,215,230',false,ANCHOR_LEFT_LOWER);
    UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:"",compact_available);
 }
 void TogglePanel(){
