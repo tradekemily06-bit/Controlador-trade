@@ -305,3 +305,12 @@ def test_mql5_cycle_does_not_fabricate_candle_or_filter_confirmation():
     assert '\\\"filters_ok\\\":false' in cycle
     assert '\\\"confirmed\\\":true' not in cycle
     assert '\\\"filters_ok\\\":true' not in cycle
+
+def test_mql5_close_cycle_requires_server_confirmation_before_clearing_ids():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'string closed=JsonValue(r,"closed");' in close
+    assert 'string reconciliation=JsonObjectValue(r,"reconciliation","reconciliation_state");' in close
+    assert 'if(closed=="true" && reconciliation!="")' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert "Fechamento nao confirmado; ciclo mantido para verificacao." in close
