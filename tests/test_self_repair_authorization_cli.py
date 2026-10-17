@@ -50,3 +50,9 @@ def test_self_repair_cli_allows_controller_restart_only_with_quiescence(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is False
     assert "posições/ordens abertas" in payload["reason"]
+
+
+def test_self_repair_cli_allows_terminal_start_without_restart_quiescence(capsys):
+    assert main(_args(**{"--action": "start_mt5_terminal", "--execution-quiescent": "false"})) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allowed"] is True
