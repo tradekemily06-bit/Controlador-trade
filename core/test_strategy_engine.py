@@ -39,14 +39,14 @@ def test_strategy_engine_generates_sell_from_weak_score():
             trend=0.0,
             pressure=0.0,
             structure=0.0,
-            rejection=0.0,
-            volume=0.0,
-            confirmation=0.0,
+            rejection=25.0,
+            volume=30.0,
+            confirmation=100.0,
         )
     )
 
     assert result.signal == Signal.VENDA
-    assert result.score == 0.0
+    assert result.score == 21.75
 
 
 def test_strategy_engine_awaits_confirmation():
