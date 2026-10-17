@@ -98,6 +98,9 @@ def test_mql5_compact_signal_normalizes_runtime_decisions_and_keeps_approved_c_s
     assert 'raw=="VENDA" || raw=="VENDER" || raw=="SELL"' in panel
     assert 'signal=NormalizeCompactSignal(signal);' in panel
     assert 'Obj("PANEL_TOGGLE_RING"),"◯"' in panel
+    assert "int cy=33;" in panel
+    assert 'SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",62,46,11' in panel
+    assert 'SetCompactLabel(Obj("COMPACT_SCORE"),"—%",94,28,9' in panel
     assert 'n==Obj("PANEL_TOGGLE_RING")' in panel
     assert "watermark" not in panel.lower()
     assert '"Controlador Trading"' in panel
@@ -276,7 +279,7 @@ def test_mql5_panel_toggle_tracks_fixed_lower_chart_position():
     compact = panel.split("void SetCompactLabel(", 1)[1].split("string CompactSignalText", 1)[0]
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
     assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in compact
-    assert "int cy=46;" in toggle
+    assert "int cy=33;" in toggle
     assert "int cy=MathMax(42,ch-46);" not in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
     assert 'SetCompactLabel(Obj("COMPACT_SIGNAL")' in panel
