@@ -273,6 +273,15 @@ function Test-ControllerSafety {
 }
 
 function Test-Mt5ExecutionQuiescent {
+    # Do not initialize MT5 as a side effect of checking recovery safety.
+    $expectedTerminalPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
+    $runningTerminal = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq [System.IO.Path]::GetFileName($expectedTerminalPath) -and
+            $_.ExecutablePath -ieq $expectedTerminalPath
+        } | Select-Object -First 1
+    if ($null -eq $runningTerminal) { return $false }
+
     # Automatic controller recovery is permitted only after independently confirming
     # the configured terminal is DEMO and has no open positions or pending orders.
     try {
