@@ -266,9 +266,14 @@ def test_mql5_panel_toggle_tracks_fixed_lower_chart_position():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int cy=MathMax(42,ch-46);" in panel
+    compact = panel.split("void SetCompactLabel(", 1)[1].split("string CompactSignalText", 1)[0]
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in compact
+    assert "int cy=46;" in toggle
+    assert "int cy=MathMax(42,ch-46);" not in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
     assert 'SetCompactLabel(Obj("COMPACT_SIGNAL")' in panel
+    assert "panel_visible?" not in toggle
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
     text = SCRIPT.read_text(encoding="utf-8")
