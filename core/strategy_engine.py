@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 
-from .models import AnalysisResult
+from .models import AnalysisResult, Signal
 from .advanced_filters import AdvancedFilters
 from .scoring import calculate_score
 from .signal_engine import SignalEngine
