@@ -30,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
         "local-only", "reversible", "deterministic", "prevalidated",
         "external-side-effects", "touches-execution-state",
         "requires-human-supervision", "cooldown-elapsed",
-        "maintenance-lock-clear",
+        "maintenance-lock-clear", "execution-quiescent",
     ):
         parser.add_argument(f"--{name}", type=_bool, required=True)
     args = parser.parse_args(argv)
