@@ -525,3 +525,15 @@ def test_runtime_market_flags_reject_string_booleans(monkeypatch, path, payload)
 
     assert status == "400 Bad Request"
     assert response["error"] == "Entrada inválida"
+
+
+def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
+    import app
+
+    with patch.object(app.SERVICE, "system_status", side_effect=AssertionError("slow diagnostics called")):
+        status, _, payload = ApiContractTests().request("/api/health/live")
+    assert status == "200 OK"
+    assert payload["ok"] is True
+    assert payload["live"] is True
+    assert "execution_allowed" not in payload
+    assert "real" not in payload
