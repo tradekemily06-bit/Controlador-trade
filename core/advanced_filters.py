@@ -50,7 +50,7 @@ class AdvancedFilters:
                     reasons=(f"{name} inválido.",),
                 )
 
-        if direction not in (Signal.COMPRA, Signal.VENDA):
+        if not isinstance(direction, Signal) or direction not in (Signal.COMPRA, Signal.VENDA):
             return FilterResult(False, ("Direção de entrada inválida.",))
 
         # A confirmação técnica deve vir dos dados do ciclo, não apenas do
