@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 
 if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
     $resolvedPython = Get-Command $PythonExe -ErrorAction SilentlyContinue
@@ -19,30 +20,54 @@ if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
         throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."
     }
     $PythonExe = $resolvedPython.Source
+} elseif (-not [System.IO.Path]::IsPathRooted($PythonExe)) {
+    $projectPython = Join-Path $ProjectRoot $PythonExe
+    if (Test-Path -LiteralPath $projectPython -PathType Leaf) {
+        $PythonExe = [System.IO.Path]::GetFullPath($projectPython)
+    }
 }
 if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
     throw "Python não encontrado: $PythonExe"
 }
 if ([string]::IsNullOrWhiteSpace($RuntimeDir)) {
     $RuntimeDir = Join-Path $ProjectRoot '.runtime'
+} elseif (-not [System.IO.Path]::IsPathRooted($RuntimeDir)) {
+    $RuntimeDir = Join-Path $ProjectRoot $RuntimeDir
 }
+$RuntimeDir = [System.IO.Path]::GetFullPath($RuntimeDir)
 New-Item -ItemType Directory -Force -Path $RuntimeDir | Out-Null
+$env:PYTHONPATH = if ([string]::IsNullOrWhiteSpace($env:PYTHONPATH)) { $ProjectRoot } else { "$ProjectRoot;$($env:PYTHONPATH)" }
+Set-Location $ProjectRoot
 
 $logPath = Join-Path $RuntimeDir 'mt5-supervisor.log'
 $statusPath = Join-Path $RuntimeDir 'mt5-supervisor-status.json'
 $stopPath = Join-Path $RuntimeDir 'mt5.supervisor.stop'
+$maintenanceLockPath = Join-Path $RuntimeDir 'maintenance.lock'
 $restartHistoryPath = Join-Path $RuntimeDir 'mt5-supervisor-restart-history.json'
 $restartTimes = New-Object System.Collections.Generic.List[datetime]
+$script:RestartHistoryValid = $true
+$script:RestartHistoryError = ''
 
 function Load-RestartHistory {
     if (-not (Test-Path -LiteralPath $restartHistoryPath -PathType Leaf)) { return }
     try {
-        $items = Get-Content -LiteralPath $restartHistoryPath -Raw | ConvertFrom-Json
-        foreach ($item in @($items)) {
-            $restartTimes.Add([datetime]::Parse($item).ToLocalTime())
+        $rawHistory = Get-Content -LiteralPath $restartHistoryPath -Raw -ErrorAction Stop
+        if ([string]::IsNullOrWhiteSpace($rawHistory)) {
+            throw 'arquivo de histórico vazio'
         }
+        $items = $rawHistory | ConvertFrom-Json -ErrorAction Stop
+        foreach ($item in @($items)) {
+            $parsedTime = [datetime]::MinValue
+            if (-not [datetime]::TryParse([string]$item, [ref]$parsedTime)) {
+                throw 'timestamp inválido no histórico de reinícios'
+            }
+            $restartTimes.Add($parsedTime.ToLocalTime())
+        }
+        $restartTimes.Sort()
     } catch {
-        $restartTimes.Clear()
+        # Corrupt history must never reset the restart budget and enable retries.
+        $script:RestartHistoryValid = $false
+        $script:RestartHistoryError = $_.Exception.Message
     }
 }
 
@@ -73,6 +98,56 @@ function Write-SupervisorStatus([string]$State, [string]$Reason) {
     $tmp = "$statusPath.tmp"
     Set-Content -LiteralPath $tmp -Value $payload -Encoding UTF8
     Move-Item -LiteralPath $tmp -Destination $statusPath -Force
+}
+
+function Test-SafeRepairAuthorization {
+    param(
+        [string]$Action,
+        [int]$AttemptsUsed,
+        [int]$MaxAttempts,
+        [bool]$RequiresHumanSupervision = $false
+    )
+    $script:LastRepairAuthorizationDiagnostic = ''
+    $now = Get-Date
+    while ($restartTimes.Count -gt 0 -and $restartTimes[0] -lt $now.AddHours(-1)) {
+        $restartTimes.RemoveAt(0)
+    }
+    $AttemptsUsed = $restartTimes.Count
+    $cooldownElapsed = $true
+    if ($restartTimes.Count -gt 0) {
+        $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
+    }
+    $maintenanceLockClear = -not (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf)
+    $policyPath = Join-Path $ProjectRoot 'deployment\authorize_self_repair.py'
+    if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
+        $script:LastRepairAuthorizationDiagnostic = 'política de autorreparo ausente; reparo bloqueado'
+        return $false
+    }
+    try {
+        $policyArgs = @(
+            $policyPath,
+            '--action', $Action,
+            '--attempts-used', [string]$AttemptsUsed,
+            '--max-attempts', [string]$MaxAttempts,
+            '--local-only', 'true',
+            '--reversible', 'true',
+            '--deterministic', 'true',
+            '--prevalidated', 'true',
+            '--external-side-effects', 'false',
+            '--touches-execution-state', 'false',
+            '--requires-human-supervision', ([string]$RequiresHumanSupervision).ToLowerInvariant(),
+            '--cooldown-elapsed', ([string]$cooldownElapsed).ToLowerInvariant(),
+            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant()
+        )
+        $policyOutput = & $PythonExe @policyArgs 2>&1
+        $policyExitCode = $LASTEXITCODE
+        $payload = ([string](@($policyOutput | ForEach-Object { [string]$_ } | Select-Object -Last 1))) | ConvertFrom-Json
+        $script:LastRepairAuthorizationDiagnostic = [string]$payload.reason
+        return ($policyExitCode -eq 0 -and $payload.allowed -eq $true)
+    } catch {
+        $script:LastRepairAuthorizationDiagnostic = "falha ao avaliar política de autorreparo: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function Test-Mt5TerminalHealth {
@@ -168,8 +243,17 @@ try:
     demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
     expected = os.path.normcase(os.path.realpath(path))
     actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+    positions = mt5.positions_get() if ok and account is not None else None
+    orders = mt5.orders_get() if ok and account is not None else None
     if ok and terminal is not None and actual == expected and account is not None and demo_mode is not None:
-        state = "DEMO" if getattr(account, "trade_mode", None) == demo_mode else "NON_DEMO"
+        if getattr(account, "trade_mode", None) != demo_mode:
+            state = "NON_DEMO"
+        elif positions is None or orders is None:
+            state = "UNKNOWN"
+        elif len(positions) > 0 or len(orders) > 0:
+            state = "DEMO_WITH_OPEN_TRADES"
+        else:
+            state = "DEMO"
 finally:
     mt5.shutdown()
 print(state)
@@ -179,7 +263,7 @@ print(state)
         $result = & $PythonExe -c $oneLineAccountCode $Mt5TerminalPath 2>$null
         if ($LASTEXITCODE -ne 0) { return 'UNKNOWN' }
         $state = [string]($result | Select-Object -Last 1)
-        if ($state.Trim() -in @('DEMO', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
+        if ($state.Trim() -in @('DEMO', 'DEMO_WITH_OPEN_TRADES', 'NON_DEMO', 'UNKNOWN')) { return $state.Trim() }
         return 'UNKNOWN'
     } catch {
         return 'UNKNOWN'
@@ -187,18 +271,37 @@ print(state)
 }
 
 function Stop-Mt5Process {
-    param([System.Diagnostics.Process]$Process)
-    if ($null -eq $Process -or $Process.HasExited) { return }
+    param(
+        [System.Diagnostics.Process]$Process,
+        [switch]$ControlledStop
+    )
+    if ($null -eq $Process -or $Process.HasExited) { return $true }
     $accountSafetyState = Get-Mt5AccountSafetyState
-    if ($accountSafetyState -ne 'DEMO') {
-        $reason = "MT5 não será encerrado automaticamente: conta/caminho não confirmados como DEMO (estado=$accountSafetyState)."
+    if ($accountSafetyState -notin @('DEMO', 'DEMO_WITH_OPEN_TRADES') -or
+        ($accountSafetyState -eq 'DEMO_WITH_OPEN_TRADES' -and -not $ControlledStop)) {
+        $reason = "MT5 não será encerrado automaticamente: conta, posições ou ordens não confirmadas em estado seguro (estado=$accountSafetyState)."
         Write-SupervisorLog $reason
-        Write-SupervisorStatus 'FAILED' $reason
-        throw $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        return $false
     }
-    Write-SupervisorLog "MT5 DEMO não passou no health gate; encerrando PID $($Process.Id) para recuperação limpa."
+
+    if (-not $ControlledStop) {
+        if (-not (Test-SafeRepairAuthorization -Action 'restart_mt5_terminal' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour)) {
+            $reason = "Reparo automático do MT5 bloqueado pela política: $script:LastRepairAuthorizationDiagnostic"
+            Write-SupervisorLog $reason
+            Write-SupervisorStatus 'ATTENTION' $reason
+            return $false
+        }
+    }
+
+    if ($ControlledStop) {
+        Write-SupervisorLog "Parada controlada solicitada; terminal confirmado DEMO (estado=$accountSafetyState)."
+    } else {
+        Write-SupervisorLog "MT5 DEMO sem posições/ordens abertas não passou no health gate; política autorizou encerramento do PID $($Process.Id)."
+    }
     & taskkill.exe /PID $Process.Id /T /F 2>$null | Out-Null
     Start-Sleep -Seconds 3
+    return $true
 }
 
 function Wait-Mt5Health {
@@ -221,6 +324,17 @@ if (-not (Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf)) {
 
 Write-SupervisorLog 'Supervisor MT5 iniciado.'
 while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
+    if (-not $script:RestartHistoryValid) {
+        $reason = "Histórico de reinícios inválido; recuperação automática bloqueada até correção manual: $script:RestartHistoryError"
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
+            Start-Sleep -Seconds 30
+        }
+        $finalState = 'STOPPED'
+        $finalReason = 'Parada controlada após bloqueio por histórico de reinícios inválido.'
+        break
+    }
     $processName = [System.IO.Path]::GetFileNameWithoutExtension($Mt5TerminalPath)
     $process = Get-ConfiguredMt5Process
 
@@ -232,8 +346,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             while (-not $process.HasExited) {
                 if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                     Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
-                    Stop-Mt5Process -Process $process
-                    break
+                    if (Stop-Mt5Process -Process $process -ControlledStop) {
+                        break
+                    }
+                    Write-SupervisorLog 'Parada controlada bloqueada por segurança; supervisor continuará monitorando.'
+                    Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+                    Start-Sleep -Seconds 30
+                    continue
                 }
                 if (Test-Mt5TerminalHealth) {
                     $healthFailures = 0
@@ -245,8 +364,12 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
                     }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
-                        Stop-Mt5Process -Process $process
-                        break
+                        if (Stop-Mt5Process -Process $process) {
+                            break
+                        }
+                        $healthFailures = 0
+                        Start-Sleep -Seconds 30
+                        continue
                     }
                 }
                 Start-Sleep -Seconds $HealthPollSeconds
@@ -257,7 +380,10 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
             if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
                 Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
             }
-            Stop-Mt5Process -Process $process
+            if (-not (Stop-Mt5Process -Process $process)) {
+                Start-Sleep -Seconds 30
+                continue
+            }
         }
     }
 
@@ -289,7 +415,14 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         continue
     }
 
-    Write-SupervisorLog 'MT5 não está saudável; iniciando/reiniciando.'
+    if (-not (Test-SafeRepairAuthorization -Action 'start_mt5_terminal' -AttemptsUsed $restartTimes.Count -MaxAttempts $MaxRestartsPerHour)) {
+        $reason = "Inicialização automática do MT5 bloqueada pela política: $script:LastRepairAuthorizationDiagnostic"
+        Write-SupervisorLog $reason
+        Write-SupervisorStatus 'ATTENTION' $reason
+        Start-Sleep -Seconds 30
+        continue
+    }
+    Write-SupervisorLog 'MT5 não está saudável; política autorizou inicialização/reinício controlado.'
     Start-Process -FilePath $Mt5TerminalPath -WorkingDirectory (Split-Path -Parent $Mt5TerminalPath) | Out-Null
     $restartTimes.Add($now)
     Save-RestartHistory
@@ -303,8 +436,13 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
         while ($null -ne $processAfterStart -and -not $processAfterStart.HasExited) {
             if (Test-Path -LiteralPath $stopPath -PathType Leaf) {
                 Write-SupervisorLog 'Parada controlada detectada enquanto o MT5 estava saudável.'
-                Stop-Mt5Process -Process $processAfterStart
-                break
+                if (Stop-Mt5Process -Process $processAfterStart -ControlledStop) {
+                    break
+                }
+                Write-SupervisorLog 'Parada controlada bloqueada por segurança; supervisor continuará monitorando.'
+                Remove-Item -LiteralPath $stopPath -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 30
+                continue
             }
             if (Test-Mt5TerminalHealth) {
                 $healthFailures = 0
@@ -316,8 +454,12 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
                         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
                     }
                     Write-SupervisorLog 'Health do MT5 permaneceu indisponível; iniciando recuperação supervisionada.'
-                    Stop-Mt5Process -Process $processAfterStart
-                    break
+                    if (Stop-Mt5Process -Process $processAfterStart) {
+                        break
+                    }
+                    $healthFailures = 0
+                    Start-Sleep -Seconds 30
+                    continue
                 }
             }
             Start-Sleep -Seconds $HealthPollSeconds
@@ -329,7 +471,10 @@ while (-not (Test-Path -LiteralPath $stopPath -PathType Leaf)) {
 
     $processAfterStart = Get-ConfiguredMt5Process
     if ($null -ne $processAfterStart) {
-        Stop-Mt5Process -Process $processAfterStart
+        if (-not (Stop-Mt5Process -Process $processAfterStart)) {
+            Start-Sleep -Seconds 30
+            continue
+        }
     }
     if (-not [string]::IsNullOrWhiteSpace($script:LastMt5HealthDiagnostic)) {
         Write-SupervisorLog "Diagnóstico do health gate MT5: $script:LastMt5HealthDiagnostic"
