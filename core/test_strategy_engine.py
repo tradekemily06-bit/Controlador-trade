@@ -107,3 +107,9 @@ def test_strategy_engine_rejects_out_of_range_values(field):
 
     with pytest.raises(ValueError):
         StrategyEngine().evaluate(make_input(**{field: -0.1}))
+
+def test_client_filter_flag_cannot_override_failed_internal_filters():
+    result = StrategyEngine().evaluate(make_input(trend=20.0, filters_ok=True))
+    assert result.signal == Signal.AGUARDAR
+    assert "Tendência insuficiente para compra." in result.reason
+
