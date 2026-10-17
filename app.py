@@ -311,8 +311,11 @@ def application(environ, start_response):
             }, request_id, environ)
         if path == "/api/runtime/real/reconcile" and method == "POST":
             data = _read_json(environ)
-            REAL_RUNTIME.reconcile(request_id=str(data.get("request_id", "")), executed=bool(data.get("executed", False)))
-            return _json_response(start_response, HTTPStatus.OK, {"reconciled": True}, request_id, environ)
+            executed = data.get("executed", False)
+            if not isinstance(executed, bool):
+                raise ValueError("executed deve ser booleano JSON")
+            REAL_RUNTIME.reconcile(request_id=str(data.get("request_id", "")), executed=executed)
+            return _json_response(start_response, HTTPStatus.OK, {"reconciled": True, "executed": executed}, request_id, environ)
         if path == "/api/runtime/real/close" and method == "POST":
             data = _read_json(environ)
             close = REAL_RUNTIME.close_and_reconcile(
