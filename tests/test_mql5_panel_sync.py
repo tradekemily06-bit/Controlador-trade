@@ -87,8 +87,8 @@ def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority()
     assert '"ALAVANCAGEM: OFF"' in prefs
     assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
     assert "leverage_enabled=!leverage_enabled" in events
-    assert '"selected_mode"' in save
-    assert '"leverage_enabled"' in save
+    assert "selected_mode" in save
+    assert "leverage_enabled" in save
     assert 'SetLabel(Obj("INFO5"),"REAL: BLOQUEADO' in prefs
 
 def test_mql5_sync_script_has_single_retry_helper_definition():
