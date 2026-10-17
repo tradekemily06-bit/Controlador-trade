@@ -55,6 +55,7 @@ class SelfRepairPolicy:
         "clear_stale_local_cache",
         "restart_controller",
         "restart_mt5_terminal",
+        "start_mt5_terminal",
     })
 
     @staticmethod
