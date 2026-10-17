@@ -122,6 +122,22 @@ color CompactSignalColor(string signal){
    if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,118,118';
    return C'255,209,102';
 }
+string NormalizeCompactSignal(string raw){
+   raw=StringTrimLeft(raw);
+   raw=StringTrimRight(raw);
+   StringToUpper(raw);
+   StringReplace(raw,"Í","I");
+   StringReplace(raw,"Á","A");
+   StringReplace(raw,"É","E");
+   StringReplace(raw,"Ó","O");
+   StringReplace(raw,"Ú","U");
+   StringReplace(raw,"Ç","C");
+   if(raw=="COMPRA" || raw=="COMPRAR" || raw=="BUY") return "COMPRA";
+   if(raw=="VENDA" || raw=="VENDER" || raw=="SELL") return "VENDA";
+   if(raw=="AGUARDAR" || raw=="WAIT" || raw=="HOLD") return "AGUARDAR";
+   if(raw=="INDISPONIVEL" || raw=="UNAVAILABLE") return "INDISPONIVEL";
+   return "AGUARDAR";
+}
 bool ParseQualityScore(string raw,double &value){
    raw=StringTrimLeft(raw);
    raw=StringTrimRight(raw);
@@ -141,7 +157,8 @@ bool ParseQualityScore(string raw,double &value){
 void UpdateCompactSignal(string signal,string score,bool available=true){
    double parsed_score=0.0;
    bool score_valid=ParseQualityScore(score,parsed_score);
-   compact_signal=(available && (signal=="COMPRA" || signal=="VENDA" || signal=="AGUARDAR"))?(score_valid?signal:"AGUARDAR"):(available?"AGUARDAR":"INDISPONIVEL");
+   string normalized_signal=NormalizeCompactSignal(signal);
+   compact_signal=(available && (normalized_signal=="COMPRA" || normalized_signal=="VENDA" || normalized_signal=="AGUARDAR"))?(score_valid?normalized_signal:"AGUARDAR"):(available?"AGUARDAR":"INDISPONIVEL");
    compact_score_raw=(available && score_valid)?DoubleToString(parsed_score,2):"";
    compact_score=(available && score_valid)?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
@@ -156,8 +173,10 @@ void RefreshPanelToggle(){
    int cx=28;
    // Fixed distance from the lower edge in both open and closed states.
    int cy=46;
-   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'31,43,61',true);
-   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
+   // Preserve the approved C treatment: dark circular fill, cyan ring and cyan letter.
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,39,C'5,15,27',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,20,C'0,215,255',true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
    SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
    UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:"",compact_available);
@@ -234,7 +253,7 @@ void DeletePanel(bool preserveCompact=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
+      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("PANEL_TOGGLE_RING") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveCompact) RefreshPanelToggle();
@@ -581,6 +600,7 @@ void Analyze(bool render=true){
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   signal=NormalizeCompactSignal(signal);
    string score=JsonObjectValue(r,"quality","score");
    double parsed_score=0.0;
    if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
@@ -616,6 +636,7 @@ void RunCycle(){
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   signal=NormalizeCompactSignal(signal);
    string score=JsonObjectValue(r,"quality","score");
    double parsed_score=0.0;
    if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
