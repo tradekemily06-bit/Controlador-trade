@@ -251,7 +251,9 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
-            confirmed=confirmed, filters_ok=filters_ok, entry_conditions=entry_conditions,
+            confirmed=confirmed, filters_ok=filters_ok,
+            filters_required=self.preferences.preferences.require_filters,
+            entry_conditions=entry_conditions,
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
@@ -305,6 +307,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 market_context=None,
                 confirmed=effective_confirmed,
                 filters_ok=effective_filters,
+                filters_required=prefs.require_filters,
             )
             if self.trading_runtime.market_data_state is not None:
                 from core.p122_broker_market_data import BrokerMarketDataSnapshot
