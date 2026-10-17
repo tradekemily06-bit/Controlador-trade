@@ -5,7 +5,7 @@ from deployment.authorize_self_repair import main
 
 def _args(**overrides):
     values = {
-        "--action": "restart_controller",
+        "--action": "clear_stale_local_cache",
         "--attempts-used": "0",
         "--max-attempts": "6",
         "--local-only": "true",
