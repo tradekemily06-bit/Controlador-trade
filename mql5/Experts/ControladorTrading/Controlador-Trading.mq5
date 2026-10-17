@@ -12,6 +12,8 @@ string P="CTP_";
 string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
+string selected_mode="DEMO";
+bool leverage_enabled=false;
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
@@ -300,18 +302,27 @@ void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
       SetLabel(Obj("INFO1"),"Configuracoes indisponiveis",20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
       return;
    }
-   string mode=JsonValue(r,"selected_mode");
-   string sym=JsonValue(r,"default_symbol");
-   string tf=JsonValue(r,"default_timeframe");
-   string closed=JsonValue(r,"require_closed_candle");
-   string filters=JsonValue(r,"require_filters");
-   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
+   string mode=JsonObjectValue(r,"preferences","selected_mode");
+   string sym=JsonObjectValue(r,"preferences","default_symbol");
+   string tf=JsonObjectValue(r,"preferences","default_timeframe");
+   string closed=JsonObjectValue(r,"preferences","require_closed_candle");
+   string filters=JsonObjectValue(r,"preferences","require_filters");
+   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
+   if(mode=="") mode="DEMO";
+   selected_mode=mode;
+   leverage_enabled=(leverage=="true");
+   SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,505,177,28);
+   SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Alavancagem: "+(leverage_enabled?"ON":"OFF"),20,381,9,leverage_enabled?C'255,209,102':C'205,215,230');
+   SetLabel(Obj("INFO3"),"Candle fechado: "+(closed==""?"—":closed)+" • filtros: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
+   SetLabel(Obj("INFO4"),"Simbolo: "+(sym==""?_Symbol:sym)+" • periodo: "+(tf==""?"—":tf),20,421,9,C'205,215,230');
+   SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155');
 }
+
 void RefreshNotifications(){
    string r; int code=0;
    if(Http("GET","/api/notifications","",r,code)){
@@ -405,15 +416,22 @@ void RenderView(){
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"CONFIG • preferencias e seguranca",20,47,9,C'150,165,185');
-      SetButton(Obj("ANALYZE"),"LER CONFIGURACOES",20,284,172,30);
-      SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
+      SetButton(Obj("ANALYZE"),"ATUALIZAR CONFIG",20,284,172,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
-      SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      if(ObjectFind(0,Obj("CYCLE"))>=0) ObjectDelete(0,Obj("CYCLE"));
+      if(ObjectFind(0,Obj("CLOSE"))>=0) ObjectDelete(0,Obj("CLOSE"));
+      if(ObjectFind(0,Obj("CYCLEID"))>=0) ObjectDelete(0,Obj("CYCLEID"));
+      if(ObjectFind(0,Obj("EXTID"))>=0) ObjectDelete(0,Obj("EXTID"));
+      if(ObjectFind(0,Obj("PRICE"))>=0) ObjectDelete(0,Obj("PRICE"));
+      if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE");
       RefreshPreferences();
    }
    if(active_view!="CONFIG"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
+      if(ObjectFind(0,Obj("MODE_TOGGLE"))>=0) ObjectDelete(0,Obj("MODE_TOGGLE"));
+      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_TOGGLE"));
    }
+
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -476,18 +494,22 @@ void RefreshSecondary(){
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
 }
 void SaveConfig(){
-   string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
-   string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
+   string sym=ObjectFind(0,Obj("SYM"))>=0?ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT):_Symbol;
+   string tf=ObjectFind(0,Obj("TF"))>=0?ObjectGetString(0,Obj("TF"),OBJPROP_TEXT):NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
+   string leverage=leverage_enabled?"true":"false";
+   string body="{\"selected_mode\":\""+JsonEscape(selected_mode)+"\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
-   if(Http("POST","/api/preferences",body,r,code))
-      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas",20,361,9,C'88,214,141');
-   else
-      SetLabel(Obj("INFO1"),"Nao foi possivel salvar configuracoes",20,361,9,C'255,118,118');
+   if(Http("POST","/api/preferences",body,r,code)){
+      SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
+      RefreshPreferences();
+   }else{
+      SetLabel(Obj("INFO4"),"Nao foi possivel salvar configuracoes",20,421,9,C'255,118,118');
+   }
 }
+
 void Analyze(bool render=true){
    string sym=_Symbol;
    string tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
@@ -630,5 +652,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("MODE_TOGGLE")) { selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO"); SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
