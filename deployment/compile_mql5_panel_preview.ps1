@@ -66,6 +66,15 @@ Copy-Item -LiteralPath $source -Destination $previewSource -Force
 if ((Get-FileHash -LiteralPath $previewSource -Algorithm SHA256).Hash -ne $sourceHash) {
     throw 'A cópia de pré-visualização não corresponde à fonte versionada.'
 }
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+if (Test-Path -LiteralPath $previewBinary -PathType Leaf) {
+    Copy-Item -LiteralPath $previewBinary -Destination "$previewBinary.$stamp.bak" -Force
+    Remove-Item -LiteralPath $previewBinary -Force
+}
+if (Test-Path -LiteralPath $provenance -PathType Leaf) {
+    Copy-Item -LiteralPath $provenance -Destination "$provenance.$stamp.bak" -Force
+    Remove-Item -LiteralPath $provenance -Force
+}
 if (Test-Path -LiteralPath $log -PathType Leaf) {
     Remove-Item -LiteralPath $log -Force
 }
