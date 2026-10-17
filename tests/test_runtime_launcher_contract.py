@@ -229,6 +229,20 @@ def test_supervisor_recovery_authorization_requires_live_quiescence_evidence():
     assert "$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'" in mt5
     assert "$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'" in mt5
 
+def test_mt5_preview_compiles_isolated_source_without_touching_installed_ea():
+    text = _read("deployment/prepare_mt5_preview.ps1")
+    assert "fetch origin main" in text
+    assert "origin/main:$sourceRelative" in text
+    assert 'string P="CTPREVIEW_"' in text
+    assert "MQL5\\Experts\\ControladorTradingPreview" in text
+    assert "installedSourceHashAfter" in text
+    assert "installedBinaryHashAfter" in text
+    assert "INSTALLED_EA_UNCHANGED=TRUE" in text
+    assert "MetaEditor64.exe" in text
+    assert "Controlador-Trading-Preview.ex5" in text
+    assert "git checkout" not in text.lower()
+    assert "git reset" not in text.lower()
+
 def test_supervisors_fail_closed_when_restart_history_is_corrupt():
     for path in (
         "deployment/start_controlador_runtime.ps1",
