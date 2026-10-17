@@ -311,7 +311,8 @@ raise SystemExit(0 if state == "QUIESCENT" else 1)
         $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($checkCode))
         $oneLine = "import base64;exec(compile(base64.b64decode('$encoded'),'<mt5-execution-quiescence>','exec'))"
         $result = & $PythonExe -c $oneLine $Mt5TerminalPath 2>$null
-        return ($LASTEXITCODE -eq 0 -and [string]($result | Select-Object -Last 1).Trim() -eq 'QUIESCENT')
+        $state = [string]($result | Select-Object -Last 1)
+        return ($LASTEXITCODE -eq 0 -and $state.Trim() -eq 'QUIESCENT')
     } catch {
         return $false
     }
