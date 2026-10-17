@@ -82,7 +82,7 @@ def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick
     assert "bool health_ok=false;" in panel
     assert "health_ok=false;" in health
     assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in health
-    assert "health_ok=(health==\\"OK\\" || health==\\"WARNING\\") && engine==\\"ONLINE\\" && execution_allowed==\\"false\\" && real==\\"DESABILITADO\\";" in health
+    assert 'health_ok=(health=="OK" || health=="WARNING") && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";' in health
     assert "if(!health_ok)" in analyze
     assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in analyze
     assert "RefreshHealth();" in init
