@@ -36,7 +36,7 @@ int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(220,(int)MathRound(cw*0.22)));
+   panel_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.34)));
    panel_width=MathMin(panel_width,MathMax(220,cw-24));
    panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
    panel_x=MathMax(12,cw-panel_width-12);
