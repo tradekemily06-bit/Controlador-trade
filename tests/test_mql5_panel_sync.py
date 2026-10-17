@@ -40,6 +40,8 @@ def test_mql5_preview_compile_isolated_from_installed_ea():
     assert "real_execution_authorized = $false" in preview
     assert "0 erros, 0 avisos" in preview
     assert "Copy-Item -LiteralPath $source -Destination $previewSource -Force" in preview
+    assert 'Remove-Item -LiteralPath $previewBinary -Force' in preview
+    assert 'Copy-Item -LiteralPath $previewBinary -Destination "$previewBinary.$stamp.bak" -Force' in preview
     assert "Join-Path $Mt5DataPath 'MQL5\\Experts\\ControladorTrading'" not in preview
 
 
