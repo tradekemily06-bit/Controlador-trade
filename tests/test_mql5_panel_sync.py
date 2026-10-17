@@ -75,6 +75,22 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert "watermark" not in panel.lower()
     assert "WATERMARK" not in panel
 
+def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
+    save = panel.split("void SaveConfig()", 1)[1].split("void Analyze(bool render=true)", 1)[0]
+    events = panel.split("void OnChartEvent", 1)[1]
+
+    assert 'Obj("MODE_TOGGLE")' in prefs
+    assert 'Obj("LEVERAGE_TOGGLE")' in prefs
+    assert '"ALAVANCAGEM: ON"' in prefs
+    assert '"ALAVANCAGEM: OFF"' in prefs
+    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
+    assert "leverage_enabled=!leverage_enabled" in events
+    assert '"selected_mode"' in save
+    assert '"leverage_enabled"' in save
+    assert 'SetLabel(Obj("INFO5"),"REAL: BLOQUEADO' in prefs
+
 def test_mql5_sync_script_has_single_retry_helper_definition():
     text = SCRIPT.read_text(encoding="utf-8")
     assert text.count("function Copy-WithRetry") == 1
