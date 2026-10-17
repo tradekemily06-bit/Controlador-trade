@@ -12,6 +12,10 @@ $TerminalDataPath = [System.IO.Path]::GetFullPath($TerminalDataPath)
 if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     throw "Pasta do projeto não encontrada: $ProjectRoot"
 }
+if (-not (Test-Path -LiteralPath $TerminalDataPath -PathType Container) -or
+    -not (Test-Path -LiteralPath (Join-Path $TerminalDataPath 'MQL5') -PathType Container)) {
+    throw "Pasta de dados do MT5 não encontrada; prévia cancelada: $TerminalDataPath"
+}
 if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
     throw "MetaEditor não encontrado: $MetaEditorPath"
 }
