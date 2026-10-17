@@ -299,7 +299,7 @@ string JsonEscape(string s){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
-      SetLabel(Obj("INFO1"),"Configuracoes: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Configuracoes indisponiveis",20,361,9,C'255,118,118');
       return;
    }
    string mode=JsonValue(r,"selected_mode");
@@ -320,10 +320,10 @@ void RefreshNotifications(){
       SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Atualizacao: HTTP "+IntegerToString(code),20,421,9,C'88,214,141');
+      SetLabel(Obj("INFO4"),"Atualizacao concluida",20,421,9,C'88,214,141');
       SetLabel(Obj("INFO5"),"Analise operacional atualizada pelo runtime",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Notificacoes: indisponiveis • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Notificacoes indisponiveis",20,361,9,C'255,118,118');
    }
 }
 void RefreshLearning(){
@@ -337,7 +337,7 @@ void RefreshLearning(){
       SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
-      SetLabel(Obj("INFO1"),"Ensino: runtime indisponivel • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
    }
 }
 void RenderView(){
@@ -361,7 +361,7 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       Analyze();
       SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
-      SetLabel(Obj("INFO3"),"Fonte da leitura: endpoint /api/runtime/analysis",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Fonte: analise atual do ecossistema",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
    }else if(active_view=="MEMORIA"){
@@ -386,7 +386,7 @@ void RenderView(){
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay: endpoint /api/replay disponivel no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Replay: disponivel no laboratorio",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
@@ -419,7 +419,7 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
-      SetLabel(Obj("RUNTIME"),"Runtime: OFFLINE / HTTP "+IntegerToString(code),20,104,10,C'255,118,118');
+      SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
@@ -429,7 +429,7 @@ void RefreshHealth(){
    string mt5=JsonValue(r,"mt5_demo");
    string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Runtime: ONLINE • HTTP "+IntegerToString(code),20,104,10,C'88,214,141');
+   SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
@@ -437,7 +437,7 @@ void RefreshHealth(){
 void RefreshMarketAssets(){
    string r; int code=0;
    if(!Http("GET","/api/market/assets","",r,code)){
-      SetLabel(Obj("MARKET"),"Ativos/Mercados: indisponiveis • HTTP "+IntegerToString(code),20,278,8,C'255,118,118');
+      SetLabel(Obj("MARKET"),"Ativos/Mercados indisponiveis",20,278,8,C'255,118,118');
       return;
    }
    int total=0; int p=0;
@@ -484,9 +484,9 @@ void SaveConfig(){
    string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code))
-      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas no runtime • HTTP "+IntegerToString(code),20,361,9,C'88,214,141');
+      SetLabel(Obj("INFO1"),"Configuracoes sincronizadas",20,361,9,C'88,214,141');
    else
-      SetLabel(Obj("INFO1"),"Falha ao sincronizar configuracoes • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Nao foi possivel salvar configuracoes",20,361,9,C'255,118,118');
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
@@ -517,7 +517,7 @@ void Analyze(bool render=true){
    if(!render) return;
    string reason=JsonValue(r,"reason");
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo ecossistema.":reason,0,62),20,204,9,C'180,190,205');
    SetLabel(Obj("INFO1"),"Decisao atualizada",20,361,9,c);
@@ -547,7 +547,7 @@ void RunCycle(){
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
-   SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
+   SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
@@ -565,7 +565,7 @@ void CloseCycle(){
    if(Http("POST","/api/runtime/close",body,r,code)){
       SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
       last_cycle_id=""; last_external_id="";
-   }else SetLabel(Obj("INFO1"),"Fechamento falhou/bloqueado • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+   }else SetLabel(Obj("INFO1"),"Fechamento bloqueado ou indisponivel",20,361,9,C'255,118,118');
 }
 int OnInit(){
    active_view="COCKPIT";
@@ -590,11 +590,8 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
-      datetime hidden_bar=iTime(_Symbol,_Period,0);
-      if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
-         last_analysis_bar=hidden_bar;
-         Analyze(false);
-      }
+      Analyze(false);
+      last_analysis_bar=iTime(_Symbol,_Period,0);
       return;
    }
    RefreshPanelLayout();
