@@ -150,3 +150,42 @@ def test_healthy_operational_observability_does_not_create_incident_notification
     }
 
     assert service.notification_summary()["count"] == 0
+
+
+def test_mt5_analysis_ignores_client_confirmation_and_runs_server_side_filters(monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from data.models import Candle
+
+    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    captured = {}
+    candle = Candle(datetime(2026, 10, 17, 12, tzinfo=timezone.utc), 100, 102, 99, 101, 10)
+    orchestration = SimpleNamespace(
+        timestamp=datetime(2026, 10, 17, 12, tzinfo=timezone.utc),
+        market_data=SimpleNamespace(candles=(candle,), source="mt5-demo", symbol="EURUSD", timeframe="5m"),
+        analysis=SimpleNamespace(signal=SimpleNamespace(value="AGUARDAR"), score=50, reason="test"),
+    )
+
+    def evaluate(request, **kwargs):
+        captured.update(kwargs)
+        return orchestration
+
+    monkeypatch.setattr(service.trading_runtime.orchestrator, "evaluate", evaluate)
+    monkeypatch.setattr(service.mt5_operational_adapter, "read_operational_state", lambda: None)
+    service.trading_runtime.market_data_state = SimpleNamespace(
+        update=lambda *args, **kwargs: SimpleNamespace(safe_for_analysis=True),
+        invalidate=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(service, "_record_analysis", lambda analysis: None)
+
+    service.analyze_mt5_market(
+        symbol="EURUSD",
+        timeframe="5m",
+        limit=20,
+        confirmed=False,
+        filters_ok=False,
+    )
+
+    assert captured["confirmed"] is True
+    assert captured["filters_ok"] is True
+    assert captured["filters_required"] is True
