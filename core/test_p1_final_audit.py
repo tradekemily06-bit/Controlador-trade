@@ -153,3 +153,57 @@ def test_p1_final_audit_risk_limit_blocks_execution():
 
     assert decision.decision == FinalDecision.BLOQUEAR
     assert "Limite de operações" in decision.reason
+
+
+def test_decision_engine_rejects_directional_signal_with_inconsistent_score():
+    cases = (
+        (Signal.COMPRA, 69.0, "Score incompatível"),
+        (Signal.VENDA, 31.0, "Score incompatível"),
+        (Signal.COMPRA, float("nan"), "Score inválido"),
+        (Signal.VENDA, 101.0, "Score inválido"),
+    )
+    down_context = MarketContextEngine().evaluate(
+        trend_strength=100.0,
+        volatility_quality=100.0,
+        liquidity_quality=100.0,
+        direction=MarketDirection.BAIXA,
+    )
+    for signal, score, expected_reason in cases:
+        analysis = AnalysisResult(
+            signal=signal,
+            score=score,
+            reason="Teste de integridade.",
+            confirmed=True,
+            symbol="BTCUSD",
+            timeframe="5m",
+        )
+        context = down_context if signal is Signal.VENDA else favorable_up_context()
+        decision = DecisionEngine(RiskManager()).evaluate(
+            analysis=analysis,
+            market_context=context,
+            operational_state=operational_state(),
+            senior_context=make_senior_context(),
+        )
+        assert decision.decision == FinalDecision.AGUARDAR
+        assert decision.signal is Signal.AGUARDAR
+        assert expected_reason in decision.reason
+
+
+def test_decision_engine_rejects_unconfirmed_directional_signal():
+    analysis = AnalysisResult(
+        signal=Signal.COMPRA,
+        score=100.0,
+        reason="Não confirmado.",
+        confirmed=False,
+        symbol="BTCUSD",
+        timeframe="5m",
+    )
+    decision = DecisionEngine(RiskManager()).evaluate(
+        analysis=analysis,
+        market_context=favorable_up_context(),
+        operational_state=operational_state(),
+        senior_context=make_senior_context(),
+    )
+    assert decision.decision == FinalDecision.AGUARDAR
+    assert decision.signal is Signal.AGUARDAR
+    assert "não confirmado" in decision.reason

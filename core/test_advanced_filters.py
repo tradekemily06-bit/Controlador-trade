@@ -1,10 +1,12 @@
 import math
 
 from core.advanced_filters import AdvancedFilters
+from core.models import Signal
 
 
 def make_values(**overrides):
     values = {
+        "direction": Signal.COMPRA,
         "trend": 80.0,
         "pressure": 80.0,
         "structure": 80.0,
@@ -34,14 +36,14 @@ def test_blocks_when_core_component_is_below_minimum():
     result = AdvancedFilters().evaluate(**make_values(trend=49.0))
 
     assert result.allowed is False
-    assert "Tendência insuficiente." in result.reasons
+    assert "Tendência insuficiente para compra." in result.reasons
 
 
 def test_rejection_can_be_weak_without_being_the_only_blocker():
     result = AdvancedFilters().evaluate(**make_values(rejection=10.0))
 
     assert result.allowed is False
-    assert "Rejeição fraca." in result.reasons
+    assert "Rejeição fraca para compra." in result.reasons
 
 
 def test_rejects_invalid_values_fail_closed():
@@ -64,3 +66,51 @@ def test_reports_multiple_failed_conditions():
 
     assert result.allowed is False
     assert len(result.reasons) == 5
+
+
+def test_allows_directionally_aligned_sell_setup():
+    result = AdvancedFilters().evaluate(
+        **make_values(
+            direction=Signal.VENDA,
+            trend=0.0,
+            pressure=0.0,
+            structure=0.0,
+            rejection=25.0,
+            volume=30.0,
+            confirmation=100.0,
+        )
+    )
+    assert result.allowed is True
+    assert result.reasons == ()
+
+
+def test_blocks_buy_when_directional_components_are_bearish():
+    result = AdvancedFilters().evaluate(
+        **make_values(trend=20.0, pressure=20.0, structure=20.0)
+    )
+    assert result.allowed is False
+    assert any("compra" in reason for reason in result.reasons)
+
+
+def test_blocks_sell_when_directional_components_are_bullish():
+    result = AdvancedFilters().evaluate(
+        **make_values(
+            direction=Signal.VENDA,
+            trend=80.0,
+            pressure=80.0,
+            structure=80.0,
+            rejection=50.0,
+            volume=50.0,
+            confirmation=100.0,
+        )
+    )
+    assert result.allowed is False
+    assert any("venda" in reason for reason in result.reasons)
+
+def test_rejects_string_direction_even_when_value_matches_enum():
+    result = AdvancedFilters().evaluate(
+        **make_values(direction="COMPRA")
+    )
+    assert result.allowed is False
+    assert result.reasons == ("Direção de entrada inválida.",)
+

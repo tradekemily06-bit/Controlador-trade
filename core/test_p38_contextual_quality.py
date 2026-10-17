@@ -28,7 +28,7 @@ def _context():
 def test_preserves_base_quality_and_declared_impact():
     result = ContextualSignalQualityEvaluator().evaluate("btcusd", _quality(), _context())
     assert result.symbol == "BTCUSD"
-    assert result.base_quality.score == 80
+    assert result.base_quality.score == 90
     assert result.event_count == 1
     assert result.high_impact_events == 1
 

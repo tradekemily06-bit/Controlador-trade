@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from math import isfinite
 
 from .market_context import MarketContext, MarketContextResult, MarketDirection
 from .models import AnalysisResult, Signal
@@ -48,6 +49,16 @@ class DecisionEngine:
         operations_count=None,
         consecutive_losses=None,
     ) -> DecisionResult:
+        # Valida o objeto e o enum antes de qualquer gate que possa conduzir
+        # a EXECUTAR. Dataclasses não validam tipos em runtime: um produtor
+        # alternativo pode fornecer "COMPRA" como string ou um sinal desconhecido.
+        if not isinstance(analysis, AnalysisResult) or not isinstance(analysis.signal, Signal):
+            return DecisionResult(
+                decision=FinalDecision.AGUARDAR,
+                signal=Signal.AGUARDAR,
+                reason="Análise ou direção inválida; execução bloqueada.",
+            )
+
         if operational_state is None:
             return DecisionResult(
                 decision=FinalDecision.AGUARDAR,
@@ -61,6 +72,40 @@ class DecisionEngine:
                 signal=analysis.signal,
                 reason="Estado operacional inválido.",
             )
+
+        # Defesa independente do pipeline: nenhum produtor de AnalysisResult
+        # pode transformar um sinal inconsistente ou não confirmado em execução.
+        if analysis.signal in (Signal.COMPRA, Signal.VENDA):
+            score = analysis.score
+            if (
+                not isinstance(score, (int, float))
+                or isinstance(score, bool)
+                or not isfinite(score)
+                or not 0 <= score <= 100
+            ):
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=Signal.AGUARDAR,
+                    reason="Score inválido; análise direcional bloqueada.",
+                )
+            if analysis.confirmed is not True:
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=Signal.AGUARDAR,
+                    reason="Sinal direcional não confirmado.",
+                )
+            if analysis.signal is Signal.COMPRA and score < 70:
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=Signal.AGUARDAR,
+                    reason="Score incompatível com sinal de compra.",
+                )
+            if analysis.signal is Signal.VENDA and score > 30:
+                return DecisionResult(
+                    decision=FinalDecision.AGUARDAR,
+                    signal=Signal.AGUARDAR,
+                    reason="Score incompatível com sinal de venda.",
+                )
 
         if analysis.signal == Signal.AGUARDAR:
             return DecisionResult(

@@ -30,6 +30,7 @@ class DecisionSnapshot:
     consecutive_losses: int | None
     symbol: str | None
     timeframe: str | None
+    candidate_signal: str | None = None
 
     @classmethod
     def from_results(
@@ -42,12 +43,17 @@ class DecisionSnapshot:
         operational_state: OperationalState | None,
     ) -> "DecisionSnapshot":
         return cls(
-            signal=analysis.signal.value,
+            signal=(
+                decision.signal.value
+                if decision.decision == "EXECUTAR"
+                else "AGUARDAR"
+            ),
+            candidate_signal=analysis.signal.value,
             analysis_score=analysis.score,
             confirmed=analysis.confirmed,
             quality_score=quality.score,
             quality_level=quality.level.value,
-            actionable=quality.actionable,
+            actionable=quality.actionable and decision.decision == "EXECUTAR",
             decision=decision.decision,
             decision_reason=decision.reason,
             market_context=(
@@ -79,7 +85,7 @@ class DecisionSnapshot:
         context = self.market_context or "INDISPONÍVEL"
         direction = self.market_direction or "INDISPONÍVEL"
         return (
-            f"Sinal={self.signal}; score={self.analysis_score:.2f}; "
+            f"Sinal={self.signal}; candidato={self.candidate_signal or self.signal}; score={self.analysis_score:.2f}; "
             f"confirmado={self.confirmed}; qualidade={self.quality_level} "
             f"({self.quality_score:.2f}); decisão={self.decision}; "
             f"contexto={context}; direção={direction}; "
@@ -91,6 +97,7 @@ class DecisionSnapshot:
         """Converte o snapshot para dados simples, adequados à auditoria."""
         return {
             "signal": self.signal,
+            "candidate_signal": self.candidate_signal,
             "analysis_score": self.analysis_score,
             "confirmed": self.confirmed,
             "quality_score": self.quality_score,

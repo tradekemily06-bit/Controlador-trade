@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 
+from core.models import Signal
+
 
 @dataclass(frozen=True)
 class FilterResult:
@@ -18,6 +20,7 @@ class AdvancedFilters:
     def evaluate(
         self,
         *,
+        direction: Signal,
         trend: float,
         pressure: float,
         structure: float,
@@ -47,24 +50,38 @@ class AdvancedFilters:
                     reasons=(f"{name} inválido.",),
                 )
 
-        # Sem confirmação, não há entrada válida.
+        if not isinstance(direction, Signal) or direction not in (Signal.COMPRA, Signal.VENDA):
+            return FilterResult(False, ("Direção de entrada inválida.",))
+
+        # A confirmação técnica deve vir dos dados do ciclo, não apenas do
+        # booleano enviado pelo cliente.
         if confirmation < 100:
             reasons.append("Confirmação insuficiente.")
 
-        # Exige alinhamento mínimo dos componentes principais.
-        if trend < 50:
-            reasons.append("Tendência insuficiente.")
-        if structure < 50:
-            reasons.append("Estrutura insuficiente.")
-        if pressure < 50:
-            reasons.append("Pressão insuficiente.")
-        if volume < 40:
-            reasons.append("Volume insuficiente.")
-
-        # Rejeição muito baixa não bloqueia sozinha, pois pode haver
-        # oportunidades válidas sem rejeição forte.
-        if rejection < 20:
-            reasons.append("Rejeição fraca.")
+        # Os mesmos filtros são aplicados de forma simétrica à direção:
+        # scores altos indicam pressão/tendência compradora; baixos, vendedora.
+        if direction is Signal.COMPRA:
+            if trend < 50:
+                reasons.append("Tendência insuficiente para compra.")
+            if structure < 50:
+                reasons.append("Estrutura insuficiente para compra.")
+            if pressure < 50:
+                reasons.append("Pressão insuficiente para compra.")
+            if volume < 40:
+                reasons.append("Volume insuficiente para compra.")
+            if rejection < 20:
+                reasons.append("Rejeição fraca para compra.")
+        else:
+            if trend > 50:
+                reasons.append("Tendência insuficiente para venda.")
+            if structure > 50:
+                reasons.append("Estrutura insuficiente para venda.")
+            if pressure > 50:
+                reasons.append("Pressão insuficiente para venda.")
+            if volume > 60:
+                reasons.append("Volume insuficiente para venda.")
+            if rejection > 80:
+                reasons.append("Rejeição fraca para venda.")
 
         return FilterResult(
             allowed=not reasons,

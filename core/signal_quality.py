@@ -22,7 +22,7 @@ class SignalQuality:
 
 
 class SignalQualityEvaluator:
-    """Classifica a qualidade do sinal sem alterar a decisão do motor."""
+    """Classifica a evidência na direção indicada sem conceder autorização de execução."""
 
     def evaluate(self, analysis: AnalysisResult) -> SignalQuality:
         score = analysis.score
@@ -39,14 +39,25 @@ class SignalQualityEvaluator:
                 actionable=False,
             )
 
-        # Quality describes the evidence strength of this analysis cycle,
-        # not permission to trade. Waiting/unconfirmed analyses retain a score,
-        # while actionable remains false unless a confirmed directional signal exists.
+        if analysis.signal is Signal.COMPRA:
+            # O motor direcional define COMPRA a partir de 70.
+            quality_score = max(1.0, float(score))
+            direction_consistent = score >= 70
+        elif analysis.signal is Signal.VENDA:
+            # Para VENDA, scores menores representam evidência direcional mais forte.
+            quality_score = max(1.0, 100.0 - float(score))
+            direction_consistent = score <= 30
+        else:
+            # AGUARDAR conserva a força da evidência em relação ao ponto neutro.
+            # Esta pontuação é informativa e nunca autoriza execução.
+            quality_score = max(1.0, abs(float(score) - 50.0) * 2.0)
+            direction_consistent = False
+
         actionable = (
             analysis.confirmed is True
             and analysis.signal in (Signal.COMPRA, Signal.VENDA)
+            and direction_consistent
         )
-        quality_score = max(1.0, abs(score - 50.0) * 2.0)
 
         if quality_score >= 80:
             level = SignalLevel.FORTE

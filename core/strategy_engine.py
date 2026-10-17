@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import isfinite
 
-from .models import AnalysisResult
+from .models import AnalysisResult, Signal
+from .advanced_filters import AdvancedFilters
 from .scoring import calculate_score
 from .signal_engine import SignalEngine
 
@@ -18,6 +19,7 @@ class StrategyInput:
     confirmation: float
     confirmed: bool
     filters_ok: bool = True
+    filters_required: bool = True
     symbol: str | None = None
     timeframe: str | None = None
 
@@ -39,6 +41,8 @@ class StrategyEngine:
 
         if not isinstance(data.filters_ok, bool):
             raise ValueError("filters_ok deve ser booleano.")
+        if not isinstance(data.filters_required, bool):
+            raise ValueError("filters_required deve ser booleano.")
 
         values = {
             "trend": data.trend,
@@ -60,11 +64,32 @@ class StrategyEngine:
                 raise ValueError(f"{name} deve estar entre 0 e 100.")
 
         score = calculate_score(**values)
+        direction = Signal.COMPRA if score >= 70 else Signal.VENDA if score <= 30 else Signal.AGUARDAR
+        filter_result = (
+            AdvancedFilters().evaluate(direction=direction, **values)
+            if data.filters_required and direction in (Signal.COMPRA, Signal.VENDA)
+            else None
+        )
+        effective_filters_ok = data.filters_ok is True and (
+            filter_result is None or filter_result.allowed
+        )
 
-        return self.signal_engine.evaluate(
+        result = self.signal_engine.evaluate(
             score=score,
             confirmed=data.confirmed,
-            filters_ok=data.filters_ok,
+            filters_ok=effective_filters_ok,
             symbol=data.symbol,
             timeframe=data.timeframe,
         )
+        if filter_result is not None and not filter_result.allowed:
+            # A caller-supplied filters_ok=True is never proof that market
+            # filters passed; internal direction-aware checks must also pass.
+            return AnalysisResult(
+                signal=Signal.AGUARDAR,
+                score=result.score,
+                reason="Filtros bloqueados: " + "; ".join(filter_result.reasons),
+                confirmed=result.confirmed,
+                symbol=result.symbol,
+                timeframe=result.timeframe,
+            )
+        return result
