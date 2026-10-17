@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 280;
-input int    InpPanelHeight = 380;
+input int    InpPanelWidth = 360;
+input int    InpPanelHeight = 440;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -14,16 +14,17 @@ string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
 datetime last_analysis_bar=0;
-bool watermark_enabled=true;
-bool panel_visible=true;
+bool panel_visible=false;
 int panel_x=0;
-int panel_width=320;
-int panel_height=420;
+int panel_width=360;
+int panel_height=440;
+string compact_signal="AGUARDAR";
+string compact_score="—%";
+bool compact_available=false;
 double panel_sx=1.0;
 double panel_sy=1.0;
 
 string Obj(string suffix){ return P+suffix; }
-string WatermarkKey(){ return P+IntegerToString(ChartID())+"_WATERMARK"; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
@@ -90,94 +91,63 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
-void ApplyWatermark(){
-   string legacy=Obj("WATERMARK");
-   string mark=Obj("WATERMARK_MARK");
-   string name=Obj("WATERMARK_TEXT");
-   if(ObjectFind(0,legacy)>=0) ObjectDelete(0,legacy);
-   if(!watermark_enabled){
-      if(ObjectFind(0,mark)>=0) ObjectDelete(0,mark);
-      if(ObjectFind(0,name)>=0) ObjectDelete(0,name);
-      return;
-   }
-   int w=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int h=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int center_y=MathMax(120,h/2);
-
-   // Marca horizontal, discreta e centralizada para não competir com os candles.
-   if(ObjectFind(0,mark)<0) ObjectCreate(0,mark,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,mark,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,mark,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,mark,OBJPROP_XDISTANCE,MathMax(50,w/2-112));
-   ObjectSetInteger(0,mark,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,mark,OBJPROP_FONTSIZE,30);
-   ObjectSetInteger(0,mark,OBJPROP_COLOR,C'55,75,110');
-   ObjectSetString(0,mark,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,mark,OBJPROP_TEXT,"▂▅▇↗");
-   ObjectSetInteger(0,mark,OBJPROP_BACK,true);
-   ObjectSetInteger(0,mark,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,mark,OBJPROP_HIDDEN,true);
-
+void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,MathMin(w-80,w/2+88));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,center_y);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,18);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,C'55,65,85');
-   ObjectSetString(0,name,OBJPROP_FONT,"Arial");
-   ObjectSetString(0,name,OBJPROP_TEXT,"CONTROLADOR TRADING");
-   ObjectSetInteger(0,name,OBJPROP_BACK,true);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
+   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
+   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_TEXT,text);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,clickable);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
-void RefreshWatermarkControl(){
-   if(active_view=="CONFIG") SetButton(Obj("WM"),watermark_enabled?"MARCA: ATIVADA":"MARCA: DESATIVADA",20,555,172,28);
-   else if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
-   ApplyWatermark();
+string CompactSignalText(string signal){
+   if(signal=="COMPRA") return "↑ COMPRAR";
+   if(signal=="VENDA") return "↓ VENDER";
+   if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return "INDISPONÍVEL";
+   return "AGUARDAR";
 }
-void ToggleWatermark(){
-   watermark_enabled=!watermark_enabled;
-   GlobalVariableSet(WatermarkKey(),watermark_enabled?1.0:0.0);
-   RefreshWatermarkControl();
-   SetLabel(Obj("INFO1"),watermark_enabled?"Marca d'agua ativada no grafico.":"Marca d'agua desativada no grafico.",20,361,9,watermark_enabled?C'88,214,141':C'145,160,180');
-   ChartRedraw();
+color CompactSignalColor(string signal){
+   if(signal=="COMPRA") return C'88,214,141';
+   if(signal=="VENDA") return C'255,118,118';
+   if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,118,118';
+   return C'255,209,102';
 }
-void LoadWatermark(){
-   if(GlobalVariableCheck(WatermarkKey()))
-      watermark_enabled=(GlobalVariableGet(WatermarkKey())>0.5);
-   RefreshWatermarkControl();
+void UpdateCompactSignal(string signal,string score,bool available=true){
+   compact_signal=signal;
+   compact_score=(available && score!="")?DoubleToString(StringToDouble(score),0)+"%":"—%";
+   compact_available=available;
+   if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
+      ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
+      ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
+   }
+   if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0)
+      ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
 }
 void RefreshPanelToggle(){
-   string name=Obj("PANEL_TOGGLE");
-   if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_BUTTON,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
-   int toggle_x=panel_visible?MathMax(12,panel_x+panel_width-86):MathMax(12,cw-86);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,toggle_x);
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,18);
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,74);
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,24);
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
-   ObjectSetString(0,name,OBJPROP_TEXT,panel_visible?"PAINEL: ON":"PAINEL: OFF");
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   int cx=28;
+   int cy=MathMax(42,ch-46);
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'31,43,61',true);
+   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
+   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
+   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
+   UpdateCompactSignal(compact_signal,compact_available?compact_score:"",compact_available);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
    if(panel_visible){ Panel(); RenderView(); Analyze(true); }
-   else DeletePanel(true,true);
+   else DeletePanel(true);
    RefreshPanelToggle();
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   if(GlobalVariableCheck(PanelVisibilityKey()))
-      panel_visible=(GlobalVariableGet(PanelVisibilityKey())>0.5);
+   panel_visible=false;
+   GlobalVariableSet(PanelVisibilityKey(),0.0);
    RefreshPanelToggle();
 }
 void Panel(){
@@ -196,7 +166,7 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
+   SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"⌂",18,67,54,25);
    SetButton(Obj("V2"),"A",74,67,54,25);
@@ -233,18 +203,16 @@ void Panel(){
    SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
-   SetButton(Obj("WM"),"MARCA: ATIVADA",20,555,172,28);
 }
-void DeletePanel(bool preserveWatermark=false,bool preserveToggle=false){
+void DeletePanel(bool preserveCompact=false){
    int total=ObjectsTotal(0,-1,-1);
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
-      if(preserveWatermark && (n==Obj("WATERMARK_MARK") || n==Obj("WATERMARK_TEXT"))) continue;
+      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
       ObjectDelete(0,n);
    }
-   if(preserveToggle) RefreshPanelToggle();
+   if(preserveCompact) RefreshPanelToggle();
 }
 string JsonValue(string json,string key){
    string needle="\"" + key + "\":";
@@ -316,7 +284,6 @@ void RefreshPreferences(){
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Timeframe: "+(tf==""?"—":tf)+" • candle fechado: "+(closed==""?"—":closed),20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatorios: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),"Marca d'agua: "+(watermark_enabled?"ATIVADA":"DESATIVADA")+" • persistencia local MT5",20,421,9,watermark_enabled?C'88,214,141':C'145,160,180');
    SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,441,9,C'255,155,155');
 }
 void RefreshNotifications(){
@@ -573,7 +540,6 @@ void CloseCycle(){
 }
 int OnInit(){
    active_view="COCKPIT";
-   LoadWatermark();
    LoadPanelVisibility();
    if(panel_visible){
       Panel();
@@ -582,9 +548,7 @@ int OnInit(){
       RefreshPanelToggle();
    }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
-   RefreshHealth();
-   RefreshSecondary();
-   RefreshMarketAssets();
+    if(panel_visible){ RefreshHealth(); RefreshSecondary(); RefreshMarketAssets(); }
    // Prime runtime market-data state immediately, even when the native panel is hidden.
    Analyze(panel_visible);
    last_analysis_bar=iTime(_Symbol,_Period,0);
@@ -597,7 +561,6 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
-      ApplyWatermark();
       datetime hidden_bar=iTime(_Symbol,_Period,0);
       if(hidden_bar>0 && hidden_bar!=last_analysis_bar){
          last_analysis_bar=hidden_bar;
@@ -617,13 +580,12 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   ApplyWatermark();
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
@@ -643,5 +605,4 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
-   else if(sparam==Obj("WM")) ToggleWatermark();
 }
