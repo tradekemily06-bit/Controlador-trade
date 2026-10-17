@@ -207,7 +207,11 @@ def application(environ, start_response):
     # O supervisor local precisa consultar o health com frequência. Esse probe é
     # somente leitura e só pode ser isento do rate limit quando vem do loopback.
     # O limite continua valendo para health remoto e para toda a API restante.
-    is_local_health_probe = method == "GET" and path == "/api/health" and str(environ.get("REMOTE_ADDR") or "") in {"127.0.0.1", "::1"}
+    is_local_health_probe = (
+        method == "GET"
+        and path in {"/api/health", "/api/health/live"}
+        and str(environ.get("REMOTE_ADDR") or "") in {"127.0.0.1", "::1"}
+    )
     if not is_local_health_probe and not SECURITY.allow(environ):
         return _json_response(start_response, HTTPStatus.TOO_MANY_REQUESTS, {"error": "Limite de requisições excedido", "request_id": request_id}, request_id, environ)
 
@@ -232,6 +236,15 @@ def application(environ, start_response):
                 )
 
     try:
+        if path == "/api/health/live" and method == "GET":
+            # Liveness only: do not query broker, database, risk or observability.
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                {"ok": True, "live": True, "service": "controlador"},
+                request_id,
+                environ,
+            )
         if path == "/api/health" and method == "GET":
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
