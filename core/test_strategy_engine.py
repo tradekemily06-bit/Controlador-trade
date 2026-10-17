@@ -39,14 +39,14 @@ def test_strategy_engine_generates_sell_from_weak_score():
             trend=0.0,
             pressure=0.0,
             structure=0.0,
-            rejection=0.0,
-            volume=0.0,
-            confirmation=0.0,
+            rejection=25.0,
+            volume=30.0,
+            confirmation=100.0,
         )
     )
 
     assert result.signal == Signal.VENDA
-    assert result.score == 0.0
+    assert result.score == 21.75
 
 
 def test_strategy_engine_awaits_confirmation():
@@ -107,3 +107,24 @@ def test_strategy_engine_rejects_out_of_range_values(field):
 
     with pytest.raises(ValueError):
         StrategyEngine().evaluate(make_input(**{field: -0.1}))
+
+def test_client_filter_flag_cannot_override_failed_internal_filters():
+    result = StrategyEngine().evaluate(make_input(trend=20.0, filters_ok=True))
+    assert result.signal == Signal.AGUARDAR
+    assert "Tendência insuficiente para compra." in result.reason
+
+def test_required_filter_preference_is_effective_without_external_override():
+    result = StrategyEngine().evaluate(
+        make_input(
+            trend=10.0,
+            pressure=10.0,
+            structure=10.0,
+            rejection=20.0,
+            volume=30.0,
+            confirmation=100.0,
+            filters_required=False,
+        )
+    )
+    assert result.score == 27.0
+    assert result.signal == Signal.VENDA
+

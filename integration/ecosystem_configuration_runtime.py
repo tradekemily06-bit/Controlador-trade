@@ -237,6 +237,8 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
+        if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+            raise ValueError("confirmed e filters_ok devem ser booleanos")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -249,7 +251,9 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
-            confirmed=confirmed, filters_ok=filters_ok, entry_conditions=entry_conditions,
+            confirmed=confirmed, filters_ok=filters_ok,
+            filters_required=self.preferences.preferences.require_filters,
+            entry_conditions=entry_conditions,
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
@@ -267,6 +271,10 @@ class ConfiguredEcosystemService(EcosystemService):
         filters_ok: bool | None = None,
     ) -> Any:
         """Analyze the current MT5 DEMO market snapshot without executing an order."""
+        if confirmed is not None and not isinstance(confirmed, bool):
+            raise ValueError("confirmed deve ser booleano ou None")
+        if filters_ok is not None and not isinstance(filters_ok, bool):
+            raise ValueError("filters_ok deve ser booleano ou None")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -283,8 +291,8 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
-        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        effective_confirmed = prefs.require_closed_candle if confirmed is None else confirmed
+        effective_filters = True if filters_ok is None else filters_ok
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         if self.trading_runtime.market_data_state is None:
             raise RuntimeError(
@@ -299,6 +307,7 @@ class ConfiguredEcosystemService(EcosystemService):
                 market_context=None,
                 confirmed=effective_confirmed,
                 filters_ok=effective_filters,
+                filters_required=prefs.require_filters,
             )
             if self.trading_runtime.market_data_state is not None:
                 from core.p122_broker_market_data import BrokerMarketDataSnapshot

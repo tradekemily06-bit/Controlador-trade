@@ -306,7 +306,7 @@ def test_runtime_analysis_displays_wait_when_final_context_or_risk_gate_blocks(m
         analysis=candidate,
         quality=SimpleNamespace(score=84.0, level=SimpleNamespace(value="FORTE"), actionable=True),
         decision=SimpleNamespace(decision="AGUARDAR", reason="risco operacional não aprovado"),
-        snapshot=SimpleNamespace(as_dict=lambda: {"candidate_signal": "COMPRA"}),
+        snapshot=SimpleNamespace(as_dict=lambda: {"signal": "AGUARDAR", "candidate_signal": "COMPRA"}),
         market_data=SimpleNamespace(source="IC Markets MT5 DEMO", candles=candles),
     )
     monkeypatch.setattr(app.SERVICE, "analyze_mt5_market", lambda **_: fake)
@@ -368,7 +368,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         automation_lifecycle=None,
     )
     result = SimpleNamespace(stopped=False, stop_reason="", cycles=[cycle])
-    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **_: result)
+    call_args = {}
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: (call_args.update(kwargs) or result))
 
     status, _, payload = ApiContractTests().request(
         "/api/runtime/cycle",
@@ -376,6 +377,8 @@ def test_runtime_cycle_exposes_quality_and_gates_display_signal(monkeypatch):
         payload={"symbol": "EURUSD", "timeframe": "5m", "limit": 100},
     )
 
+    assert call_args["confirmed"] is False
+    assert call_args["filters_ok"] is True
     runtime = payload["runtime"]
     assert status == "200 OK"
     assert runtime["signal"] == "AGUARDAR"
@@ -493,3 +496,32 @@ def test_cycle_mode_preferences_block_execution_without_losing_analysis(monkeypa
     assert expected_reason in runtime["reason"]
     assert runtime["execution"]["accepted"] is False
     assert payload["execution_allowed"] is False
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        ("/api/runtime/analysis", {"symbol": "EURUSD", "timeframe": "5m", "limit": 100, "confirmed": "false"}),
+        ("/api/runtime/analysis", {"symbol": "EURUSD", "timeframe": "5m", "limit": 100, "filters_ok": "false"}),
+        ("/api/runtime/cycle", {"symbol": "EURUSD", "timeframe": "5m", "limit": 100, "confirmed": "false"}),
+        ("/api/runtime/cycle", {"symbol": "EURUSD", "timeframe": "5m", "limit": 100, "filters_ok": "false"}),
+    ],
+)
+def test_runtime_market_flags_reject_string_booleans(monkeypatch, path, payload):
+    import app
+
+    monkeypatch.setattr(
+        app.SERVICE,
+        "analyze_mt5_market",
+        lambda **_: pytest.fail("entrada inválida não pode chegar à análise"),
+    )
+    monkeypatch.setattr(
+        app.SERVICE,
+        "run_mt5_cycle",
+        lambda **_: pytest.fail("entrada inválida não pode chegar ao ciclo"),
+    )
+
+    status, _, response = ApiContractTests().request(path, method="POST", payload=payload)
+
+    assert status == "400 Bad Request"
+    assert response["error"] == "Entrada inválida"

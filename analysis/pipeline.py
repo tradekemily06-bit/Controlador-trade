@@ -26,6 +26,7 @@ class StrategyPipeline:
         *,
         confirmed: bool = False,
         filters_ok: bool = True,
+        filters_required: bool = True,
         symbol: str | None = None,
         timeframe: str | None = None,
     ) -> AnalysisResult:
@@ -41,6 +42,7 @@ class StrategyPipeline:
                 confirmation=analysis.confirmation,
                 confirmed=confirmed,
                 filters_ok=filters_ok,
+                filters_required=filters_required,
                 symbol=symbol,
                 timeframe=timeframe,
             )

@@ -33,6 +33,7 @@ def test_pipeline_connects_candles_to_buy_signal():
     result = StrategyPipeline().evaluate(
         rising_candles(),
         confirmed=True,
+        filters_ok=True,
         symbol="TEST",
         timeframe="5m",
     )

@@ -5,6 +5,7 @@ import pytest
 from core.decision_snapshot import DecisionSnapshot
 from core.models import Signal
 from core.operation_memory_store import OperationMemoryStore
+from core.operational_safety_store import OperationalSafetyStore
 from core.persistent_operational_recorder import PersistentOperationalRecorder
 
 
@@ -80,3 +81,30 @@ def test_invalid_persisted_state_fails_closed(tmp_path):
 def test_invalid_store_dependency_is_rejected():
     with pytest.raises(TypeError, match="store deve ser OperationMemoryStore"):
         PersistentOperationalRecorder(store=object())
+
+
+def test_persisted_blocked_snapshot_is_normalized_to_aguardar_and_non_actionable():
+    restored = OperationalSafetyStore._snapshot({
+        "signal": "COMPRA",
+        "analysis_score": 90.0,
+        "confirmed": True,
+        "quality_score": 90.0,
+        "quality_level": "FORTE",
+        "actionable": True,
+        "decision": "BLOQUEAR",
+        "decision_reason": "risco bloqueou",
+        "market_context": "FAVORAVEL",
+        "market_direction": "ALTA",
+        "market_score": 90.0,
+        "operational_state_available": True,
+        "trades_today": 1,
+        "consecutive_losses": 0,
+        "symbol": "TEST",
+        "timeframe": "5m",
+    })
+
+    assert restored.signal == "AGUARDAR"
+    assert restored.candidate_signal == "COMPRA"
+    assert restored.actionable is False
+    assert restored.as_dict()["signal"] == "AGUARDAR"
+    assert restored.as_dict()["candidate_signal"] == "COMPRA"
