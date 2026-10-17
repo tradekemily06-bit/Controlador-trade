@@ -65,6 +65,7 @@ class TradingOrchestrator:
         senior_context: SeniorContextCycle | None = None,
         confirmed: bool = False,
         filters_ok: bool = True,
+        filters_required: bool = True,
         daily_result=None,
         operations_count=None,
         consecutive_losses=None,
@@ -79,6 +80,7 @@ class TradingOrchestrator:
             list(market_data.candles),
             confirmed=confirmed,
             filters_ok=filters_ok,
+            filters_required=filters_required,
             symbol=request.symbol,
             timeframe=request.timeframe,
         )
