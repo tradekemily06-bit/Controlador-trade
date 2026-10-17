@@ -91,8 +91,14 @@ def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick
     assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
 
 
-def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
+def test_mql5_compact_signal_normalizes_runtime_decisions_and_keeps_approved_c_style():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    assert "string NormalizeCompactSignal(string raw)" in panel
+    assert 'raw=="COMPRA" || raw=="COMPRAR" || raw=="BUY"' in panel
+    assert 'raw=="VENDA" || raw=="VENDER" || raw=="SELL"' in panel
+    assert 'signal=NormalizeCompactSignal(signal);' in panel
+    assert 'Obj("PANEL_TOGGLE_RING"),"◯"' in panel
+    assert "watermark" not in panel.lower()
     assert '"Controlador Trading"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
