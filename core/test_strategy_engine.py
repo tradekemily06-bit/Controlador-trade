@@ -113,3 +113,18 @@ def test_client_filter_flag_cannot_override_failed_internal_filters():
     assert result.signal == Signal.AGUARDAR
     assert "Tendência insuficiente para compra." in result.reason
 
+def test_required_filter_preference_is_effective_without_external_override():
+    result = StrategyEngine().evaluate(
+        make_input(
+            trend=10.0,
+            pressure=10.0,
+            structure=10.0,
+            rejection=20.0,
+            volume=30.0,
+            confirmation=100.0,
+            filters_required=False,
+        )
+    )
+    assert result.score == 27.0
+    assert result.signal == Signal.VENDA
+
