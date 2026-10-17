@@ -344,7 +344,7 @@ void RenderView(){
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",20,381,9,C'255,209,102');
+      SetLabel(Obj("INFO2"),"Risco: atualizando...",20,381,9,C'255,209,102');
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
@@ -456,7 +456,7 @@ void RefreshSecondary(){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
       SetLabel(Obj("INFO2"),"Risco: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO"),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
-   }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",20,381,9,C'255,118,118');
+   }else SetLabel(Obj("INFO2"),"Risco: indisponivel",20,381,9,C'255,118,118');
 
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
