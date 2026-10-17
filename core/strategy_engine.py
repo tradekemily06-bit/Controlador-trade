@@ -19,6 +19,7 @@ class StrategyInput:
     confirmation: float
     confirmed: bool
     filters_ok: bool = True
+    filters_required: bool = True
     symbol: str | None = None
     timeframe: str | None = None
 
@@ -40,6 +41,8 @@ class StrategyEngine:
 
         if not isinstance(data.filters_ok, bool):
             raise ValueError("filters_ok deve ser booleano.")
+        if not isinstance(data.filters_required, bool):
+            raise ValueError("filters_required deve ser booleano.")
 
         values = {
             "trend": data.trend,
@@ -64,7 +67,7 @@ class StrategyEngine:
         direction = Signal.COMPRA if score >= 70 else Signal.VENDA if score <= 30 else Signal.AGUARDAR
         filter_result = (
             AdvancedFilters().evaluate(direction=direction, **values)
-            if direction in (Signal.COMPRA, Signal.VENDA)
+            if data.filters_required and direction in (Signal.COMPRA, Signal.VENDA)
             else None
         )
         effective_filters_ok = data.filters_ok is True and (
