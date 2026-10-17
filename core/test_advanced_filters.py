@@ -106,3 +106,11 @@ def test_blocks_sell_when_directional_components_are_bullish():
     )
     assert result.allowed is False
     assert any("venda" in reason for reason in result.reasons)
+
+def test_rejects_string_direction_even_when_value_matches_enum():
+    result = AdvancedFilters().evaluate(
+        **make_values(direction="COMPRA")
+    )
+    assert result.allowed is False
+    assert result.reasons == ("Direção de entrada inválida.",)
+
