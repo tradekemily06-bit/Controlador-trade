@@ -639,21 +639,21 @@ void RunCycle(){
    if(signal=="") signal=JsonObjectValue(r,"runtime","decision");
    if(signal=="") signal="AGUARDAR";
    signal=NormalizeCompactSignal(signal);
-   string score=JsonObjectValue(JsonObjectValue(r,"runtime","quality"),"unused","score");
-   // JsonObjectValue expects the full parent object; extract quality from runtime.
+   // Extract the nested runtime object so nested quality/execution fields are parsed correctly.
+   string score="";
    string runtime_payload="";
    int runtime_pos=StringFind(r,"\"runtime\":");
    if(runtime_pos>=0) runtime_payload=StringSubstr(r,runtime_pos+10);
    string runtime_quality=JsonObjectValue(runtime_payload,"quality","score");
-   if(runtime_quality!="") score=runtime_quality; else score="";
+   if(runtime_quality!="") score=runtime_quality;
    double parsed_score=0.0;
    if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
    string reason=JsonObjectValue(r,"runtime","reason");
    string cid=JsonObjectValue(r,"runtime","cycle_id");
    string eid=JsonObjectValue(r,"runtime","external_id");
    string allowed=JsonValue(r,"execution_allowed");
-   string accepted=JsonObjectValue(r,"runtime","execution_status");
-   if(allowed!="true" || accepted!="ACCEPTED" || cid=="" || eid==""){
+   string accepted=JsonObjectValue(runtime_payload,"execution","accepted");
+   if(allowed!="true" || accepted!="true" || cid=="" || eid==""){
       signal="AGUARDAR";
       cid="";
       eid="";
@@ -666,7 +666,7 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"sem ciclo executavel":"atualizado"),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem execucao aceita":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="ACCEPTED" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Ciclo DEMO bloqueado ou sem execucao aceita",20,361,9,(allowed=="true" && accepted=="ACCEPTED" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
+   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="true" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Ciclo DEMO bloqueado ou sem execucao aceita",20,361,9,(allowed=="true" && accepted=="true" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
