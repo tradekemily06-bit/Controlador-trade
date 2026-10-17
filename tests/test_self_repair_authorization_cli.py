@@ -72,3 +72,10 @@ def test_self_repair_cli_blocks_process_actions_without_demo_only_environment(ca
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is False
     assert "provider DEMO" in payload["reason"]
+
+    monkeypatch.setenv("CONTROLADOR_EXECUTION_PROVIDER", "ic_markets_mt5_demo")
+    monkeypatch.setenv("CONTROLADOR_REAL_EXECUTION_ALLOWED", "true")
+    assert main(_args(**{"--action": "start_mt5_terminal"})) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allowed"] is False
+    assert "bloqueio REAL" in payload["reason"]
