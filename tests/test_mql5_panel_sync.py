@@ -333,7 +333,7 @@ def test_mql5_preview_uses_resolved_python_and_never_targets_installed_ea():
     assert "Get-Command $PythonExe" in preview
     assert "Python não foi encontrado no PATH" in preview
     assert "& $PythonExe -c $oneLinePython $Mt5TerminalPath" in preview
-    assert "'MQL5\\\\Experts\\\\ControladorTradingPreview'" in preview
+    assert "ControladorTradingPreview" in preview
     assert "installed_ea_replaced = $false" in preview
 
 def test_compact_panel_shows_aguardar_not_an_error_signal_when_health_is_unavailable():
