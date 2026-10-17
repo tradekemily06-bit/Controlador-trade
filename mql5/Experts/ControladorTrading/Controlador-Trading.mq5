@@ -15,6 +15,7 @@ string active_view="COCKPIT";
 string selected_mode="DEMO";
 bool leverage_enabled=false;
 bool runtime_ok=false;
+bool health_ok=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
 int panel_x=0;
@@ -441,12 +442,15 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
+      health_ok=false;
+      UpdateCompactSignal("INDISPONIVEL","",false);
       SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
       if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sistema indisponivel",20,441,9,C'255,155,155');
       else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
    runtime_ok=true;
+   health_ok=true;
    string mode=JsonValue(r,"mode");
    string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
@@ -533,6 +537,12 @@ void Analyze(bool render=true){
       if(render) SetLabel(Obj("REASON"),"Analise indisponivel",20,204,9,C'255,118,118');
       return;
    }
+   if(!health_ok){
+      runtime_ok=false;
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      if(render) SetLabel(Obj("REASON"),"Sistema indisponivel",20,204,9,C'255,118,118');
+      return;
+   }
    runtime_ok=true;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
@@ -602,7 +612,8 @@ int OnInit(){
       RefreshPanelToggle();
    }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
-    if(panel_visible){ RefreshHealth(); RefreshSecondary(); RefreshMarketAssets(); }
+   RefreshHealth();
+   if(panel_visible){ RefreshSecondary(); RefreshMarketAssets(); }
    // Prime runtime market-data state immediately, even when the native panel is hidden.
    Analyze(panel_visible);
    last_analysis_bar=iTime(_Symbol,_Period,0);
@@ -615,6 +626,7 @@ void OnDeinit(const int reason){
 void OnTimer(){
    if(!panel_visible){
       RefreshPanelToggle();
+      RefreshHealth();
       Analyze(false);
       last_analysis_bar=iTime(_Symbol,_Period,0);
       return;
@@ -626,11 +638,11 @@ void OnTimer(){
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    datetime current_bar=iTime(_Symbol,_Period,0);
-   if(current_bar>0 && current_bar!=last_analysis_bar){
-      last_analysis_bar=current_bar;
-      // Refresh from broker once per new chart bar, not every timer tick.
-      Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
-   }
+   bool new_bar=(current_bar>0 && current_bar!=last_analysis_bar);
+   if(new_bar) last_analysis_bar=current_bar;
+   // Keep the compact signal fresh on every timer tick; render the larger
+   // panel details only when a new bar arrives in the analysis views.
+   Analyze(new_bar && (active_view=="COCKPIT" || active_view=="ANALISE"));
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
