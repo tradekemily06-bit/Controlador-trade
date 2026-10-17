@@ -176,10 +176,10 @@ void Panel(){
    SetButton(Obj("V6"),"🔔",292,67,54,25);
    SetButton(Obj("V7"),"⚙",348,67,54,25);
 
-   SetLabel(Obj("RUNTIME"),"Runtime: verificando...",20,104,10,C'255,209,102');
+   SetLabel(Obj("RUNTIME"),"Sistema: verificando...",20,104,10,C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: DEMO / SIMULACAO",20,124,10,C'88,214,141');
    SetLabel(Obj("SIGNAL"),"AGUARDAR",20,154,22,C'255,209,102');
-   SetLabel(Obj("SCORE"),"Score: —/100",20,184,10,clrWhite);
+   SetLabel(Obj("SCORE"),"Qualidade: —%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),"Aguardando analise.",20,204,9,C'180,190,205');
 
    SetLabel(Obj("SYML"),"ATIVO",20,236,8,C'130,145,165');
@@ -194,7 +194,7 @@ void Panel(){
    SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,330,177,28);
 
    SetLabel(Obj("INFO1"),"Decisao: —",20,361,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Risk Gate: verificando...",20,381,9,C'205,215,230');
+   SetLabel(Obj("INFO2"),"Risco: verificando...",20,381,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Memoria: verificando...",20,401,9,C'205,215,230');
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
@@ -318,10 +318,10 @@ void RefreshNotifications(){
       string unread=JsonValue(r,"unread");
       string total=JsonValue(r,"total");
       SetLabel(Obj("INFO1"),"Notificacoes: "+(total==""?"disponiveis":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Eventos priorizados pelo runtime.",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Alertas priorizados para acompanhamento.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Sem acao automatica a partir de notificacoes.",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Atualizacao concluida",20,421,9,C'88,214,141');
-      SetLabel(Obj("INFO5"),"Analise operacional atualizada pelo runtime",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"Analise operacional atualizada",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Notificacoes indisponiveis",20,361,9,C'255,118,118');
    }
@@ -343,7 +343,7 @@ void RefreshLearning(){
 void RenderView(){
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"COCKPIT • motor, decisao, risco, execucao",20,47,9,C'150,165,185');
-      SetLabel(Obj("INFO1"),"Motor de decisao: runtime",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Análise do ecossistema",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risk Gate: atualizando...",20,381,9,C'255,209,102');
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
@@ -354,13 +354,13 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
-      SetLabel(Obj("SUB"),"ANALISE • leitura produzida pelo runtime, sem valores decorativos",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"ANALISE • leitura atual do ecossistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       Analyze();
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(runtime_ok?"consultado":"runtime offline"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
+      SetLabel(Obj("INFO2"),"Risco: "+(runtime_ok?"atualizado":"sistema indisponivel"),20,381,9,runtime_ok?C'205,215,230':C'255,118,118');
       SetLabel(Obj("INFO3"),"Fonte: analise atual do ecossistema",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Candle fechado + filtros: exigidos pelo payload",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Sem acao automatica a partir de notificacoes",20,441,9,C'205,215,230');
@@ -371,8 +371,8 @@ void RenderView(){
       SetButton(Obj("SAVE"),"ATUALIZAR ESTAT.",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshSecondary();
-      SetLabel(Obj("INFO1"),"Memoria: registros consultados no runtime",20,361,9,C'205,215,230');
-      SetLabel(Obj("INFO2"),"Risk Gate: dados reais do runtime",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"Memoria: registros disponiveis",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risco: situacao atual",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
@@ -385,7 +385,7 @@ void RenderView(){
       RefreshHealth();
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
-      SetLabel(Obj("INFO2"),"Risk Gate: somente estado informado pelo runtime",20,381,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Risco: avaliacao atual",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay: disponivel no laboratorio",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
@@ -397,7 +397,7 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
       RefreshLearning();
    }else if(active_view=="NOTIF"){
-      SetLabel(Obj("SUB"),"NOTIFICACOES • eventos do runtime sem autoridade de execucao",20,47,9,C'150,165,185');
+      SetLabel(Obj("SUB"),"NOTIFICACOES • alertas e avisos do sistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR NOTIF.",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
@@ -420,7 +420,7 @@ void RefreshHealth(){
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
       SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
+      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
    runtime_ok=true;
@@ -455,7 +455,7 @@ void RefreshSecondary(){
    if(Http("GET","/api/risk","",r,code)){
       string allowed=JsonValue(r,"allowed");
       string reason=JsonValue(r,"reason");
-      SetLabel(Obj("INFO2"),"Risk Gate: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO")+" • "+StringSubstr(reason,0,48),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
+      SetLabel(Obj("INFO2"),"Risco: "+(allowed=="true"?"PERMITIDO":"BLOQUEADO"),20,381,9,allowed=="true"?C'88,214,141':C'255,209,102');
    }else SetLabel(Obj("INFO2"),"Risk Gate: indisponivel",20,381,9,C'255,118,118');
 
    if(Http("GET","/api/statistics","",r,code)){
@@ -472,7 +472,7 @@ void RefreshSecondary(){
    if(Http("GET","/api/memory?limit=1","",r,code)){
       string count=JsonValue(r,"total");
       if(count=="") count=JsonValue(r,"count");
-      SetLabel(Obj("INFO3"),"Memoria: runtime consultado • registros "+(count==""?"disponiveis":count),20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Memoria: registros "+(count==""?"disponiveis":count),20,401,9,C'205,215,230');
    }else SetLabel(Obj("INFO3"),"Memoria: indisponivel",20,401,9,C'255,118,118');
 }
 void SaveConfig(){
