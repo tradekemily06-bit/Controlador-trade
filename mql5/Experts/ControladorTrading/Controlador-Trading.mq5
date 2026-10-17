@@ -23,6 +23,7 @@ int panel_width=360;
 int panel_height=440;
 string compact_signal="AGUARDAR";
 string compact_score="—%";
+string compact_score_raw="";
 bool compact_available=false;
 double panel_sx=1.0;
 double panel_sy=1.0;
@@ -94,10 +95,12 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
-void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
+void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false,ENUM_ANCHOR_POINT anchor=ANCHOR_CENTER){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   // Anchor the compact controls to the chart's lower-left corner. Opening
+   // the panel must never reposition the C, signal, or score.
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,anchor);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
@@ -119,26 +122,65 @@ color CompactSignalColor(string signal){
    if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,118,118';
    return C'255,209,102';
 }
+string NormalizeCompactSignal(string raw){
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
+   StringToUpper(raw);
+   StringReplace(raw,"Í","I");
+   StringReplace(raw,"Á","A");
+   StringReplace(raw,"É","E");
+   StringReplace(raw,"Ó","O");
+   StringReplace(raw,"Ú","U");
+   StringReplace(raw,"Ç","C");
+   if(raw=="COMPRA" || raw=="COMPRAR" || raw=="BUY") return "COMPRA";
+   if(raw=="VENDA" || raw=="VENDER" || raw=="SELL") return "VENDA";
+   if(raw=="AGUARDAR" || raw=="WAIT" || raw=="HOLD") return "AGUARDAR";
+   if(raw=="INDISPONIVEL" || raw=="UNAVAILABLE") return "INDISPONIVEL";
+   return "AGUARDAR";
+}
+bool ParseQualityScore(string raw,double &value){
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
+   if(raw=="") return false;
+   bool digit=false;
+   bool dot=false;
+   for(int i=0;i<StringLen(raw);i++){
+      ushort ch=StringGetCharacter(raw,i);
+      if(ch>='0' && ch<='9'){ digit=true; continue; }
+      if(ch=='.' && !dot){ dot=true; continue; }
+      return false;
+   }
+   if(!digit) return false;
+   value=StringToDouble(raw);
+   return MathIsValidNumber(value) && value>=1.0 && value<=100.0;
+}
 void UpdateCompactSignal(string signal,string score,bool available=true){
-   compact_signal=signal;
-   compact_score=(available && score!="")?DoubleToString(StringToDouble(score),0)+"%":"—%";
+   double parsed_score=0.0;
+   bool score_valid=ParseQualityScore(score,parsed_score);
+   string normalized_signal=NormalizeCompactSignal(signal);
+   compact_signal=(available && (normalized_signal=="COMPRA" || normalized_signal=="VENDA" || normalized_signal=="AGUARDAR"))?(score_valid?normalized_signal:"AGUARDAR"):(available?"AGUARDAR":"INDISPONIVEL");
+   compact_score_raw=(available && score_valid)?DoubleToString(parsed_score,2):"";
+   compact_score=(available && score_valid)?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
    if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
-      ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
-      ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
+      ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(compact_signal):"AGUARDAR");
+      ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(compact_signal):C'255,209,102');
    }
    if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0)
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
 }
 void RefreshPanelToggle(){
-   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int cx=28;
-   int cy=MathMax(42,ch-46);
-   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'31,43,61',true);
-   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
-   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
-   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
-   UpdateCompactSignal(compact_signal,compact_available?compact_score:"",compact_available);
+   int cx=29;
+   // Match the preserved reference position: circle center is 33 px above chart bottom.
+   int cy=33;
+   // Preserve the approved C treatment: dark circular fill, cyan ring and cyan letter.
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,39,C'5,15,27',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy,20,C'0,215,255',true);
+   // Keep signal and quality close to the C, using the reference's two-line arrangement.
+   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",62,46,11,C'255,209,102',false,ANCHOR_LEFT_LOWER);
+   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",94,28,9,C'205,215,230',false,ANCHOR_LEFT_LOWER);
+   UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:"",compact_available);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
@@ -169,7 +211,7 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
+   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"⌂",18,67,54,25);
    SetButton(Obj("V2"),"A",74,67,54,25);
@@ -212,7 +254,7 @@ void DeletePanel(bool preserveCompact=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
+      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("PANEL_TOGGLE_RING") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveCompact) RefreshPanelToggle();
@@ -449,12 +491,24 @@ void RefreshHealth(){
       else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
-   runtime_ok=true;
-   health_ok=true;
+   string health=JsonValue(r,"health");
    string mode=JsonValue(r,"mode");
    string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
+   string execution_allowed=JsonValue(r,"execution_allowed");
+   string real=JsonValue(r,"real");
+   health_ok=(health=="OK" || health=="WARNING") && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";
+   if(!health_ok){
+      runtime_ok=false;
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: SIMULACAO • execucao bloqueada",20,124,10,C'255,209,102');
+      if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • estado de saude invalido",20,441,9,C'255,155,155');
+      else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • estado de saude invalido",20,520,8,C'255,155,155');
+      return;
+   }
+   runtime_ok=true;
+   SetLabel(Obj("RUNTIME"),health=="OK"?"Sistema: online":"Sistema: limitado",20,104,10,health=="OK"?C'88,214,141':C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
@@ -547,7 +601,10 @@ void Analyze(bool render=true){
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
+   signal=NormalizeCompactSignal(signal);
    string score=JsonObjectValue(r,"quality","score");
+   double parsed_score=0.0;
+   if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
    UpdateCompactSignal(signal,score,true);
    if(!render) return;
    string reason=JsonValue(r,"reason");
@@ -559,12 +616,17 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   if(!health_ok){
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado: sistema indisponivel",20,361,9,C'255,118,118');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
+   string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":false,\"filters_ok\":false,\"entry_conditions\":[]}";
    string r; int code=0;
    SetLabel(Obj("INFO1"),"Validando ciclo DEMO...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
@@ -572,23 +634,41 @@ void RunCycle(){
       SetLabel(Obj("INFO1"),"Ciclo indisponivel ou bloqueado",20,361,9,C'255,118,118');
       return;
    }
-   string signal=JsonValue(r,"signal");
-   if(signal=="") signal=JsonValue(r,"decision");
+   // The API wraps cycle details under "runtime"; never read decision fields from the root.
+   string signal=JsonObjectValue(r,"runtime","signal");
+   if(signal=="") signal=JsonObjectValue(r,"runtime","decision");
    if(signal=="") signal="AGUARDAR";
-   string score=JsonObjectValue(r,"quality","score");
-   UpdateCompactSignal(signal,score,true);
-   string reason=JsonValue(r,"reason");
-   string cid=JsonValue(r,"cycle_id");
-   string eid=JsonValue(r,"external_id");
+   signal=NormalizeCompactSignal(signal);
+   // Extract the nested runtime object so nested quality/execution fields are parsed correctly.
+   string score="";
+   string runtime_payload="";
+   int runtime_pos=StringFind(r,"\"runtime\":");
+   if(runtime_pos>=0) runtime_payload=StringSubstr(r,runtime_pos+10);
+   string runtime_quality=JsonObjectValue(runtime_payload,"quality","score");
+   if(runtime_quality!="") score=runtime_quality;
+   double parsed_score=0.0;
+   if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
+   string reason=JsonObjectValue(r,"runtime","reason");
+   string cid=JsonObjectValue(r,"runtime","cycle_id");
+   string eid=JsonObjectValue(r,"runtime","external_id");
    string allowed=JsonValue(r,"execution_allowed");
+   string accepted=JsonObjectValue(runtime_payload,"execution","accepted");
+   bool cycle_accepted=(allowed=="true" && accepted=="true" && cid!="" && eid!="");
+   if(!cycle_accepted){
+      // A análise de mercado e a autorização de execução são estados distintos.
+      // Preserve o sinal/score válidos da análise; não invente execução nem IDs.
+      cid="";
+      eid="";
+   }
+   UpdateCompactSignal(signal,score,true);
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido ou bloqueado.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"sem ciclo executavel":"atualizado"),20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem execucao aceita":"registrada"),20,483,8,C'145,160,180');
+   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="true" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Analise atualizada; execucao nao aceita",20,361,9,(allowed=="true" && accepted=="true" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
@@ -598,8 +678,14 @@ void CloseCycle(){
    string body="{\"cycle_id\":\""+JsonEscape(last_cycle_id)+"\",\"external_id\":\""+JsonEscape(last_external_id)+"\"}";
    string r; int code=0;
    if(Http("POST","/api/runtime/close",body,r,code)){
-      SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
-      last_cycle_id=""; last_external_id="";
+      string closed=JsonValue(r,"closed");
+      string reconciliation=JsonObjectValue(r,"reconciliation","reconciliation_state");
+      if(closed=="true" && reconciliation!=""){
+         SetLabel(Obj("INFO1"),"Fechamento DEMO + reconciliacao confirmado.",20,361,9,C'88,214,141');
+         last_cycle_id=""; last_external_id="";
+      }else{
+         SetLabel(Obj("INFO1"),"Fechamento nao confirmado; ciclo mantido para verificacao.",20,361,9,C'255,118,118');
+      }
    }else SetLabel(Obj("INFO1"),"Fechamento bloqueado ou indisponivel",20,361,9,C'255,118,118');
 }
 int OnInit(){

@@ -180,3 +180,35 @@ def test_remote_mutation_is_blocked_without_trusted_identity():
     result = b"".join(application(environ, start_response))
     assert captured["status"].startswith("503")
     assert json.loads(result)["error"] == "trusted remote identity provider is not configured"
+
+
+def test_real_reconcile_rejects_string_boolean_instead_of_coercing(monkeypatch):
+    import app
+
+    called = []
+    monkeypatch.setattr(app.REAL_RUNTIME, "reconcile", lambda **kwargs: called.append(kwargs))
+    status, data = call_app(
+        "/api/runtime/real/reconcile",
+        "POST",
+        {"request_id": "req-real-1", "executed": "false"},
+    )
+
+    assert status.startswith("400")
+    assert called == []
+    assert data["error"] == "Entrada inválida"
+
+
+def test_real_reconcile_preserves_explicit_false(monkeypatch):
+    import app
+
+    called = []
+    monkeypatch.setattr(app.REAL_RUNTIME, "reconcile", lambda **kwargs: called.append(kwargs))
+    status, data = call_app(
+        "/api/runtime/real/reconcile",
+        "POST",
+        {"request_id": "req-real-1", "executed": False},
+    )
+
+    assert status.startswith("200")
+    assert called == [{"request_id": "req-real-1", "executed": False}]
+    assert data["executed"] is False

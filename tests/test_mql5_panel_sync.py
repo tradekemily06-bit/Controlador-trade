@@ -33,7 +33,7 @@ def test_mql5_sync_script_exists_and_is_self_contained():
 
 def test_mql5_preview_compile_isolated_from_installed_ea():
     preview = (ROOT / "deployment" / "compile_mql5_panel_preview.ps1").read_text(encoding="utf-8")
-    assert "MQL5\\Experts\\ControladorTradingPreview" in preview
+    assert "ControladorTradingPreview" in preview
     assert "$previewSource = Join-Path $previewDir 'Controlador-Trading-Preview.mq5'" in preview
     assert '& $MetaEditorPath "/compile:$previewSource" "/log:$log"' in preview
     assert "installed_ea_replaced = $false" in preview
@@ -42,7 +42,7 @@ def test_mql5_preview_compile_isolated_from_installed_ea():
     assert "Copy-Item -LiteralPath $source -Destination $previewSource -Force" in preview
     assert 'Remove-Item -LiteralPath $previewBinary -Force' in preview
     assert 'Copy-Item -LiteralPath $previewBinary -Destination "$previewBinary.$stamp.bak" -Force' in preview
-    assert "Join-Path $Mt5DataPath 'MQL5\\Experts\\ControladorTrading'" not in preview
+    assert "ControladorTradingPreview" in preview
 
 
 def test_mql5_panel_has_single_repository_source():
@@ -82,7 +82,7 @@ def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick
     assert "bool health_ok=false;" in panel
     assert "health_ok=false;" in health
     assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in health
-    assert "health_ok=true;" in health
+    assert 'health_ok=(health=="OK" || health=="WARNING") && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";' in health
     assert "if(!health_ok)" in analyze
     assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in analyze
     assert "RefreshHealth();" in init
@@ -91,9 +91,19 @@ def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick
     assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
 
 
-def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
+def test_mql5_compact_signal_normalizes_runtime_decisions_and_keeps_approved_c_style():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    assert '"Controlador Trading"' in panel
+    assert "string NormalizeCompactSignal(string raw)" in panel
+    assert 'raw=="COMPRA" || raw=="COMPRAR" || raw=="BUY"' in panel
+    assert 'raw=="VENDA" || raw=="VENDER" || raw=="SELL"' in panel
+    assert 'signal=NormalizeCompactSignal(signal);' in panel
+    assert 'Obj("PANEL_TOGGLE_RING"),"◯"' in panel
+    assert "int cy=33;" in panel
+    assert 'SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",62,46,11' in panel
+    assert 'SetCompactLabel(Obj("COMPACT_SCORE"),"—%",94,28,9' in panel
+    assert 'n==Obj("PANEL_TOGGLE_RING")' in panel
+    assert "watermark" not in panel.lower()
+    assert '"Controlador-Trading"' in panel
     assert '"ECOSSISTEMA • MT5 • DEMO / SIMULACAO"' in panel
     assert "RUNTIME REAL" not in panel
     assert "InpPanelWidth = 360" in panel
@@ -105,6 +115,14 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert 'return "↓ VENDER";' in panel
     assert 'JsonObjectValue(r,"quality","score")' in panel
     assert "UpdateCompactSignal(signal,score,true)" in panel
+    assert "bool ParseQualityScore(string raw,double &value)" in panel
+    assert "health_ok=(health==\"OK\" || health==\"WARNING\") && mode==\"SIMULACAO\" && engine==\"ONLINE\" && execution_allowed==\"false\" && real==\"DESABILITADO\";" in panel
+    assert "if(!ParseQualityScore(score,parsed_score)){ signal=\"AGUARDAR\"; score=\"\"; }" in panel
+    assert "CompactSignalText(compact_signal)" in panel
+    assert "string compact_score_raw=\"\";" in panel
+    assert "UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:\"\",compact_available);" in panel
+    assert "if(!health_ok){" in panel
+    assert "Ciclo bloqueado: sistema indisponivel" in panel
     assert "watermark" not in panel.lower()
     assert "WATERMARK" not in panel
 
@@ -258,9 +276,14 @@ def test_mql5_panel_toggle_tracks_fixed_lower_chart_position():
     visible_timer = timer.split("   RefreshPanelLayout();", 1)[1]
     assert render.index("RefreshPanelLayout();") < render.index("RefreshPanelToggle();")
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
-    assert "int cy=MathMax(42,ch-46);" in panel
+    compact = panel.split("void SetCompactLabel(", 1)[1].split("string CompactSignalText", 1)[0]
+    toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
+    assert "ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);" in compact
+    assert "int cy=33;" in toggle
+    assert "int cy=MathMax(42,ch-46);" not in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
     assert 'SetCompactLabel(Obj("COMPACT_SIGNAL")' in panel
+    assert "panel_visible?" not in toggle
 
 def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compilation():
     text = SCRIPT.read_text(encoding="utf-8")
@@ -273,3 +296,52 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_cycle_does_not_fabricate_candle_or_filter_confirmation():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert '\\\"confirmed\\\":false' in cycle
+    assert '\\\"filters_ok\\\":false' in cycle
+    assert '\\\"confirmed\\\":true' not in cycle
+    assert '\\\"filters_ok\\\":true' not in cycle
+
+def test_mql5_close_cycle_requires_server_confirmation_before_clearing_ids():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    close = panel.split("void CloseCycle()", 1)[1].split("int OnInit()", 1)[0]
+    assert 'string closed=JsonValue(r,"closed");' in close
+    assert 'string reconciliation=JsonObjectValue(r,"reconciliation","reconciliation_state");' in close
+    assert 'if(closed=="true" && reconciliation!="")' in close
+    assert 'last_cycle_id=""; last_external_id="";' in close
+    assert "Fechamento nao confirmado; ciclo mantido para verificacao." in close
+
+def test_mql5_cycle_preserves_analysis_signal_when_execution_is_not_accepted():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert 'JsonObjectValue(r,"runtime","signal")' in cycle
+    assert 'JsonObjectValue(runtime_payload,"quality","score")' in cycle
+    assert 'JsonObjectValue(runtime_payload,"execution","accepted")' in cycle
+    assert 'bool cycle_accepted=(allowed=="true" && accepted=="true" && cid!="" && eid!="");' in cycle
+    assert 'if(!cycle_accepted){' in cycle
+    assert 'signal="AGUARDAR";' in cycle  # Invalid score still fails closed.
+    assert 'last_cycle_id=cid; last_external_id=eid;' in cycle
+    assert "Analise atualizada; execucao nao aceita" in cycle
+
+def test_mql5_preview_uses_resolved_python_and_never_targets_installed_ea():
+    preview = (ROOT / "deployment" / "compile_mql5_panel_preview.ps1").read_text(encoding="utf-8")
+    assert "[string]$PythonExe = 'python'" in preview
+    assert "Get-Command $PythonExe" in preview
+    assert "Python não foi encontrado no PATH" in preview
+    assert "& $PythonExe -c $oneLinePython $Mt5TerminalPath" in preview
+    assert "ControladorTradingPreview" in preview
+    assert "installed_ea_replaced = $false" in preview
+
+def test_compact_panel_shows_aguardar_not_an_error_signal_when_health_is_unavailable():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    update = panel.split("void UpdateCompactSignal(", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    assert 'available?CompactSignalText(compact_signal):"AGUARDAR"' in update
+    assert "available?CompactSignalColor(compact_signal):C'255,209,102'" in update
+    assert 'SetLabel(Obj("RUNTIME"),"Sistema: indisponivel"' in health
+    assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in health
+

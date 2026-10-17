@@ -291,8 +291,13 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else confirmed
-        effective_filters = True if filters_ok is None else filters_ok
+        # This service is bound to the MT5 adapter, whose fetch contract uses
+        # copy_rates_from_pos(start_pos=1) and therefore supplies closed candles.
+        # Never let the panel/client claim or suppress that evidence.
+        effective_confirmed = prefs.require_closed_candle
+        # True here only permits the StrategyEngine's server-side AdvancedFilters
+        # to run; it is NOT a claim that filters passed. Their result remains a gate.
+        effective_filters = True
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
         if self.trading_runtime.market_data_state is None:
             raise RuntimeError(

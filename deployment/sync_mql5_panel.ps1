@@ -118,20 +118,34 @@ mt5.shutdown()
 }
 
 function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
-    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
-        $resolved = [System.IO.Path]::GetFullPath($RequestedPath)
-        if (-not (Test-Path -LiteralPath $resolved -PathType Container)) {
-            throw "Pasta de dados MT5 configurada não encontrada: $resolved"
-        }
-        if (-not (Test-Path -LiteralPath (Join-Path $resolved 'MQL5') -PathType Container)) {
-            throw "Pasta configurada não parece ser uma pasta de dados MT5 (MQL5 ausente): $resolved"
-        }
-        return $resolved
+    # O caminho real informado pela ponte MT5 é a referência principal.
+    # Não inferir o perfil de dados apenas porque ele contém arquivos do EA.
+    $paths = Get-Mt5Paths -TerminalPath $TerminalPath
+    if (-not $paths -or [string]::IsNullOrWhiteSpace([string]$paths.data_path)) {
+        throw 'Não foi possível confirmar a pasta de dados da instância MT5 conectada pela ponte Python.'
+    }
+    $bridgeDataPath = [System.IO.Path]::GetFullPath([string]$paths.data_path)
+    if (-not (Test-Path -LiteralPath $bridgeDataPath -PathType Container) -or
+        -not (Test-Path -LiteralPath (Join-Path $bridgeDataPath 'MQL5') -PathType Container)) {
+        throw "A ponte MT5 retornou uma pasta de dados inválida: $bridgeDataPath"
     }
 
-    # Prefer the unique existing terminal data folder that already owns this EA.
-    # This allows multiple terminal64.exe processes without guessing which data
-    # directory is intended. If more than one candidate exists, fail closed.
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        $requested = [System.IO.Path]::GetFullPath($RequestedPath)
+        if (-not (Test-Path -LiteralPath $requested -PathType Container) -or
+            -not (Test-Path -LiteralPath (Join-Path $requested 'MQL5') -PathType Container)) {
+            throw "Pasta de dados MT5 configurada inválida (pasta ou MQL5 ausente): $requested"
+        }
+        if (-not [string]::Equals($requested, $bridgeDataPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Destino bloqueado: CONTROLADOR_MT5_DATA_PATH ($requested) não corresponde à pasta retornada pela instância MT5 conectada ($bridgeDataPath). Nenhum arquivo foi sincronizado."
+        }
+        return $bridgeDataPath
+    }
+
+    # Uma única pasta com o EA não prova que ela pertence à instância conectada.
+    # Se houver uma candidata, ela deve coincidir com a pasta da ponte; se houver
+    # várias, não escolher automaticamente. A ausência de candidatas permite usar
+    # somente o data_path que a própria ponte MT5 acabou de informar.
     $profilesRoot = Join-Path $env:APPDATA 'MetaQuotes\Terminal'
     $candidates = @()
     if (Test-Path -LiteralPath $profilesRoot -PathType Container) {
@@ -140,42 +154,30 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
             $sourcePresent = Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.mq5') -PathType Leaf
             $binaryPresent = Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.ex5') -PathType Leaf
             if ($sourcePresent -or $binaryPresent) {
-                $candidates += $profile.FullName
+                $candidates += [System.IO.Path]::GetFullPath($profile.FullName)
             }
         }
     }
     $candidates = @($candidates | Sort-Object -Unique)
-    if ($candidates.Count -eq 1) { return [System.IO.Path]::GetFullPath($candidates[0]) }
+    if ($candidates.Count -eq 0) {
+        $activeTerminals = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ieq 'terminal64.exe' })
+        if ($activeTerminals.Count -gt 1) {
+            throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para a instância correta. Nenhum arquivo foi sincronizado.'
+        }
+    }
     if ($candidates.Count -gt 1) {
-        throw "Mais de uma pasta de dados MT5 contém o painel; configure CONTROLADOR_MT5_DATA_PATH explicitamente: $($candidates -join '; ')"
+        throw "Mais de uma pasta de dados MT5 contém o painel; configure CONTROLADOR_MT5_DATA_PATH com o caminho exato da instância conectada. Nenhum arquivo foi sincronizado: $($candidates -join '; ')"
+    }
+    if ($candidates.Count -eq 1 -and
+        -not [string]::Equals($candidates[0], $bridgeDataPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Destino bloqueado: a única pasta com o painel ($($candidates[0])) não corresponde à pasta de dados retornada pela instância conectada ($bridgeDataPath). Nenhum arquivo foi sincronizado."
     }
 
-    # A fresh install may not yet have an EA file to identify its data directory.
-    # In that case the Python bridge fallback is allowed only when one process
-    # matches the configured terminal executable.
-    $matchingProcesses = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            $_.Name -ieq ([System.IO.Path]::GetFileName($TerminalPath)) -and
-            -not [string]::IsNullOrWhiteSpace($_.ExecutablePath) -and
-            [string]::Equals(
-                [System.IO.Path]::GetFullPath($_.ExecutablePath),
-                [System.IO.Path]::GetFullPath($TerminalPath),
-                [System.StringComparison]::OrdinalIgnoreCase
-            )
-        })
-    if ($matchingProcesses.Count -gt 1) {
-        throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para evitar um destino ambíguo.'
-    }
-    $paths = Get-Mt5Paths -TerminalPath $TerminalPath
-    if (-not $paths -or [string]::IsNullOrWhiteSpace($paths.data_path)) {
-        throw 'Não foi possível resolver a pasta de dados MT5 com segurança.'
-    }
-    $resolvedDataPath = [System.IO.Path]::GetFullPath([string]$paths.data_path)
-    if (-not (Test-Path -LiteralPath $resolvedDataPath -PathType Container) -or
-        -not (Test-Path -LiteralPath (Join-Path $resolvedDataPath 'MQL5') -PathType Container)) {
-        throw "A ponte MT5 retornou uma pasta de dados inválida: $resolvedDataPath"
-    }
-    return $resolvedDataPath
+    # Mesmo com processos duplicados, nunca escolher uma pasta por heurística:
+    # usar apenas o data_path efetivamente reportado pela ponte, após a comparação
+    # acima com a configuração explícita ou com a única pasta que contém o EA.
+    return $bridgeDataPath
 }
 
 $dataPath = Resolve-Mt5DataPath -RequestedPath $Mt5DataPath -TerminalPath $Mt5TerminalPath
@@ -318,9 +320,11 @@ if ($metaEditorExitCode -ne 0) {
 }
 
 Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupSource -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupBinary -Force -ErrorAction SilentlyContinue
-Remove-Item -LiteralPath $backupProvenance -Force -ErrorAction SilentlyContinue
+# Preserve os backups datados para recuperação manual após validação no MT5.
+Write-Host "Backups preservados para recuperação:"
+if (Test-Path -LiteralPath $backupSource -PathType Leaf) { Write-Host "Fonte anterior: $backupSource" }
+if (Test-Path -LiteralPath $backupBinary -PathType Leaf) { Write-Host "EX5 anterior: $backupBinary" }
+if (Test-Path -LiteralPath $backupProvenance -PathType Leaf) { Write-Host "Proveniência anterior: $backupProvenance" }
 
 Write-Host "MQL5 sincronizado e compilado com sucesso."
 Write-Host "Proveniência: $provenance"
