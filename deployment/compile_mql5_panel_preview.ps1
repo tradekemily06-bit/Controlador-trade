@@ -30,7 +30,52 @@ if (-not (Test-Path -LiteralPath $MetaEditorPath -PathType Leaf)) {
     throw "MetaEditor não encontrado ao lado do terminal: $terminalInstallPath"
 }
 
-if ([string]::IsNullOrWhiteSpace($Mt5DataPath)) {
+# Resolva a pasta de dados reportada pela instância MT5 acessada pela ponte.
+# Não inferir o destino somente pelos arquivos existentes em perfis do Windows.
+$pythonCode = @'
+import json
+import os
+import sys
+import MetaTrader5 as mt5
+requested = sys.argv[1]
+if not mt5.initialize(path=requested):
+    raise SystemExit("MT5_INIT_FAILED:" + str(mt5.last_error()))
+info = mt5.terminal_info()
+if info is None:
+    mt5.shutdown()
+    raise SystemExit("MT5_TERMINAL_INFO_FAILED")
+expected = os.path.normcase(os.path.realpath(requested))
+actual = os.path.normcase(os.path.realpath(os.path.join(getattr(info, "path", ""), os.path.basename(requested))))
+if actual != expected:
+    mt5.shutdown()
+    raise SystemExit("MT5_CONFIGURED_PATH_MISMATCH")
+print(json.dumps({"path": getattr(info, "path", ""), "data_path": getattr(info, "data_path", "")}))
+mt5.shutdown()
+'@
+$encodedPython = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pythonCode))
+$oneLinePython = "import base64;exec(compile(base64.b64decode('$encodedPython'),'<mt5-preview-path>','exec'))"
+$bridgeResult = & python -c $oneLinePython $Mt5TerminalPath 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $bridgeResult) {
+    throw 'Não foi possível confirmar a pasta de dados da instância MT5 pela ponte Python. Pré-visualização bloqueada.'
+}
+try { $bridgePaths = $bridgeResult | ConvertFrom-Json } catch {
+    throw 'A ponte MT5 retornou dados de caminho inválidos. Pré-visualização bloqueada.'
+}
+if ([string]::IsNullOrWhiteSpace([string]$bridgePaths.data_path)) {
+    throw 'A ponte MT5 não informou data_path. Pré-visualização bloqueada.'
+}
+$bridgeDataPath = [System.IO.Path]::GetFullPath([string]$bridgePaths.data_path)
+if (-not (Test-Path -LiteralPath $bridgeDataPath -PathType Container) -or
+    -not (Test-Path -LiteralPath (Join-Path $bridgeDataPath 'MQL5') -PathType Container)) {
+    throw "A ponte MT5 retornou uma pasta de dados inválida: $bridgeDataPath"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($Mt5DataPath)) {
+    $requestedDataPath = [System.IO.Path]::GetFullPath($Mt5DataPath)
+    if (-not [string]::Equals($requestedDataPath, $bridgeDataPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Destino de pré-visualização bloqueado: pasta configurada ($requestedDataPath) difere da instância MT5 conectada ($bridgeDataPath)."
+    }
+} else {
     $profilesRoot = Join-Path $env:APPDATA 'MetaQuotes\Terminal'
     $candidates = @()
     if (Test-Path -LiteralPath $profilesRoot -PathType Container) {
@@ -38,21 +83,20 @@ if ([string]::IsNullOrWhiteSpace($Mt5DataPath)) {
             $eaDir = Join-Path $profile.FullName 'MQL5\Experts\ControladorTrading'
             if ((Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.mq5') -PathType Leaf) -or
                 (Test-Path -LiteralPath (Join-Path $eaDir 'Controlador-Trading.ex5') -PathType Leaf)) {
-                $candidates += $profile.FullName
+                $candidates += [System.IO.Path]::GetFullPath($profile.FullName)
             }
         }
     }
     $candidates = @($candidates | Sort-Object -Unique)
-    if ($candidates.Count -ne 1) {
-        throw "Não foi possível escolher uma única pasta de dados MT5 com o EA existente. Informe -Mt5DataPath ou defina CONTROLADOR_MT5_DATA_PATH. Candidatas: $($candidates -join '; ')"
+    if ($candidates.Count -gt 1) {
+        throw "Mais de uma pasta de dados MT5 contém o EA. Informe -Mt5DataPath correspondente à instância conectada: $($candidates -join '; ')"
     }
-    $Mt5DataPath = $candidates[0]
+    if ($candidates.Count -eq 1 -and
+        -not [string]::Equals($candidates[0], $bridgeDataPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Destino de pré-visualização bloqueado: a pasta com o EA ($($candidates[0])) difere da instância MT5 conectada ($bridgeDataPath)."
+    }
 }
-
-$Mt5DataPath = [System.IO.Path]::GetFullPath($Mt5DataPath)
-if (-not (Test-Path -LiteralPath (Join-Path $Mt5DataPath 'MQL5') -PathType Container)) {
-    throw "Pasta de dados MT5 inválida (MQL5 ausente): $Mt5DataPath"
-}
+$Mt5DataPath = $bridgeDataPath
 
 $previewDir = Join-Path $Mt5DataPath 'MQL5\Experts\ControladorTradingPreview'
 New-Item -ItemType Directory -Force -Path $previewDir | Out-Null
