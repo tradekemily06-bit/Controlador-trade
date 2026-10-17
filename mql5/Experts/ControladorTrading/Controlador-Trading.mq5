@@ -190,7 +190,7 @@ void Panel(){
    SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,249,195,25);
    SetLabel(Obj("MARKET"),"Ativos/Mercados: consultando...",20,278,8,C'145,160,180');
 
-   SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,294,172,30);
+   SetButton(Obj("ANALYZE"),"ANALISAR",20,294,172,30);
    SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,294,177,30);
    SetButton(Obj("SAVE"),"SALVAR CONFIG",20,330,172,28);
    SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,330,177,28);
@@ -201,8 +201,8 @@ void Panel(){
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
 
-   SetLabel(Obj("CYCLEID"),"Ciclo: —",20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: —",20,483,8,C'145,160,180');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: aguardando",20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: sem atividade",20,483,8,C'145,160,180');
    SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
    SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
 }
@@ -345,7 +345,7 @@ void RefreshLearning(){
       SetLabel(Obj("INFO1"),"Ensino: "+(active==""?"trilha disponivel":active),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Progresso: "+(progress==""?"—":progress),20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Aprendizado separado da autorizacao operacional.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"learning_authorizes_trading=false",20,421,9,C'255,155,155');
+      SetLabel(Obj("INFO4"),"Estudo nao autoriza operacoes",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"Historico operacional atualizado",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Ensino indisponivel",20,361,9,C'255,118,118');
@@ -359,12 +359,12 @@ void RenderView(){
       SetLabel(Obj("INFO3"),"Memoria: atualizando...",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Estatisticas: atualizando...",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Noticias: atualizando...",20,441,9,C'205,215,230');
-      SetButton(Obj("ANALYZE"),"ANALISAR NO RUNTIME",20,284,172,30);
+      SetButton(Obj("ANALYZE"),"ANALISAR",20,284,172,30);
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
-      SetLabel(Obj("CYCLEID"),"Ciclo: "+(last_cycle_id==""?"—":last_cycle_id),20,465,8,C'145,160,180');
-      SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"—":last_external_id),20,483,8,C'145,160,180');
+      SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(last_cycle_id==""?"aguardando":"atualizado"),20,465,8,C'145,160,180');
+      SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
       SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
       RefreshSecondary();
@@ -388,8 +388,8 @@ void RenderView(){
       RefreshSecondary();
       SetLabel(Obj("INFO1"),"Memoria: registros disponiveis",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Risco: situacao atual",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Historico: /api/memory",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Estatisticas: /api/statistics",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Historico operacional atualizado",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Estatisticas atualizadas",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"LAB • simulacao, replay e validacao isolados da operacao REAL",20,47,9,C'150,165,185');
@@ -402,7 +402,7 @@ void RenderView(){
       SetLabel(Obj("INFO1"),"Ambiente: DEMO / SIMULACAO",20,361,9,C'88,214,141');
       SetLabel(Obj("INFO2"),"Risco: avaliacao atual",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay: disponivel no laboratorio",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"Execution Gate: controle operacional ativo",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"Protecao operacional ativa",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"Aprendizado separado da operacao",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"ENSINO • estudo separado da autorizacao operacional",20,47,9,C'150,165,185');
@@ -453,7 +453,7 @@ void RefreshHealth(){
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
-   SetLabel(Obj("INFO1"),"Motor de decisao: "+(engine==""?"ONLINE":engine),20,361,9,C'205,215,230');
+   SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
@@ -576,8 +576,8 @@ void RunCycle(){
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
    SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
 }
 void CloseCycle(){
