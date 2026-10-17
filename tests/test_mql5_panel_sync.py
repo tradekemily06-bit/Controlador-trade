@@ -52,10 +52,29 @@ def test_mql5_panel_primes_runtime_and_refreshes_market_data_on_new_bars():
     assert "Analyze(panel_visible);" in init
     assert "last_analysis_bar=iTime(_Symbol,_Period,0);" in init
     assert "current_bar!=last_analysis_bar" in timer
-    assert "Analyze(active_view==\"COCKPIT\" || active_view==\"ANALISE\");" in timer
+    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
     assert "Analyze(false);" in timer
     assert '"/api/runtime/analysis"' in analyze
     assert "if(!render) return;" in analyze
+
+
+def test_mql5_compact_signal_fails_closed_on_health_loss_and_refreshes_each_tick():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    analyze = panel.split("void Analyze(bool render=true)", 1)[1].split("void RunCycle()", 1)[0]
+    init = panel.split("int OnInit()", 1)[1].split("void OnDeinit", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+
+    assert "bool health_ok=false;" in panel
+    assert "health_ok=false;" in health
+    assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in health
+    assert "health_ok=true;" in health
+    assert "if(!health_ok)" in analyze
+    assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in analyze
+    assert "RefreshHealth();" in init
+    assert "RefreshHealth();" in timer
+    assert "Analyze(false);" in timer
+    assert "Analyze(new_bar && (active_view==\"COCKPIT\" || active_view==\"ANALISE\"));" in timer
 
 
 def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
