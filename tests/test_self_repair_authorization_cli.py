@@ -17,6 +17,7 @@ def _args(**overrides):
         "--requires-human-supervision": "false",
         "--cooldown-elapsed": "true",
         "--maintenance-lock-clear": "true",
+        "--execution-quiescent": "true",
     }
     values.update(overrides)
     return [part for pair in values.items() for part in pair]
@@ -38,3 +39,14 @@ def test_self_repair_cli_blocks_external_or_exhausted_repair(capsys):
     assert main(_args(**{"--attempts-used": "6"})) == 2
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is False
+
+
+def test_self_repair_cli_allows_controller_restart_only_with_quiescence(capsys):
+    assert main(_args(**{"--action": "restart_controller"})) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allowed"] is True
+
+    assert main(_args(**{"--action": "restart_controller", "--execution-quiescent": "false"})) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allowed"] is False
+    assert "posições/ordens abertas" in payload["reason"]
