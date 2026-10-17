@@ -62,3 +62,13 @@ def test_self_repair_cli_allows_terminal_start_without_restart_quiescence(capsys
     assert main(_args(**{"--action": "start_mt5_terminal", "--execution-quiescent": "false"})) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["allowed"] is True
+
+
+def test_self_repair_cli_blocks_process_actions_without_demo_only_environment(capsys, monkeypatch):
+    monkeypatch.delenv("CONTROLADOR_EXECUTION_PROVIDER", raising=False)
+    for name in ("CONTROLADOR_REAL_EXPLICITLY_ENABLED", "CONTROLADOR_REAL_EXECUTION_ALLOWED", "CONTROLADOR_REAL_AUDIT_VERIFIED", "CONTROLADOR_REAL_RISK_APPROVED"):
+        monkeypatch.delenv(name, raising=False)
+    assert main(_args(**{"--action": "start_mt5_terminal"})) == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["allowed"] is False
+    assert "provider DEMO" in payload["reason"]
