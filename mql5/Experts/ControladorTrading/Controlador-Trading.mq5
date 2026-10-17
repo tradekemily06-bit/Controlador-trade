@@ -475,7 +475,7 @@ void RefreshHealth(){
    string engine=JsonValue(r,"decision_engine");
    string execution_allowed=JsonValue(r,"execution_allowed");
    string real=JsonValue(r,"real");
-   health_ok=(health=="OK" || health=="WARNING") && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";
+   health_ok=(health=="OK" || health=="WARNING") && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";
    if(!health_ok){
       runtime_ok=false;
       UpdateCompactSignal("INDISPONIVEL","",false);
