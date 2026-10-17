@@ -123,8 +123,8 @@ color CompactSignalColor(string signal){
    return C'255,209,102';
 }
 string NormalizeCompactSignal(string raw){
-   raw=StringTrimLeft(raw);
-   raw=StringTrimRight(raw);
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
    StringToUpper(raw);
    StringReplace(raw,"Í","I");
    StringReplace(raw,"Á","A");
