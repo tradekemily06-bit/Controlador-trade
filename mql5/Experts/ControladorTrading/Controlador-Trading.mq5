@@ -363,6 +363,10 @@ void RenderView(){
       SetButton(Obj("CYCLE"),"RODAR CICLO DEMO",202,284,177,30);
       SetButton(Obj("SAVE"),"SALVAR CONFIG",20,320,172,28);
       SetButton(Obj("CLOSE"),"FECHAR + RECONCILIAR",202,320,177,28);
+      SetLabel(Obj("CYCLEID"),"Ciclo: "+(last_cycle_id==""?"—":last_cycle_id),20,465,8,C'145,160,180');
+      SetLabel(Obj("EXTID"),"Execucao: "+(last_external_id==""?"—":last_external_id),20,483,8,C'145,160,180');
+      SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
+      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
       RefreshSecondary();
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura atual do ecossistema",20,47,9,C'150,165,185');
@@ -438,14 +442,13 @@ void RefreshHealth(){
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
       SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
+      if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • sistema indisponivel",20,441,9,C'255,155,155');
+      else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
    runtime_ok=true;
    string mode=JsonValue(r,"mode");
-   string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
-   string exec=JsonValue(r,"execution");
    string engine=JsonValue(r,"decision_engine");
    SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
