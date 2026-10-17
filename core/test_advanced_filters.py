@@ -36,14 +36,14 @@ def test_blocks_when_core_component_is_below_minimum():
     result = AdvancedFilters().evaluate(**make_values(trend=49.0))
 
     assert result.allowed is False
-    assert "Tendência insuficiente." in result.reasons
+    assert "Tendência insuficiente para compra." in result.reasons
 
 
 def test_rejection_can_be_weak_without_being_the_only_blocker():
     result = AdvancedFilters().evaluate(**make_values(rejection=10.0))
 
     assert result.allowed is False
-    assert "Rejeição fraca." in result.reasons
+    assert "Rejeição fraca para compra." in result.reasons
 
 
 def test_rejects_invalid_values_fail_closed():
