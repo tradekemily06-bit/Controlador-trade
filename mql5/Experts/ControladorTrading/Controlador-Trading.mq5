@@ -119,9 +119,27 @@ color CompactSignalColor(string signal){
    if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,118,118';
    return C'255,209,102';
 }
+bool ParseQualityScore(string raw,double &value){
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
+   if(raw=="") return false;
+   bool digit=false;
+   bool dot=false;
+   for(int i=0;i<StringLen(raw);i++){
+      ushort ch=StringGetCharacter(raw,i);
+      if(ch>='0' && ch<='9'){ digit=true; continue; }
+      if(ch=='.' && !dot){ dot=true; continue; }
+      return false;
+   }
+   if(!digit) return false;
+   value=StringToDouble(raw);
+   return MathIsValidNumber(value) && value>=1.0 && value<=100.0;
+}
 void UpdateCompactSignal(string signal,string score,bool available=true){
-   compact_signal=signal;
-   compact_score=(available && score!="")?DoubleToString(StringToDouble(score),0)+"%":"—%";
+   double parsed_score=0.0;
+   bool score_valid=ParseQualityScore(score,parsed_score);
+   compact_signal=(available && (signal=="COMPRA" || signal=="VENDA" || signal=="AGUARDAR"))?(score_valid?signal:"AGUARDAR"):(available?"AGUARDAR":"INDISPONIVEL");
+   compact_score=(available && score_valid)?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
    if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
       ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
@@ -449,12 +467,24 @@ void RefreshHealth(){
       else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • sistema indisponivel",20,520,8,C'255,155,155');
       return;
    }
-   runtime_ok=true;
-   health_ok=true;
+   string health=JsonValue(r,"health");
    string mode=JsonValue(r,"mode");
    string mt5=JsonValue(r,"mt5_demo");
    string engine=JsonValue(r,"decision_engine");
-   SetLabel(Obj("RUNTIME"),"Sistema: online",20,104,10,C'88,214,141');
+   string execution_allowed=JsonValue(r,"execution_allowed");
+   string real=JsonValue(r,"real");
+   health_ok=(health=="OK" || health=="WARNING") && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO";
+   if(!health_ok){
+      runtime_ok=false;
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("RUNTIME"),"Sistema: indisponivel",20,104,10,C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: SIMULACAO • execucao bloqueada",20,124,10,C'255,209,102');
+      if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • estado de saude invalido",20,441,9,C'255,155,155');
+      else SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • estado de saude invalido",20,520,8,C'255,155,155');
+      return;
+   }
+   runtime_ok=true;
+   SetLabel(Obj("RUNTIME"),health=="OK"?"Sistema: online":"Sistema: limitado",20,104,10,health=="OK"?C'88,214,141':C'255,209,102');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,124,10,C'88,214,141');
    if(active_view=="CONFIG") SetLabel(Obj("INFO5"),"REAL: BLOQUEADO • autorizacao separada",20,441,9,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
    SetLabel(Obj("INFO1"),"Analise do ecossistema: "+(engine==""?"online":engine),20,361,9,C'205,215,230');
@@ -548,6 +578,8 @@ void Analyze(bool render=true){
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    string score=JsonObjectValue(r,"quality","score");
+   double parsed_score=0.0;
+   if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
    UpdateCompactSignal(signal,score,true);
    if(!render) return;
    string reason=JsonValue(r,"reason");
@@ -576,6 +608,8 @@ void RunCycle(){
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
    string score=JsonObjectValue(r,"quality","score");
+   double parsed_score=0.0;
+   if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
    UpdateCompactSignal(signal,score,true);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
