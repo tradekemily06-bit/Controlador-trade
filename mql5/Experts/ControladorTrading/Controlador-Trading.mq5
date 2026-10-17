@@ -236,6 +236,32 @@ string JsonValue(string json,string key){
    }
    return StringSubstr(json,p,q-p);
 }
+string JsonObjectValue(string json,string objectKey,string key){
+   string marker="\""+objectKey+"\":";
+   int p=StringFind(json,marker);
+   if(p<0) return "";
+   int start=StringFind(json,"{",p+StringLen(marker));
+   if(start<0) return "";
+   int depth=0;
+   bool inString=false;
+   bool escaped=false;
+   for(int i=start;i<StringLen(json);i++){
+      ushort ch=StringGetCharacter(json,i);
+      if(inString){
+         if(escaped) escaped=false;
+         else if(ch=='\\') escaped=true;
+         else if(ch=='"') inString=false;
+      }else{
+         if(ch=='"') inString=true;
+         else if(ch=='{') depth++;
+         else if(ch=='}'){
+            depth--;
+            if(depth==0) return JsonValue(StringSubstr(json,start,i-start+1),key);
+         }
+      }
+   }
+   return "";
+}
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
    char result[];
@@ -387,9 +413,7 @@ void RenderView(){
    }
    if(active_view!="CONFIG"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
-      if(ObjectFind(0,Obj("WM"))>=0) ObjectDelete(0,Obj("WM"));
    }
-   RefreshWatermarkControl();
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -479,21 +503,24 @@ void Analyze(bool render=true){
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100}";
    string r; int code=0;
    if(!Http("POST","/api/runtime/analysis",body,r,code)){
-      if(render) SetLabel(Obj("REASON"),"Falha na analise • HTTP "+IntegerToString(code),20,204,9,C'255,118,118');
+      runtime_ok=false;
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      if(render) SetLabel(Obj("REASON"),"Analise indisponivel",20,204,9,C'255,118,118');
       return;
    }
    runtime_ok=true;
-   if(!render) return;
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
-   string score=JsonValue(r,"score");
+   string score=JsonObjectValue(r,"quality","score");
+   UpdateCompactSignal(signal,score,true);
+   if(!render) return;
    string reason=JsonValue(r,"reason");
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo runtime.":reason,0,62),20,204,9,C'180,190,205');
-   SetLabel(Obj("INFO1"),"Decisao: "+signal+" • score "+(score==""?"—":score)+" • origem runtime",20,361,9,c);
+   SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Analise concluida pelo ecossistema.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("INFO1"),"Decisao atualizada",20,361,9,c);
    ChartRedraw();
 }
 void RunCycle(){
@@ -504,27 +531,29 @@ void RunCycle(){
    tf=NormalizeTimeframe(tf);
    string body="{\"symbol\":\""+JsonEscape(sym)+"\",\"timeframe\":\""+JsonEscape(tf)+"\",\"limit\":100,\"amount\":0.01,\"duration_seconds\":60,\"confirmed\":true,\"filters_ok\":true,\"entry_conditions\":[]}";
    string r; int code=0;
-   SetLabel(Obj("INFO1"),"Executando ciclo DEMO no runtime...",20,361,9,C'255,209,102');
+   SetLabel(Obj("INFO1"),"Validando ciclo DEMO...",20,361,9,C'255,209,102');
    if(!Http("POST","/api/runtime/cycle",body,r,code)){
-      SetLabel(Obj("INFO1"),"Ciclo bloqueado/falhou • HTTP "+IntegerToString(code),20,361,9,C'255,118,118');
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("INFO1"),"Ciclo indisponivel ou bloqueado",20,361,9,C'255,118,118');
       return;
    }
    string signal=JsonValue(r,"signal");
    if(signal=="") signal=JsonValue(r,"decision");
    if(signal=="") signal="AGUARDAR";
-   string score=JsonValue(r,"score");
+   string score=JsonObjectValue(r,"quality","score");
+   UpdateCompactSignal(signal,score,true);
    string reason=JsonValue(r,"reason");
    string cid=JsonValue(r,"cycle_id");
    string eid=JsonValue(r,"external_id");
    string allowed=JsonValue(r,"execution_allowed");
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),signal,20,154,22,c);
-   SetLabel(Obj("SCORE"),"Score: "+(score==""?"—":score)+"/100",20,184,10,clrWhite);
+   SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo: "+(cid==""?"—":cid),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"—":eid),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO: "+signal+" • autorizado="+(allowed==""?"false":allowed),20,361,9,C'88,214,141');
+   SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
