@@ -87,7 +87,7 @@ def test_controller_supervisor_requires_health_before_healthy():
     assert "Test-ControllerHealth" in startup
     assert "Wait-ControllerHealth" in startup
     assert "Write-SupervisorStatus 'STARTING'" in startup
-    assert "Write-SupervisorStatus 'HEALTHY' 'app.py ativo e /api/health respondeu 2xx.'" in startup
+    assert "Write-SupervisorStatus 'HEALTHY' 'app.py ativo; liveness e health detalhado confirmados; REAL bloqueado.'" in startup
     assert "Start-Process" in startup
     assert "health_url = $healthUrl" in startup
 
@@ -101,7 +101,7 @@ def test_controller_supervisor_hardens_python_import_path():
 
 def test_controller_supervisor_recovers_unhealthy_existing_process():
     startup = (ROOT / "deployment" / "start_controlador_runtime.ps1").read_text(encoding="utf-8")
-    assert "Instância existente não respondeu /api/health" in startup
+    assert "Instância existente não respondeu liveness" in startup
     assert "taskkill.exe /PID $existingController.ProcessId /T /F" in startup
     assert "RESTART_LIMIT_EXCEEDED" in startup
 
