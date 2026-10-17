@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from math import isfinite
 
 from .models import AnalysisResult
+from .advanced_filters import AdvancedFilters
 from .scoring import calculate_score
 from .signal_engine import SignalEngine
 
@@ -60,11 +61,25 @@ class StrategyEngine:
                 raise ValueError(f"{name} deve estar entre 0 e 100.")
 
         score = calculate_score(**values)
+        filter_result = AdvancedFilters().evaluate(**values)
+        effective_filters_ok = data.filters_ok is True and filter_result.allowed
 
-        return self.signal_engine.evaluate(
+        result = self.signal_engine.evaluate(
             score=score,
             confirmed=data.confirmed,
-            filters_ok=data.filters_ok,
+            filters_ok=effective_filters_ok,
             symbol=data.symbol,
             timeframe=data.timeframe,
         )
+        if not filter_result.allowed:
+            # A caller-supplied filters_ok=True is never proof that the market
+            # filters passed; the internal deterministic filter result is required.
+            return AnalysisResult(
+                signal=result.signal,
+                score=result.score,
+                reason="Filtros bloqueados: " + "; ".join(filter_result.reasons),
+                confirmed=result.confirmed,
+                symbol=result.symbol,
+                timeframe=result.timeframe,
+            )
+        return result
