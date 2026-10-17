@@ -152,12 +152,16 @@ def test_healthy_operational_observability_does_not_create_incident_notification
     assert service.notification_summary()["count"] == 0
 
 
-def test_mt5_analysis_ignores_client_confirmation_and_runs_server_side_filters(monkeypatch):
+def test_mt5_analysis_ignores_client_confirmation_and_runs_server_side_filters(monkeypatch, tmp_path):
     from datetime import datetime, timezone
     from types import SimpleNamespace
     from data.models import Candle
+    from core.operational_runtime import build_operational_runtime
 
-    service = ConfiguredEcosystemService(execution_provider="ic_markets_mt5_demo")
+    service = ConfiguredEcosystemService(
+        operational_runtime=build_operational_runtime(tmp_path),
+        execution_provider="ic_markets_mt5_demo",
+    )
     captured = {}
     candle = Candle(datetime(2026, 10, 17, 12, tzinfo=timezone.utc), 100, 102, 99, 101, 10)
     orchestration = SimpleNamespace(
