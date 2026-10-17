@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -30,10 +31,25 @@ def main(argv: list[str] | None = None) -> int:
         "local-only", "reversible", "deterministic", "prevalidated",
         "external-side-effects", "touches-execution-state",
         "requires-human-supervision", "cooldown-elapsed",
-        "maintenance-lock-clear",
+        "maintenance-lock-clear", "execution-quiescent",
     ):
         parser.add_argument(f"--{name}", type=_bool, required=True)
     args = parser.parse_args(argv)
+    if args.action in {"start_mt5_terminal", "restart_controller", "restart_mt5_terminal"}:
+        provider = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "")
+        real_flags = (
+            "CONTROLADOR_REAL_EXPLICITLY_ENABLED",
+            "CONTROLADOR_REAL_EXECUTION_ALLOWED",
+            "CONTROLADOR_REAL_AUDIT_VERIFIED",
+            "CONTROLADOR_REAL_RISK_APPROVED",
+        )
+        if provider != "ic_markets_mt5_demo" or any(os.environ.get(name, "false").strip().lower() != "false" for name in real_flags):
+            print(json.dumps({
+                "allowed": False,
+                "decision": "ALERT_AND_BLOCK",
+                "reason": "provider DEMO ou bloqueio REAL não foi confirmado pelo ambiente do supervisor",
+            }, ensure_ascii=False))
+            return 2
     values = vars(args)
     values = {key.replace("-", "_"): value for key, value in values.items()}
     authorization = SelfRepairPolicy.evaluate(RepairRequest(**values))

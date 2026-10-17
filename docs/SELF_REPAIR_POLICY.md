@@ -7,8 +7,11 @@ O ecossistema só pode autorizar um autorreparo automático quando a ação est�
 ## Lista autorizada atual
 
 - `clear_stale_local_cache`: limpar cache local obsoleto, reconstruível e sem perda de estado.
+- `start_mt5_terminal`: iniciar o terminal configurado, somente quando o executável configurado existe, o ambiente do supervisor está preso ao provider DEMO e REAL está explicitamente bloqueado. O início não concede autoridade de execução; o preflight posterior precisa confirmar a conta DEMO.
+- `restart_controller`: reiniciar o processo do Controlador somente quando o terminal MT5 configurado estiver ativo e uma verificação independente confirmar conta DEMO, posições consultáveis e vazias, ordens consultáveis e vazias.
+- `restart_mt5_terminal`: reiniciar o terminal somente quando a conta estiver confirmada como DEMO e não houver posições nem ordens abertas.
 
-Iniciar/reiniciar o Controlador ou o terminal MT5 **não está autorizado nesta fase**. Essas ações só podem ser consideradas depois que o supervisor provar liveness/health, estado DEMO, reconciliação com o broker e ausência de ordens/posições ativas; um campo booleano enviado pelo chamador não comprova esses fatos. Até essa integração ser validada, falha de processo/terminal deve gerar alerta e bloqueio, sem autorreparo automático. Uma parada controlada solicitada pelo usuário é tratada separadamente da recuperação automática.
+A autorização de reinício exige preflight do estado operacional, orçamento de tentativas, cooldown concluído e ausência de `.runtime/maintenance.lock`. Os supervisores não usam o próprio resultado da política como prova de quiescência: verificam o estado do MT5 antes de solicitar a autorização. Se o terminal, a conta, posições ou ordens não puderem ser confirmados, o reinício é bloqueado e o estado passa para `ATTENTION`, exigindo intervenção humana. Uma parada controlada solicitada pelo usuário é tratada separadamente da recuperação automática.
 
 Uma ação nova só pode ser adicionada após revisão da implementação e testes específicos. Um nome de ação nunca é prova suficiente de segurança.
 

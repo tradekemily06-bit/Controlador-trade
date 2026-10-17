@@ -49,7 +49,7 @@ O supervisor do Controlador separa dois tipos de verificação:
 
 Somente a falha persistente do liveness pode acionar a recuperação do processo. A resposta de liveness nunca concede permissão de execução nem declara a conta DEMO saudável.
 
-Antes de uma recuperação automática, os supervisores consultam a política comum `core/self_repair_policy.py` por meio de `deployment/authorize_self_repair.py`. A ausência da política, o limite de tentativas atingido, o cooldown ainda ativo ou o arquivo `.runtime/maintenance.lock` bloqueiam a correção e deixam o estado em `ATTENTION`/ `RECOVERING`, com motivo registrado. A autorização não executa ordens nem altera permissões REAL.
+Antes de uma recuperação automática, os supervisores consultam a política comum `core/self_repair_policy.py` por meio de `deployment/authorize_self_repair.py`. O início do terminal configurado é limitado e não concede autorização para operar. Reinícios do Controlador/MT5 só são autorizados quando uma verificação independente confirma conta DEMO, posições/ordens consultáveis e vazias, orçamento de tentativas disponível, cooldown concluído e ausência de `.runtime/maintenance.lock`. Qualquer estado desconhecido bloqueia o reinício e registra `ATTENTION` para intervenção humana. A autorização não executa ordens nem altera permissões REAL.
 
 O supervisor do MT5 não encerra automaticamente um terminal quando a conta não pode ser confirmada como DEMO, quando não é possível verificar posições/ordens, ou quando existem posições/ordens abertas. Nesses casos, registra a razão e exige supervisão humana. Uma parada controlada explicitamente solicitada é tratada separadamente, mas ainda exige confirmação de conta DEMO.
 

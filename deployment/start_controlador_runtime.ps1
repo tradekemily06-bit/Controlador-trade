@@ -272,6 +272,52 @@ function Test-ControllerSafety {
     }
 }
 
+function Test-Mt5ExecutionQuiescent {
+    # Do not initialize MT5 as a side effect of checking recovery safety.
+    $expectedTerminalPath = [System.IO.Path]::GetFullPath($Mt5TerminalPath)
+    $runningTerminal = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq [System.IO.Path]::GetFileName($expectedTerminalPath) -and
+            $_.ExecutablePath -ieq $expectedTerminalPath
+        } | Select-Object -First 1
+    if ($null -eq $runningTerminal) { return $false }
+
+    # Automatic controller recovery is permitted only after independently confirming
+    # the configured terminal is DEMO and has no open positions or pending orders.
+    try {
+        $checkCode = @'
+import MetaTrader5 as mt5, os, sys
+path = sys.argv[1]
+state = "UNKNOWN"
+try:
+    ok = mt5.initialize(path=path)
+    terminal = mt5.terminal_info() if ok else None
+    account = mt5.account_info() if ok else None
+    demo_mode = getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", None)
+    expected = os.path.normcase(os.path.realpath(path))
+    actual = os.path.normcase(os.path.realpath(os.path.join(getattr(terminal, "path", ""), os.path.basename(path)))) if terminal else ""
+    positions = mt5.positions_get() if ok and account is not None else None
+    orders = mt5.orders_get() if ok and account is not None else None
+    if ok and terminal is not None and actual == expected and account is not None and demo_mode is not None:
+        if getattr(account, "trade_mode", None) == demo_mode and positions is not None and orders is not None and len(positions) == 0 and len(orders) == 0:
+            state = "QUIESCENT"
+        else:
+            state = "BLOCKED"
+finally:
+    mt5.shutdown()
+print(state)
+raise SystemExit(0 if state == "QUIESCENT" else 1)
+'@
+        $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($checkCode))
+        $oneLine = "import base64;exec(compile(base64.b64decode('$encoded'),'<mt5-execution-quiescence>','exec'))"
+        $result = & $PythonExe -c $oneLine $Mt5TerminalPath 2>$null
+        $state = [string]($result | Select-Object -Last 1)
+        return ($LASTEXITCODE -eq 0 -and $state.Trim() -eq 'QUIESCENT')
+    } catch {
+        return $false
+    }
+}
+
 function Test-SafeRepairAuthorization {
     param(
         [string]$Action,
@@ -290,6 +336,16 @@ function Test-SafeRepairAuthorization {
         $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
     }
     $maintenanceLockClear = -not (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf)
+    $executionQuiescent = $true
+    $prevalidated = $true
+    $touchesExecutionState = $false
+    $humanRequired = $RequiresHumanSupervision
+    if ($Action -eq 'restart_controller') {
+        $executionQuiescent = Test-Mt5ExecutionQuiescent
+        $prevalidated = $executionQuiescent
+        $touchesExecutionState = -not $executionQuiescent
+        $humanRequired = $humanRequired -or -not $executionQuiescent
+    }
     $policyPath = Join-Path $ProjectRoot 'deployment\authorize_self_repair.py'
     if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
         $script:LastRepairAuthorizationDiagnostic = 'política de autorreparo ausente; reparo bloqueado'
@@ -304,12 +360,13 @@ function Test-SafeRepairAuthorization {
             '--local-only', 'true',
             '--reversible', 'true',
             '--deterministic', 'true',
-            '--prevalidated', 'true',
+            '--prevalidated', ([string]$prevalidated).ToLowerInvariant(),
             '--external-side-effects', 'false',
-            '--touches-execution-state', 'false',
-            '--requires-human-supervision', ([string]$RequiresHumanSupervision).ToLowerInvariant(),
+            '--touches-execution-state', ([string]$touchesExecutionState).ToLowerInvariant(),
+            '--requires-human-supervision', ([string]$humanRequired).ToLowerInvariant(),
             '--cooldown-elapsed', ([string]$cooldownElapsed).ToLowerInvariant(),
-            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant()
+            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant(),
+            '--execution-quiescent', ([string]$executionQuiescent).ToLowerInvariant()
         )
         $policyOutput = & $PythonExe @policyArgs 2>&1
         $policyExitCode = $LASTEXITCODE
