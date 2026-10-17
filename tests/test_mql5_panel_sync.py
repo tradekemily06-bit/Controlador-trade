@@ -113,7 +113,7 @@ def test_mql5_compact_signal_normalizes_runtime_decisions_and_keeps_approved_c_s
     assert 'JsonObjectValue(r,"quality","score")' in panel
     assert "UpdateCompactSignal(signal,score,true)" in panel
     assert "bool ParseQualityScore(string raw,double &value)" in panel
-    assert "health_ok=(health==\"OK\" || health==\"WARNING\") && engine==\"ONLINE\" && execution_allowed==\"false\" && real==\"DESABILITADO\";" in panel
+    assert "health_ok=(health==\"OK\" || health==\"WARNING\") && mode==\"SIMULACAO\" && engine==\"ONLINE\" && execution_allowed==\"false\" && real==\"DESABILITADO\";" in panel
     assert "if(!ParseQualityScore(score,parsed_score)){ signal=\"AGUARDAR\"; score=\"\"; }" in panel
     assert "CompactSignalText(compact_signal)" in panel
     assert "string compact_score_raw=\"\";" in panel
