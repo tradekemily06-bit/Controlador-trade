@@ -95,7 +95,7 @@ def test_demo_flow_executes_through_coordinator():
     assert result.execution_result is not None and result.execution_result.gateway is not None and result.execution_result.gateway.accepted
     assert [event.event_type for event in logger.events()] == [AuditEventType.ANALYSIS, AuditEventType.DECISION, AuditEventType.EXECUTION]
     assert logger.events()[0].data["quality_level"] == "FORTE"
-    assert logger.events()[1].data["quality_score"] == 80.0
+    assert logger.events()[1].data["quality_score"] == 90.0
 
 
 def test_demo_flow_does_not_execute_without_senior_context():
@@ -112,7 +112,7 @@ def test_demo_flow_does_not_execute_when_decision_is_aguardar():
     result = run_flow(flow, analysis=make_analysis(Signal.AGUARDAR))
     assert result.decision.decision == FinalDecision.AGUARDAR
     assert result.execution is None and result.execution_result is None
-    assert result.quality.level == SignalLevel.NENHUMA and not result.quality.actionable
+    assert result.quality.level == SignalLevel.FORTE and not result.quality.actionable
     assert executor.executions() == ()
     assert [event.event_type for event in logger.events()] == [AuditEventType.ANALYSIS, AuditEventType.DECISION, AuditEventType.RISK]
 

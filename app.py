@@ -79,6 +79,55 @@ def _query_limit(environ, default: int, maximum: int = 100) -> int:
     return limit
 
 
+def _mode_execution_block_reason(preferences: dict) -> str:
+    selected_mode = str(preferences.get("selected_mode", "DEMO")).upper()
+    if selected_mode == "REAL":
+        return "Modo REAL selecionado; execução REAL permanece bloqueada até validação e autorização explícita."
+    if preferences.get("leverage_enabled") is True:
+        return "Modo de alavancagem selecionado; execução bloqueada até perfil e orçamento de risco validados."
+    return ""
+
+
+def _blocked_cycle_payload(orchestration, reason: str) -> dict:
+    candidate_signal = orchestration.analysis.signal.value
+    return {
+        "stopped": True,
+        "stop_reason": reason,
+        "analysis_cycle": {
+            "timestamp": orchestration.timestamp.isoformat(),
+            "symbol": orchestration.analysis.symbol,
+            "timeframe": orchestration.analysis.timeframe,
+        },
+        "decision": "AGUARDAR",
+        "signal": "AGUARDAR",
+        "candidate_signal": candidate_signal,
+        "score": orchestration.analysis.score,
+        "reason": reason,
+        "analysis": {
+            "signal": "AGUARDAR",
+            "candidate_signal": candidate_signal,
+            "score": orchestration.analysis.score,
+            "reason": orchestration.analysis.reason,
+            "confirmed": orchestration.analysis.confirmed,
+            "symbol": orchestration.analysis.symbol,
+            "timeframe": orchestration.analysis.timeframe,
+        },
+        "quality": {
+            "score": orchestration.quality.score,
+            "level": orchestration.quality.level.value,
+            "actionable": False,
+        },
+        "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+        "market_data_source": orchestration.market_data.source,
+        "candles": len(orchestration.market_data.candles),
+        "request_id": None,
+        "cycle_id": None,
+        "external_id": None,
+        "execution_status": "BLOCKED",
+        "execution": {"accepted": False, "status": "BLOCKED", "message": reason, "external_id": None},
+    }
+
+
 def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     """Authorize remote mutations through the deployment's trusted identity boundary."""
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
@@ -299,32 +348,105 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            confirmed = data.get("confirmed", False)
+            filters_ok = data.get("filters_ok", True)
+            if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+                raise ValueError("confirmed e filters_ok devem ser booleanos JSON")
+            mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
+            if mode_block_reason:
+                from execution.icmarkets_mt5_market_data import MT5MarketDataError
+                try:
+                    orchestration = SERVICE.analyze_mt5_market(
+                        symbol=str(data.get("symbol", "")),
+                        timeframe=str(data.get("timeframe", "5m")),
+                        limit=int(data.get("limit", 100)),
+                        confirmed=confirmed,
+                        filters_ok=filters_ok,
+                    )
+                except (MT5MarketDataError, RuntimeError) as exc:
+                    return _json_response(
+                        start_response,
+                        HTTPStatus.SERVICE_UNAVAILABLE,
+                        {"error": "dados de mercado indisponíveis", "detail": str(exc), "execution_allowed": False},
+                        request_id,
+                        environ,
+                    )
+                return _json_response(
+                    start_response,
+                    HTTPStatus.OK,
+                    {"runtime": _blocked_cycle_payload(orchestration, mode_block_reason), "execution_allowed": False},
+                    request_id,
+                    environ,
+                )
             result = SERVICE.run_mt5_cycle(
                 symbol=str(data.get("symbol", "")),
                 timeframe=str(data.get("timeframe", "5m")),
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                confirmed=confirmed,
+                filters_ok=filters_ok,
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
+            if not result.cycles:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "ciclo indisponível",
+                        "detail": result.stop_reason or "nenhum ciclo concluído pelo runtime",
+                        "stopped": result.stopped,
+                        "stop_reason": result.stop_reason,
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
             cycle = result.cycles[-1]
             execution = cycle.execution
+            orchestration = cycle.orchestration
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            display_signal = candidate_signal if decision_value == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                orchestration.analysis.reason
+                if decision_value == "EXECUTAR"
+                else orchestration.decision.reason
+            )
             payload = {
                 "stopped": result.stopped,
                 "stop_reason": result.stop_reason,
-                "decision": cycle.orchestration.decision.decision,
-                "signal": cycle.orchestration.analysis.signal.value,
-                "score": cycle.orchestration.analysis.score,
-                "reason": cycle.orchestration.decision.reason,
-                "market_context": cycle.orchestration.snapshot.market_context.context.value if cycle.orchestration.snapshot.market_context else None,
-                "market_data_source": cycle.orchestration.market_data.source,
-                "candles": len(cycle.orchestration.market_data.candles),
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "decision": decision_value,
+                "signal": display_signal,
+                "candidate_signal": candidate_signal,
+                "score": orchestration.analysis.score,
+                "reason": display_reason,
+                "analysis": {
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
+                    "score": orchestration.analysis.score,
+                    "reason": orchestration.analysis.reason,
+                    "confirmed": orchestration.analysis.confirmed,
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "quality": {
+                    "score": orchestration.quality.score,
+                    "level": orchestration.quality.level.value,
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
+                },
+                "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
+                "market_data_source": orchestration.market_data.source,
+                "candles": len(orchestration.market_data.candles),
                 "request_id": cycle.plan.request_id if cycle.plan else None,
                 "cycle_id": (
-                    cycle.orchestration.senior_context.cycle_id
-                    if cycle.orchestration.senior_context is not None
+                    orchestration.senior_context.cycle_id
+                    if orchestration.senior_context is not None
                     else (cycle.automation_lifecycle.cycle_id if cycle.automation_lifecycle is not None else None)
                 ),
                 "external_id": execution.external_id if execution else None,
@@ -345,21 +467,63 @@ def application(environ, start_response):
             )
         if path == "/api/runtime/analysis" and method == "POST":
             data = _read_json(environ)
-            orchestration = SERVICE.analyze_mt5_market(
-                symbol=str(data.get("symbol", "")),
-                timeframe=str(data.get("timeframe", "5m")),
-                limit=int(data.get("limit", 100)),
-                confirmed=data.get("confirmed"),
-                filters_ok=data.get("filters_ok"),
-            )
+            confirmed = data.get("confirmed")
+            filters_ok = data.get("filters_ok")
+            if confirmed is not None and not isinstance(confirmed, bool):
+                raise ValueError("confirmed deve ser booleano JSON ou null")
+            if filters_ok is not None and not isinstance(filters_ok, bool):
+                raise ValueError("filters_ok deve ser booleano JSON ou null")
+            from execution.icmarkets_mt5_market_data import MT5MarketDataError
+            try:
+                orchestration = SERVICE.analyze_mt5_market(
+                    symbol=str(data.get("symbol", "")),
+                    timeframe=str(data.get("timeframe", "5m")),
+                    limit=int(data.get("limit", 100)),
+                    confirmed=confirmed,
+                    filters_ok=filters_ok,
+                )
+            except (MT5MarketDataError, RuntimeError) as exc:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    {
+                        "error": "dados de mercado indisponíveis",
+                        "detail": str(exc),
+                        "execution_allowed": False,
+                    },
+                    request_id,
+                    environ,
+                )
             snapshot = orchestration.snapshot
+            decision_value = getattr(orchestration.decision.decision, "value", orchestration.decision.decision)
+            candidate_signal = orchestration.analysis.signal.value
+            mode_block_reason = _mode_execution_block_reason(SERVICE.get_preferences())
+            # Preserve the technical candidate for audit, but show AGUARDAR when
+            # market gates, REAL safety, or the unvalidated leverage mode block action.
+            display_decision = "AGUARDAR" if mode_block_reason else decision_value
+            display_signal = candidate_signal if display_decision == "EXECUTAR" else "AGUARDAR"
+            display_reason = (
+                mode_block_reason
+                if mode_block_reason
+                else (orchestration.analysis.reason if decision_value == "EXECUTAR" else orchestration.decision.reason)
+            )
+            snapshot_data = snapshot.as_dict()
+            snapshot_data["candidate_signal"] = snapshot_data.get("candidate_signal") or candidate_signal
+            snapshot_data["signal"] = display_signal
+            snapshot_data["actionable"] = bool(snapshot_data.get("actionable", False)) and display_decision == "EXECUTAR"
             return _json_response(start_response, HTTPStatus.OK, {
-                "signal": orchestration.analysis.signal.value,
+                "analysis_cycle": {
+                    "timestamp": orchestration.timestamp.isoformat(),
+                    "symbol": orchestration.analysis.symbol,
+                    "timeframe": orchestration.analysis.timeframe,
+                },
+                "signal": display_signal,
                 "score": orchestration.analysis.score,
-                "reason": orchestration.analysis.reason,
-                "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
+                "reason": display_reason,
+                "decision": display_decision,
                 "analysis": {
-                    "signal": orchestration.analysis.signal.value,
+                    "signal": display_signal,
+                    "candidate_signal": candidate_signal,
                     "score": orchestration.analysis.score,
                     "reason": orchestration.analysis.reason,
                     "confirmed": orchestration.analysis.confirmed,
@@ -369,13 +533,13 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable,
+                    "actionable": orchestration.quality.actionable and display_decision == "EXECUTAR",
                 },
                 "decision_detail": {
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
                     "reason": orchestration.decision.reason,
                 },
-                "snapshot": snapshot.as_dict(),
+                "snapshot": snapshot_data,
                 "market_data": {
                     "source": orchestration.market_data.source,
                     "candles": len(orchestration.market_data.candles),

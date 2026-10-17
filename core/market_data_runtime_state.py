@@ -9,10 +9,11 @@ from core.p122_broker_market_data import BrokerMarketDataSnapshot
 
 @dataclass
 class MarketDataRuntimeState:
-    """Provider-neutral, read-only market-data state used by operational observability."""
+    """Provider-neutral market-data state used by operational observability."""
 
     integrity: MarketDataRuntimeIntegrity
     report: MarketDataRuntimeReport | None = None
+    unavailable_reason: str | None = None
 
     def update(
         self,
@@ -27,7 +28,14 @@ class MarketDataRuntimeState:
             expected_interval_seconds=expected_interval_seconds,
         )
         self.report = report
+        self.unavailable_reason = None
         return report
+
+    def invalidate(self, reason: str) -> None:
+        """Clear any previously healthy snapshot when the latest read fails."""
+        message = str(reason).strip() if isinstance(reason, str) else ""
+        self.report = None
+        self.unavailable_reason = message or "ciclo de mercado falhou; dados atuais indisponíveis"
 
     def status(self) -> dict[str, object]:
         if self.report is None:
@@ -40,6 +48,6 @@ class MarketDataRuntimeState:
                 "candle_count": None,
                 "gap_count": None,
                 "stale": None,
-                "message": "nenhum snapshot de mercado foi recebido pelo runtime",
+                "message": self.unavailable_reason or "nenhum snapshot de mercado foi recebido pelo runtime",
             }
         return self.report.to_dict()

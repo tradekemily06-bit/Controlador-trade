@@ -42,12 +42,12 @@ def test_boundary_score_70_is_buy():
     # + 10% volume + 15% confirmation = 70.
     result = StrategyEngine().evaluate(
         make_input(
-            trend=70.0,
-            pressure=70.0,
-            structure=70.0,
-            rejection=70.0,
-            volume=70.0,
-            confirmation=70.0,
+            trend=60.0,
+            pressure=60.0,
+            structure=60.0,
+            rejection=60.0,
+            volume=100.0,
+            confirmation=100.0,
         )
     )
     assert result.score == 70.0
@@ -57,12 +57,12 @@ def test_boundary_score_70_is_buy():
 def test_boundary_score_30_is_sell():
     result = StrategyEngine().evaluate(
         make_input(
-            trend=30.0,
-            pressure=30.0,
-            structure=30.0,
-            rejection=30.0,
-            volume=30.0,
-            confirmation=30.0,
+            trend=10.0,
+            pressure=10.0,
+            structure=10.0,
+            rejection=20.0,
+            volume=60.0,
+            confirmation=100.0,
         )
     )
     assert result.score == 30.0

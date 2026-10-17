@@ -237,6 +237,8 @@ class ConfiguredEcosystemService(EcosystemService):
 
     def run_mt5_cycle(self, *, symbol: str, timeframe: str = "5m", limit: int = 100, amount: float = 0.01, duration_seconds: int = 60, senior_context=None, confirmed: bool = False, filters_ok: bool = True, entry_conditions: tuple[str, ...] = ()) -> Any:
         """Run one unified DEMO runtime cycle from live MT5 observations."""
+        if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+            raise ValueError("confirmed e filters_ok devem ser booleanos")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -249,7 +251,9 @@ class ConfiguredEcosystemService(EcosystemService):
         return self.trading_runtime.run(
             request, operational_state=state, market_context=None, senior_context=senior_context,
             amount=amount, duration_seconds=duration_seconds, max_cycles=1,
-            confirmed=confirmed, filters_ok=filters_ok, entry_conditions=entry_conditions,
+            confirmed=confirmed, filters_ok=filters_ok,
+            filters_required=self.preferences.preferences.require_filters,
+            entry_conditions=entry_conditions,
             checkpoint_store=self.operational_runtime.checkpoint_store,
             session_id=f"mt5-{symbol}-{timeframe}",
             automation_policy=AutomationPolicy(enabled=True, minimum_interval_seconds=0),
@@ -267,6 +271,10 @@ class ConfiguredEcosystemService(EcosystemService):
         filters_ok: bool | None = None,
     ) -> Any:
         """Analyze the current MT5 DEMO market snapshot without executing an order."""
+        if confirmed is not None and not isinstance(confirmed, bool):
+            raise ValueError("confirmed deve ser booleano ou None")
+        if filters_ok is not None and not isinstance(filters_ok, bool):
+            raise ValueError("filters_ok deve ser booleano ou None")
         if self.trading_runtime is None or self.operational_runtime is None:
             raise RuntimeError("runtime operacional não conectado")
         if self.execution_provider != "ic_markets_mt5_demo":
@@ -283,28 +291,54 @@ class ConfiguredEcosystemService(EcosystemService):
         if not isinstance(limit, int) or isinstance(limit, bool) or not 20 <= limit <= 500:
             raise ValueError("limit deve estar entre 20 e 500")
         prefs = self.preferences.preferences
-        effective_confirmed = prefs.require_closed_candle if confirmed is None else bool(confirmed)
-        effective_filters = prefs.require_filters if filters_ok is None else bool(filters_ok)
+        effective_confirmed = prefs.require_closed_candle if confirmed is None else confirmed
+        effective_filters = True if filters_ok is None else filters_ok
         request = MarketDataRequest(symbol=symbol, timeframe=timeframe, limit=limit)
-        operational_state = self.mt5_operational_adapter.read_operational_state()
-        orchestration = self.trading_runtime.orchestrator.evaluate(
-            request,
-            operational_state=operational_state,
-            market_context=None,
-            confirmed=effective_confirmed,
-            filters_ok=effective_filters,
-        )
-        if self.trading_runtime.market_data_state is not None:
-            from core.p122_broker_market_data import BrokerMarketDataSnapshot
-            self.trading_runtime.market_data_state.update(
-                BrokerMarketDataSnapshot(
-                    symbol=request.symbol,
-                    timeframe=request.timeframe,
-                    candles=tuple(orchestration.market_data.candles),
-                    source=orchestration.market_data.source,
-                    received_at=orchestration.timestamp,
-                ),
-                now=orchestration.timestamp,
+        if self.trading_runtime.market_data_state is None:
+            raise RuntimeError(
+                "integridade dos dados de mercado não conectada; análise indisponível"
+            )
+        market_data_report = None
+        try:
+            operational_state = self.mt5_operational_adapter.read_operational_state()
+            orchestration = self.trading_runtime.orchestrator.evaluate(
+                request,
+                operational_state=operational_state,
+                market_context=None,
+                confirmed=effective_confirmed,
+                filters_ok=effective_filters,
+                filters_required=prefs.require_filters,
+            )
+            if self.trading_runtime.market_data_state is not None:
+                from core.p122_broker_market_data import BrokerMarketDataSnapshot
+                market_data_report = self.trading_runtime.market_data_state.update(
+                    BrokerMarketDataSnapshot(
+                        symbol=request.symbol,
+                        timeframe=request.timeframe,
+                        candles=tuple(orchestration.market_data.candles),
+                        source=orchestration.market_data.source,
+                        received_at=orchestration.timestamp,
+                    ),
+                    now=orchestration.timestamp,
+                )
+        except Exception as exc:
+            # Never leave the previous successful market snapshot looking current.
+            state = self.trading_runtime.market_data_state
+            if state is not None:
+                state.invalidate(f"ciclo de análise indisponível: {type(exc).__name__}")
+            # Input validation above already ran before this try. A ValueError
+            # here comes from the fetched market/runtime cycle, not the request.
+            if isinstance(exc, ValueError):
+                raise RuntimeError(
+                    f"dados/contexto de mercado indisponíveis: {type(exc).__name__}"
+                ) from exc
+            raise
+        if market_data_report is not None and not market_data_report.safe_for_analysis:
+            # Keep the factual STALE/GAP/INVALID report for operational alerts,
+            # but never return or persist a directional signal from unsafe data.
+            raise RuntimeError(
+                f"dados de mercado não seguros para análise: "
+                f"{market_data_report.health.value}: {market_data_report.message}"
             )
         self._record_analysis(orchestration.analysis)
         return orchestration
