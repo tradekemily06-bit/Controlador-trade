@@ -634,26 +634,39 @@ void RunCycle(){
       SetLabel(Obj("INFO1"),"Ciclo indisponivel ou bloqueado",20,361,9,C'255,118,118');
       return;
    }
-   string signal=JsonValue(r,"signal");
-   if(signal=="") signal=JsonValue(r,"decision");
+   // The API wraps cycle details under "runtime"; never read decision fields from the root.
+   string signal=JsonObjectValue(r,"runtime","signal");
+   if(signal=="") signal=JsonObjectValue(r,"runtime","decision");
    if(signal=="") signal="AGUARDAR";
    signal=NormalizeCompactSignal(signal);
-   string score=JsonObjectValue(r,"quality","score");
+   string score=JsonObjectValue(JsonObjectValue(r,"runtime","quality"),"unused","score");
+   // JsonObjectValue expects the full parent object; extract quality from runtime.
+   string runtime_payload="";
+   int runtime_pos=StringFind(r,"\"runtime\":");
+   if(runtime_pos>=0) runtime_payload=StringSubstr(r,runtime_pos+10);
+   string runtime_quality=JsonObjectValue(runtime_payload,"quality","score");
+   if(runtime_quality!="") score=runtime_quality; else score="";
    double parsed_score=0.0;
    if(!ParseQualityScore(score,parsed_score)){ signal="AGUARDAR"; score=""; }
-   UpdateCompactSignal(signal,score,true);
-   string reason=JsonValue(r,"reason");
-   string cid=JsonValue(r,"cycle_id");
-   string eid=JsonValue(r,"external_id");
+   string reason=JsonObjectValue(r,"runtime","reason");
+   string cid=JsonObjectValue(r,"runtime","cycle_id");
+   string eid=JsonObjectValue(r,"runtime","external_id");
    string allowed=JsonValue(r,"execution_allowed");
+   string accepted=JsonObjectValue(r,"runtime","execution_status");
+   if(allowed!="true" || accepted!="ACCEPTED" || cid=="" || eid==""){
+      signal="AGUARDAR";
+      cid="";
+      eid="";
+   }
+   UpdateCompactSignal(signal,score,true);
    color c=signal=="COMPRA"?C'88,214,141':signal=="VENDA"?C'255,118,118':C'255,209,102';
    SetLabel(Obj("SIGNAL"),CompactSignalText(signal),20,154,22,c);
    SetLabel(Obj("SCORE"),"Qualidade: "+(score==""?"—":DoubleToString(StringToDouble(score),0))+"%",20,184,10,clrWhite);
-   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido.":reason,0,62),20,204,9,C'180,190,205');
+   SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluido ou bloqueado.":reason,0,62),20,204,9,C'180,190,205');
    last_cycle_id=cid; last_external_id=eid;
-   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"concluido":"atualizado"),20,465,8,C'145,160,180');
-   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem atividade":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),"Ciclo DEMO validado",20,361,9,C'205,215,230');
+   SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"sem ciclo executavel":"atualizado"),20,465,8,C'145,160,180');
+   SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem execucao aceita":"registrada"),20,483,8,C'145,160,180');
+   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="ACCEPTED" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Ciclo DEMO bloqueado ou sem execucao aceita",20,361,9,(allowed=="true" && accepted=="ACCEPTED" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
