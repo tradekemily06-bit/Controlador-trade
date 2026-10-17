@@ -105,6 +105,10 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert 'return "↓ VENDER";' in panel
     assert 'JsonObjectValue(r,"quality","score")' in panel
     assert "UpdateCompactSignal(signal,score,true)" in panel
+    assert "bool ParseQualityScore(string raw,double &value)" in panel
+    assert "health_ok=(health==\"OK\" || health==\"WARNING\") && engine==\"ONLINE\" && execution_allowed==\"false\" && real==\"DESABILITADO\";" in panel
+    assert "if(!ParseQualityScore(score,parsed_score)){ signal=\"AGUARDAR\"; score=\"\"; }" in panel
+    assert "CompactSignalText(compact_signal)" in panel
     assert "watermark" not in panel.lower()
     assert "WATERMARK" not in panel
 
