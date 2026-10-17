@@ -163,8 +163,8 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
    compact_score=(available && score_valid)?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
    if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
-      ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(compact_signal):"INDISPONÍVEL");
-      ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(compact_signal):C'255,118,118');
+      ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(compact_signal):"AGUARDAR");
+      ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(compact_signal):C'255,209,102');
    }
    if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0)
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
