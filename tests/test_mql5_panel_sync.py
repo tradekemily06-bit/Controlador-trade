@@ -336,3 +336,12 @@ def test_mql5_preview_uses_resolved_python_and_never_targets_installed_ea():
     assert "'MQL5\\\\Experts\\\\ControladorTradingPreview'" in preview
     assert "installed_ea_replaced = $false" in preview
 
+def test_compact_panel_shows_aguardar_not_an_error_signal_when_health_is_unavailable():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    update = panel.split("void UpdateCompactSignal(", 1)[1].split("void RefreshPanelToggle()", 1)[0]
+    health = panel.split("void RefreshHealth()", 1)[1].split("void RefreshSecondary()", 1)[0]
+    assert 'available?CompactSignalText(compact_signal):"AGUARDAR"' in update
+    assert "available?CompactSignalColor(compact_signal):C'255,209,102'" in update
+    assert 'SetLabel(Obj("RUNTIME"),"Sistema: indisponivel"' in health
+    assert 'UpdateCompactSignal("INDISPONIVEL","",false);' in health
+
