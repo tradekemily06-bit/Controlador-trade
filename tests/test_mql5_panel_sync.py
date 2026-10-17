@@ -296,3 +296,12 @@ def test_mql5_sync_requires_matching_source_and_binary_provenance_to_skip_compil
     assert "Set-Content -LiteralPath $provenanceTemp -Encoding ASCII" in text
     assert text.count("Restore-File -Backup $backupProvenance -Target $provenance") == 7
     assert text.index("if ($binaryWriteTime -lt $compileStartedAt.AddSeconds(-2))") < text.index("binary_sha256 = $binaryHashAfter")
+
+
+def test_mql5_cycle_does_not_fabricate_candle_or_filter_confirmation():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    cycle = panel.split("void RunCycle()", 1)[1].split("void CloseCycle()", 1)[0]
+    assert '\\\"confirmed\\\":false' in cycle
+    assert '\\\"filters_ok\\\":false' in cycle
+    assert '\\\"confirmed\\\":true' not in cycle
+    assert '\\\"filters_ok\\\":true' not in cycle
