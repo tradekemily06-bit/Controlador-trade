@@ -31,6 +31,18 @@ def test_mql5_sync_script_exists_and_is_self_contained():
         assert required in text
 
 
+def test_mql5_preview_compile_isolated_from_installed_ea():
+    preview = (ROOT / "deployment" / "compile_mql5_panel_preview.ps1").read_text(encoding="utf-8")
+    assert "MQL5\\Experts\\ControladorTradingPreview" in preview
+    assert "$previewSource = Join-Path $previewDir 'Controlador-Trading-Preview.mq5'" in preview
+    assert '& $MetaEditorPath "/compile:$previewSource" "/log:$log"' in preview
+    assert "installed_ea_replaced = $false" in preview
+    assert "real_execution_authorized = $false" in preview
+    assert "0 erros, 0 avisos" in preview
+    assert "Copy-Item -LiteralPath $source -Destination $previewSource -Force" in preview
+    assert "Join-Path $Mt5DataPath 'MQL5\\Experts\\ControladorTrading'" not in preview
+
+
 def test_mql5_panel_has_single_repository_source():
     panel = ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5"
     legacy = ROOT / "mql5" / "Experts" / "ControladorTrading" / "ControladorTradingPanel.mq5"
