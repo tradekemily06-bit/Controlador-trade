@@ -20,7 +20,7 @@ $checks = New-Object System.Collections.Generic.List[object]
 function Add-Check([string]$Name, [bool]$Ok, [string]$Detail) { $checks.Add([pscustomobject]@{check=$Name; ok=$Ok; detail=$Detail}) }
 function Has-File([string]$Path) { return Test-Path -LiteralPath $Path -PathType Leaf }
 
-foreach ($relative in @('app.py','deployment\start_controlador_runtime.ps1','deployment\start_mt5_runtime.ps1','deployment\install_windows_autostart.ps1','deployment\sync_mql5_panel.ps1','deployment\bootstrap_windows_runtime.ps1')) {
+foreach ($relative in @('app.py','deployment\start_controlador_runtime.ps1','deployment\start_mt5_runtime.ps1','deployment\install_windows_autostart.ps1','deployment\sync_mql5_panel.ps1','deployment\bootstrap_windows_runtime.ps1','deployment\prepare_mt5_preview.ps1')) {
     $path = Join-Path $ProjectRoot $relative
     Add-Check "arquivo:$relative" (Has-File $path) $path
 }

@@ -81,6 +81,7 @@ jobs:
           $deployment = Join-Path $env:GITHUB_WORKSPACE 'deployment'
           $paths = @(
             'sync_mql5_panel.ps1',
+            'prepare_mt5_preview.ps1',
             'start_controlador_runtime.ps1',
             'start_mt5_runtime.ps1',
             'validate_windows_runtime.ps1',
