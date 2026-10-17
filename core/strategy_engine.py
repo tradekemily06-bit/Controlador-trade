@@ -61,8 +61,15 @@ class StrategyEngine:
                 raise ValueError(f"{name} deve estar entre 0 e 100.")
 
         score = calculate_score(**values)
-        filter_result = AdvancedFilters().evaluate(**values)
-        effective_filters_ok = data.filters_ok is True and filter_result.allowed
+        direction = Signal.COMPRA if score >= 70 else Signal.VENDA if score <= 30 else Signal.AGUARDAR
+        filter_result = (
+            AdvancedFilters().evaluate(direction=direction, **values)
+            if direction in (Signal.COMPRA, Signal.VENDA)
+            else None
+        )
+        effective_filters_ok = data.filters_ok is True and (
+            filter_result is None or filter_result.allowed
+        )
 
         result = self.signal_engine.evaluate(
             score=score,
@@ -71,11 +78,11 @@ class StrategyEngine:
             symbol=data.symbol,
             timeframe=data.timeframe,
         )
-        if not filter_result.allowed:
-            # A caller-supplied filters_ok=True is never proof that the market
-            # filters passed; the internal deterministic filter result is required.
+        if filter_result is not None and not filter_result.allowed:
+            # A caller-supplied filters_ok=True is never proof that market
+            # filters passed; internal direction-aware checks must also pass.
             return AnalysisResult(
-                signal=result.signal,
+                signal=Signal.AGUARDAR,
                 score=result.score,
                 reason="Filtros bloqueados: " + "; ".join(filter_result.reasons),
                 confirmed=result.confirmed,
