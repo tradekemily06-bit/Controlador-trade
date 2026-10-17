@@ -211,7 +211,7 @@ void Panel(){
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
 
-   SetLabel(Obj("TITLE"),"Controlador Trading",20,27,13,clrWhite);
+   SetLabel(Obj("TITLE"),"Controlador-Trading",20,27,13,clrWhite);
    SetLabel(Obj("SUB"),"ECOSSISTEMA • MT5 • DEMO / SIMULACAO",20,47,9,C'150,165,185');
    SetButton(Obj("V1"),"⌂",18,67,54,25);
    SetButton(Obj("V2"),"A",74,67,54,25);
