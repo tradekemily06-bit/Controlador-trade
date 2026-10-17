@@ -25,7 +25,7 @@ class StrategyPipeline:
         candles: list[Candle],
         *,
         confirmed: bool = False,
-        filters_ok: bool = False,
+        filters_ok: bool = True,
         symbol: str | None = None,
         timeframe: str | None = None,
     ) -> AnalysisResult:
