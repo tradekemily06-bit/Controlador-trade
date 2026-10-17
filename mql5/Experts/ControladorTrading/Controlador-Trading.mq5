@@ -23,6 +23,7 @@ int panel_width=360;
 int panel_height=440;
 string compact_signal="AGUARDAR";
 string compact_score="—%";
+string compact_score_raw="";
 bool compact_available=false;
 double panel_sx=1.0;
 double panel_sy=1.0;
@@ -120,8 +121,8 @@ color CompactSignalColor(string signal){
    return C'255,209,102';
 }
 bool ParseQualityScore(string raw,double &value){
-   StringTrimLeft(raw);
-   StringTrimRight(raw);
+   raw=StringTrimLeft(raw);
+   raw=StringTrimRight(raw);
    if(raw=="") return false;
    bool digit=false;
    bool dot=false;
@@ -139,6 +140,7 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
    double parsed_score=0.0;
    bool score_valid=ParseQualityScore(score,parsed_score);
    compact_signal=(available && (signal=="COMPRA" || signal=="VENDA" || signal=="AGUARDAR"))?(score_valid?signal:"AGUARDAR"):(available?"AGUARDAR":"INDISPONIVEL");
+   compact_score_raw=(available && score_valid)?DoubleToString(parsed_score,2):"";
    compact_score=(available && score_valid)?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
    if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
@@ -156,7 +158,7 @@ void RefreshPanelToggle(){
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
    SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
-   UpdateCompactSignal(compact_signal,compact_available?compact_score:"",compact_available);
+   UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:"",compact_available);
 }
 void TogglePanel(){
    panel_visible=!panel_visible;
