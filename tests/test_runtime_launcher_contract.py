@@ -66,10 +66,10 @@ def test_controller_health_gate_uses_current_safe_health_contract():
     text = _read("deployment/start_controlador_runtime.ps1")
     for required in (
         "$payload.execution_allowed -ne $false",
-        '$payload.real -ne "DESABILITADO"',
+        "$payload.real -ne 'DESABILITADO'",
         "$payload.operational_observability.execution",
         "$op.allowed -ne $false",
-        '$op.real -ne "DISABLED"',
+        "$op.real -ne 'DISABLED'",
         "$payload.real_runtime",
         "$realRuntime.real_execution_allowed -ne $false",
         "$realRuntime.explicitly_enabled -ne $false",
@@ -119,7 +119,8 @@ def test_mt5_supervisor_pins_health_and_process_management_to_configured_termina
     assert "function Get-ConfiguredMt5Process" in text
     assert "Mais de uma instância corresponde" in text
     assert "function Get-Mt5AccountSafetyState" in text
-    assert "$accountSafetyState -ne 'DEMO'" in text
+    assert "$accountSafetyState -notin @('DEMO', 'DEMO_WITH_OPEN_TRADES')" in text
+    assert "DEMO_WITH_OPEN_TRADES" in text
     assert "Get-Process -Name $processName" not in text
 
 
@@ -151,3 +152,84 @@ def test_controller_supervisor_preserves_mql5_sync_failure_details():
     assert "terminou com código $syncExitCode" in text
 
 
+
+
+def test_controller_supervisor_separates_liveness_and_safety_and_uses_repair_policy():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    assert "http://127.0.0.1:8000/api/health/live" in text
+    assert "function Test-ControllerSafety" in text
+    assert "function Test-SafeRepairAuthorization" in text
+    assert "authorize_self_repair.py" in text
+    assert "maintenance.lock" in text
+    assert "Write-SupervisorStatus 'ATTENTION'" in text
+    assert "Liveness do Controlador permaneceu indisponível" in text
+
+
+def test_mt5_supervisor_requires_empty_demo_trade_state_for_automatic_stop():
+    text = _read("deployment/start_mt5_runtime.ps1")
+    assert "function Test-SafeRepairAuthorization" in text
+    assert "authorize_self_repair.py" in text
+    assert "positions = mt5.positions_get()" in text
+    assert "orders = mt5.orders_get()" in text
+    assert "DEMO_WITH_OPEN_TRADES" in text
+    assert "maintenance.lock" in text
+    assert "Reparo automático do MT5 bloqueado pela política" in text
+    assert "Inicialização automática do MT5 bloqueada pela política" in text
+
+
+def test_supervisors_resolve_relative_paths_against_project_root():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "$ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)" in text
+        assert "[System.IO.Path]::IsPathRooted($PythonExe)" in text
+        assert "$projectPython = Join-Path $ProjectRoot $PythonExe" in text
+        assert "[System.IO.Path]::IsPathRooted($RuntimeDir)" in text
+        assert "$RuntimeDir = Join-Path $ProjectRoot $RuntimeDir" in text
+
+
+def test_controller_skips_mt5_preflight_while_maintenance_lock_is_active():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    function = text.split("function Test-Mt5Demo {", 1)[1].split("function Test-ControllerHealth {", 1)[0]
+    assert "maintenanceLockPath" in function
+    assert "return $false" in function
+    assert "run_preflight(mt5)" in function
+
+
+
+def test_controller_health_probes_use_bounded_direct_urllib_not_invoke_webrequest():
+    text = _read("deployment/start_controlador_runtime.ps1")
+    for required in (
+        "function Invoke-RuntimeHttpProbe",
+        "urllib.request",
+        "urllib.request.ProxyHandler({})",
+        "Invoke-RuntimeHttpProbe -Uri $livenessUrl -TimeoutSeconds 3",
+        "Invoke-RuntimeHttpProbe -Uri $healthUrl -TimeoutSeconds 8",
+        "$script:LastControllerLivenessDiagnostic",
+        "detalhe=$script:LastControllerLivenessDiagnostic",
+    ):
+        assert required in text
+    assert "Invoke-WebRequest" not in text
+
+
+
+def test_supervisors_fail_closed_when_restart_history_is_corrupt():
+    for path in (
+        "deployment/start_controlador_runtime.ps1",
+        "deployment/start_mt5_runtime.ps1",
+    ):
+        text = _read(path)
+        assert "$script:RestartHistoryValid = $true" in text
+        assert "$script:RestartHistoryValid = $false" in text
+        assert "ConvertFrom-Json -ErrorAction Stop" in text
+        assert "Histórico de reinícios inválido; recuperação automática bloqueada" in text
+        assert "timestamp inválido no histórico de reinícios" in text
+
+
+
+def test_container_healthcheck_uses_lightweight_liveness_endpoint():
+    text = _read("Dockerfile")
+    assert "/api/health/live" in text
+    assert "'/api/health'" not in text

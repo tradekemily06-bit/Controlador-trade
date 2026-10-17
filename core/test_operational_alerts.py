@@ -77,3 +77,20 @@ def test_supervisor_recovery_is_warning():
     assert [(item.code, item.severity) for item in incidents] == [
         ("SUPERVISOR_MT5_RECOVERING", "WARNING")
     ]
+
+
+def test_supervisor_attention_explains_blocked_automatic_repair():
+    data = _healthy_observability()
+    data["supervision"] = {
+        "controller": {
+            "state": "ATTENTION",
+            "reason": "reparo automático bloqueado: maintenance lock ativo",
+        }
+    }
+
+    incidents = build_operational_incidents(data)
+
+    assert [(item.code, item.severity) for item in incidents] == [
+        ("SUPERVISOR_CONTROLLER_ATTENTION", "WARNING")
+    ]
+    assert "maintenance lock ativo" in incidents[0].message
