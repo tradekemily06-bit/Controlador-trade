@@ -12,6 +12,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# This supervisor may start a terminal, but its connected controller remains DEMO-only.
+$env:CONTROLADOR_EXECUTION_PROVIDER = 'ic_markets_mt5_demo'
+$env:CONTROLADOR_REAL_EXPLICITLY_ENABLED = 'false'
+$env:CONTROLADOR_REAL_EXECUTION_ALLOWED = 'false'
+$env:CONTROLADOR_REAL_AUDIT_VERIFIED = 'false'
+$env:CONTROLADOR_REAL_RISK_APPROVED = 'false'
 $ProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot)
 
 if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
@@ -118,6 +125,16 @@ function Test-SafeRepairAuthorization {
         $cooldownElapsed = (($now - $restartTimes[$restartTimes.Count - 1]).TotalSeconds -ge $RestartDelaySeconds)
     }
     $maintenanceLockClear = -not (Test-Path -LiteralPath $maintenanceLockPath -PathType Leaf)
+    $executionQuiescent = $false
+    $prevalidated = Test-Path -LiteralPath $Mt5TerminalPath -PathType Leaf
+    $touchesExecutionState = $false
+    $humanRequired = $RequiresHumanSupervision
+    if ($Action -eq 'restart_mt5_terminal') {
+        $executionQuiescent = ((Get-Mt5AccountSafetyState) -eq 'DEMO')
+        $prevalidated = $executionQuiescent
+        $touchesExecutionState = -not $executionQuiescent
+        $humanRequired = $humanRequired -or -not $executionQuiescent
+    }
     $policyPath = Join-Path $ProjectRoot 'deployment\authorize_self_repair.py'
     if (-not (Test-Path -LiteralPath $policyPath -PathType Leaf)) {
         $script:LastRepairAuthorizationDiagnostic = 'política de autorreparo ausente; reparo bloqueado'
@@ -132,12 +149,13 @@ function Test-SafeRepairAuthorization {
             '--local-only', 'true',
             '--reversible', 'true',
             '--deterministic', 'true',
-            '--prevalidated', 'true',
+            '--prevalidated', ([string]$prevalidated).ToLowerInvariant(),
             '--external-side-effects', 'false',
-            '--touches-execution-state', 'false',
-            '--requires-human-supervision', ([string]$RequiresHumanSupervision).ToLowerInvariant(),
+            '--touches-execution-state', ([string]$touchesExecutionState).ToLowerInvariant(),
+            '--requires-human-supervision', ([string]$humanRequired).ToLowerInvariant(),
             '--cooldown-elapsed', ([string]$cooldownElapsed).ToLowerInvariant(),
-            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant()
+            '--maintenance-lock-clear', ([string]$maintenanceLockClear).ToLowerInvariant(),
+            '--execution-quiescent', ([string]$executionQuiescent).ToLowerInvariant()
         )
         $policyOutput = & $PythonExe @policyArgs 2>&1
         $policyExitCode = $LASTEXITCODE
