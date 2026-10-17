@@ -326,3 +326,13 @@ def test_mql5_cycle_preserves_analysis_signal_when_execution_is_not_accepted():
     assert 'signal="AGUARDAR";' in cycle  # Invalid score still fails closed.
     assert 'last_cycle_id=cid; last_external_id=eid;' in cycle
     assert "Analise atualizada; execucao nao aceita" in cycle
+
+def test_mql5_preview_uses_resolved_python_and_never_targets_installed_ea():
+    preview = (ROOT / "deployment" / "compile_mql5_panel_preview.ps1").read_text(encoding="utf-8")
+    assert "[string]$PythonExe = 'python'" in preview
+    assert "Get-Command $PythonExe" in preview
+    assert "Python não foi encontrado no PATH" in preview
+    assert "& $PythonExe -c $oneLinePython $Mt5TerminalPath" in preview
+    assert "'MQL5\\\\Experts\\\\ControladorTradingPreview'" in preview
+    assert "installed_ea_replaced = $false" in preview
+
