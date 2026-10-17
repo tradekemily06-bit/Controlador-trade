@@ -25,6 +25,7 @@ class RepairRequest:
     maintenance_lock_clear: bool
     attempts_used: int
     max_attempts: int
+    execution_quiescent: bool = False
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,8 @@ class SelfRepairPolicy:
     # boolean is not sufficient evidence that restarting MT5 is safe.
     ALLOWED_ACTIONS = frozenset({
         "clear_stale_local_cache",
+        "restart_controller",
+        "restart_mt5_terminal",
     })
 
     @staticmethod
@@ -81,6 +84,7 @@ class SelfRepairPolicy:
                 request.requires_human_supervision,
                 request.cooldown_elapsed,
                 request.maintenance_lock_clear,
+                request.execution_quiescent,
             )
         ):
             return SelfRepairPolicy._blocked("atributos de segurança inválidos")
@@ -98,6 +102,8 @@ class SelfRepairPolicy:
             )
 
         blockers = []
+        if request.action in {"restart_controller", "restart_mt5_terminal"} and not request.execution_quiescent:
+            blockers.append("estado DEMO sem posições/ordens abertas não foi confirmado")
         if not request.local_only:
             blockers.append("reparo não é estritamente local")
         if not request.reversible:
