@@ -75,6 +75,13 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert "watermark" not in panel.lower()
     assert "WATERMARK" not in panel
 
+    assert '"ANALISAR NO RUNTIME"' not in panel
+    assert '"/api/memory"' not in panel
+    assert '"/api/statistics"' not in panel
+    assert "learning_authorizes_trading=false" not in panel
+    assert "Execution Gate" not in panel
+    assert "Motor de decisao:" not in panel
+
 def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     prefs = panel.split("void RefreshPreferences()", 1)[1].split("void RefreshNotifications()", 1)[0]
