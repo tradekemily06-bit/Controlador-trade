@@ -195,7 +195,7 @@ def test_real_reconcile_rejects_string_boolean_instead_of_coercing(monkeypatch):
 
     assert status.startswith("400")
     assert called == []
-    assert "booleano JSON" in data["error"]
+    assert data["error"] == "Entrada inválida"
 
 
 def test_real_reconcile_preserves_explicit_false(monkeypatch):
