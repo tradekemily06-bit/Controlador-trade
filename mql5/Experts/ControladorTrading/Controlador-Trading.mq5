@@ -97,7 +97,9 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
 }
 void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   // Anchor the compact controls to the chart's lower-left corner. Opening
+   // the panel must never reposition the C, signal, or score.
+   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_LOWER);
    ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_CENTER);
    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
@@ -151,9 +153,9 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
 }
 void RefreshPanelToggle(){
-   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int cx=28;
-   int cy=MathMax(42,ch-46);
+   // Fixed distance from the lower edge in both open and closed states.
+   int cy=46;
    SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'31,43,61',true);
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
