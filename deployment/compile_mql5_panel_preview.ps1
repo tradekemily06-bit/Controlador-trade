@@ -1,11 +1,23 @@
 param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$PythonExe = 'python',
     [string]$Mt5TerminalPath = 'C:\Program Files\MetaTrader 5\terminal64.exe',
     [string]$MetaEditorPath = '',
     [string]$Mt5DataPath = $env:CONTROLADOR_MT5_DATA_PATH
 )
 
 $ErrorActionPreference = 'Stop'
+
+if ($PythonExe -eq 'python' -or $PythonExe -eq 'python.exe') {
+    $resolvedPython = Get-Command $PythonExe -ErrorAction SilentlyContinue
+    if ($null -eq $resolvedPython -or [string]::IsNullOrWhiteSpace($resolvedPython.Source)) {
+        throw "Python não foi encontrado no PATH. Informe -PythonExe com o caminho completo do python.exe."
+    }
+    $PythonExe = $resolvedPython.Source
+}
+if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
+    throw "Python não encontrado: $PythonExe"
+}
 
 $source = Join-Path $ProjectRoot 'mql5\Experts\ControladorTrading\Controlador-Trading.mq5'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
@@ -54,7 +66,7 @@ mt5.shutdown()
 '@
 $encodedPython = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($pythonCode))
 $oneLinePython = "import base64;exec(compile(base64.b64decode('$encodedPython'),'<mt5-preview-path>','exec'))"
-$bridgeResult = & python -c $oneLinePython $Mt5TerminalPath 2>$null
+$bridgeResult = & $PythonExe -c $oneLinePython $Mt5TerminalPath 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $bridgeResult) {
     throw 'Não foi possível confirmar a pasta de dados da instância MT5 pela ponte Python. Pré-visualização bloqueada.'
 }
