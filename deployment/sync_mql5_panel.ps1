@@ -159,6 +159,13 @@ function Resolve-Mt5DataPath([string]$RequestedPath, [string]$TerminalPath) {
         }
     }
     $candidates = @($candidates | Sort-Object -Unique)
+    if ($candidates.Count -eq 0) {
+        $activeTerminals = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ieq 'terminal64.exe' })
+        if ($activeTerminals.Count -gt 1) {
+            throw 'Várias instâncias do MT5 estão ativas e nenhuma pasta de dados contém o painel; configure CONTROLADOR_MT5_DATA_PATH para a instância correta. Nenhum arquivo foi sincronizado.'
+        }
+    }
     if ($candidates.Count -gt 1) {
         throw "Mais de uma pasta de dados MT5 contém o painel; configure CONTROLADOR_MT5_DATA_PATH com o caminho exato da instância conectada. Nenhum arquivo foi sincronizado: $($candidates -join '; ')"
     }
