@@ -139,8 +139,8 @@ string NormalizeCompactSignal(string raw){
    return "AGUARDAR";
 }
 bool ParseQualityScore(string raw,double &value){
-   raw=StringTrimLeft(raw);
-   raw=StringTrimRight(raw);
+   StringTrimLeft(raw);
+   StringTrimRight(raw);
    if(raw=="") return false;
    bool digit=false;
    bool dot=false;
