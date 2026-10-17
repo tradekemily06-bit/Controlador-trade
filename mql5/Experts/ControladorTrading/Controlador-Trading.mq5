@@ -653,8 +653,10 @@ void RunCycle(){
    string eid=JsonObjectValue(r,"runtime","external_id");
    string allowed=JsonValue(r,"execution_allowed");
    string accepted=JsonObjectValue(runtime_payload,"execution","accepted");
-   if(allowed!="true" || accepted!="true" || cid=="" || eid==""){
-      signal="AGUARDAR";
+   bool cycle_accepted=(allowed=="true" && accepted=="true" && cid!="" && eid!="");
+   if(!cycle_accepted){
+      // A análise de mercado e a autorização de execução são estados distintos.
+      // Preserve o sinal/score válidos da análise; não invente execução nem IDs.
       cid="";
       eid="";
    }
@@ -666,7 +668,7 @@ void RunCycle(){
    last_cycle_id=cid; last_external_id=eid;
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: "+(cid==""?"sem ciclo executavel":"atualizado"),20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: "+(eid==""?"sem execucao aceita":"registrada"),20,483,8,C'145,160,180');
-   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="true" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Ciclo DEMO bloqueado ou sem execucao aceita",20,361,9,(allowed=="true" && accepted=="true" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
+   SetLabel(Obj("INFO1"),(allowed=="true" && accepted=="true" && cid!="" && eid!="")?"Ciclo DEMO aceito; identificadores registrados":"Analise atualizada; execucao nao aceita",20,361,9,(allowed=="true" && accepted=="true" && cid!="" && eid!="")?C'205,215,230':C'255,118,118');
 }
 void CloseCycle(){
    if(last_cycle_id=="" || last_external_id==""){
