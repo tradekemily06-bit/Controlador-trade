@@ -593,6 +593,11 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   if(!health_ok){
+      UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado: sistema indisponivel",20,361,9,C'255,118,118');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
