@@ -111,7 +111,7 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert "CompactSignalText(compact_signal)" in panel
     assert "string compact_score_raw=\"\";" in panel
     assert "UpdateCompactSignal(compact_signal,compact_available?compact_score_raw:\"\",compact_available);" in panel
-    assert "if(!health_ok):" not in panel
+    assert "if(!health_ok){" in panel
     assert "Ciclo bloqueado: sistema indisponivel" in panel
     assert "watermark" not in panel.lower()
     assert "WATERMARK" not in panel
