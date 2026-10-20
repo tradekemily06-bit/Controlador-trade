@@ -715,8 +715,13 @@ void RefreshHealth(){
       runtime_ok=false; health_ok=false;
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
       RefreshPanelToggle();
-      SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
-      SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
+      if(panel_visible && (active_view=="COCKPIT" || active_view=="CONFIG"))
+         SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
+      else if(ObjectFind(0,Obj("RUNTIME"))>=0) ObjectDelete(0,Obj("RUNTIME"));
+      if(panel_visible && active_view=="CONFIG")
+         SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
+      else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+      if(!panel_visible && ObjectFind(0,Obj("MODE"))>=0) ObjectDelete(0,Obj("MODE"));
       return;
    }
    string health=JsonValue(r,"health");
