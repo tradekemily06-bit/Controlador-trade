@@ -1095,8 +1095,8 @@ int OnInit(){
    }
    EventSetTimer(MathMax(1,InpRefreshSeconds));
    RefreshHealth();
-   RefreshMarketAssets();
-   // Prime runtime market-data state immediately, even when the native panel is hidden.
+   if(panel_visible) RefreshMarketAssets();
+   // Prime market-data state without drawing panel content when the panel is collapsed.
    Analyze(panel_visible);
    last_analysis_bar=iTime(_Symbol,_Period,0);
    return(INIT_SUCCEEDED);
