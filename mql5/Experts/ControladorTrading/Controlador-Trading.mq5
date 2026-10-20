@@ -619,11 +619,19 @@ void RefreshLearning(){
    }
 }
 void RenderView(){
-   // Remove ações da tela anterior antes de montar a seção atual.
+   // Limpa ações e campos exclusivos da tela anterior para não misturar seções.
    string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};
    for(int i=0;i<3;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
+   string view_fields[9]={Obj("SYML"),Obj("SYM"),Obj("TFL"),Obj("TF"),Obj("MARKET"),Obj("PRICE"),Obj("CYCLEID"),Obj("EXTID"),Obj("SAFE")};
+   for(int i=0;i<ArraySize(view_fields);i++) if(ObjectFind(0,view_fields[i])>=0) ObjectDelete(0,view_fields[i]);
+   if(active_view!="COCKPIT" && ObjectFind(0,Obj("RUNTIME"))>=0) ObjectDelete(0,Obj("RUNTIME"));
+   if(active_view!="COCKPIT" && ObjectFind(0,Obj("MODE"))>=0) ObjectDelete(0,Obj("MODE"));
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"Visão geral do ecossistema",20,47,9,C'150,165,185');
+      SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
+      SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
+      SetLabel(Obj("PRICE"),"Preço atual: —",20,501,9,C'190,200,215');
       SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("INFO2"),"",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Execução REAL permanece bloqueada",20,401,9,C'255,155,155');
@@ -684,6 +692,12 @@ void RenderView(){
       RefreshNotifications();
    }else if(active_view=="CONFIG"){
       SetLabel(Obj("SUB"),"Configurações do ecossistema",20,47,9,C'150,165,185');
+      SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
+      SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
+      SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
+      SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
+      SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
@@ -716,9 +730,14 @@ void RefreshHealth(){
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
       RefreshPanelToggle();
    }
-   SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,runtime_ok?C'88,214,141':C'255,118,118');
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • execução REAL desabilitada",20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   if(active_view=="COCKPIT" || active_view=="CONFIG"){
+      SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
+      SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,runtime_ok?C'88,214,141':C'255,118,118');
+   }else{
+      if(ObjectFind(0,Obj("RUNTIME"))>=0) ObjectDelete(0,Obj("RUNTIME"));
+      if(ObjectFind(0,Obj("MODE"))>=0) ObjectDelete(0,Obj("MODE"));
+   }
+   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • execução REAL desabilitada",20,520,8,C'255,155,155');
 }
 void RefreshMarketAssets(){
    string r; int code=0;
@@ -1065,8 +1084,10 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
-   if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   if(active_view=="COCKPIT"){
+      double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+      if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
+   }
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
    // Rebuild every panel control after chart resize so the background and controls keep the same geometry.
