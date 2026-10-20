@@ -347,7 +347,7 @@ void Panel(){
    SetButton(Obj("V8"),"▥  ESTATÍSTICAS",18,121,112,25);
    SetButton(Obj("V9"),"⚙  CONFIGURAÇÕES",134,121,130,25);
    SetButton(Obj("V10"),"♧  NOTIFICAÇÕES",268,121,130,25);
-   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
+   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
 
    SetLabel(Obj("RUNTIME"),"Sistema indisponível",20,126,10,C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
@@ -514,7 +514,7 @@ void RefreshLeveragePreference(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
       leverage_state_known=false;
-      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
+      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
       return;
    }
    string value=JsonNestedValue(r,"preferences","leverage_enabled");
@@ -522,12 +522,12 @@ void RefreshLeveragePreference(){
    StringToLower(value);
    if(value!="true" && value!="false"){
       leverage_state_known=false;
-      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
+      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
       return;
    }
    leverage_enabled=(value=="true");
    leverage_state_known=true;
-   if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",314,148,106,25);
+   if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",190,180,230,25);
 }
 void RefreshPreferences(){
    string r; int code=0;
@@ -554,7 +554,7 @@ void RefreshPreferences(){
    StringToLower(leverage);
    if(leverage=="true" || leverage=="false"){ leverage_enabled=(leverage=="true"); leverage_state_known=true; }
    else leverage_state_known=false;
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",314,148,106,25);
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",190,180,230,25);
    StringToLower(closed);
    StringToLower(filters);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
@@ -1032,7 +1032,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("LEVERAGE_TOGGLE")) {
       if(!leverage_state_known) RefreshLeveragePreference();
-      if(!leverage_state_known){ SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25); return; }
+      if(!leverage_state_known){ SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25); return; }
       leverage_enabled=!leverage_enabled;
       SaveConfig();
    }
