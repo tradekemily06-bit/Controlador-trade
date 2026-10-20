@@ -287,7 +287,7 @@ void RefreshPanelToggle(){
 void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
-   if(panel_visible){ Panel(); RenderView(); RefreshHealth(); RefreshLeveragePreference(); Analyze(true); }
+   if(panel_visible){ Panel(); RenderView(); RefreshHealth(); if(active_view!="CONFIG") RefreshLeveragePreference(); Analyze(true); }
    else DeletePanel(true);
    RefreshPanelToggle();
    ChartRedraw();
