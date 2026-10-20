@@ -16,6 +16,7 @@ bool runtime_ok=false;
 bool health_ok=false;
 bool leverage_enabled=false;
 bool leverage_state_known=false;
+bool config_fields_dirty=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
@@ -576,6 +577,10 @@ void RefreshPreferences(){
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
+   if(!config_fields_dirty){
+      if(ObjectFind(0,Obj("SYM"))>=0 && sym!="") ObjectSetString(0,Obj("SYM"),OBJPROP_TEXT,sym);
+      if(ObjectFind(0,Obj("TF"))>=0 && tf!="") ObjectSetString(0,Obj("TF"),OBJPROP_TEXT,tf);
+   }
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -694,6 +699,7 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Configurações do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
+      config_fields_dirty=false;
       SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
       SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
       SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
@@ -907,7 +913,10 @@ void SaveConfig(){
    }else leverage_state_known=false;
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",190,180,230,25);
    if(readback_ok){
-      if(active_view=="CONFIG") RefreshPreferences();
+      if(active_view=="CONFIG"){
+         config_fields_dirty=false;
+         RefreshPreferences();
+      }
       SetLabel(Obj("INFO1"),"Configurações confirmadas pelo runtime",20,status_y,9,C'88,214,141');
    }else{
       SetLabel(Obj("INFO1"),"Configurações não confirmadas; confira o runtime",20,status_y,9,C'255,118,118');
@@ -1129,6 +1138,10 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    if(id==CHARTEVENT_CHART_CHANGE){
       if(panel_visible){ Panel(); RenderView(); RefreshPanelToggle(); ChartRedraw(); }
       else RefreshPanelToggle();
+      return;
+   }
+   if(id==CHARTEVENT_OBJECT_ENDEDIT && (sparam==Obj("SYM") || sparam==Obj("TF"))){
+      config_fields_dirty=true;
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
