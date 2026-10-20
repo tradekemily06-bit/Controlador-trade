@@ -156,7 +156,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       button_x=panel_x+8;
       button_y=panel_y+50+10*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
-      button_h=MathMax(18,MathMin(22,nav_step-1));
+      button_h=MathMax(1,MathMin(22,nav_step-1));
       button_font=(panel_height<240?6:8);
       button_bg=C'12,25,40';
       button_border=C'30,65,83';
