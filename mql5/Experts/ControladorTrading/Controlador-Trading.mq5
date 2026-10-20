@@ -699,7 +699,6 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Configurações do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
-      config_fields_dirty=false;
       SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
       SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
       SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
@@ -1155,7 +1154,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("V6")) { active_view="SIMULADOR"; RenderView(); }
    else if(sparam==Obj("V7")) { active_view="MEMORIA"; RenderView(); }
    else if(sparam==Obj("V8")) { active_view="ESTATISTICAS"; RenderView(); }
-   else if(sparam==Obj("V9")) { active_view="CONFIG"; RenderView(); }
+   else if(sparam==Obj("V9")) { active_view="CONFIG"; config_fields_dirty=false; RenderView(); }
    else if(sparam==Obj("V10")) { active_view="NOTIF"; RenderView(); }
    else if(sparam==Obj("ANALYZE")) {
       if(active_view=="REPLAY") RefreshHealth();
