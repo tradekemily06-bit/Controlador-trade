@@ -142,8 +142,11 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       // Fit the ten navigation items while reserving a row for leverage beneath them.
       int nav_area=MathMax(1,panel_height-58);
       int nav_step=MathMax(1,MathMin(25,nav_area/11));
+      int row=index;
+      // Place leverage beside the study modules; keep Settings and Notifications below it.
+      if(index>=9) row=index+1;
       button_x=panel_x+8;
-      button_y=panel_y+50+(index-1)*nav_step;
+      button_y=panel_y+50+(row-1)*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
       button_h=MathMax(1,MathMin(22,nav_step-1));
       if(panel_height<180){ button_font=6; }
@@ -154,7 +157,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       int nav_area=MathMax(1,panel_height-58);
       int nav_step=MathMax(1,MathMin(25,nav_area/11));
       button_x=panel_x+8;
-      button_y=panel_y+50+10*nav_step;
+      button_y=panel_y+50+8*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
       button_h=MathMax(1,MathMin(22,nav_step-1));
       button_font=(panel_height<240?6:8);
