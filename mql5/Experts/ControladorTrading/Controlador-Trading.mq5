@@ -735,14 +735,15 @@ void RefreshHealth(){
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
       RefreshPanelToggle();
    }
-   if(active_view=="COCKPIT" || active_view=="CONFIG"){
+   if(panel_visible && (active_view=="COCKPIT" || active_view=="CONFIG")){
       SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,runtime_ok?C'88,214,141':C'255,118,118');
    }else{
       if(ObjectFind(0,Obj("RUNTIME"))>=0) ObjectDelete(0,Obj("RUNTIME"));
       if(ObjectFind(0,Obj("MODE"))>=0) ObjectDelete(0,Obj("MODE"));
    }
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • execução REAL desabilitada",20,520,8,C'255,155,155');
+   if(panel_visible && active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • execução REAL desabilitada",20,520,8,C'255,155,155');
+   else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
 }
 void RefreshMarketAssets(){
    string r; int code=0;
