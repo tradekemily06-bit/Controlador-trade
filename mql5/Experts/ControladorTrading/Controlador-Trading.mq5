@@ -848,8 +848,8 @@ void SaveConfig(){
    }else leverage_state_known=false;
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",190,180,230,25);
    if(readback_ok){
-      SetLabel(Obj("INFO1"),"Configurações confirmadas pelo runtime",20,status_y,9,C'88,214,141');
       if(active_view=="CONFIG") RefreshPreferences();
+      SetLabel(Obj("INFO1"),"Configurações confirmadas pelo runtime",20,status_y,9,C'88,214,141');
    }else{
       SetLabel(Obj("INFO1"),"Configurações não confirmadas; confira o runtime",20,status_y,9,C'255,118,118');
    }
