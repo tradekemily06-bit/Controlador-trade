@@ -367,10 +367,6 @@ void Panel(){
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
    SetLabel(Obj("REASON"),"Aguardando análise.",20,226,9,C'180,190,205');
 
-   SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
-   SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
-   SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
-   SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
    SetLabel(Obj("MARKET"),"Ativos e mercados: consultando...",20,300,8,C'145,160,180');
 
    SetButton(Obj("ANALYZE"),"Analisar no serviço",20,316,172,30);
@@ -627,8 +623,12 @@ void RenderView(){
    // Limpa ações e campos exclusivos da tela anterior para não misturar seções.
    string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};
    for(int i=0;i<3;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
-   string view_fields[9]={Obj("SYML"),Obj("SYM"),Obj("TFL"),Obj("TF"),Obj("MARKET"),Obj("PRICE"),Obj("CYCLEID"),Obj("EXTID"),Obj("SAFE")};
+   string view_fields[5]={Obj("MARKET"),Obj("PRICE"),Obj("CYCLEID"),Obj("EXTID"),Obj("SAFE")};
    for(int i=0;i<ArraySize(view_fields);i++) if(ObjectFind(0,view_fields[i])>=0) ObjectDelete(0,view_fields[i]);
+   if(active_view!="CONFIG"){
+      string config_fields[4]={Obj("SYML"),Obj("SYM"),Obj("TFL"),Obj("TF")};
+      for(int i=0;i<ArraySize(config_fields);i++) if(ObjectFind(0,config_fields[i])>=0) ObjectDelete(0,config_fields[i]);
+   }
    if(active_view!="COCKPIT" && ObjectFind(0,Obj("RUNTIME"))>=0) ObjectDelete(0,Obj("RUNTIME"));
    if(active_view!="COCKPIT" && ObjectFind(0,Obj("MODE"))>=0) ObjectDelete(0,Obj("MODE"));
    if(active_view=="COCKPIT"){
@@ -699,10 +699,10 @@ void RenderView(){
       SetLabel(Obj("SUB"),"Configurações do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
       SetLabel(Obj("MODE"),"Modo: DEMO / SIMULAÇÃO",20,146,10,C'88,214,141');
-      SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
-      SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
-      SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
-      SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
+      if(ObjectFind(0,Obj("SYML"))<0) SetLabel(Obj("SYML"),"Ativo",20,258,8,C'130,145,165');
+      if(ObjectFind(0,Obj("SYM"))<0) SetEdit(Obj("SYM"),_Symbol,20,271,150,25);
+      if(ObjectFind(0,Obj("TFL"))<0) SetLabel(Obj("TFL"),"Período gráfico",184,258,8,C'130,145,165');
+      if(ObjectFind(0,Obj("TF"))<0) SetEdit(Obj("TF"),NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period)),184,271,195,25);
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
