@@ -814,19 +814,54 @@ void SaveConfig(){
          return;
       }
    }
-   string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
-   string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
+   // Read current preferences first so a leverage toggle outside Settings cannot overwrite symbol/timeframe or filters.
+   bool requested_leverage=leverage_enabled;
+   string r; int code=0;
+   int status_y=(active_view=="CONFIG"?390:361);
+   if(!Http("GET","/api/preferences","",r,code)){
+      SetLabel(Obj("INFO1"),"Runtime indisponível; configuração não alterada",20,status_y,9,C'255,118,118');
+      leverage_state_known=false;
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
+      return;
+   }
+   string saved_sym=JsonNestedValue(r,"preferences","default_symbol");
+   string saved_tf=JsonNestedValue(r,"preferences","default_timeframe");
+   string saved_closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   string saved_filters=JsonNestedValue(r,"preferences","require_filters");
+   if(saved_sym=="") saved_sym=JsonValue(r,"default_symbol");
+   if(saved_tf=="") saved_tf=JsonValue(r,"default_timeframe");
+   if(saved_closed=="") saved_closed=JsonValue(r,"require_closed_candle");
+   if(saved_filters=="") saved_filters=JsonValue(r,"require_filters");
+   StringToLower(saved_closed);
+   StringToLower(saved_filters);
+   bool closed_known=(saved_closed=="true" || saved_closed=="false" || saved_closed=="1" || saved_closed=="0");
+   bool filters_known=(saved_filters=="true" || saved_filters=="false" || saved_filters=="1" || saved_filters=="0");
+   if(!closed_known || !filters_known){
+      SetLabel(Obj("INFO1"),"Preferências incompletas; configuração não alterada",20,status_y,9,C'255,118,118');
+      return;
+   }
+   string sym=saved_sym;
+   string tf=saved_tf;
+   bool requested_closed=(saved_closed=="true" || saved_closed=="1");
+   bool requested_filters=(saved_filters=="true" || saved_filters=="1");
+   if(active_view=="CONFIG"){
+      if(ObjectFind(0,Obj("SYM"))>=0){
+         string edited_sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
+         if(edited_sym!="") sym=edited_sym;
+      }
+      if(ObjectFind(0,Obj("TF"))>=0){
+         string edited_tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
+         if(edited_tf!="") tf=edited_tf;
+      }
+      requested_closed=pref_closed_candle;
+      requested_filters=pref_require_filters;
+   }
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
-   bool requested_leverage=leverage_enabled;
-   bool requested_closed=pref_closed_candle;
-   bool requested_filters=pref_require_filters;
    string requested_sym=sym;
    string requested_tf=tf;
-   string r; int code=0;
-   int status_y=(active_view=="CONFIG"?390:361);
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(requested_leverage?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(requested_closed?"true":"false")+",\"require_filters\":"+(requested_filters?"true":"false")+"}";
    if(!Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
       RefreshLeveragePreference();
@@ -840,10 +875,10 @@ void SaveConfig(){
       return;
    }
    string mode=JsonNestedValue(r,"preferences","selected_mode");
-   string saved_sym=JsonNestedValue(r,"preferences","default_symbol");
-   string saved_tf=JsonNestedValue(r,"preferences","default_timeframe");
-   string saved_closed=JsonNestedValue(r,"preferences","require_closed_candle");
-   string saved_filters=JsonNestedValue(r,"preferences","require_filters");
+   saved_sym=JsonNestedValue(r,"preferences","default_symbol");
+   saved_tf=JsonNestedValue(r,"preferences","default_timeframe");
+   saved_closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   saved_filters=JsonNestedValue(r,"preferences","require_filters");
    string saved_leverage=JsonNestedValue(r,"preferences","leverage_enabled");
    if(mode=="") mode=JsonValue(r,"selected_mode");
    if(saved_sym=="") saved_sym=JsonValue(r,"default_symbol");
@@ -855,8 +890,8 @@ void SaveConfig(){
    StringToLower(saved_closed);
    StringToLower(saved_filters);
    StringToLower(saved_leverage);
-   bool closed_known=(saved_closed=="true" || saved_closed=="false" || saved_closed=="1" || saved_closed=="0");
-   bool filters_known=(saved_filters=="true" || saved_filters=="false" || saved_filters=="1" || saved_filters=="0");
+   closed_known=(saved_closed=="true" || saved_closed=="false" || saved_closed=="1" || saved_closed=="0");
+   filters_known=(saved_filters=="true" || saved_filters=="false" || saved_filters=="1" || saved_filters=="0");
    bool leverage_known=(saved_leverage=="true" || saved_leverage=="false");
    bool saved_closed_value=(saved_closed=="true" || saved_closed=="1");
    bool saved_filters_value=(saved_filters=="true" || saved_filters=="1");
@@ -866,8 +901,8 @@ void SaveConfig(){
       closed_known && saved_closed_value==requested_closed &&
       filters_known && saved_filters_value==requested_filters &&
       leverage_known && saved_leverage_value==requested_leverage);
-   if(saved_leverage=="true" || saved_leverage=="false"){
-      leverage_enabled=(saved_leverage=="true");
+   if(leverage_known){
+      leverage_enabled=saved_leverage_value;
       leverage_state_known=true;
    }else leverage_state_known=false;
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",190,180,230,25);
