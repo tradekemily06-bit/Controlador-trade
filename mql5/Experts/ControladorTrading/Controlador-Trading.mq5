@@ -836,12 +836,17 @@ void SaveConfig(){
    StringToLower(saved_closed);
    StringToLower(saved_filters);
    StringToLower(saved_leverage);
+   bool closed_known=(saved_closed=="true" || saved_closed=="false" || saved_closed=="1" || saved_closed=="0");
+   bool filters_known=(saved_filters=="true" || saved_filters=="false" || saved_filters=="1" || saved_filters=="0");
+   bool leverage_known=(saved_leverage=="true" || saved_leverage=="false");
+   bool saved_closed_value=(saved_closed=="true" || saved_closed=="1");
+   bool saved_filters_value=(saved_filters=="true" || saved_filters=="1");
+   bool saved_leverage_value=(saved_leverage=="true");
    bool readback_ok=(mode=="DEMO" && saved_sym==requested_sym &&
       NormalizeTimeframe(saved_tf)==requested_tf &&
-      (saved_closed=="true" || saved_closed=="1") == requested_closed &&
-      (saved_filters=="true" || saved_filters=="1") == requested_filters &&
-      (saved_leverage=="true") == requested_leverage &&
-      (saved_leverage=="true" || saved_leverage=="false"));
+      closed_known && saved_closed_value==requested_closed &&
+      filters_known && saved_filters_value==requested_filters &&
+      leverage_known && saved_leverage_value==requested_leverage);
    if(saved_leverage=="true" || saved_leverage=="false"){
       leverage_enabled=(saved_leverage=="true");
       leverage_state_known=true;
