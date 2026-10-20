@@ -773,6 +773,13 @@ void RefreshMemory(){
    }
 }
 void SaveConfig(){
+   if(!leverage_state_known){
+      RefreshLeveragePreference();
+      if(!leverage_state_known){
+         SetLabel(Obj("INFO1"),"Preferência indisponível; configuração não alterada",20,(active_view=="CONFIG"?390:361),9,C'255,118,118');
+         return;
+      }
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
