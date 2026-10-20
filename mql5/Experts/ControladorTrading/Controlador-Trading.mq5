@@ -695,7 +695,7 @@ void RefreshHealth(){
    StringToUpper(health); StringToUpper(mode); StringToUpper(real);
    StringToUpper(mt5); StringToUpper(engine); StringToLower(execution_allowed);
    bool health_level_ok=(health=="OK" || health=="WARNING");
-   health_ok=(ok=="true" && health_level_ok && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO" && (mt5=="DEMO_VALIDADO" || mt5=="DEMO"));
+   health_ok=(ok=="true" && health_level_ok && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO" && mt5=="DEMO_VALIDADO");
    runtime_ok=health_ok;
    if(!health_ok){
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
