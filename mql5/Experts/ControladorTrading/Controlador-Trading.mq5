@@ -139,9 +139,9 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    color button_bg=C'12,25,40';
    color button_border=C'30,65,83';
    if(nav){
-      // Fit all ten navigation items inside the panel, including short chart windows.
+      // Fit the ten navigation items while reserving a row for leverage beneath them.
       int nav_area=MathMax(1,panel_height-58);
-      int nav_step=MathMax(1,MathMin(25,nav_area/10));
+      int nav_step=MathMax(1,MathMin(25,nav_area/11));
       button_x=panel_x+8;
       button_y=panel_y+50+(index-1)*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
@@ -150,6 +150,16 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       else if(panel_height<240){ button_font=7; }
       else { button_font=8; }
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
+   }else if(name==Obj("LEVERAGE_TOGGLE")){
+      int nav_area=MathMax(1,panel_height-58);
+      int nav_step=MathMax(1,MathMin(25,nav_area/11));
+      button_x=panel_x+8;
+      button_y=panel_y+50+10*nav_step;
+      button_w=MathMax(1,SidebarWidth()-10);
+      button_h=MathMax(18,MathMin(22,nav_step-1));
+      button_font=(panel_height<240?6:8);
+      button_bg=C'12,25,40';
+      button_border=C'30,65,83';
    }else{
       button_bg=C'20,38,54';
       button_border=C'48,86,105';
