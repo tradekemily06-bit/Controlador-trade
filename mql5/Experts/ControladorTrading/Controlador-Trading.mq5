@@ -680,7 +680,7 @@ void RefreshHealth(){
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false; health_ok=false;
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
-      UpdateCompactSignal("INDISPONIVEL","",false);
+      RefreshPanelToggle();
       SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
@@ -699,7 +699,7 @@ void RefreshHealth(){
    runtime_ok=health_ok;
    if(!health_ok){
       last_signal="ANALISE_INDISPONIVEL"; last_score="";
-      UpdateCompactSignal("INDISPONIVEL","",false);
+      RefreshPanelToggle();
    }
    SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,runtime_ok?C'88,214,141':C'255,118,118');
@@ -792,7 +792,7 @@ void SaveConfig(){
 void Analyze(bool render=true){
    RefreshHealth();
    if(!health_ok){
-      last_signal="ANALISE_INDISPONIVEL"; last_score=""; UpdateCompactSignal("INDISPONIVEL","",false);
+      last_signal="ANALISE_INDISPONIVEL"; last_score=""; RefreshPanelToggle();
       if(render){ SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,10,C'255,176,0'); SetLabel(Obj("SCORE"),"",20,206,9,clrWhite); SetLabel(Obj("REASON"),"Sistema indisponível; sinal descartado",20,226,9,C'255,118,118'); }
       return;
    }
@@ -844,7 +844,7 @@ void Analyze(bool render=true){
 void RunCycle(){
    RefreshHealth();
    if(!health_ok){
-      last_signal="ANALISE_INDISPONIVEL"; last_score=""; last_cycle_id=""; last_external_id=""; UpdateCompactSignal("INDISPONIVEL","",false);
+      last_signal="ANALISE_INDISPONIVEL"; last_score=""; last_cycle_id=""; last_external_id=""; RefreshPanelToggle();
       SetLabel(Obj("INFO1"),"Sistema indisponível; ciclo bloqueado",20,361,9,C'255,118,118');
       SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,10,C'255,176,0'); SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
       SetLabel(Obj("REASON"),"Runtime/segurança não confirmados",20,226,9,C'255,118,118');
