@@ -545,6 +545,8 @@ void RefreshLeveragePreference(){
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
+      leverage_state_known=false;
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
       SetLabel(Obj("INFO1"),"Configurações indisponíveis",20,390,9,C'255,118,118');
       SetLabel(Obj("INFO2"),"",20,412,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"",20,434,9,C'205,215,230');
@@ -800,18 +802,56 @@ void SaveConfig(){
    tf=NormalizeTimeframe(tf);
    string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    bool requested_leverage=leverage_enabled;
+   bool requested_closed=pref_closed_candle;
+   bool requested_filters=pref_require_filters;
+   string requested_sym=sym;
+   string requested_tf=tf;
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
-   if(Http("POST","/api/preferences",body,r,code)){
-      // A successful POST alone is not proof that the runtime persisted the preference.
-      RefreshLeveragePreference();
-      if(leverage_state_known && leverage_enabled==requested_leverage)
-         SetLabel(Obj("INFO1"),"Alavancagem confirmada pelo runtime",20,status_y,9,C'88,214,141');
-      else
-         SetLabel(Obj("INFO1"),"Preferência não confirmada; confira o runtime",20,status_y,9,C'255,118,118');
-   }else{
+   if(!Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
       RefreshLeveragePreference();
+      return;
+   }
+   // Confirm persistence by reading back every preference sent, not just HTTP 2xx.
+   if(!Http("GET","/api/preferences","",r,code)){
+      leverage_state_known=false;
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25);
+      SetLabel(Obj("INFO1"),"Salvo sem confirmação de leitura; runtime indisponível",20,status_y,9,C'255,118,118');
+      return;
+   }
+   string mode=JsonNestedValue(r,"preferences","selected_mode");
+   string saved_sym=JsonNestedValue(r,"preferences","default_symbol");
+   string saved_tf=JsonNestedValue(r,"preferences","default_timeframe");
+   string saved_closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   string saved_filters=JsonNestedValue(r,"preferences","require_filters");
+   string saved_leverage=JsonNestedValue(r,"preferences","leverage_enabled");
+   if(mode=="") mode=JsonValue(r,"selected_mode");
+   if(saved_sym=="") saved_sym=JsonValue(r,"default_symbol");
+   if(saved_tf=="") saved_tf=JsonValue(r,"default_timeframe");
+   if(saved_closed=="") saved_closed=JsonValue(r,"require_closed_candle");
+   if(saved_filters=="") saved_filters=JsonValue(r,"require_filters");
+   if(saved_leverage=="") saved_leverage=JsonValue(r,"leverage_enabled");
+   StringToUpper(mode);
+   StringToLower(saved_closed);
+   StringToLower(saved_filters);
+   StringToLower(saved_leverage);
+   bool readback_ok=(mode=="DEMO" && saved_sym==requested_sym &&
+      NormalizeTimeframe(saved_tf)==requested_tf &&
+      (saved_closed=="true" || saved_closed=="1") == requested_closed &&
+      (saved_filters=="true" || saved_filters=="1") == requested_filters &&
+      (saved_leverage=="true") == requested_leverage &&
+      (saved_leverage=="true" || saved_leverage=="false"));
+   if(saved_leverage=="true" || saved_leverage=="false"){
+      leverage_enabled=(saved_leverage=="true");
+      leverage_state_known=true;
+   }else leverage_state_known=false;
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",190,180,230,25);
+   if(readback_ok){
+      SetLabel(Obj("INFO1"),"Configurações confirmadas pelo runtime",20,status_y,9,C'88,214,141');
+      if(active_view=="CONFIG") RefreshPreferences();
+   }else{
+      SetLabel(Obj("INFO1"),"Configurações não confirmadas; confira o runtime",20,status_y,9,C'255,118,118');
    }
 }
 void Analyze(bool render=true){
