@@ -13,6 +13,9 @@ string last_cycle_id="";
 string last_external_id="";
 string active_view="COCKPIT";
 bool runtime_ok=false;
+bool health_ok=false;
+bool leverage_enabled=false;
+bool leverage_state_known=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
@@ -274,7 +277,7 @@ void RefreshPanelToggle(){
 void TogglePanel(){
    panel_visible=!panel_visible;
    GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);
-   if(panel_visible){ Panel(); RenderView(); Analyze(true); }
+   if(panel_visible){ Panel(); RenderView(); RefreshHealth(); RefreshLeveragePreference(); Analyze(true); }
    else DeletePanel(true);
    RefreshPanelToggle();
    ChartRedraw();
@@ -333,7 +336,6 @@ void Panel(){
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
    SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
    SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
 
    SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
    SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
@@ -345,6 +347,7 @@ void Panel(){
    SetButton(Obj("V8"),"▥  ESTATÍSTICAS",18,121,112,25);
    SetButton(Obj("V9"),"⚙  CONFIGURAÇÕES",134,121,130,25);
    SetButton(Obj("V10"),"♧  NOTIFICAÇÕES",268,121,130,25);
+   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
 
    SetLabel(Obj("RUNTIME"),"Sistema indisponível",20,126,10,C'255,118,118');
    SetLabel(Obj("MODE"),"Modo: DEMONSTRAÇÃO / SIMULAÇÃO",20,146,10,C'88,214,141');
@@ -378,7 +381,7 @@ void DeletePanel(bool preserveToggle=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveToggle && n==Obj("PANEL_TOGGLE")) continue;
+      if(preserveToggle && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_FILL") || n==Obj("PANEL_TOGGLE_LETTER") || n==Obj("COLLAPSED_SIGNAL") || n==Obj("COLLAPSED_QUALITY"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveToggle) RefreshPanelToggle();
@@ -436,12 +439,6 @@ color SignalColor(string signal){
    if(normalized=="ANALISE_INDISPONIVEL") return C'255,118,118';
    return C'255,176,0';
 }
-string CurrentLeverageText(){
-   long leverage=AccountInfoInteger(ACCOUNT_LEVERAGE);
-   if(leverage<=0) return "Alavancagem da conta: indisponível";
-   return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);
-}
-
 string NormalizeQualityScore(string raw){
    StringTrimLeft(raw);
    StringTrimRight(raw);
@@ -513,6 +510,25 @@ string JsonEscape(string s){
    StringReplace(s,"\"","\\\"");
    return s;
 }
+void RefreshLeveragePreference(){
+   string r; int code=0;
+   if(!Http("GET","/api/preferences","",r,code)){
+      leverage_state_known=false;
+      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
+      return;
+   }
+   string value=JsonNestedValue(r,"preferences","leverage_enabled");
+   if(value=="") value=JsonValue(r,"leverage_enabled");
+   StringToLower(value);
+   if(value!="true" && value!="false"){
+      leverage_state_known=false;
+      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25);
+      return;
+   }
+   leverage_enabled=(value=="true");
+   leverage_state_known=true;
+   if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",314,148,106,25);
+}
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
@@ -523,11 +539,22 @@ void RefreshPreferences(){
       SetLabel(Obj("INFO5"),"",20,478,9,C'205,215,230');
       return;
    }
-   string mode=JsonValue(r,"selected_mode");
-   string sym=JsonValue(r,"default_symbol");
-   string tf=JsonValue(r,"default_timeframe");
-   string closed=JsonValue(r,"require_closed_candle");
-   string filters=JsonValue(r,"require_filters");
+   string mode=JsonNestedValue(r,"preferences","selected_mode");
+   string sym=JsonNestedValue(r,"preferences","default_symbol");
+   string tf=JsonNestedValue(r,"preferences","default_timeframe");
+   string closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   string filters=JsonNestedValue(r,"preferences","require_filters");
+   string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
+   if(mode=="") mode=JsonValue(r,"selected_mode");
+   if(sym=="") sym=JsonValue(r,"default_symbol");
+   if(tf=="") tf=JsonValue(r,"default_timeframe");
+   if(closed=="") closed=JsonValue(r,"require_closed_candle");
+   if(filters=="") filters=JsonValue(r,"require_filters");
+   if(leverage=="") leverage=JsonValue(r,"leverage_enabled");
+   StringToLower(leverage);
+   if(leverage=="true" || leverage=="false"){ leverage_enabled=(leverage=="true"); leverage_state_known=true; }
+   else leverage_state_known=false;
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_state_known?(leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF"):"ALAVANCAGEM: —",314,148,106,25);
    StringToLower(closed);
    StringToLower(filters);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
@@ -651,22 +678,32 @@ void RenderView(){
 void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
-      runtime_ok=false;
+      runtime_ok=false; health_ok=false;
+      last_signal="ANALISE_INDISPONIVEL"; last_score="";
+      UpdateCompactSignal("INDISPONIVEL","",false);
       SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
    }
    string health=JsonValue(r,"health");
    string ok=JsonValue(r,"ok");
-   StringToUpper(health);
-   runtime_ok=(ok=="true" && health=="OK");
    string mode=JsonValue(r,"mode");
    string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
-   string exec=JsonValue(r,"execution");
+   string engine=JsonValue(r,"decision_engine");
+   string execution_allowed=JsonValue(r,"execution_allowed");
+   StringToUpper(health); StringToUpper(mode); StringToUpper(real);
+   StringToUpper(mt5); StringToUpper(engine); StringToLower(execution_allowed);
+   bool health_level_ok=(health=="OK" || health=="WARNING");
+   health_ok=(ok=="true" && health_level_ok && mode=="SIMULACAO" && engine=="ONLINE" && execution_allowed=="false" && real=="DESABILITADO" && (mt5=="DEMO_VALIDADO" || mt5=="DEMO"));
+   runtime_ok=health_ok;
+   if(!health_ok){
+      last_signal="ANALISE_INDISPONIVEL"; last_score="";
+      UpdateCompactSignal("INDISPONIVEL","",false);
+   }
    SetLabel(Obj("RUNTIME"),runtime_ok?"Sistema ONLINE":"Sistema INDISPONÍVEL",20,126,10,runtime_ok?C'88,214,141':C'255,118,118');
-   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,C'88,214,141');
-   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: "+(real==""?"DESABILITADO":real)+" • Execucao: "+(exec==""?"BLOQUEADA":exec),20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
+   SetLabel(Obj("MODE"),"Modo: "+(mode==""?"SIMULACAO":mode)+" • MT5: "+(mt5==""?"DEMO":mt5),20,146,10,runtime_ok?C'88,214,141':C'255,118,118');
+   if(active_view=="CONFIG") SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • execução REAL desabilitada",20,520,8,C'255,155,155'); else if(ObjectFind(0,Obj("SAFE"))>=0) ObjectDelete(0,Obj("SAFE"));
 }
 void RefreshMarketAssets(){
    string r; int code=0;
@@ -741,15 +778,24 @@ void SaveConfig(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
-   if(Http("POST","/api/preferences",body,r,code))
+   if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Configurações sincronizadas",20,status_y,9,C'88,214,141');
-   else
+      RefreshLeveragePreference();
+   }else{
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
+      RefreshLeveragePreference();
+   }
 }
 void Analyze(bool render=true){
+   RefreshHealth();
+   if(!health_ok){
+      last_signal="ANALISE_INDISPONIVEL"; last_score=""; UpdateCompactSignal("INDISPONIVEL","",false);
+      if(render){ SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,10,C'255,176,0'); SetLabel(Obj("SCORE"),"",20,206,9,clrWhite); SetLabel(Obj("REASON"),"Sistema indisponível; sinal descartado",20,226,9,C'255,118,118'); }
+      return;
+   }
    string sym=_Symbol;
    string tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    if(ObjectFind(0,Obj("SYM"))>=0){
@@ -796,6 +842,14 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   RefreshHealth();
+   if(!health_ok){
+      last_signal="ANALISE_INDISPONIVEL"; last_score=""; last_cycle_id=""; last_external_id=""; UpdateCompactSignal("INDISPONIVEL","",false);
+      SetLabel(Obj("INFO1"),"Sistema indisponível; ciclo bloqueado",20,361,9,C'255,118,118');
+      SetLabel(Obj("SIGNAL"),"AGUARDAR",20,176,10,C'255,176,0'); SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+      SetLabel(Obj("REASON"),"Runtime/segurança não confirmados",20,226,9,C'255,118,118');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
@@ -930,6 +984,7 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
+   RefreshLeveragePreference();
    if(active_view=="COCKPIT") { RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
@@ -939,7 +994,6 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
@@ -976,5 +1030,11 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) {
+      if(!leverage_state_known) RefreshLeveragePreference();
+      if(!leverage_state_known){ SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",314,148,106,25); return; }
+      leverage_enabled=!leverage_enabled;
+      SaveConfig();
+   }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
