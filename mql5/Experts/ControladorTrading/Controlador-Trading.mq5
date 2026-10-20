@@ -1006,9 +1006,10 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
-   RefreshLeveragePreference();
+   // CONFIG reads leverage_enabled in RefreshPreferences; avoid a duplicate GET on every timer tick.
+   if(active_view=="CONFIG") RefreshPreferences();
+   else RefreshLeveragePreference();
    if(active_view=="COCKPIT") { RefreshMarketAssets(); }
-   else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
    datetime current_bar=iTime(_Symbol,_Period,0);
    if(current_bar>0 && current_bar!=last_analysis_bar){
