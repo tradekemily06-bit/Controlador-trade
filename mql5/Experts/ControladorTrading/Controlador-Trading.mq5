@@ -786,11 +786,16 @@ void SaveConfig(){
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
    string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
+   bool requested_leverage=leverage_enabled;
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
    if(Http("POST","/api/preferences",body,r,code)){
-      SetLabel(Obj("INFO1"),"Configurações sincronizadas",20,status_y,9,C'88,214,141');
+      // A successful POST alone is not proof that the runtime persisted the preference.
       RefreshLeveragePreference();
+      if(leverage_state_known && leverage_enabled==requested_leverage)
+         SetLabel(Obj("INFO1"),"Alavancagem confirmada pelo runtime",20,status_y,9,C'88,214,141');
+      else
+         SetLabel(Obj("INFO1"),"Preferência não confirmada; confira o runtime",20,status_y,9,C'255,118,118');
    }else{
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
       RefreshLeveragePreference();
