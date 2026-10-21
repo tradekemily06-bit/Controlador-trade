@@ -468,6 +468,13 @@ bool IsValidQualityScore(string score){
    long value=StringToInteger(score);
    return value>=1 && value<=100;
 }
+string QualityBand(string score){
+   if(!IsValidQualityScore(score)) return "";
+   int value=(int)StringToInteger(score);
+   if(value<70) return "FRACA";
+   if(value<80) return "MODERADA";
+   return "FORTE";
+}
 string JsonObject(string json,string key){
    string needle="\"" + key + "\":";
    int p=StringFind(json,needle);
@@ -972,7 +979,8 @@ void Analyze(bool render=true){
    if(!render) return;
    color c=SignalColor(signal);
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
-   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
+   // The expanded panel shows the quality band; the collapsed C remains percentage-only.
+   SetLabel(Obj("SCORE"),score==""?"":score+"%  "+QualityBand(score),20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
    // Keep the compact market signal in the chart header; show analysis detail only on the Analysis tab.
    if(active_view=="ANALISE")
