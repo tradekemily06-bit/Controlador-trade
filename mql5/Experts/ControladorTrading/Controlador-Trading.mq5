@@ -17,6 +17,7 @@ bool health_ok=false;
 bool leverage_enabled=false;
 bool leverage_state_known=false;
 bool config_fields_dirty=false;
+bool show_first_use=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
@@ -471,9 +472,10 @@ bool IsValidQualityScore(string score){
 string QualityBand(string score){
    if(!IsValidQualityScore(score)) return "";
    int value=(int)StringToInteger(score);
-   if(value<70) return "FRACA";
-   if(value<80) return "MODERADA";
-   return "FORTE";
+   if(value<40) return "FRACA";
+   if(value<60) return "MODERADA";
+   if(value<80) return "FORTE";
+   return "MUITO FORTE";
 }
 string JsonObject(string json,string key){
    string needle="\"" + key + "\":";
@@ -584,11 +586,13 @@ void RefreshPreferences(){
       if(ObjectFind(0,Obj("SYM"))>=0 && sym!="") ObjectSetString(0,Obj("SYM"),OBJPROP_TEXT,sym);
       if(ObjectFind(0,Obj("TF"))>=0 && tf!="") ObjectSetString(0,Obj("TF"),OBJPROP_TEXT,tf);
    }
-   SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
-   SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
-   SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
-   SetLabel(Obj("INFO4"),runtime_ok?"Sistema Online":"Serviço indisponível",20,456,9,runtime_ok?C'88,214,141':C'255,118,118');
-   SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,478,9,C'255,155,155');
+   if(!show_first_use){
+      SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
+      SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),runtime_ok?"Sistema Online":"Serviço indisponível",20,456,9,runtime_ok?C'88,214,141':C'255,118,118');
+      SetLabel(Obj("INFO5"),"REAL: bloqueado • preferencias nao concedem autoridade REAL",20,478,9,C'255,155,155');
+   }
 }
 void RefreshNotifications(){
    string r; int code=0;
@@ -628,8 +632,8 @@ void RefreshLearning(){
 }
 void RenderView(){
    // Limpa ações e campos exclusivos da tela anterior para não misturar seções.
-   string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};
-   for(int i=0;i<3;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
+   string action_names[4]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("FIRST_USE")};
+   for(int i=0;i<ArraySize(action_names);i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
    string view_fields[5]={Obj("MARKET"),Obj("PRICE"),Obj("CYCLEID"),Obj("EXTID"),Obj("SAFE")};
    for(int i=0;i<ArraySize(view_fields);i++) if(ObjectFind(0,view_fields[i])>=0) ObjectDelete(0,view_fields[i]);
    if(active_view!="CONFIG"){
@@ -713,7 +717,15 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
+      SetButton(Obj("FIRST_USE"),show_first_use?"Voltar às configurações":"Modo de uso (1ª vez)",202,352,177,28);
       RefreshPreferences();
+      if(show_first_use){
+         SetLabel(Obj("INFO1"),"MODO DE USO • PRIMEIRA VEZ",20,390,9,C'205,215,230');
+         SetLabel(Obj("INFO2"),"1. Escolha o ativo e o período.",20,412,9,C'205,215,230');
+         SetLabel(Obj("INFO3"),"2. Mantenha DEMO / SIMULAÇÃO.",20,434,9,C'88,214,141');
+         SetLabel(Obj("INFO4"),"3. Confira candle e filtros.",20,456,9,C'205,215,230');
+         SetLabel(Obj("INFO5"),"4. Salve e atualize a análise.",20,478,9,C'205,215,230');
+      }
    }
 }
 void RefreshHealth(){
@@ -1183,6 +1195,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("FIRST_USE")) { show_first_use=!show_first_use; RenderView(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) {
       if(!leverage_state_known) RefreshLeveragePreference();
       if(!leverage_state_known){ SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM: —",190,180,230,25); return; }
