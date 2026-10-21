@@ -719,14 +719,14 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
-      SetButton(Obj("FIRST_USE"),show_first_use?"Voltar às configurações":"Modo de uso (1ª vez)",202,352,177,28);
+      SetButton(Obj("FIRST_USE"),"Modo de uso",202,352,177,28);
       RefreshPreferences();
       if(show_first_use){
-         SetLabel(Obj("INFO1"),"MODO DE USO • PRIMEIRA VEZ",20,390,9,C'205,215,230');
-         SetLabel(Obj("INFO2"),"1. Escolha o ativo e o período.",20,412,9,C'205,215,230');
-         SetLabel(Obj("INFO3"),"2. Mantenha DEMO / SIMULAÇÃO.",20,434,9,C'88,214,141');
-         SetLabel(Obj("INFO4"),"3. Confira candle e filtros.",20,456,9,C'205,215,230');
-         SetLabel(Obj("INFO5"),"4. Salve e atualize a análise.",20,478,9,C'205,215,230');
+         SetLabel(Obj("INFO1"),"MODO DE USO",20,390,9,C'205,215,230');
+         SetLabel(Obj("INFO2"),"1. Defina ativo e período em Configurações.",20,412,9,C'205,215,230');
+         SetLabel(Obj("INFO3"),"2. Mantenha DEMO / SIMULAÇÃO; REAL bloqueado.",20,434,9,C'88,214,141');
+         SetLabel(Obj("INFO4"),"3. Confira candle e filtros e salve.",20,456,9,C'205,215,230');
+         SetLabel(Obj("INFO5"),"4. Use Análise, Estudo, Laboratório e Replay; consulte alertas em Notificações.",20,478,9,C'205,215,230');
       }
    }
 }
