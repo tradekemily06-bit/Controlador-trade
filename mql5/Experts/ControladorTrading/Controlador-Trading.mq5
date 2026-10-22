@@ -234,7 +234,7 @@ void RefreshPanelToggle(){
    string sig=Obj("COLLAPSED_SIGNAL");
    if(ObjectFind(0,sig)<0) ObjectCreate(0,sig,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,sig,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,62);
+   ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,MathMax(8,x-112));
    ObjectSetInteger(0,sig,OBJPROP_YDISTANCE,y+3);
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
@@ -249,7 +249,7 @@ void RefreshPanelToggle(){
    string quality=Obj("COLLAPSED_QUALITY");
    if(ObjectFind(0,quality)<0) ObjectCreate(0,quality,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,quality,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,94);
+   ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,MathMax(8,x-82));
    ObjectSetInteger(0,quality,OBJPROP_YDISTANCE,y+22);
    ObjectSetInteger(0,quality,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,quality,OBJPROP_COLOR,compact_color);
