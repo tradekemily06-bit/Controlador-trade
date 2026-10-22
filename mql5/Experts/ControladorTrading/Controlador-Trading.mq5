@@ -120,8 +120,15 @@ color CompactSignalColor(string signal){
    return C'255,209,102';
 }
 void UpdateCompactSignal(string signal,string score,bool available=true){
+   // Never present a signal as current when its score is absent or outside the agreed 1-100 range.
+   double parsed_score=StringToDouble(score);
+   if(!available || score=="" || parsed_score<1.0 || parsed_score>100.0){
+      available=false;
+      signal="INDISPONIVEL";
+      score="";
+   }
    compact_signal=signal;
-   compact_score=(available && score!="")?DoubleToString(StringToDouble(score),0)+"%":"—%";
+   compact_score=available?DoubleToString(parsed_score,0)+"%":"—%";
    compact_available=available;
    if(ObjectFind(0,Obj("COMPACT_SIGNAL"))>=0){
       ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
