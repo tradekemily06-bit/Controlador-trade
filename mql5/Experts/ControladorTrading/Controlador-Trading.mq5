@@ -658,6 +658,15 @@ void RefreshHealth(){
    string r; int code=0;
    if(!Http("GET","/api/health","",r,code)){
       runtime_ok=false;
+      // Never leave an old market signal visible after the runtime becomes unreachable.
+      last_signal="ANALISE_INDISPONIVEL";
+      last_score="";
+      RefreshPanelToggle();
+      if(panel_visible){
+         SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
+         SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+         SetLabel(Obj("REASON"),"Runtime indisponível; sinal anterior descartado.",20,226,9,C'255,118,118');
+      }
       SetLabel(Obj("RUNTIME"),"Sistema INDISPONÍVEL",20,126,10,C'255,118,118');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • runtime indisponivel",20,520,8,C'255,155,155');
       return;
@@ -666,6 +675,17 @@ void RefreshHealth(){
    string ok=JsonValue(r,"ok");
    StringToUpper(health);
    runtime_ok=(ok=="true" && health=="OK");
+   if(!runtime_ok){
+      // An HTTP response alone is not proof that analysis is healthy.
+      last_signal="ANALISE_INDISPONIVEL";
+      last_score="";
+      RefreshPanelToggle();
+      if(panel_visible){
+         SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
+         SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+         SetLabel(Obj("REASON"),"Runtime sem saúde confirmada; sinal anterior descartado.",20,226,9,C'255,118,118');
+      }
+   }
    string mode=JsonValue(r,"mode");
    string real=JsonValue(r,"real");
    string mt5=JsonValue(r,"mt5_demo");
