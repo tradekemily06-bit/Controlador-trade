@@ -834,6 +834,22 @@ void Analyze(bool render=true){
    ChartRedraw();
 }
 void RunCycle(){
+   // Re-check runtime health immediately before requesting a demo cycle.
+   RefreshHealth();
+   if(!runtime_ok){
+      last_signal="ANALISE_INDISPONIVEL";
+      last_score="";
+      last_cycle_id="";
+      last_external_id="";
+      RefreshPanelToggle();
+      SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
+      SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+      SetLabel(Obj("REASON"),"Ciclo bloqueado: runtime sem saúde confirmada.",20,226,9,C'255,118,118');
+      SetLabel(Obj("CYCLEID"),"Ciclo: não confirmado",20,391,8,C'255,118,118');
+      SetLabel(Obj("EXTID"),"Execução: não confirmada",20,406,8,C'255,118,118');
+      SetLabel(Obj("INFO1"),"Ciclo bloqueado; runtime indisponível",20,361,9,C'255,118,118');
+      return;
+   }
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
