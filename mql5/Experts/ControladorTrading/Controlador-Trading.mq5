@@ -199,23 +199,7 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,button_bg);
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,button_border);
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
-   ObjectSetString(0,name,OBJPROP_TEXT,text);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-}
-void SetEdit(string name,string text,int x,int y,int w,int h){
-   bool created=(ObjectFind(0,name)<0);
-   if(created) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
-   ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,ContentX(x));
-   ObjectSetInteger(0,name,OBJPROP_YDISTANCE,ContentY(y));
-   ObjectSetInteger(0,name,OBJPROP_XSIZE,ContentW(w));
-   ObjectSetInteger(0,name,OBJPROP_YSIZE,MathMax(22,SH(h)));
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92))));
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,90,112');
-   if(created) // Keep long action labels readable in the narrow compact overlay.
+   // Keep long action labels readable in the narrow compact overlay.
     string display_text=text;
     if(panel_compact && !nav){
        if(name==Obj("ANALYZE")){
@@ -228,11 +212,27 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
        else if(name==Obj("CLOSE")) display_text="ENCERRAR";
     }
     ObjectSetString(0,name,OBJPROP_TEXT,display_text);
-   ObjectSetInteger(0,name,OBJPROP_READONLY,false);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
-   ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
+}
+void SetEdit(string name,string text,int x,int y,int w,int h){
+    bool created=(ObjectFind(0,name)<0);
+    if(created) ObjectCreate(0,name,OBJ_EDIT,0,0,0);
+    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+    ObjectSetInteger(0,name,OBJPROP_XDISTANCE,ContentX(x));
+    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,ContentY(y));
+    ObjectSetInteger(0,name,OBJPROP_XSIZE,ContentW(w));
+    ObjectSetInteger(0,name,OBJPROP_YSIZE,MathMax(22,SH(h)));
+    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92))));
+    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
+    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
+    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,90,112');
+    if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);
+    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
+    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
+    ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
+    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+    ObjectSetInteger(0,name,OBJPROP_ZORDER,20);
 }
 void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
