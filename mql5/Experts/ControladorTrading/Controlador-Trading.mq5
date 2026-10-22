@@ -725,7 +725,7 @@ void RenderView(){
          SetLabel(Obj("INFO2"),"2. DEMO/SIMULAÇÃO; REAL bloqueado.",20,412,9,C'88,214,141');
          SetLabel(Obj("INFO3"),"3. Ajuste candle/filtros e salve.",20,434,9,C'205,215,230');
          SetLabel(Obj("INFO4"),"4. Análise, Estudo, Lab e Replay.",20,456,9,C'205,215,230');
-         SetLabel(Obj("INFO5"),"5. Notificações, Memória, Estatísticas.",20,478,9,C'205,215,230');
+         SetLabel(Obj("INFO5"),"5. Notif., Memória e Estat.",20,478,9,C'205,215,230');
       }
    }
 }
@@ -834,7 +834,7 @@ void RefreshMemory(){
       SetLabel(Obj("INFO2"),"Não foi possível consultar registros.",20,381,9,C'255,118,118');
       SetLabel(Obj("INFO3"),"Nenhum dado anterior é apresentado como atualização.",20,401,9,C'255,118,118');
       SetLabel(Obj("INFO4"),"Estatísticas não são exibidas nesta seção.",20,421,9,C'205,215,230');
-      SetLabel(Obj("INFO5"),"Verifique o serviço e tente atualizar novamente.",20,441,9,C'255,118,118');
+      SetLabel(Obj("INFO5"),"Serviço indisponível; atualização falhou.",20,441,9,C'255,118,118');
    }
 }
 void SaveConfig(){
