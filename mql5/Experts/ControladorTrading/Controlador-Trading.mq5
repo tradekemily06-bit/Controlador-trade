@@ -776,6 +776,18 @@ void SaveConfig(){
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
 }
 void Analyze(bool render=true){
+   // Health must be confirmed before accepting a fresh analysis response.
+   if(!runtime_ok){
+      last_signal="ANALISE_INDISPONIVEL";
+      last_score="";
+      RefreshPanelToggle();
+      if(render){
+         SetLabel(Obj("SIGNAL"),"Análise indisponível",20,176,10,C'255,118,118');
+         SetLabel(Obj("SCORE"),"",20,206,9,clrWhite);
+         SetLabel(Obj("REASON"),"Runtime sem saúde confirmada; análise bloqueada.",20,226,9,C'255,118,118');
+      }
+      return;
+   }
    string sym=_Symbol;
    string tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    if(ObjectFind(0,Obj("SYM"))>=0){
