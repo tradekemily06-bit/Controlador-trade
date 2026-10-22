@@ -48,7 +48,7 @@ int ContentY(int y){
       else if(y<=352) mapped=173.8+(y-316)*0.70;
       else if(y<=361) mapped=199.0+(y-352)*3.30;
       else if(y<=441) mapped=228.7+(y-361)*0.75;
-      else mapped=288.7+(y-441)*0.52;
+      else mapped=288.7+(y-441)*0.28;
       int max_offset=MathMax(1,panel_height-52);
       return panel_y+50+(int)MathRound(MathMin(mapped,(double)max_offset));
    }
