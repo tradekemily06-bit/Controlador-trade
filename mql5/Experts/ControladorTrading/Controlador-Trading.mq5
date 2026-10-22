@@ -77,6 +77,12 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    int px=ContentX(x);
    int py=ContentY(y);
    int fs=MathMax(8,(int)MathRound(size*MathMin(panel_sx,0.92)));
+   // In the compact overlay, the original 540px reference canvas compresses vertical
+   // spacing. Suppress secondary diagnostics in that mode instead of drawing them over
+   // buttons or each other; primary safety/status fields remain visible.
+   bool secondary_info=(StringFind(name,Obj("INFO"))==0 || name==Obj("CYCLEID") ||
+                        name==Obj("EXTID") || name==Obj("PRICE") || name==Obj("MARKET"));
+   if(panel_compact && secondary_info) text="";
    // Keep compact-panel text inside its area rather than letting long lines spill over the chart.
    bool bounded=(StringFind(name,Obj("INFO"))==0 || name==Obj("REASON") ||
                  name==Obj("MARKET") || name==Obj("SAFE") || name==Obj("PRICE") ||
