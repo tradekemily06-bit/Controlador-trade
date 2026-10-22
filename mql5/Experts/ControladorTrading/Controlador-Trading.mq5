@@ -472,10 +472,9 @@ bool IsValidQualityScore(string score){
 string QualityBand(string score){
    if(!IsValidQualityScore(score)) return "";
    int value=(int)StringToInteger(score);
-   if(value<40) return "FRACA";
-   if(value<60) return "MODERADA";
-   if(value<80) return "FORTE";
-   return "MUITO FORTE";
+   if(value<=69) return "FRACA";
+   if(value<=79) return "MODERADA";
+   return "FORTE";
 }
 string JsonObject(string json,string key){
    string needle="\"" + key + "\":";
@@ -603,8 +602,8 @@ void RefreshNotifications(){
       string total=JsonValue(r,"total");
       SetLabel(Obj("INFO1"),"Notificações: "+(total==""?"resumo recebido":total)+" • nao lidas "+(unread==""?"—":unread),20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Alertas importantes e críticos do ecossistema",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Abra um alerta para conferir os detalhes.",20,401,9,C'205,215,230');
-      SetLabel(Obj("INFO4"),"A análise de mercado é atualizada separadamente.",20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),"",20,421,9,C'205,215,230');
       SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }else{
       SetLabel(Obj("INFO1"),"Notificações indisponíveis",20,361,9,C'255,118,118');
@@ -677,7 +676,7 @@ void RenderView(){
       SetLabel(Obj("INFO2"),"Simulação separada da operação REAL",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Replay depende de sessão disponível no runtime",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Nenhuma execução REAL é autorizada aqui",20,421,9,C'255,155,155');
-      SetLabel(Obj("INFO5"),"Confira o resultado retornado pelo serviço",20,441,9,C'205,215,230');
+      SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
       SetLabel(Obj("SUB"),"Estudo • separado da autorização operacional",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estudo",20,284,172,30);
@@ -687,7 +686,7 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"Verificar runtime",20,284,172,30);
       SetLabel(Obj("INFO1"),"Replay depende de sessão registrada no runtime.",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Nenhuma reprodução é presumida sem sessão.",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"O histórico pode ser consultado na Memória.",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execução REAL permanece bloqueada.",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }else if(active_view=="SIMULADOR"){
@@ -722,11 +721,11 @@ void RenderView(){
       SetButton(Obj("FIRST_USE"),"Modo de uso",202,352,177,28);
       RefreshPreferences();
       if(show_first_use){
-         SetLabel(Obj("INFO1"),"MODO DE USO",20,390,9,C'205,215,230');
-         SetLabel(Obj("INFO2"),"1. Defina ativo e período em Configurações.",20,412,9,C'205,215,230');
-         SetLabel(Obj("INFO3"),"2. Mantenha DEMO / SIMULAÇÃO; REAL bloqueado.",20,434,9,C'88,214,141');
-         SetLabel(Obj("INFO4"),"3. Confira candle e filtros e salve.",20,456,9,C'205,215,230');
-         SetLabel(Obj("INFO5"),"4. Use Análise, Estudo, Laboratório e Replay; consulte alertas em Notificações.",20,478,9,C'205,215,230');
+         SetLabel(Obj("INFO1"),"1. Ativo e período em Config.",20,390,9,C'205,215,230');
+         SetLabel(Obj("INFO2"),"2. DEMO/SIMULAÇÃO; REAL bloqueado.",20,412,9,C'88,214,141');
+         SetLabel(Obj("INFO3"),"3. Ajuste candle/filtros e salve.",20,434,9,C'205,215,230');
+         SetLabel(Obj("INFO4"),"4. Análise, Estudo, Lab e Replay.",20,456,9,C'205,215,230');
+         SetLabel(Obj("INFO5"),"5. Notificações, Memória, Estatísticas.",20,478,9,C'205,215,230');
       }
    }
 }
