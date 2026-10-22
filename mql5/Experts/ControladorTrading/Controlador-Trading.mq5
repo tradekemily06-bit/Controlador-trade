@@ -141,14 +141,11 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    color button_bg=C'12,25,40';
    color button_border=C'30,65,83';
    if(nav){
-      // Fit the ten navigation items while reserving a row for leverage beneath them.
+      // Keep the navigation compact and consistent with the approved sidebar.
       int nav_area=MathMax(1,panel_height-58);
-      int nav_step=MathMax(1,MathMin(25,nav_area/11));
-      int row=index;
-      // Place leverage beside the study modules; keep Settings and Notifications below it.
-      if(index>=9) row=index+1;
+      int nav_step=MathMax(1,MathMin(25,nav_area/10));
       button_x=panel_x+8;
-      button_y=panel_y+50+(row-1)*nav_step;
+      button_y=panel_y+50+(index-1)*nav_step;
       button_w=MathMax(1,SidebarWidth()-10);
       button_h=MathMax(1,MathMin(22,nav_step-1));
       if(panel_height<180){ button_font=6; }
@@ -156,11 +153,13 @@ void SetButton(string name,string text,int x,int y,int w,int h){
       else { button_font=8; }
       if(selected){ button_bg=C'0,65,83'; button_border=C'0,210,245'; }
    }else if(name==Obj("LEVERAGE_TOGGLE")){
-      // Keep leverage on the opposite side from the navigation, in the header strip.
-      // This avoids covering live content in the right-hand view while keeping the control visible.
-      button_w=MathMax(1,MathMin(122,panel_width-155));
+      // Place leverage on the opposite side of the navigation, aligned with the Memory/Statistics module group.
+      // Keep it in the right-hand content area rather than changing the fixed C position.
+      int nav_area=MathMax(1,panel_height-58);
+      int nav_step=MathMax(1,MathMin(25,nav_area/10));
+      button_w=MathMax(1,MathMin(122,panel_width-SidebarWidth()-24));
       button_x=panel_x+panel_width-button_w-8;
-      button_y=panel_y+8;
+      button_y=panel_y+50+6*nav_step;
       button_h=25;
       button_font=(panel_height<240?7:8);
       button_bg=C'12,25,40';
