@@ -54,9 +54,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $Mt5DataPath 'MQL5') -PathType Conta
     throw "Pasta de dados MT5 inválida (MQL5 ausente): $Mt5DataPath"
 }
 
-$previewDir = Join-Path $Mt5DataPath 'MQL5\Experts\ControladorTradingPreview'
+$previewDir = Join-Path $Mt5DataPath 'MQL5\Experts\ControladorTrading_PAINEL_APROVADO_VALIDACAO'
 New-Item -ItemType Directory -Force -Path $previewDir | Out-Null
-$previewSource = Join-Path $previewDir 'Controlador-Trading-Preview.mq5'
+$previewSource = Join-Path $previewDir 'Controlador-Trading-Painel-Aprovado.mq5'
 $previewBinary = [System.IO.Path]::ChangeExtension($previewSource, '.ex5')
 $log = [System.IO.Path]::ChangeExtension($previewSource, '.log')
 $provenance = "$previewBinary.provenance.json"
@@ -121,7 +121,7 @@ Write-Host 'Pré-visualização MQL5 compilada com sucesso (0 erros, 0 avisos).'
 Write-Host "EA de teste: $previewBinary"
 Write-Host "Fonte de teste: $previewSource"
 Write-Host "Proveniência: $provenance"
-Write-Host 'O EA instalado não foi substituído. Abra o Navegador do MT5, atualize Experts e use ControladorTradingPreview apenas em gráfico DEMO para conferir o visual.'
+Write-Host 'O EA instalado não foi substituído. Abra o Navegador do MT5, atualize Experts e use ControladorTrading_PAINEL_APROVADO_VALIDACAO apenas em gráfico DEMO para conferir o visual.'
 if ($metaEditorExitCode -ne 0) {
     Write-Warning "MetaEditor retornou código $metaEditorExitCode; o log e o EX5 recém-gerado confirmaram a compilação."
 }
