@@ -215,7 +215,19 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
    ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
    ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,90,112');
-   if(created) ObjectSetString(0,name,OBJPROP_TEXT,text);
+   if(created) // Keep long action labels readable in the narrow compact overlay.
+    string display_text=text;
+    if(panel_compact && !nav){
+       if(name==Obj("ANALYZE")){
+          if(StringFind(text,"Confirmar candle:")==0) display_text="CANDLE: "+(pref_closed_candle?"SIM":"NÃO");
+          else display_text="ANALISAR";
+       }else if(name==Obj("CYCLE")){
+          if(StringFind(text,"Filtros obrigatórios:")==0) display_text="FILTROS: "+(pref_require_filters?"SIM":"NÃO");
+          else display_text="CICLO SIM.";
+       }else if(name==Obj("SAVE")) display_text="SALVAR";
+       else if(name==Obj("CLOSE")) display_text="ENCERRAR";
+    }
+    ObjectSetString(0,name,OBJPROP_TEXT,display_text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,true);
    ObjectSetInteger(0,name,OBJPROP_SELECTED,false);
