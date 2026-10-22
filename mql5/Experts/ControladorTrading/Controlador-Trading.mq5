@@ -48,13 +48,15 @@ int SH(int h){ return panel_compact?MathMax(21,(int)MathRound(h*panel_sy)):MathM
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   // Respect the actual chart bounds, including very small windows. The 66 px bottom reserve keeps native SELL/BUY controls clear.
+   // Anchor the panel to the lower-left chart area, above the fixed C control.
+   // Keep a bottom clearance so the panel never covers the C or native terminal controls.
    panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));
    panel_x=12;
-   panel_y=18;
-   int available_height=MathMax(1,ch-panel_y-66);
+   int bottom_clearance=92;
+   int max_height=MathMax(1,ch-bottom_clearance-8);
    int proportional_height=MathMax(1,(int)MathRound(ch*0.48));
-   panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));
+   panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(max_height,proportional_height)));
+   panel_y=MathMax(8,ch-panel_height-bottom_clearance);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/540.0;
    panel_compact=(panel_height<340 || panel_width<350);
