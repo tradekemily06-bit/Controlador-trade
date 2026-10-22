@@ -674,7 +674,7 @@ void RenderView(){
       SetButton(Obj("CLOSE"),"Encerrar e reconciliar",202,320,177,28);
       SetLabel(Obj("INFO1"),"Ambiente de validação",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Simulação separada da operação REAL",20,381,9,C'205,215,230');
-      SetLabel(Obj("INFO3"),"Replay depende de sessão disponível no runtime",20,401,9,C'205,215,230');
+      SetLabel(Obj("INFO3"),"",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Nenhuma execução REAL é autorizada aqui",20,421,9,C'255,155,155');
       SetLabel(Obj("INFO5"),"",20,441,9,C'205,215,230');
    }else if(active_view=="ENSINO"){
@@ -684,7 +684,7 @@ void RenderView(){
    }else if(active_view=="REPLAY"){
       SetLabel(Obj("SUB"),"Replay • histórico de sessões",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Verificar runtime",20,284,172,30);
-      SetLabel(Obj("INFO1"),"Replay depende de sessão registrada no runtime.",20,361,9,C'205,215,230');
+      SetLabel(Obj("INFO1"),"",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Nenhuma reprodução é presumida sem sessão.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"",20,401,9,C'205,215,230');
       SetLabel(Obj("INFO4"),"Execução REAL permanece bloqueada.",20,421,9,C'255,155,155');
