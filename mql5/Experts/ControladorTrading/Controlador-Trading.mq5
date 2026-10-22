@@ -189,7 +189,7 @@ void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));
+   // Approved layout: keep the closed C + signal + score group anchored at the lower-right chart edge.\n   int x=MathMax(8,cw-160);
    int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));
    // Dark filled center under the cyan outline: keeps chart grid from showing through the C.
    string fill=Obj("PANEL_TOGGLE_FILL");
