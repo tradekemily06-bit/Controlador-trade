@@ -59,7 +59,7 @@ void RefreshPanelLayout(){
    panel_y=MathMax(8,ch-panel_height-bottom_clearance);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/540.0;
-   panel_compact=(panel_height<340 || panel_width<350);
+   panel_compact=(panel_height<500 || panel_width<350);
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
