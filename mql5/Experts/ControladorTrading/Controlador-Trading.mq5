@@ -40,7 +40,20 @@ int SidebarWidth(){ return MathMin(142,MathMax(68,(int)MathRound(panel_width*0.3
 double ContentScale(){ return (double)MathMax(1,panel_width-SidebarWidth()-16)/430.0; }
 int ContentX(int x){ return panel_x+SidebarWidth()+8+(int)MathRound(x*ContentScale()); }
 int ContentW(int w){ return MathMax(1,(int)MathRound(w*ContentScale())); }
-int ContentY(int y){ return panel_y+50+(int)MathRound(y*((double)MathMax(1,panel_height-62)/540.0)); }
+int ContentY(int y){
+   if(panel_compact){
+      // Reflow the compressed overlay into deliberate vertical bands.
+      double mapped=0.0;
+      if(y<=316) mapped=y*0.55;
+      else if(y<=352) mapped=173.8+(y-316)*0.70;
+      else if(y<=361) mapped=199.0+(y-352)*3.30;
+      else if(y<=441) mapped=228.7+(y-361)*0.75;
+      else mapped=288.7+(y-441)*0.52;
+      int max_offset=MathMax(1,panel_height-52);
+      return panel_y+50+(int)MathRound(MathMin(mapped,(double)max_offset));
+   }
+   return panel_y+50+(int)MathRound(y*((double)MathMax(1,panel_height-62)/540.0));
+}
 int CompactY(int y){ return (int)MathRound(y*panel_sy); }
 int SY(int y){ return panel_y+CompactY(y); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
@@ -80,8 +93,8 @@ void SetLabel(string name,string text,int x,int y,int size=10,color clr=clrWhite
    // In the compact overlay, the original 540px reference canvas compresses vertical
    // spacing. Suppress secondary diagnostics in that mode instead of drawing them over
    // buttons or each other; primary safety/status fields remain visible.
-   bool secondary_info=(StringFind(name,Obj("INFO"))==0 || name==Obj("CYCLEID") ||
-                        name==Obj("EXTID") || name==Obj("PRICE") || name==Obj("MARKET"));
+   bool secondary_info=(name==Obj("CYCLEID") || name==Obj("EXTID") ||
+                        name==Obj("PRICE") || name==Obj("MARKET"));
    if(panel_compact && secondary_info) text="";
    // Keep compact-panel text inside its area rather than letting long lines spill over the chart.
    bool bounded=(StringFind(name,Obj("INFO"))==0 || name==Obj("REASON") ||
