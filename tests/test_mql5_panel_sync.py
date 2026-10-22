@@ -33,8 +33,8 @@ def test_mql5_sync_script_exists_and_is_self_contained():
 
 def test_mql5_preview_compile_isolated_from_installed_ea():
     preview = (ROOT / "deployment" / "compile_mql5_panel_preview.ps1").read_text(encoding="utf-8")
-    assert "MQL5\\Experts\\ControladorTradingPreview" in preview
-    assert "$previewSource = Join-Path $previewDir 'Controlador-Trading-Preview.mq5'" in preview
+    assert "MQL5\\Experts\\ControladorTrading_PAINEL_APROVADO_VALIDACAO" in preview
+    assert "$previewSource = Join-Path $previewDir 'Controlador-Trading-Painel-Aprovado.mq5'" in preview
     assert '& $MetaEditorPath "/compile:$previewSource" "/log:$log"' in preview
     assert "installed_ea_replaced = $false" in preview
     assert "real_execution_authorized = $false" in preview
