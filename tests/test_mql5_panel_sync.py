@@ -314,7 +314,11 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters;' in event
     assert 'pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig();' in event
     assert 'pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig();' in event
-    assert 'else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }' in event
+    assert 'else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveLeveragePreference(); }' in event
+    save_leverage = panel.split("void SaveLeveragePreference()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert 'string body="{\\"leverage_enabled\\":"+(leverage_enabled?"true":"false")+"}";' in save_leverage
+    assert 'Http("POST","/api/preferences",body,r,code)' in save_leverage
+    assert "SaveConfig();" not in save_leverage
     assert 'selected_mode' in save and 'DEMO' in save
 
 def test_mql5_analysis_and_demo_cycle_use_saved_filter_preferences():
