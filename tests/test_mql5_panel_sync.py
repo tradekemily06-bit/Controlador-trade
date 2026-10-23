@@ -713,6 +713,15 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int panel_height=380;" in panel
 
 
+def test_mql5_leverage_toggle_uses_full_compact_content_width():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    button = panel.split("void SetButton(", 1)[1].split("void SetLabel(", 1)[0]
+    assert 'if(name==Obj("LEVERAGE_TOGGLE")){' in button
+    assert "button_x=panel_x+SidebarWidth()+8+8;" in button
+    assert "button_w=MathMax(1,panel_width-SidebarWidth()-32);" in button
+    assert "too narrow on the compact approved panel" in button
+
+
 def test_mql5_leverage_toggle_stays_available_across_panel_sections():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
