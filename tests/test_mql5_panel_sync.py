@@ -308,7 +308,7 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in prefs
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
-    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in prefs
+    assert 'RenderLeverageToggle();' in prefs
     assert 'pref_closed_candle?"true":"false"' in save
     assert 'pref_require_filters?"true":"false"' in save
     assert 'leverage_enabled?"true":"false"' in save
@@ -341,7 +341,7 @@ def test_mql5_config_controls_do_not_overlap_status_text():
     assert "MathRound(cw*0.34)" not in panel
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);' in prefs
-    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in prefs
+    assert 'RenderLeverageToggle();' in prefs
     assert '20,390,9,' in prefs
     assert '20,478,9,' in prefs
 
@@ -713,6 +713,13 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int panel_height=380;" in panel
 
 
+def test_mql5_leverage_toggle_uses_right_side_lower_module_position():
+    panel = _panel_source()
+    helper = panel.split("void RenderLeverageToggle()", 1)[1].split("void RefreshLeveragePreference()", 1)[0]
+    assert ',202,235,177,28);' in helper
+    assert "RenderLeverageToggle();" in panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+
+
 def test_mql5_leverage_toggle_uses_full_compact_content_width():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     button = panel.split("void SetButton(", 1)[1].split("void SetLabel(", 1)[0]
@@ -729,7 +736,7 @@ def test_mql5_leverage_toggle_stays_available_across_panel_sections():
     timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
 
     assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
-    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in render
+    assert 'RenderLeverageToggle();' in render
     assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in refresh
     assert 'RefreshLeveragePreference();' in timer
     assert 'if(active_view=="CONFIG") RefreshPreferences();' in timer
