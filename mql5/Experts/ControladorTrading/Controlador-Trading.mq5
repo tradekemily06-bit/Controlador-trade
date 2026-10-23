@@ -94,6 +94,10 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
 }
+void PlaceLeverageToggle(){
+   // Keep the switch in one canonical location beside the lower information area.
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,465,177,28);
+}
 void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool clickable=false){
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -209,7 +213,7 @@ void Panel(){
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
    // Persistent leverage switch stays available outside the Config screen.
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
+   PlaceLeverageToggle();
 
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: aguardando",20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: sem atividade",20,483,8,C'145,160,180');
