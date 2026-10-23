@@ -303,7 +303,7 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert "bool pref_require_filters=true;" in panel
     assert 'JsonObjectValue(r,"preferences","require_closed_candle")' in prefs
     assert 'JsonObjectValue(r,"preferences","require_filters")' in prefs
-    assert 'JsonObjectValue(r,"preferences","leverage_enabled")' in prefs
+    assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in prefs
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in prefs
@@ -715,6 +715,6 @@ def test_mql5_leverage_toggle_stays_available_across_panel_sections():
 
     assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
     assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in render
-    assert 'JsonObjectValue(r,"preferences","leverage_enabled")' in refresh
+    assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in refresh
     assert 'RefreshLeveragePreference();' in timer
     assert 'if(active_view=="CONFIG") RefreshPreferences();' in timer
