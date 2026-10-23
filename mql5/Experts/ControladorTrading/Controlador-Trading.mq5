@@ -209,7 +209,7 @@ void Panel(){
    SetLabel(Obj("INFO4"),"Estatisticas: verificando...",20,421,9,C'205,215,230');
    SetLabel(Obj("INFO5"),"Noticias: verificando...",20,441,9,C'205,215,230');
    // Persistent leverage switch stays available outside the Config screen.
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,567,177,28);
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
 
    SetLabel(Obj("CYCLEID"),"Ciclo DEMO: aguardando",20,465,8,C'145,160,180');
    SetLabel(Obj("EXTID"),"Execucao: sem atividade",20,483,8,C'145,160,180');
@@ -325,7 +325,7 @@ void RefreshPreferences(){
    selected_mode=mode;
    leverage_enabled=(leverage=="true");
    SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,567,177,28);
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
    SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
    // The toggle itself is the status; avoid a second redundant ON/OFF text line.
    SetLabel(Obj("INFO3"),"Candle fechado: "+(closed==""?"—":closed)+" • filtros: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
@@ -444,7 +444,7 @@ void RenderView(){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("MODE_TOGGLE"))>=0) ObjectDelete(0,Obj("MODE_TOGGLE"));
       // LEVERAGE_TOGGLE intentionally remains visible in every panel view.
-      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,567,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
    }
 
 }
@@ -680,7 +680,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    else if(sparam==Obj("MODE_TOGGLE")) { selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO"); SaveConfig(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) {
       leverage_enabled=!leverage_enabled;
-      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,567,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
       SaveConfig();
    }
    else if(sparam==Obj("CLOSE")) CloseCycle();
