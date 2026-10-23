@@ -705,3 +705,16 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "int panel_width=350;" in panel
     assert "int panel_height=380;" in panel
+
+
+def test_mql5_leverage_toggle_stays_available_across_panel_sections():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    refresh = panel.split("void RefreshLeveragePreference()", 1)[1].split("void RefreshPreferences()", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+
+    assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in render
+    assert 'JsonObjectValue(r,"preferences","leverage_enabled")' in refresh
+    assert 'RefreshLeveragePreference();' in timer
+    assert 'if(active_view=="CONFIG") RefreshPreferences();' in timer
