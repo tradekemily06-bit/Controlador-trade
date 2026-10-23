@@ -189,13 +189,13 @@ void RefreshPanelToggle(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    // Anchor the complete collapsed control (C + signal + score) to the chart lower-right, matching the approved reference.
-   int x=MathMax(8,cw-142);
+   int x=MathMax(8,cw-203);
    int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));
    // Dark filled center under the cyan outline: keeps chart grid from showing through the C.
    string fill=Obj("PANEL_TOGGLE_FILL");
    if(ObjectFind(0,fill)<0) ObjectCreate(0,fill,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,fill,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,fill,OBJPROP_XDISTANCE,x+21);
+   ObjectSetInteger(0,fill,OBJPROP_XDISTANCE,x+29);
    ObjectSetInteger(0,fill,OBJPROP_YDISTANCE,y+21);
    ObjectSetInteger(0,fill,OBJPROP_FONTSIZE,39);
    ObjectSetInteger(0,fill,OBJPROP_COLOR,C'5,15,27');
@@ -207,7 +207,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,fill,OBJPROP_ZORDER,999);
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+29);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,43);
    ObjectSetInteger(0,name,OBJPROP_STATE,false);
@@ -221,7 +221,7 @@ void RefreshPanelToggle(){
    string letter=Obj("PANEL_TOGGLE_LETTER");
    if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
+   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+20);
    ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
    ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,20);
    ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,215,255');
@@ -233,7 +233,7 @@ void RefreshPanelToggle(){
    string sig=Obj("COLLAPSED_SIGNAL");
    if(ObjectFind(0,sig)<0) ObjectCreate(0,sig,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,sig,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,x+50);
+   ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,x+60);
    ObjectSetInteger(0,sig,OBJPROP_YDISTANCE,y+3);
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
@@ -248,7 +248,7 @@ void RefreshPanelToggle(){
    string quality=Obj("COLLAPSED_QUALITY");
    if(ObjectFind(0,quality)<0) ObjectCreate(0,quality,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,quality,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,x+82);
+   ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,x+60);
    ObjectSetInteger(0,quality,OBJPROP_YDISTANCE,y+22);
    ObjectSetInteger(0,quality,OBJPROP_FONTSIZE,9);
    ObjectSetInteger(0,quality,OBJPROP_COLOR,compact_color);
