@@ -516,7 +516,7 @@ string JsonEscape(string s){
 void RefreshLeveragePreference(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)) return;
-   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
+   string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
    StringToLower(leverage);
    if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
@@ -531,12 +531,12 @@ void RefreshPreferences(){
       SetLabel(Obj("INFO5"),"",20,478,9,C'205,215,230');
       return;
    }
-   string mode=JsonObjectValue(r,"preferences","selected_mode");
-   string sym=JsonObjectValue(r,"preferences","default_symbol");
-   string tf=JsonObjectValue(r,"preferences","default_timeframe");
-   string closed=JsonObjectValue(r,"preferences","require_closed_candle");
-   string filters=JsonObjectValue(r,"preferences","require_filters");
-   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
+   string mode=JsonNestedValue(r,"preferences","selected_mode");
+   string sym=JsonNestedValue(r,"preferences","default_symbol");
+   string tf=JsonNestedValue(r,"preferences","default_timeframe");
+   string closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   string filters=JsonNestedValue(r,"preferences","require_filters");
+   string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
    StringToLower(closed);
    StringToLower(filters);
    StringToLower(leverage);
