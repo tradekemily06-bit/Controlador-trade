@@ -18,6 +18,7 @@ bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
 bool pref_leverage_enabled=false;
+bool leverage_menu_open=false;
 int panel_x=0;
 int panel_y=18;
 int panel_width=390;
@@ -489,7 +490,7 @@ void RefreshPreferences(){
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
    if(active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")
-      SetButton(Obj("LEVERAGE_TOGGLE"),pref_leverage_enabled?"DESATIVAR ALAVANCAGEM":"ATIVAR ALAVANCAGEM",202,352,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28);
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -534,8 +535,9 @@ void RefreshLearning(){
 }
 void RenderView(){
    // Remove ações da tela anterior antes de montar a seção atual.
-   string action_names[4]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("LEVERAGE_TOGGLE")};
-   for(int i=0;i<4;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
+   string action_names[6]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("LEVERAGE_TOGGLE"),Obj("LEVERAGE_ON"),Obj("LEVERAGE_OFF")};
+   for(int i=0;i<6;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
+   leverage_menu_open=false;
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"Visão geral do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
@@ -911,7 +913,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
-   else if(sparam==Obj("LEVERAGE_TOGGLE") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=!pref_leverage_enabled; SetButton(Obj("LEVERAGE_TOGGLE"),pref_leverage_enabled?"DESATIVAR ALAVANCAGEM":"ATIVAR ALAVANCAGEM",202,352,177,28); SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ leverage_menu_open=true; SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,384,84,26); SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,384,87,26); }
+   else if(sparam==Obj("LEVERAGE_ON") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=true; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28); SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_OFF") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=false; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28); SaveConfig(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
