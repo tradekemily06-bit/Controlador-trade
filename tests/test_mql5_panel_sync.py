@@ -714,7 +714,7 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
 
 
 def test_mql5_leverage_toggle_uses_right_side_lower_module_position():
-    panel = _panel_source()
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     helper = panel.split("void RenderLeverageToggle()", 1)[1].split("void RefreshLeveragePreference()", 1)[0]
     assert ',202,235,177,28);' in helper
     assert "RenderLeverageToggle();" in panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
