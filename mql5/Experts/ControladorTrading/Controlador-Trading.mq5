@@ -490,7 +490,7 @@ void RefreshPreferences(){
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
    if(active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")
-      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -557,7 +557,7 @@ void RenderView(){
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"Memória • registros e histórico",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
-      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);
       RefreshMemory();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
@@ -586,7 +586,7 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"Atualizar análise",20,284,172,30);
       SetButton(Obj("CYCLE"),"Executar ciclo DEMO",202,284,177,30);
       SetButton(Obj("CLOSE"),"Encerrar ciclo",202,320,177,28);
-      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);
       SetLabel(Obj("INFO1"),"Ciclo enviado ao runtime de simulação.",20,361,9,C'205,215,230');
       SetLabel(Obj("INFO2"),"Resultados só contam após reconciliação.",20,381,9,C'205,215,230');
       SetLabel(Obj("INFO3"),"Estudo não representa lucro financeiro.",20,401,9,C'205,215,230');
@@ -595,7 +595,7 @@ void RenderView(){
    }else if(active_view=="ESTATISTICAS"){
       SetLabel(Obj("SUB"),"Estatísticas • dados do runtime",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar estatísticas",20,284,172,30);
-      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);
       RefreshSecondary();
    }else if(active_view=="NOTIF"){
       SetLabel(Obj("SUB"),"Notificações e alertas",20,47,9,C'150,165,185');
@@ -913,9 +913,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
-   else if(sparam==Obj("LEVERAGE_TOGGLE") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ leverage_menu_open=true; ObjectDelete(0,Obj("LEVERAGE_TOGGLE")); SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,352,84,28); SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,352,87,28); }
-   else if(sparam==Obj("LEVERAGE_ON") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=true; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28); SaveConfig(); }
-   else if(sparam==Obj("LEVERAGE_OFF") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=false; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,352,177,28); SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ leverage_menu_open=true; ObjectDelete(0,Obj("LEVERAGE_TOGGLE")); SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,248,84,28); SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,248,87,28); }
+   else if(sparam==Obj("LEVERAGE_ON") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=true; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28); SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_OFF") && (active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS")){ pref_leverage_enabled=false; leverage_menu_open=false; ObjectDelete(0,Obj("LEVERAGE_ON")); ObjectDelete(0,Obj("LEVERAGE_OFF")); SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28); SaveConfig(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
