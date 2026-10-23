@@ -221,8 +221,10 @@ void RefreshPanelToggle(){
    string letter=Obj("PANEL_TOGGLE_LETTER");
    if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
-   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
+   // Center the C over the same fixed center used by the circular outline and fill.
+   ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_CENTER);
+   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+21);
+   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+21);
    ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,20);
    ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,215,255');
    ObjectSetString(0,letter,OBJPROP_FONT,"Segoe UI");
