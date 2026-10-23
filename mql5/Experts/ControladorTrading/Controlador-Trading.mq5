@@ -522,13 +522,18 @@ string JsonEscape(string s){
    StringReplace(s,"\"","\\\"");
    return s;
 }
+void RenderLeverageToggle(){
+   // Keep the ON/OFF switch on the right side, close to the lower module actions,
+   // while leaving the left-side action and status area clear.
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,235,177,28);
+}
 void RefreshLeveragePreference(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)) return;
    string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
    StringToLower(leverage);
    if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+   RenderLeverageToggle();
 }
 void RefreshPreferences(){
    string r; int code=0;
@@ -554,7 +559,7 @@ void RefreshPreferences(){
    if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+   RenderLeverageToggle();
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -669,7 +674,7 @@ void RenderView(){
       RefreshPreferences();
    }
    // Keep the ON/OFF control on the opposite content side in every panel section.
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+   RenderLeverageToggle();
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -762,7 +767,7 @@ void SaveLeveragePreference(){
    string body="{\"leverage_enabled\":"+(leverage_enabled?"true":"false")+"}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code)){
-      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+      RenderLeverageToggle();
    }else{
       SetLabel(Obj("INFO1"),"Não foi possível salvar alavancagem",20,(active_view=="CONFIG"?390:361),9,C'255,118,118');
       RefreshLeveragePreference();
