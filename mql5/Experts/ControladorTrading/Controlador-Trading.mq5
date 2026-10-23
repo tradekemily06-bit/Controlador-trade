@@ -314,7 +314,8 @@ void LoadPreferencesState(){
    if(!Http("GET","/api/preferences","",r,code)) return;
    string mode=JsonObjectValue(r,"preferences","selected_mode");
    string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
-   if(mode=="DEMO" || mode=="SIMULACAO" || mode=="REAL") selected_mode=mode;
+   // The MT5 panel stays in DEMO/SIMULACAO; REAL requires a separate validated authorization flow.
+   selected_mode="DEMO";
    if(leverage=="true") leverage_enabled=true;
    else if(leverage=="false") leverage_enabled=false;
 }
@@ -331,8 +332,8 @@ void RefreshPreferences(){
    string closed=JsonObjectValue(r,"preferences","require_closed_candle");
    string filters=JsonObjectValue(r,"preferences","require_filters");
    string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
-   if(mode=="") mode="DEMO";
-   selected_mode=mode;
+   // Never let a stored preference switch this panel into REAL mode.
+   selected_mode="DEMO";
    leverage_enabled=(leverage=="true");
    SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
    SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
@@ -527,7 +528,8 @@ void SaveConfig(){
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
    string leverage=leverage_enabled?"true":"false";
-   string body="{\"selected_mode\":\""+JsonEscape(selected_mode)+"\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
+   selected_mode="DEMO";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+leverage+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":true,\"require_filters\":true}";
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
@@ -688,7 +690,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) RunCycle();
    else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("MODE_TOGGLE")) { selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO"); SaveConfig(); }
+   else if(sparam==Obj("MODE_TOGGLE")) { selected_mode="DEMO"; SaveConfig(); }
    else if(sparam==Obj("LEVERAGE_TOGGLE")) {
       leverage_enabled=!leverage_enabled;
       SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,548,177,28);
