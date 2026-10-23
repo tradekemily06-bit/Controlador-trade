@@ -274,16 +274,6 @@ string JsonObjectValue(string json,string objectKey,string key){
    }
    return "";
 }
-void LoadPreferencesState(){
-   // Load saved toggle state without drawing CONFIG controls over the current view.
-   string r; int code=0;
-   if(!Http("GET","/api/preferences","",r,code)) return;
-   string mode=JsonObjectValue(r,"preferences","selected_mode");
-   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
-   if(mode=="DEMO" || mode=="SIMULACAO" || mode=="REAL") selected_mode=mode;
-   if(leverage=="true") leverage_enabled=true;
-   else if(leverage=="false") leverage_enabled=false;
-}
 bool Http(string method,string path,string body,string &response,int &code){
    char data[];
    char result[];
@@ -317,6 +307,16 @@ string JsonEscape(string s){
    StringReplace(s,"\\","\\\\");
    StringReplace(s,"\"","\\\"");
    return s;
+}
+void LoadPreferencesState(){
+   // Load saved toggle state without drawing CONFIG controls over the current view.
+   string r; int code=0;
+   if(!Http("GET","/api/preferences","",r,code)) return;
+   string mode=JsonObjectValue(r,"preferences","selected_mode");
+   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
+   if(mode=="DEMO" || mode=="SIMULACAO" || mode=="REAL") selected_mode=mode;
+   if(leverage=="true") leverage_enabled=true;
+   else if(leverage=="false") leverage_enabled=false;
 }
 void RefreshPreferences(){
    string r; int code=0;
