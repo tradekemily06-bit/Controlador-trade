@@ -333,7 +333,7 @@ void Panel(){
    SetLabel(Obj("TITLE"),"Controlador Trading",70,27,11,clrWhite);
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
    SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
-   SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"% • "+QualityBand(last_score):"",20,206,9,SignalColor(last_signal));
+   SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
 
    SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
    SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
@@ -442,13 +442,6 @@ bool IsValidQualityScore(string score){
    }
    long value=StringToInteger(score);
    return value>=1 && value<=100;
-}
-string QualityBand(string score){
-   if(!IsValidQualityScore(score)) return "";
-   int value=(int)StringToInteger(score);
-   if(value>=80) return "FORTE";
-   if(value>=70) return "MODERADA";
-   return "FRACA";
 }
 string NormalizeTimeframe(string tf){
    StringTrimLeft(tf);
@@ -749,7 +742,7 @@ void Analyze(bool render=true){
    if(!render) return;
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
-   SetLabel(Obj("SCORE"),score==""?"":score+"% • "+QualityBand(score),20,206,9,c);
+   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Análise concluída pelo runtime.":reason,0,62),20,226,9,C'180,190,205');
    // Keep the compact market signal in the chart header; show analysis detail only on the Analysis tab.
    if(active_view=="ANALISE")
@@ -788,7 +781,7 @@ void RunCycle(){
    string allowed=JsonValue(r,"execution_allowed");
    color c=(signal=="COMPRA" || signal=="COMPRAR")?C'0,255,70':(signal=="VENDA" || signal=="VENDER")?C'255,45,65':C'255,176,0';
    SetLabel(Obj("SIGNAL"),SignalLabel(signal),20,176,10,c);
-   SetLabel(Obj("SCORE"),score==""?"":score+"% • "+QualityBand(score),20,206,9,c);
+   SetLabel(Obj("SCORE"),score==""?"":score+"%",20,206,9,c);
    SetLabel(Obj("REASON"),StringSubstr(reason==""?"Ciclo concluído.":reason,0,62),20,226,9,C'180,190,205');
    last_signal=signal; last_score=score; RefreshPanelToggle();
    last_cycle_id=cid; last_external_id=eid;
