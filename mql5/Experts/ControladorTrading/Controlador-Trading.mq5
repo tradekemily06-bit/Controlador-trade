@@ -523,17 +523,21 @@ void RefreshPreferences(){
       SetLabel(Obj("INFO5"),"",20,478,9,C'205,215,230');
       return;
    }
-   string mode=JsonValue(r,"selected_mode");
-   string sym=JsonValue(r,"default_symbol");
-   string tf=JsonValue(r,"default_timeframe");
-   string closed=JsonValue(r,"require_closed_candle");
-   string filters=JsonValue(r,"require_filters");
+   string mode=JsonObjectValue(r,"preferences","selected_mode");
+   string sym=JsonObjectValue(r,"preferences","default_symbol");
+   string tf=JsonObjectValue(r,"preferences","default_timeframe");
+   string closed=JsonObjectValue(r,"preferences","require_closed_candle");
+   string filters=JsonObjectValue(r,"preferences","require_filters");
+   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
    StringToLower(closed);
    StringToLower(filters);
+   StringToLower(leverage);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
+   if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,352,177,28);
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -741,13 +745,15 @@ void SaveConfig(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
-   if(Http("POST","/api/preferences",body,r,code))
+   if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Configurações sincronizadas",20,status_y,9,C'88,214,141');
-   else
+      if(active_view=="CONFIG") RefreshPreferences();
+   }else{
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
+   }
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
@@ -976,5 +982,6 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
