@@ -306,7 +306,7 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     assert 'JsonObjectValue(r,"preferences","leverage_enabled")' in prefs
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
-    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,352,177,28);' in prefs
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in prefs
     assert 'pref_closed_candle?"true":"false"' in save
     assert 'pref_require_filters?"true":"false"' in save
     assert 'leverage_enabled?"true":"false"' in save
@@ -335,7 +335,7 @@ def test_mql5_config_controls_do_not_overlap_status_text():
     assert "MathRound(cw*0.34)" not in panel
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);' in prefs
-    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,352,177,28);' in prefs
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);' in prefs
     assert '20,390,9,' in prefs
     assert '20,478,9,' in prefs
 
