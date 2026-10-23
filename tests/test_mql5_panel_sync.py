@@ -294,7 +294,7 @@ def test_mql5_c_toggle_remains_fixed_and_opens_or_closes_panel():
     assert "GlobalVariableSet(PanelVisibilityKey(),panel_visible?1.0:0.0);" in toggle
     assert 'if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_LETTER")) { TogglePanel(); return; }' in event
     assert 'if(sparam==Obj("PANEL_CLOSE")) { TogglePanel(); return; }' in event
-    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);' in refresh
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+29);' in refresh
     assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);' in refresh
 def test_mql5_panel_configuration_toggles_persist_real_preferences():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
