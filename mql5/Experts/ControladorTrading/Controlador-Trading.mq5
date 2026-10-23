@@ -17,6 +17,7 @@ datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
+bool leverage_enabled=false;
 int panel_x=0;
 int panel_y=18;
 int panel_width=350;
@@ -111,6 +112,14 @@ void SetButton(string name,string text,int x,int y,int w,int h){
              name==Obj("V9") || name==Obj("V10"));
    int button_x=ContentX(x), button_y=ContentY(y), button_w=ContentW(w), button_h=SH(h);
    int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92)));
+   // The leverage preference is a standalone control on the right side of the content area.
+   // Use the available content width instead of the scaled 177px design width, which
+   // becomes too narrow on the compact approved panel and clips the ON/OFF label.
+   if(name==Obj("LEVERAGE_TOGGLE")){
+      button_x=panel_x+SidebarWidth()+8+8;
+      button_w=MathMax(1,panel_width-SidebarWidth()-32);
+      button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92)));
+   }
    int index=0;
    if(name==Obj("V1")) index=1;
    else if(name==Obj("V2")) index=2;
@@ -188,6 +197,7 @@ void RefreshPanelToggle(){
    string name=Obj("PANEL_TOGGLE");
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   // Preserve the approved lower-left anchor; only the closed mark is circular.
    int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));
    int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));
    // Dark filled center under the cyan outline: keeps chart grid from showing through the C.
@@ -513,6 +523,19 @@ string JsonEscape(string s){
    StringReplace(s,"\"","\\\"");
    return s;
 }
+void RenderLeverageToggle(){
+   // Keep the ON/OFF switch on the right side, close to the lower module actions,
+   // while leaving the left-side action and status area clear.
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,235,177,28);
+}
+void RefreshLeveragePreference(){
+   string r; int code=0;
+   if(!Http("GET","/api/preferences","",r,code)) return;
+   string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
+   StringToLower(leverage);
+   if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
+   RenderLeverageToggle();
+}
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
@@ -523,17 +546,21 @@ void RefreshPreferences(){
       SetLabel(Obj("INFO5"),"",20,478,9,C'205,215,230');
       return;
    }
-   string mode=JsonValue(r,"selected_mode");
-   string sym=JsonValue(r,"default_symbol");
-   string tf=JsonValue(r,"default_timeframe");
-   string closed=JsonValue(r,"require_closed_candle");
-   string filters=JsonValue(r,"require_filters");
+   string mode=JsonNestedValue(r,"preferences","selected_mode");
+   string sym=JsonNestedValue(r,"preferences","default_symbol");
+   string tf=JsonNestedValue(r,"preferences","default_timeframe");
+   string closed=JsonNestedValue(r,"preferences","require_closed_candle");
+   string filters=JsonNestedValue(r,"preferences","require_filters");
+   string leverage=JsonNestedValue(r,"preferences","leverage_enabled");
    StringToLower(closed);
    StringToLower(filters);
+   StringToLower(leverage);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
+   if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
+   RenderLeverageToggle();
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -647,6 +674,8 @@ void RenderView(){
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
       RefreshPreferences();
    }
+   // Keep the ON/OFF control on the opposite content side in every panel section.
+   RenderLeverageToggle();
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -735,19 +764,31 @@ void RefreshMemory(){
       SetLabel(Obj("INFO5"),"Verifique o serviço e tente atualizar novamente.",20,441,9,C'255,118,118');
    }
 }
+void SaveLeveragePreference(){
+   string body="{\"leverage_enabled\":"+(leverage_enabled?"true":"false")+"}";
+   string r; int code=0;
+   if(Http("POST","/api/preferences",body,r,code)){
+      RenderLeverageToggle();
+   }else{
+      SetLabel(Obj("INFO1"),"Não foi possível salvar alavancagem",20,(active_view=="CONFIG"?390:361),9,C'255,118,118');
+      RefreshLeveragePreference();
+   }
+}
 void SaveConfig(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
+   string body="{\"selected_mode\":\"DEMO\",\"leverage_enabled\":"+(leverage_enabled?"true":"false")+",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
-   if(Http("POST","/api/preferences",body,r,code))
+   if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO1"),"Configurações sincronizadas",20,status_y,9,C'88,214,141');
-   else
+      if(active_view=="CONFIG") RefreshPreferences();
+   }else{
       SetLabel(Obj("INFO1"),"Não foi possível sincronizar configurações",20,status_y,9,C'255,118,118');
+   }
 }
 void Analyze(bool render=true){
    string sym=_Symbol;
@@ -930,6 +971,7 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
+   RefreshLeveragePreference();
    if(active_view=="COCKPIT") { RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
@@ -976,5 +1018,6 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveLeveragePreference(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }

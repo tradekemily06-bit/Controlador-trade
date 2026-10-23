@@ -238,6 +238,8 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert "int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));" in toggle
     assert "int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));" in toggle
     assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);' in toggle
+    assert 'ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,62);' in toggle
+    assert 'ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,94);' in toggle
     assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);' in toggle
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in toggle
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in toggle
@@ -301,16 +303,25 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     event = panel.split("void OnChartEvent(", 1)[1]
     assert "bool pref_closed_candle=true;" in panel
     assert "bool pref_require_filters=true;" in panel
+    assert 'JsonNestedValue(r,"preferences","require_closed_candle")' in prefs
+    assert 'JsonNestedValue(r,"preferences","require_filters")' in prefs
+    assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in prefs
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
+    assert 'RenderLeverageToggle();' in prefs
     assert 'pref_closed_candle?"true":"false"' in save
     assert 'pref_require_filters?"true":"false"' in save
+    assert 'leverage_enabled?"true":"false"' in save
     assert 'if(active_view=="CONFIG"){ pref_closed_candle=!pref_closed_candle;' in event
     assert 'if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters;' in event
     assert 'pref_closed_candle?"Sim":"Não"),20,316,172,30); SaveConfig();' in event
     assert 'pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig();' in event
+    assert 'else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveLeveragePreference(); }' in event
+    save_leverage = panel.split("void SaveLeveragePreference()", 1)[1].split("void SaveConfig()", 1)[0]
+    assert 'string body="{\\"leverage_enabled\\":"+(leverage_enabled?"true":"false")+"}";' in save_leverage
+    assert 'Http("POST","/api/preferences",body,r,code)' in save_leverage
+    assert "SaveConfig();" not in save_leverage
     assert 'selected_mode' in save and 'DEMO' in save
-
 
 def test_mql5_analysis_and_demo_cycle_use_saved_filter_preferences():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
@@ -330,6 +341,7 @@ def test_mql5_config_controls_do_not_overlap_status_text():
     assert "MathRound(cw*0.34)" not in panel
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);' in prefs
+    assert 'RenderLeverageToggle();' in prefs
     assert '20,390,9,' in prefs
     assert '20,478,9,' in prefs
 
@@ -699,3 +711,32 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "int panel_width=350;" in panel
     assert "int panel_height=380;" in panel
+
+
+def test_mql5_leverage_toggle_uses_right_side_lower_module_position():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    helper = panel.split("void RenderLeverageToggle()", 1)[1].split("void RefreshLeveragePreference()", 1)[0]
+    assert ',202,235,177,28);' in helper
+    assert "RenderLeverageToggle();" in panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+
+
+def test_mql5_leverage_toggle_uses_full_compact_content_width():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    button = panel.split("void SetButton(", 1)[1].split("void SetLabel(", 1)[0]
+    assert 'if(name==Obj("LEVERAGE_TOGGLE")){' in button
+    assert "button_x=panel_x+SidebarWidth()+8+8;" in button
+    assert "button_w=MathMax(1,panel_width-SidebarWidth()-32);" in button
+    assert "too narrow on the compact approved panel" in button
+
+
+def test_mql5_leverage_toggle_stays_available_across_panel_sections():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    refresh = panel.split("void RefreshLeveragePreference()", 1)[1].split("void RefreshPreferences()", 1)[0]
+    timer = panel.split("void OnTimer()", 1)[1].split("void OnChartEvent", 1)[0]
+
+    assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
+    assert 'RenderLeverageToggle();' in render
+    assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in refresh
+    assert 'RefreshLeveragePreference();' in timer
+    assert 'if(active_view=="CONFIG") RefreshPreferences();' in timer
