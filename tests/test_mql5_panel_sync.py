@@ -126,7 +126,10 @@ def test_mql5_config_mode_and_leverage_controls_persist_without_real_authority()
     assert 'Obj("LEVERAGE_TOGGLE")' in prefs
     assert '"ALAVANCAGEM: ON"' in prefs
     assert '"ALAVANCAGEM: OFF"' in prefs
-    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' in events
+    assert 'selected_mode="DEMO"; SaveConfig();' in events
+    assert 'selected_mode=(selected_mode=="DEMO"?"REAL":"DEMO")' not in events
+    assert 'selected_mode="DEMO"' in prefs
+    assert '\"selected_mode\":\"DEMO\"' in save
     assert "leverage_enabled=!leverage_enabled" in events
     assert "selected_mode" in save
     assert "leverage_enabled" in save
