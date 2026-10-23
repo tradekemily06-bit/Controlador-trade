@@ -555,6 +555,7 @@ void RenderView(){
    }else if(active_view=="MEMORIA"){
       SetLabel(Obj("SUB"),"Memória • registros e histórico",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"Atualizar memória",20,284,172,30);
+      SetButton(Obj("LEVERAGE_TOGGLE"),pref_leverage_enabled?"DESATIVAR ALAVANCAGEM":"ATIVAR ALAVANCAGEM",202,352,177,28);
       RefreshMemory();
    }else if(active_view=="LAB"){
       SetLabel(Obj("SUB"),"Laboratório • simulação e validação",20,47,9,C'150,165,185');
