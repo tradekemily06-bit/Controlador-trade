@@ -301,8 +301,8 @@ def test_mql5_panel_configuration_toggles_persist_real_preferences():
     event = panel.split("void OnChartEvent(", 1)[1]
     assert "bool pref_closed_candle=true;" in panel
     assert "bool pref_require_filters=true;" in panel
-    assert 'JsonObjectValue(r,"preferences","require_closed_candle")' in prefs
-    assert 'JsonObjectValue(r,"preferences","require_filters")' in prefs
+    assert 'JsonNestedValue(r,"preferences","require_closed_candle")' in prefs
+    assert 'JsonNestedValue(r,"preferences","require_filters")' in prefs
     assert 'JsonNestedValue(r,"preferences","leverage_enabled")' in prefs
     assert 'SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não")' in prefs
     assert 'SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não")' in prefs
