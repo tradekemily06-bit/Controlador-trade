@@ -312,7 +312,6 @@ void LoadPreferencesState(){
    // Load saved toggle state without drawing CONFIG controls over the current view.
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)) return;
-   string mode=JsonObjectValue(r,"preferences","selected_mode");
    string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
    // The MT5 panel stays in DEMO/SIMULACAO; REAL requires a separate validated authorization flow.
    selected_mode="DEMO";
@@ -326,7 +325,6 @@ void RefreshPreferences(){
       SetLabel(Obj("INFO5"),"REAL: BLOQUEADO",20,441,9,C'255,155,155');
       return;
    }
-   string mode=JsonObjectValue(r,"preferences","selected_mode");
    string sym=JsonObjectValue(r,"preferences","default_symbol");
    string tf=JsonObjectValue(r,"preferences","default_timeframe");
    string closed=JsonObjectValue(r,"preferences","require_closed_candle");
