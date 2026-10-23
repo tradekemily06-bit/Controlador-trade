@@ -235,11 +235,11 @@ def test_mql5_panel_toggle_tracks_layout_on_init_and_resize():
     assert visible_timer.lstrip().startswith("RefreshPanelToggle();")
     assert "CHART_WIDTH_IN_PIXELS" in toggle
     assert "CHART_HEIGHT_IN_PIXELS" in toggle
-    assert "int x=MathMax(8,cw-203);" in toggle
+    assert "int x=MathMax(8,MathMin(12,MathMax(8,cw-54)));" in toggle
     assert "int y=MathMax(8,MathMin(ch-58,MathMax(8,ch-54)));" in toggle
-    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+29);' in toggle
-    assert 'ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,x+60);' in toggle
-    assert 'ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,x+60);' in toggle
+    assert 'ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);' in toggle
+    assert 'ObjectSetInteger(0,sig,OBJPROP_XDISTANCE,62);' in toggle
+    assert 'ObjectSetInteger(0,quality,OBJPROP_XDISTANCE,94);' in toggle
     assert 'ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);' in toggle
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in toggle
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in toggle
