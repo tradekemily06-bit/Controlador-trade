@@ -17,6 +17,7 @@ datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
+bool leverage_enabled=false;
 int panel_x=0;
 int panel_y=18;
 int panel_width=350;
