@@ -749,6 +749,16 @@ void RefreshMemory(){
       SetLabel(Obj("INFO5"),"Verifique o serviço e tente atualizar novamente.",20,441,9,C'255,118,118');
    }
 }
+void SaveLeveragePreference(){
+   string body="{\"leverage_enabled\":"+(leverage_enabled?"true":"false")+"}";
+   string r; int code=0;
+   if(Http("POST","/api/preferences",body,r,code)){
+      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+   }else{
+      SetLabel(Obj("INFO1"),"Não foi possível salvar alavancagem",20,(active_view=="CONFIG"?390:361),9,C'255,118,118');
+      RefreshLeveragePreference();
+   }
+}
 void SaveConfig(){
    string sym=ObjectGetString(0,Obj("SYM"),OBJPROP_TEXT);
    string tf=ObjectGetString(0,Obj("TF"),OBJPROP_TEXT);
@@ -993,6 +1003,6 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
-   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveLeveragePreference(); }
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
