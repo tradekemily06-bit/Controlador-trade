@@ -111,6 +111,14 @@ void SetButton(string name,string text,int x,int y,int w,int h){
              name==Obj("V9") || name==Obj("V10"));
    int button_x=ContentX(x), button_y=ContentY(y), button_w=ContentW(w), button_h=SH(h);
    int button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92)));
+   // The leverage preference is a standalone control on the right side of the content area.
+   // Use the available content width instead of the scaled 177px design width, which
+   // becomes too narrow on the compact approved panel and clips the ON/OFF label.
+   if(name==Obj("LEVERAGE_TOGGLE")){
+      button_x=panel_x+SidebarWidth()+8+8;
+      button_w=MathMax(1,panel_width-SidebarWidth()-32);
+      button_font=MathMax(8,(int)MathRound(9*MathMin(panel_sx,0.92)));
+   }
    int index=0;
    if(name==Obj("V1")) index=1;
    else if(name==Obj("V2")) index=2;
