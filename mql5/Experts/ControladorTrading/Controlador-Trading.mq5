@@ -17,6 +17,7 @@ datetime last_analysis_bar=0;
 bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
+bool pref_leverage_enabled=false;
 int panel_x=0;
 int panel_y=18;
 int panel_width=390;
@@ -333,7 +334,6 @@ void Panel(){
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
    SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
    SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
 
    SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
    SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
@@ -434,12 +434,6 @@ color SignalColor(string signal){
    if(normalized=="VENDA" || normalized=="VENDER") return C'255,45,65';
    return C'255,176,0';
 }
-string CurrentLeverageText(){
-   long leverage=AccountInfoInteger(ACCOUNT_LEVERAGE);
-   if(leverage<=0) return "Alavancagem da conta: indisponível";
-   return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);
-}
-
 bool IsValidQualityScore(string score){
    if(score=="") return false;
    for(int i=0;i<StringLen(score);i++){
@@ -483,12 +477,16 @@ void RefreshPreferences(){
    string tf=JsonValue(r,"default_timeframe");
    string closed=JsonValue(r,"require_closed_candle");
    string filters=JsonValue(r,"require_filters");
+   string leverage=JsonValue(r,"leverage_enabled");
    StringToLower(closed);
    StringToLower(filters);
+   StringToLower(leverage);
    if(closed!="") pref_closed_candle=(closed=="true" || closed=="1");
    if(filters!="") pref_require_filters=(filters=="true" || filters=="1");
+   if(leverage!="") pref_leverage_enabled=(leverage=="true" || leverage=="1");
    SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
    SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
+   SetButton(Obj("LEVERAGE_TOGGLE"),"Alavancagem: "+(pref_leverage_enabled?"LIGADA":"DESLIGADA"),202,352,177,28);
    SetLabel(Obj("INFO1"),"Modo: "+(mode==""?"DEMO":mode)+" • simbolo: "+(sym==""?"—":sym),20,390,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Período gráfico: "+(tf==""?"—":tf)+" • confirmação: "+(closed==""?"—":closed),20,412,9,C'205,215,230');
    SetLabel(Obj("INFO3"),"Filtros obrigatórios: "+(filters==""?"—":filters),20,434,9,C'205,215,230');
@@ -600,6 +598,7 @@ void RenderView(){
       SetButton(Obj("ANALYZE"),"Confirmar candle: "+(pref_closed_candle?"Sim":"Não"),20,316,172,30);
       SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30);
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
+      SetButton(Obj("LEVERAGE_TOGGLE"),"Alavancagem: "+(pref_leverage_enabled?"LIGADA":"DESLIGADA"),202,352,177,28);
       RefreshPreferences();
    }
 }
@@ -696,7 +695,7 @@ void SaveConfig(){
    if(sym=="") sym=_Symbol;
    if(tf=="") tf=NormalizeTimeframe(EnumToString((ENUM_TIMEFRAMES)_Period));
    tf=NormalizeTimeframe(tf);
-   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+"}";
+   string body="{\"selected_mode\":\"DEMO\",\"default_symbol\":\""+JsonEscape(sym)+"\",\"default_timeframe\":\""+JsonEscape(tf)+"\",\"require_closed_candle\":"+(pref_closed_candle?"true":"false")+",\"require_filters\":"+(pref_require_filters?"true":"false")+",\"leverage_enabled\":"+(pref_leverage_enabled?"true":"false")+"}";
    string r; int code=0;
    int status_y=(active_view=="CONFIG"?390:361);
    if(Http("POST","/api/preferences",body,r,code))
@@ -871,7 +870,7 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
+
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
@@ -907,6 +906,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE") && active_view=="CONFIG"){ pref_leverage_enabled=!pref_leverage_enabled; SetButton(Obj("LEVERAGE_TOGGLE"),"Alavancagem: "+(pref_leverage_enabled?"LIGADA":"DESLIGADA"),202,352,177,28); SaveConfig(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
