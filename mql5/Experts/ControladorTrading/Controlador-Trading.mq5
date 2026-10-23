@@ -215,7 +215,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,fill,OBJPROP_ZORDER,999);
    if(ObjectFind(0,name)<0) ObjectCreate(0,name,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,name,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+29);
+   ObjectSetInteger(0,name,OBJPROP_XDISTANCE,x+21);
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y+21);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,43);
    ObjectSetInteger(0,name,OBJPROP_STATE,false);
