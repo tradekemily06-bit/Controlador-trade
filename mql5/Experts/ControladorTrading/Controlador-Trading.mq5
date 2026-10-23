@@ -513,6 +513,14 @@ string JsonEscape(string s){
    StringReplace(s,"\"","\\\"");
    return s;
 }
+void RefreshLeveragePreference(){
+   string r; int code=0;
+   if(!Http("GET","/api/preferences","",r,code)) return;
+   string leverage=JsonObjectValue(r,"preferences","leverage_enabled");
+   StringToLower(leverage);
+   if(leverage!="") leverage_enabled=(leverage=="true" || leverage=="1");
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+}
 void RefreshPreferences(){
    string r; int code=0;
    if(!Http("GET","/api/preferences","",r,code)){
@@ -582,8 +590,8 @@ void RefreshLearning(){
 }
 void RenderView(){
    // Remove ações da tela anterior antes de montar a seção atual.
-   string action_names[4]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("LEVERAGE_TOGGLE")};
-   for(int i=0;i<4;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
+   string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};
+   for(int i=0;i<3;i++) if(ObjectFind(0,action_names[i])>=0) ObjectDelete(0,action_names[i]);
    if(active_view=="COCKPIT"){
       SetLabel(Obj("SUB"),"Visão geral do ecossistema",20,47,9,C'150,165,185');
       SetLabel(Obj("INFO1"),"Sistema: "+(runtime_ok?"ONLINE":"INDISPONÍVEL"),20,361,9,runtime_ok?C'88,214,141':C'255,118,118');
@@ -651,6 +659,8 @@ void RenderView(){
       SetButton(Obj("SAVE"),"Salvar configurações",20,352,172,28);
       RefreshPreferences();
    }
+   // Keep the ON/OFF control on the opposite content side in every panel section.
+   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
 }
 void RefreshHealth(){
    string r; int code=0;
@@ -936,6 +946,7 @@ void OnTimer(){
    }
    RefreshPanelLayout();
    RefreshPanelToggle();
+   RefreshLeveragePreference();
    if(active_view=="COCKPIT") { RefreshMarketAssets(); }
    else if(active_view=="CONFIG") RefreshPreferences();
    else if(active_view=="NOTIF") RefreshNotifications();
