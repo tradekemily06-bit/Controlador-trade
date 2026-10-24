@@ -299,14 +299,34 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, {"runtime_reconciliation": payload}, request_id, environ)
         if path == "/api/runtime/cycle" and method == "POST":
             data = _read_json(environ)
+            confirmed = data.get("confirmed", False)
+            filters_ok = data.get("filters_ok", True)
+            if not isinstance(confirmed, bool) or not isinstance(filters_ok, bool):
+                raise ValueError("confirmed e filters_ok devem ser booleanos JSON")
+            preferences = SERVICE.get_preferences()
+            selected_mode = str(preferences.get("selected_mode", "DEMO")).upper()
+            if selected_mode == "REAL":
+                reason = "Modo REAL selecionado; execução REAL permanece bloqueada até validação e autorização explícita."
+            elif preferences.get("leverage_enabled") is True:
+                reason = "Modo de alavancagem selecionado; execução bloqueada até perfil e orçamento de risco validados."
+            else:
+                reason = ""
+            if reason:
+                return _json_response(
+                    start_response,
+                    HTTPStatus.OK,
+                    {"runtime": {"stopped": True, "stop_reason": reason}, "execution_allowed": False},
+                    request_id,
+                    environ,
+                )
             result = SERVICE.run_mt5_cycle(
                 symbol=str(data.get("symbol", "")),
                 timeframe=str(data.get("timeframe", "5m")),
                 limit=int(data.get("limit", 100)),
                 amount=float(data.get("amount", 0.01)),
                 duration_seconds=int(data.get("duration_seconds", 60)),
-                confirmed=bool(data.get("confirmed", False)),
-                filters_ok=bool(data.get("filters_ok", True)),
+                confirmed=confirmed,
+                filters_ok=filters_ok,
                 entry_conditions=tuple(data.get("entry_conditions", ()) or ()),
             )
             cycle = result.cycles[-1]
