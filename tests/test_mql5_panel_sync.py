@@ -589,7 +589,7 @@ def test_mql5_awaiting_signal_is_amber_even_after_panel_redraw():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
     base = panel.split("void Panel()", 1)[1].split("void DeletePanel", 1)[0]
     toggle = panel.split("void RefreshPanelToggle()", 1)[1].split("void TogglePanel()", 1)[0]
-    colors = panel.split("color SignalColor(string signal)", 1)[1].split("string CurrentLeverageText()", 1)[0]
+    colors = panel.split("color SignalColor(string signal)", 1)[1].split("bool IsValidQualityScore(string score)", 1)[0]
     assert 'SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));' in base
     assert 'color compact_color=SignalColor(last_signal);' in toggle
     assert 'return C\'255,176,0\';' in colors
