@@ -222,10 +222,8 @@ void RefreshPanelToggle(){
    string letter=Obj("PANEL_TOGGLE_LETTER");
    if(ObjectFind(0,letter)<0) ObjectCreate(0,letter,OBJ_LABEL,0,0,0);
    ObjectSetInteger(0,letter,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   // Center the C over the same fixed center used by the circular outline and fill.
-   ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_CENTER);
-   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+21);
-   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+21);
+   ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);
+   ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);
    ObjectSetInteger(0,letter,OBJPROP_FONTSIZE,20);
    ObjectSetInteger(0,letter,OBJPROP_COLOR,C'0,215,255');
    ObjectSetString(0,letter,OBJPROP_FONT,"Segoe UI");
@@ -241,7 +239,7 @@ void RefreshPanelToggle(){
    ObjectSetInteger(0,sig,OBJPROP_FONTSIZE,11);
    ObjectSetString(0,sig,OBJPROP_FONT,"Segoe UI");
    string shown_signal=SignalLabel(last_signal);
-   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":"AGUARDAR"));
+   string compact_text=(shown_signal=="Comprar"?"↑  COMPRAR":(shown_signal=="Vender"?"↓  VENDER":(shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL":"AGUARDAR")));
    color compact_color=SignalColor(last_signal);
    ObjectSetInteger(0,sig,OBJPROP_COLOR,compact_color);
    ObjectSetString(0,sig,OBJPROP_TEXT,panel_visible?"":compact_text);
