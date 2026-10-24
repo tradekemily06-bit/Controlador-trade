@@ -541,7 +541,7 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
+                    "actionable": orchestration.quality.actionable and display_decision == "EXECUTAR",
                 },
                 "decision_detail": {
                     "decision": getattr(orchestration.decision.decision, "value", orchestration.decision.decision),
