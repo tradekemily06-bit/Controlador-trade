@@ -699,3 +699,16 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "int panel_width=350;" in panel
     assert "int panel_height=380;" in panel
+
+
+def test_mql5_leverage_preference_is_persisted_and_never_grants_authority():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    preferences = (ROOT / "core" / "ecosystem_preferences.py").read_text(encoding="utf-8")
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);' in panel
+    assert 'SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,248,84,28);' in panel
+    assert 'SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,248,87,28);' in panel
+    assert '\"leverage_enabled\":\"' not in panel
+    assert '\"leverage_enabled\":' in panel
+    assert "leverage_enabled: bool = False" in preferences
+    assert "real_execution_enabled: bool = False" in preferences
+    assert "autonomous_operation_enabled: bool = False" in preferences
