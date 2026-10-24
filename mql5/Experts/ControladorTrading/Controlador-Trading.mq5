@@ -337,10 +337,10 @@ void Panel(){
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
    SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
    SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
-   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",268,148,130,25);
+   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",210,148,100,25);
    if(leverage_menu_open){
-      SetButton(Obj("LEVERAGE_ENABLE"),"ATIVAR",268,176,62,24);
-      SetButton(Obj("LEVERAGE_DISABLE"),"DESATIVAR",334,176,80,24);
+      SetButton(Obj("LEVERAGE_ENABLE"),"ATIVAR",210,176,62,24);
+      SetButton(Obj("LEVERAGE_DISABLE"),"DESATIVAR",276,176,80,24);
    }else{
       if(ObjectFind(0,Obj("LEVERAGE_ENABLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_ENABLE"));
       if(ObjectFind(0,Obj("LEVERAGE_DISABLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_DISABLE"));
