@@ -443,7 +443,7 @@ def test_mql5_notifications_view_only_exposes_notification_refresh():
     assert 'SetButton(Obj("SAVE")' not in notif
     assert 'SetButton(Obj("CLOSE")' not in notif
     render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
-    assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
+    assert 'string action_names[6]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("LEVERAGE_TOGGLE"),Obj("LEVERAGE_ON"),Obj("LEVERAGE_OFF")};' in render
     for control in ("CYCLE", "SAVE", "CLOSE"):
         assert f'Obj("{control}")' in render
 
@@ -699,3 +699,16 @@ def test_mql5_open_panel_is_capped_below_half_chart_height():
     assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "int panel_width=350;" in panel
     assert "int panel_height=380;" in panel
+
+
+def test_mql5_leverage_preference_is_persisted_and_never_grants_authority():
+    panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
+    preferences = (ROOT / "core" / "ecosystem_preferences.py").read_text(encoding="utf-8")
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);' in panel
+    assert 'SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,248,84,28);' in panel
+    assert 'SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,248,87,28);' in panel
+    assert '\"leverage_enabled\":\"' not in panel
+    assert '\\\"leverage_enabled\\":' in panel
+    assert "leverage_enabled: bool = False" in preferences
+    assert "real_execution_enabled: bool = False" in preferences
+    assert "autonomous_operation_enabled: bool = False" in preferences
