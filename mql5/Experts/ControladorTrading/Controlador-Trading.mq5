@@ -18,6 +18,7 @@ bool panel_visible=false;
 bool pref_closed_candle=true;
 bool pref_require_filters=true;
 bool leverage_enabled=false;
+bool leverage_menu_open=false;
 int panel_x=0;
 int panel_y=18;
 int panel_width=350;
@@ -335,8 +336,14 @@ void Panel(){
    SetLabel(Obj("SUB"),"",20,47,9,C'150,165,185');
    SetLabel(Obj("SIGNAL"),last_signal,20,176,10,SignalColor(last_signal));
    SetLabel(Obj("SCORE"),IsValidQualityScore(last_score)?last_score+"%":"",20,206,9,SignalColor(last_signal));
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,175,177,28);
+   SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",268,148,130,25);
+   if(leverage_menu_open){
+      SetButton(Obj("LEVERAGE_ENABLE"),"ATIVAR",268,176,62,24);
+      SetButton(Obj("LEVERAGE_DISABLE"),"DESATIVAR",334,176,80,24);
+   }else{
+      if(ObjectFind(0,Obj("LEVERAGE_ENABLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_ENABLE"));
+      if(ObjectFind(0,Obj("LEVERAGE_DISABLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_DISABLE"));
+   }
 
    SetButton(Obj("V1"),"⌂  COCKPIT",18,67,88,25);
    SetButton(Obj("V2"),"⌁  ANÁLISE",110,67,88,25);
@@ -993,7 +1000,6 @@ void OnTimer(){
       // Refresh from broker once per new chart bar, not every timer tick.
       Analyze(active_view=="COCKPIT" || active_view=="ANALISE");
    }
-   SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9,C'0,215,255');
    double bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
    if(bid>0) SetLabel(Obj("PRICE"),"Preço atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
@@ -1029,7 +1035,9 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       else Analyze();
    }
    else if(sparam==Obj("CYCLE")) { if(active_view=="CONFIG"){ pref_require_filters=!pref_require_filters; SetButton(Obj("CYCLE"),"Filtros obrigatórios: "+(pref_require_filters?"Sim":"Não"),202,316,177,30); SaveConfig(); } else RunCycle(); }
-   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_enabled=!leverage_enabled; SaveConfig(); RefreshPreferences(); }
+   else if(sparam==Obj("LEVERAGE_TOGGLE")) { leverage_menu_open=!leverage_menu_open; RenderView(); }
+   else if(sparam==Obj("LEVERAGE_ENABLE")) { leverage_enabled=true; leverage_menu_open=false; SaveConfig(); RenderView(); RefreshPreferences(); }
+   else if(sparam==Obj("LEVERAGE_DISABLE")) { leverage_enabled=false; leverage_menu_open=false; SaveConfig(); RenderView(); RefreshPreferences(); }
    else if(sparam==Obj("SAVE")) SaveConfig();
    else if(sparam==Obj("CLOSE")) CloseCycle();
 }
