@@ -162,3 +162,58 @@ def test_remote_mutation_is_blocked_without_trusted_identity():
     result = b"".join(application(environ, start_response))
     assert captured["status"].startswith("503")
     assert json.loads(result)["error"] == "trusted remote identity provider is not configured"
+
+
+def test_runtime_cycle_blocks_when_leverage_is_enabled(monkeypatch):
+    import app
+
+    called = []
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": True})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: called.append(kwargs))
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "confirmed": True, "filters_ok": True},
+    )
+
+    assert status.startswith("200")
+    assert data["execution_allowed"] is False
+    assert "alavancagem" in data["runtime"]["stop_reason"].lower()
+    assert called == []
+
+
+def test_runtime_cycle_blocks_real_mode_before_execution(monkeypatch):
+    import app
+
+    called = []
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "REAL", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: called.append(kwargs))
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "confirmed": True, "filters_ok": True},
+    )
+
+    assert status.startswith("200")
+    assert data["execution_allowed"] is False
+    assert "REAL" in data["runtime"]["stop_reason"]
+    assert called == []
+
+
+def test_runtime_cycle_rejects_non_boolean_confirmation(monkeypatch):
+    import app
+
+    called = []
+    monkeypatch.setattr(app.SERVICE, "get_preferences", lambda: {"selected_mode": "DEMO", "leverage_enabled": False})
+    monkeypatch.setattr(app.SERVICE, "run_mt5_cycle", lambda **kwargs: called.append(kwargs))
+
+    status, data = call_app(
+        "/api/runtime/cycle",
+        "POST",
+        {"symbol": "EURUSD", "timeframe": "5m", "confirmed": "false", "filters_ok": True},
+    )
+
+    assert status.startswith("400")
+    assert called == []
