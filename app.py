@@ -448,7 +448,7 @@ def application(environ, start_response):
                 "quality": {
                     "score": orchestration.quality.score,
                     "level": orchestration.quality.level.value,
-                    "actionable": orchestration.quality.actionable and display_decision == "EXECUTAR",
+                    "actionable": orchestration.quality.actionable and decision_value == "EXECUTAR",
                 },
                 "market_context": orchestration.snapshot.market_context.context.value if orchestration.snapshot.market_context else None,
                 "market_data_source": orchestration.market_data.source,
