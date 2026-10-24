@@ -59,6 +59,14 @@ def test_unconfirmed_signal_stays_wait():
 def test_runtime_cycle_exposes_authoritative_cycle_lineage(monkeypatch):
     import app
 
+    # The preferences API test can leave REAL selected in the shared service.
+    # This test exercises cycle lineage, so explicitly isolate it in safe DEMO.
+    monkeypatch.setattr(
+        app.SERVICE,
+        "get_preferences",
+        lambda: {"selected_mode": "DEMO", "leverage_enabled": False},
+    )
+
     execution = SimpleNamespace(accepted=False, status=SimpleNamespace(value="BLOCKED"), message="blocked", external_id=None)
     orchestration = SimpleNamespace(
         decision=SimpleNamespace(decision="AGUARDAR", reason="blocked"),
