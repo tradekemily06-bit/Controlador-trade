@@ -78,12 +78,12 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert '"Controlador Trading"' in panel
     assert '"Ecossistema • MT5 • Demo / simulação"' not in panel
     assert "RUNTIME REAL" not in panel
-    assert "InpPanelWidth = 420" in panel
-    assert "InpPanelHeight = 430" in panel
+    assert "InpPanelWidth = 350" in panel
+    assert "InpPanelHeight = 380" in panel
     assert "panel_x=12;" in panel
     assert "panel_width=MathMax(1,MathMin(InpPanelWidth,cw-24));" in panel
     assert "int available_height=MathMax(1,ch-panel_y-66);" in panel
-    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.72));" in panel
+    assert "int proportional_height=MathMax(1,(int)MathRound(ch*0.48));" in panel
     assert "panel_height=MathMax(1,MathMin(InpPanelHeight,MathMin(available_height,proportional_height)));" in panel
     assert "panel_y=18;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
@@ -595,13 +595,19 @@ def test_mql5_awaiting_signal_is_amber_even_after_panel_redraw():
     assert 'return C\'255,176,0\';' in colors
 
 
-def test_mql5_open_panel_shows_actual_account_leverage_not_a_hardcoded_value():
+def test_mql5_leverage_toggle_is_available_near_simulator_memory_and_statistics():
     panel = (ROOT / "mql5" / "Experts" / "ControladorTrading" / "Controlador-Trading.mq5").read_text(encoding="utf-8")
-    leverage = panel.split("string CurrentLeverageText()", 1)[1].split("bool IsValidQualityScore", 1)[0]
-    assert "AccountInfoInteger(ACCOUNT_LEVERAGE)" in leverage
-    assert 'return "Alavancagem da conta: indisponível";' in leverage
-    assert 'return "Alavancagem da conta: 1:"+IntegerToString((int)leverage);' in leverage
-    assert 'SetLabel(Obj("LEVERAGE"),CurrentLeverageText(),12,58,9' in panel
+    render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
+    events = panel.split("void OnChartEvent(", 1)[1]
+    assert 'SetButton(Obj("LEVERAGE_TOGGLE"),"ALAVANCAGEM",202,248,177,28);' in render
+    assert 'active_view=="SIMULADOR" || active_view=="MEMORIA" || active_view=="ESTATISTICAS"' in render
+    assert 'SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,248,84,28);' in events
+    assert 'SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,248,87,28);' in events
+    assert 'pref_leverage_enabled=true;' in events
+    assert 'pref_leverage_enabled=false;' in events
+    assert '\\\"leverage_enabled\\\":' in panel
+    assert 'Obj("LEVERAGE_TOGGLE")' in events
+    assert 'CurrentLeverageText()' not in panel
 
 
 def test_mql5_collapse_and_init_clean_panel_only_objects_before_rebuilding_compact_view():
