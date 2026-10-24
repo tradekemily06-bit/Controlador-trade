@@ -443,7 +443,7 @@ def test_mql5_notifications_view_only_exposes_notification_refresh():
     assert 'SetButton(Obj("SAVE")' not in notif
     assert 'SetButton(Obj("CLOSE")' not in notif
     render = panel.split("void RenderView()", 1)[1].split("void RefreshHealth()", 1)[0]
-    assert 'string action_names[3]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE")};' in render
+    assert 'string action_names[6]={Obj("CYCLE"),Obj("SAVE"),Obj("CLOSE"),Obj("LEVERAGE_TOGGLE"),Obj("LEVERAGE_ON"),Obj("LEVERAGE_OFF")};' in render
     for control in ("CYCLE", "SAVE", "CLOSE"):
         assert f'Obj("{control}")' in render
 
@@ -708,7 +708,7 @@ def test_mql5_leverage_preference_is_persisted_and_never_grants_authority():
     assert 'SetButton(Obj("LEVERAGE_ON"),"ATIVAR",202,248,84,28);' in panel
     assert 'SetButton(Obj("LEVERAGE_OFF"),"DESATIVAR",292,248,87,28);' in panel
     assert '\"leverage_enabled\":\"' not in panel
-    assert '\"leverage_enabled\":' in panel
+    assert '\\\"leverage_enabled\\":' in panel
     assert "leverage_enabled: bool = False" in preferences
     assert "real_execution_enabled: bool = False" in preferences
     assert "autonomous_operation_enabled: bool = False" in preferences
