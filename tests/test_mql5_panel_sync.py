@@ -88,6 +88,10 @@ def test_mql5_panel_uses_controlador_trading_brand_and_removes_watermark():
     assert "panel_y=18;" in panel
     assert 'ObjectSetString(0,name,OBJPROP_TEXT,"◯");' in panel
     assert 'ObjectSetString(0,letter,OBJPROP_TEXT,"C");' in panel
+    assert 'ObjectSetInteger(0,letter,OBJPROP_XDISTANCE,x+12);' in panel
+    assert 'ObjectSetInteger(0,letter,OBJPROP_YDISTANCE,y+10);' in panel
+    assert 'ObjectSetInteger(0,letter,OBJPROP_ANCHOR,ANCHOR_CENTER);' not in panel
+    assert 'shown_signal=="Análise indisponível"?"ANÁLISE INDISPONÍVEL"' in panel
     assert 'Obj("SIDEBAR_BG")' in panel
     assert 'Obj("CONTENT_BG")' in panel
     assert 'Obj("PANEL_TOGGLE_FILL")' in panel
