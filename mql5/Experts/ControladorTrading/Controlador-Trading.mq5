@@ -107,7 +107,7 @@ void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_FONT,(name==Obj("PANEL_TOGGLE_BG") || name==Obj("PANEL_TOGGLE_RING"))?"Segoe UI Symbol":"Segoe UI");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,clickable);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
