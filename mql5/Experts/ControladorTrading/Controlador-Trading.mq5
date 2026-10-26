@@ -107,6 +107,7 @@ void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,clickable);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,clickable?1000:100);
 }
 string CompactSignalText(string signal){
    if(signal=="COMPRA") return "↑ COMPRAR";
