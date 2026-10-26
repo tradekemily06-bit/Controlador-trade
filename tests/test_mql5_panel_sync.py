@@ -102,6 +102,7 @@ def test_mql5_panel_uses_approved_compact_c_signal_without_watermark():
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●"' in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE"),"C"' in panel
     assert 'SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯"' in panel
+    assert 'sparam==Obj("PANEL_TOGGLE_RING")' in panel
     assert 'n==Obj("PANEL_TOGGLE_RING")' in panel
     assert 'return "↑ COMPRAR";' in panel
     assert 'return "↓ VENDER";' in panel
