@@ -145,7 +145,7 @@ void RefreshPanelToggle(){
    int cy=MathMax(42,ch-46);
    // Match the approved circular C treatment: dark center, cyan ring, cyan letter.
    SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',false);
-   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',true);
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,C'34,211,160',true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+54,cy-8,11,C'233,162,59',false);
    SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+54,cy+8,9,C'233,162,59',false);
@@ -675,7 +675,7 @@ void OnChartEvent(const int id,const long &lparam,const double &dparam,const str
       return;
    }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG") || sparam==Obj("PANEL_TOGGLE_RING")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
