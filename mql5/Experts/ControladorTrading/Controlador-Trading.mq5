@@ -331,7 +331,6 @@ void RefreshPreferences(){
    selected_mode=mode;
    leverage_enabled=(leverage=="true");
    SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,505,177,28);
    SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Alavancagem: "+(leverage_enabled?"ON":"OFF"),20,381,9,leverage_enabled?C'255,209,102':C'205,215,230');
    SetLabel(Obj("INFO3"),"Candle fechado: "+(closed==""?"—":closed)+" • filtros: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
@@ -384,6 +383,7 @@ void RenderView(){
       SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
       RefreshSecondary();
+      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM ON":"ALAVANCAGEM OFF",202,418,177,28);
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura atual do ecossistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
@@ -449,8 +449,8 @@ void RenderView(){
    if(active_view!="CONFIG"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("MODE_TOGGLE"))>=0) ObjectDelete(0,Obj("MODE_TOGGLE"));
-      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_TOGGLE"));
    }
+   if(active_view!="COCKPIT" && ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_TOGGLE"));
 
 }
 void RefreshHealth(){
@@ -501,7 +501,7 @@ void RefreshSecondary(){
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
-      SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate),20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),active_view=="COCKPIT"?"Estatisticas":("Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate)),20,421,9,C'205,215,230');
    }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",20,421,9,C'255,118,118');
 
    if(Http("GET","/api/news?limit=1","",r,code)){
@@ -526,7 +526,7 @@ void SaveConfig(){
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
-      RefreshPreferences();
+      if(active_view=="COCKPIT") RenderView(); else RefreshPreferences();
    }else{
       SetLabel(Obj("INFO4"),"Nao foi possivel salvar configuracoes",20,421,9,C'255,118,118');
    }
