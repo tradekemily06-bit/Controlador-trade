@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 360;
-input int    InpPanelHeight = 440;
+input int    InpPanelWidth = 310;
+input int    InpPanelHeight = 590;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -19,6 +19,7 @@ bool health_ok=false;
 datetime last_analysis_bar=0;
 bool panel_visible=false;
 int panel_x=0;
+int panel_y=18;
 int panel_width=360;
 int panel_height=440;
 string compact_signal="AGUARDAR";
@@ -31,16 +32,19 @@ string Obj(string suffix){ return P+suffix; }
 string PanelVisibilityKey(){ return P+IntegerToString(ChartID())+"_PANEL_VISIBLE"; }
 
 int SX(int x){ return panel_x+(int)MathRound(x*panel_sx); }
-int SY(int y){ return (int)MathRound(18+y*panel_sy); }
+int SY(int y){ return panel_y+(int)MathRound(y*panel_sy); }
 int SW(int w){ return MathMax(1,(int)MathRound(w*panel_sx)); }
 int SH(int h){ return MathMax(1,(int)MathRound(h*panel_sy)); }
 void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   panel_width=MathMin(InpPanelWidth,MathMax(280,(int)MathRound(cw*0.34)));
-   panel_width=MathMin(panel_width,MathMax(220,cw-24));
-   panel_height=MathMin(InpPanelHeight,MathMax(280,(int)MathRound(ch*0.50)));
-   panel_x=MathMax(12,cw-panel_width-12);
+   panel_width=MathMax(240,MathMin(InpPanelWidth,cw-12));
+   // Compact overlay: keep clear of the chart top/MT5 quick-trade area and avoid a half-screen panel.
+   int safe_top=86;
+   int max_overlay_height=MathMax(240,MathMin(590,(int)MathFloor(ch*0.68)));
+   panel_height=MathMax(240,MathMin(MathMin(InpPanelHeight,max_overlay_height),ch-safe_top-12));
+   panel_x=0;
+   panel_y=MathMax(safe_top,(ch-panel_height)/2);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
@@ -71,8 +75,8 @@ void SetButton(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'35,43,58');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'65,78,100');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'16,23,31');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'32,42,53');
    ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI Symbol");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
@@ -87,8 +91,8 @@ void SetEdit(string name,string text,int x,int y,int w,int h){
    ObjectSetInteger(0,name,OBJPROP_YSIZE,SH(h));
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,MathMax(8,(int)MathRound(9*MathMin(panel_sx,panel_sy))));
    ObjectSetInteger(0,name,OBJPROP_COLOR,clrWhite);
-   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'10,14,21');
-   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'55,65,85');
+   ObjectSetInteger(0,name,OBJPROP_BGCOLOR,C'16,23,31');
+   ObjectSetInteger(0,name,OBJPROP_BORDER_COLOR,C'32,42,53');
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_READONLY,false);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
@@ -106,6 +110,7 @@ void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,clickable);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_ZORDER,clickable?1000:100);
 }
 string CompactSignalText(string signal){
    if(signal=="COMPRA") return "↑ COMPRAR";
@@ -114,10 +119,10 @@ string CompactSignalText(string signal){
    return "AGUARDAR";
 }
 color CompactSignalColor(string signal){
-   if(signal=="COMPRA") return C'88,214,141';
-   if(signal=="VENDA") return C'255,118,118';
-   if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,118,118';
-   return C'255,209,102';
+   if(signal=="COMPRA") return C'34,211,160';
+   if(signal=="VENDA") return C'255,95,103';
+   if(signal=="INDISPONIVEL" || signal=="INDISPONÍVEL") return C'255,95,103';
+   return C'233,162,59';
 }
 void UpdateCompactSignal(string signal,string score,bool available=true){
    compact_signal=signal;
@@ -127,17 +132,20 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
       ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
       ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
    }
-   if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0)
+   if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0){
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
+      // A porcentagem acompanha a cor do sinal atual.
+      ObjectSetInteger(0,Obj("COMPACT_SCORE"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
+   }
 }
 void RefreshPanelToggle(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
-   int cx=28;
-   int cy=MathMax(42,ch-46);
-   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'31,43,61',true);
-   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,clrWhite,true);
-   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+82,cy-2,13,C'255,209,102',false);
-   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+220,cy-2,11,C'205,215,230',false);
+   int cx=35;
+   int cy=MathMax(42,ch-42);
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',true);
+   SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,C'34,211,160',true);
+   SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+54,cy-8,11,C'233,162,59',false);
+   SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+54,cy+8,9,C'233,162,59',false);
    UpdateCompactSignal(compact_signal,compact_available?compact_score:"",compact_available);
 }
 void TogglePanel(){
@@ -160,11 +168,11 @@ void Panel(){
    RefreshPanelLayout();
    RefreshPanelToggle();
    ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
-   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,18);
+   ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
    ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
    ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
-   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'9,13,20');
-   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'55,65,85');
+   ObjectSetInteger(0,bg,OBJPROP_BGCOLOR,C'12,18,24');
+   ObjectSetInteger(0,bg,OBJPROP_BORDER_COLOR,C'32,211,160');
    ObjectSetInteger(0,bg,OBJPROP_BACK,false);
    ObjectSetInteger(0,bg,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,bg,OBJPROP_HIDDEN,true);
