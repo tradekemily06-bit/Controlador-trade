@@ -5,8 +5,8 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 310;
-input int    InpPanelHeight = 590;
+input int    InpPanelWidth = 360;
+input int    InpPanelHeight = 440;
 
 string P="CTP_";
 string last_cycle_id="";
@@ -50,6 +50,7 @@ void RefreshPanelLayout(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
@@ -106,7 +107,7 @@ void SetCompactLabel(string name,string text,int x,int y,int size,color clr,bool
    ObjectSetInteger(0,name,OBJPROP_YDISTANCE,y);
    ObjectSetInteger(0,name,OBJPROP_FONTSIZE,size);
    ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
-   ObjectSetString(0,name,OBJPROP_FONT,"Segoe UI");
+   ObjectSetString(0,name,OBJPROP_FONT,(name==Obj("PANEL_TOGGLE_BG") || name==Obj("PANEL_TOGGLE_RING"))?"Segoe UI Symbol":"Segoe UI");
    ObjectSetString(0,name,OBJPROP_TEXT,text);
    ObjectSetInteger(0,name,OBJPROP_SELECTABLE,clickable);
    ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
@@ -141,8 +142,10 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
 void RefreshPanelToggle(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int cx=35;
-   int cy=MathMax(42,ch-42);
-   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',true);
+   int cy=MathMax(42,ch-46);
+   // Match the approved circular C treatment: dark center, cyan ring, cyan letter.
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',true);
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,C'34,211,160',true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+54,cy-8,11,C'233,162,59',false);
    SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+54,cy+8,9,C'233,162,59',false);
@@ -157,8 +160,14 @@ void TogglePanel(){
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   panel_visible=false;
-   GlobalVariableSet(PanelVisibilityKey(),0.0);
+   string key=PanelVisibilityKey();
+   // Preserve the user's last open/closed choice across EA restarts.
+   // A first installation defaults safely to closed.
+   if(GlobalVariableCheck(key)) panel_visible=(GlobalVariableGet(key)>0.5);
+   else {
+      panel_visible=false;
+      GlobalVariableSet(key,0.0);
+   }
    RefreshPanelToggle();
 }
 void Panel(){
@@ -220,7 +229,7 @@ void DeletePanel(bool preserveCompact=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
+      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("PANEL_TOGGLE_RING") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveCompact) RefreshPanelToggle();
@@ -324,7 +333,6 @@ void RefreshPreferences(){
    selected_mode=mode;
    leverage_enabled=(leverage=="true");
    SetButton(Obj("MODE_TOGGLE"),selected_mode=="REAL"?"MODO: REAL":"MODO: DEMO",20,465,172,28);
-   SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM: ON":"ALAVANCAGEM: OFF",202,505,177,28);
    SetLabel(Obj("INFO1"),"Modo selecionado: "+selected_mode,20,361,9,C'205,215,230');
    SetLabel(Obj("INFO2"),"Alavancagem: "+(leverage_enabled?"ON":"OFF"),20,381,9,leverage_enabled?C'255,209,102':C'205,215,230');
    SetLabel(Obj("INFO3"),"Candle fechado: "+(closed==""?"—":closed)+" • filtros: "+(filters==""?"—":filters),20,401,9,C'205,215,230');
@@ -377,6 +385,7 @@ void RenderView(){
       SetLabel(Obj("PRICE"),"Preco atual: —",20,501,9,C'190,200,215');
       SetLabel(Obj("SAFE"),"REAL: BLOQUEADO • barreiras mantidas",20,520,8,C'255,155,155');
       RefreshSecondary();
+      SetButton(Obj("LEVERAGE_TOGGLE"),leverage_enabled?"ALAVANCAGEM ON":"ALAVANCAGEM OFF",202,418,177,28);
    }else if(active_view=="ANALISE"){
       SetLabel(Obj("SUB"),"ANALISE • leitura atual do ecossistema",20,47,9,C'150,165,185');
       SetButton(Obj("ANALYZE"),"ATUALIZAR LEITURA",20,284,172,30);
@@ -442,8 +451,8 @@ void RenderView(){
    if(active_view!="CONFIG"){
       if(ObjectFind(0,Obj("SAVE"))>=0) ObjectDelete(0,Obj("SAVE"));
       if(ObjectFind(0,Obj("MODE_TOGGLE"))>=0) ObjectDelete(0,Obj("MODE_TOGGLE"));
-      if(ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_TOGGLE"));
    }
+   if(active_view!="COCKPIT" && ObjectFind(0,Obj("LEVERAGE_TOGGLE"))>=0) ObjectDelete(0,Obj("LEVERAGE_TOGGLE"));
 
 }
 void RefreshHealth(){
@@ -494,7 +503,7 @@ void RefreshSecondary(){
    if(Http("GET","/api/statistics","",r,code)){
       string total=JsonValue(r,"total");
       string rate=JsonValue(r,"win_rate");
-      SetLabel(Obj("INFO4"),"Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate),20,421,9,C'205,215,230');
+      SetLabel(Obj("INFO4"),active_view=="COCKPIT"?"Estatisticas":("Estatisticas: "+(total==""?"0":total)+" decisoes • Win rate "+(rate==""?"—":rate)),20,421,9,C'205,215,230');
    }else SetLabel(Obj("INFO4"),"Estatisticas: indisponiveis",20,421,9,C'255,118,118');
 
    if(Http("GET","/api/news?limit=1","",r,code)){
@@ -519,7 +528,7 @@ void SaveConfig(){
    string r; int code=0;
    if(Http("POST","/api/preferences",body,r,code)){
       SetLabel(Obj("INFO4"),"Configuracoes sincronizadas",20,421,9,C'88,214,141');
-      RefreshPreferences();
+      if(active_view=="COCKPIT") RenderView(); else RefreshPreferences();
    }else{
       SetLabel(Obj("INFO4"),"Nao foi possivel salvar configuracoes",20,421,9,C'255,118,118');
    }
@@ -655,8 +664,18 @@ void OnTimer(){
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
+   if(id==CHARTEVENT_CHART_CHANGE){
+      RefreshPanelLayout();
+      RefreshPanelToggle();
+      if(panel_visible){
+         Panel();
+         RenderView();
+      }
+      ChartRedraw(0);
+      return;
+   }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
-   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
+   if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG") || sparam==Obj("PANEL_TOGGLE_RING")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
    else if(sparam==Obj("V2")) { active_view="ANALISE"; RenderView(); }
    else if(sparam==Obj("V3")) { active_view="MEMORIA"; RenderView(); }
