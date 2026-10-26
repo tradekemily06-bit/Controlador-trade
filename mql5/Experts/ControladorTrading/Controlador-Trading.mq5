@@ -5,7 +5,7 @@
 
 input string InpRuntimeUrl = "http://127.0.0.1:8000";
 input int    InpRefreshSeconds = 3;
-input int    InpPanelWidth = 310;
+input int    InpPanelWidth = 360;
 input int    InpPanelHeight = 590;
 
 string P="CTP_";
@@ -142,7 +142,7 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
 void RefreshPanelToggle(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int cx=35;
-   int cy=MathMax(42,ch-42);
+   int cy=MathMax(42,ch-46);
    SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',true);
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,C'34,211,160',true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+54,cy-8,11,C'233,162,59',false);
