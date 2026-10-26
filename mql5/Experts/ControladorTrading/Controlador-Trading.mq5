@@ -39,9 +39,12 @@ void RefreshPanelLayout(){
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    panel_width=MathMax(240,MathMin(InpPanelWidth,cw-12));
-   panel_height=MathMax(300,MathMin(InpPanelHeight,ch-28));
+   // Compact overlay: keep clear of the chart top/MT5 quick-trade area and avoid a half-screen panel.
+   int safe_top=86;
+   int max_overlay_height=MathMax(240,MathMin(590,(int)MathFloor(ch*0.68)));
+   panel_height=MathMax(240,MathMin(MathMin(InpPanelHeight,max_overlay_height),ch-safe_top-12));
    panel_x=0;
-   panel_y=MathMax(8,(ch-panel_height)/2);
+   panel_y=MathMax(safe_top,(ch-panel_height)/2);
    panel_sx=(double)panel_width/430.0;
    panel_sy=(double)panel_height/620.0;
    string bg=Obj("BG");
