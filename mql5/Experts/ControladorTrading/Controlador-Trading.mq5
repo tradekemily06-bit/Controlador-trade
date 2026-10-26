@@ -143,7 +143,9 @@ void RefreshPanelToggle(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
    int cx=35;
    int cy=MathMax(42,ch-46);
-   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',true);
+   // Match the approved circular C treatment: dark center, cyan ring, cyan letter.
+   SetCompactLabel(Obj("PANEL_TOGGLE_BG"),"●",cx,cy,38,C'14,23,28',false);
+   SetCompactLabel(Obj("PANEL_TOGGLE_RING"),"◯",cx,cy,43,C'0,215,255',false);
    SetCompactLabel(Obj("PANEL_TOGGLE"),"C",cx,cy-1,16,C'34,211,160',true);
    SetCompactLabel(Obj("COMPACT_SIGNAL"),"AGUARDAR",cx+54,cy-8,11,C'233,162,59',false);
    SetCompactLabel(Obj("COMPACT_SCORE"),"—%",cx+54,cy+8,9,C'233,162,59',false);
@@ -227,7 +229,7 @@ void DeletePanel(bool preserveCompact=false){
    for(int i=total-1;i>=0;i--){
       string n=ObjectName(0,i,-1,-1);
       if(StringFind(n,P)!=0) continue;
-      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
+      if(preserveCompact && (n==Obj("PANEL_TOGGLE") || n==Obj("PANEL_TOGGLE_BG") || n==Obj("PANEL_TOGGLE_RING") || n==Obj("COMPACT_SIGNAL") || n==Obj("COMPACT_SCORE"))) continue;
       ObjectDelete(0,n);
    }
    if(preserveCompact) RefreshPanelToggle();
