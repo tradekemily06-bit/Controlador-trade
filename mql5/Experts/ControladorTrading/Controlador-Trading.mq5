@@ -132,8 +132,11 @@ void UpdateCompactSignal(string signal,string score,bool available=true){
       ObjectSetString(0,Obj("COMPACT_SIGNAL"),OBJPROP_TEXT,available?CompactSignalText(signal):"INDISPONÍVEL");
       ObjectSetInteger(0,Obj("COMPACT_SIGNAL"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
    }
-   if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0)
+   if(ObjectFind(0,Obj("COMPACT_SCORE"))>=0){
       ObjectSetString(0,Obj("COMPACT_SCORE"),OBJPROP_TEXT,compact_score);
+      // A porcentagem acompanha a cor do sinal atual.
+      ObjectSetInteger(0,Obj("COMPACT_SCORE"),OBJPROP_COLOR,available?CompactSignalColor(signal):C'255,118,118');
+   }
 }
 void RefreshPanelToggle(){
    int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
