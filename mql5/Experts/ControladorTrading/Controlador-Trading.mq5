@@ -50,6 +50,7 @@ void RefreshPanelLayout(){
    string bg=Obj("BG");
    if(ObjectFind(0,bg)>=0){
       ObjectSetInteger(0,bg,OBJPROP_XDISTANCE,panel_x);
+      ObjectSetInteger(0,bg,OBJPROP_YDISTANCE,panel_y);
       ObjectSetInteger(0,bg,OBJPROP_XSIZE,panel_width);
       ObjectSetInteger(0,bg,OBJPROP_YSIZE,panel_height);
    }
@@ -157,8 +158,14 @@ void TogglePanel(){
    ChartRedraw();
 }
 void LoadPanelVisibility(){
-   panel_visible=false;
-   GlobalVariableSet(PanelVisibilityKey(),0.0);
+   string key=PanelVisibilityKey();
+   // Preserve the user's last open/closed choice across EA restarts.
+   // A first installation defaults safely to closed.
+   if(GlobalVariableCheck(key)) panel_visible=(GlobalVariableGet(key)>0.5);
+   else {
+      panel_visible=false;
+      GlobalVariableSet(key,0.0);
+   }
    RefreshPanelToggle();
 }
 void Panel(){
@@ -655,6 +662,16 @@ void OnTimer(){
    if(bid>0) SetLabel(Obj("PRICE"),"Preco atual "+_Symbol+": "+DoubleToString(bid,_Digits),20,501,9,C'190,200,215');
 }
 void OnChartEvent(const int id,const long &lparam,const double &dparam,const string &sparam){
+   if(id==CHARTEVENT_CHART_CHANGE){
+      RefreshPanelLayout();
+      RefreshPanelToggle();
+      if(panel_visible){
+         Panel();
+         RenderView();
+      }
+      ChartRedraw(0);
+      return;
+   }
    if(id!=CHARTEVENT_OBJECT_CLICK) return;
    if(sparam==Obj("PANEL_TOGGLE") || sparam==Obj("PANEL_TOGGLE_BG")) { TogglePanel(); return; }
    if(sparam==Obj("V1")) { active_view="COCKPIT"; RenderView(); }
