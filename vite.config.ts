@@ -4,7 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import siteConfiguration from './.figma/make/site.json'
+// Contingência explícita: o arquivo original .figma/make/site.json não está nesta branch.
+// As configurações de metadados usam os padrões definidos em figmaSiteConfiguration.
+const siteConfiguration = {}
 
 
 // Vite config — https://vitejs.dev/config/
