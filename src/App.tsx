@@ -50,7 +50,7 @@ function Signal({
         {direction === "up" ? "↑" : direction === "down" ? "↓" : "●"}
       </span>
       <span>{label}</span>
-      {direction !== "wait" && percentage !== undefined && (
+      {percentage !== undefined && (
         <strong>{percentage}%</strong>
       )}
     </div>
@@ -125,7 +125,6 @@ export default function App() {
             symbol: String(prefs.default_symbol ?? "EURUSD"),
             timeframe: String(prefs.default_timeframe ?? "5m"),
             confirmed: false,
-            filters_ok: true,
           }),
         });
         if (!response.ok) throw new Error("Análise DEMO indisponível");
