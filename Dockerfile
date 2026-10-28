@@ -1,4 +1,14 @@
-FROM docker.io/library/python:3.12-slim
+FROM docker.io/library/node:22-alpine AS figma-build
+
+WORKDIR /app
+RUN corepack enable
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+ENV FIGMA_PUBLIC_URL=/painel
+RUN pnpm run build
+
+FROM docker.io/library/python:3.12-slim AS runtime
 
 WORKDIR /app
 
@@ -7,6 +17,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY --from=figma-build /app/dist ./figma-panel
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
