@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import mimetypes
 import os
 from dataclasses import asdict
 from http import HTTPStatus
@@ -23,6 +24,7 @@ from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
+FIGMA_PANEL_DIR = ROOT / "figma-panel"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
