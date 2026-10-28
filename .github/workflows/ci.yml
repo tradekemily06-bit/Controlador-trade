@@ -40,7 +40,7 @@ jobs:
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
 
-      - name: Smoke test production container health
+      - name: Smoke test production container and Figma panel route
         shell: bash
         run: |
           set -euo pipefail
@@ -52,12 +52,14 @@ jobs:
 
           docker run -d --name controlador-trade-ci -p 7860:7860 controlador-trade:ci
 
+          ready=false
           for attempt in {1..60}; do
             health_status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}starting{{end}}' controlador-trade-ci 2>/dev/null || true)"
             case "$health_status" in
               healthy)
                 echo "Container health endpoint is ready."
-                exit 0
+                ready=true
+                break
                 ;;
               unhealthy)
                 echo "Container healthcheck reported unhealthy; retrying while the startup window remains."
@@ -66,8 +68,36 @@ jobs:
             sleep 2
           done
 
-          echo "Container health endpoint did not become healthy within 120 seconds."
-          exit 1
+          if [ "$ready" != true ]; then
+            echo "Container health endpoint did not become healthy within 120 seconds."
+            exit 1
+          fi
+
+          python - <<'PY'
+          import re
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+
+          base = "http://127.0.0.1:7860"
+
+          def get(path):
+              with urlopen(base + path, timeout=10) as response:
+                  body = response.read()
+                  print(f"HTTP {response.status}: {path} ({len(body)} bytes)")
+                  return body
+
+          html = get("/painel/").decode("utf-8")
+          assets = re.findall(r'''(?:src|href)="([^"]*/assets/[^"]+)"''', html)
+          if not assets:
+              raise SystemExit("Figma panel HTML loaded, but no built /assets/ references were found.")
+          for asset in assets:
+              if not asset.startswith("/"):
+                  asset = "/" + asset
+              get(asset)
+
+          get("/api/health")
+          print("Figma panel route, built assets, and ecosystem health endpoint passed.")
+          PY
 
   windows-powershell-validation:
     runs-on: windows-latest

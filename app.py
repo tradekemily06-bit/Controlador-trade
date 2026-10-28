@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import mimetypes
 import os
 from dataclasses import asdict
 from http import HTTPStatus
@@ -23,6 +24,7 @@ from security_audit import AUDIT
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
+FIGMA_PANEL_DIR = ROOT / "figma-panel"
 RUNTIME_DIR = Path(os.environ.get("CONTROLADOR_RUNTIME_DIR", str(ROOT / ".runtime")))
 EXECUTION_PROVIDER = os.environ.get("CONTROLADOR_EXECUTION_PROVIDER", "paper")
 EXECUTION_SYMBOL = os.environ.get("CONTROLADOR_EXECUTION_SYMBOL") or None
@@ -634,6 +636,17 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
+        if method == "GET" and path in {"/painel", "/painel/"}:
+            panel_index = FIGMA_PANEL_DIR / "index.html"
+            if panel_index.is_file():
+                return _file_response(start_response, panel_index, "text/html; charset=utf-8", request_id, environ)
+        if method == "GET" and path.startswith("/painel/"):
+            relative_asset = path.removeprefix("/painel/").lstrip("/")
+            panel_root = FIGMA_PANEL_DIR.resolve()
+            panel_asset = (panel_root / relative_asset).resolve()
+            if panel_asset.is_relative_to(panel_root) and panel_asset.is_file():
+                content_type = mimetypes.guess_type(panel_asset.name)[0] or "application/octet-stream"
+                return _file_response(start_response, panel_asset, content_type, request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
