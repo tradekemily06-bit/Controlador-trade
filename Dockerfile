@@ -21,6 +21,7 @@ COPY --from=figma-build /app/dist ./figma-panel
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=7860
+ENV CONTROLADOR_BIND_HOST=0.0.0.0
 
 RUN addgroup --system app && adduser --system --ingroup app app \
     && chown -R app:app /app
