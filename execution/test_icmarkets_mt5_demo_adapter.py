@@ -242,3 +242,16 @@ def test_real_adapter_never_accepts_demo_request():
     result = adapter.execute(request(mode=ExecutionMode.DEMO))
     assert result.accepted is False
     assert mt5.calls == []
+
+
+def test_closed_deal_preview_returns_raw_components_without_booking():
+    mt5 = FakeMT5()
+    mt5.account_info = lambda: SimpleNamespace(trade_mode=mt5.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
+    mt5.history_deals_get = lambda *args, **kwargs: (
+        SimpleNamespace(entry=mt5.DEAL_ENTRY_OUT, ticket=789, position_id=456, symbol="EURUSD", volume=0.1, profit=10.0, commission=-1.0, swap=-0.5, fee=0.0, time=1793318400),
+    )
+    preview = ICMarketsMT5DemoAdapter(mt5_module=mt5).read_closed_deal_candidates()
+    assert preview["count"] == 1
+    assert preview["candidates"][0]["net_result_account_currency"] == 8.5
+    assert preview["candidates"][0]["account_currency"] == "USD"
+    assert preview["auto_registered"] is False

@@ -167,6 +167,61 @@ class ICMarketsMT5DemoAdapter:
         finally:
             mt5.shutdown()
 
+    def read_closed_deal_candidates(self, lookback_days: int = 30) -> dict[str, Any]:
+        """Return raw DEMO closing deals for human fiscal classification; never books them."""
+        if not isinstance(lookback_days, int) or isinstance(lookback_days, bool) or not 1 <= lookback_days <= 365:
+            raise ValueError("lookback_days deve estar entre 1 e 365")
+        mt5 = self._module()
+        if not mt5.initialize():
+            raise MT5AdapterError(f"MT5 indisponível: {self._last_error(mt5)}")
+        try:
+            account = mt5.account_info()
+            if account is None or not self._is_demo_account(account, mt5):
+                raise MT5AdapterError("conta MT5 não confirmada como DEMO; consulta fiscal bloqueada.")
+            end = datetime.now(timezone.utc)
+            start = end - __import__("datetime").timedelta(days=lookback_days)
+            history_fn = getattr(mt5, "history_deals_get", None)
+            if not callable(history_fn):
+                raise MT5AdapterError("histórico de negócios MT5 indisponível.")
+            deals = history_fn(start, end)
+            if deals is None:
+                raise MT5AdapterError("MT5 não retornou histórico de negócios.")
+            out = getattr(mt5, "DEAL_ENTRY_OUT", None)
+            out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
+            candidates = []
+            for deal in deals:
+                if out is not None and getattr(deal, "entry", None) not in (out, out_by):
+                    continue
+                profit = float(getattr(deal, "profit", 0.0) or 0.0)
+                commission = float(getattr(deal, "commission", 0.0) or 0.0)
+                swap = float(getattr(deal, "swap", 0.0) or 0.0)
+                fee = float(getattr(deal, "fee", 0.0) or 0.0)
+                timestamp = getattr(deal, "time", None)
+                candidates.append({
+                    "ticket": str(getattr(deal, "ticket", "")),
+                    "position_id": str(getattr(deal, "position_id", "")),
+                    "symbol": str(getattr(deal, "symbol", "")),
+                    "volume": float(getattr(deal, "volume", 0.0) or 0.0),
+                    "profit": profit,
+                    "commission": commission,
+                    "swap": swap,
+                    "fee": fee,
+                    "net_result_account_currency": round(profit + commission + swap + fee, 8),
+                    "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
+                    "occurred_at_utc": datetime.fromtimestamp(timestamp, timezone.utc).isoformat() if timestamp else None,
+                })
+            return {
+                "source": "IC Markets MT5 DEMO",
+                "account_currency": str(getattr(account, "currency", "") or "UNKNOWN"),
+                "lookback_days": lookback_days,
+                "count": len(candidates),
+                "candidates": candidates,
+                "auto_registered": False,
+                "notice": "Valores brutos na moeda da conta. Exigem classificação, conferência de custos e conversão para BRL; nenhum lançamento foi criado.",
+            }
+        finally:
+            mt5.shutdown()
+
     def query_order(self, external_id: str) -> ExternalOrderObservation:
         """Read external DEMO order/deal status for P121; never resubmits."""
         if not isinstance(external_id, str) or not external_id.strip():

@@ -256,6 +256,13 @@ def application(environ, start_response):
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
+            header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+            identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
+            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+            if not identity and (remote_required or str(environ.get("REMOTE_ADDR") or "") not in {"127.0.0.1", "::1"}):
+                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Identidade autenticada necessária."}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, SERVICE.mt5_operational_adapter.read_closed_deal_candidates(), request_id, environ)
         if path == "/api/fiscal-reserve" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, FISCAL_RESERVE.summary(), request_id, environ)
         if path == "/api/fiscal-reserve/rates" and method == "POST":
