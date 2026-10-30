@@ -20,6 +20,7 @@ from integration.ecosystem_configuration_runtime import ConfiguredEcosystemServi
 from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
+from finance.fiscal_reserve import FiscalReserve
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -36,6 +37,8 @@ SERVICE = ConfiguredEcosystemService(
 )
 REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_DIR, symbol=EXECUTION_SYMBOL)
 ONBOARDING = EcosystemOnboarding()
+FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
+FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -253,6 +256,18 @@ def application(environ, start_response):
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
+        if path == "/api/fiscal-reserve" and method == "GET":
+            return _json_response(start_response, HTTPStatus.OK, FISCAL_RESERVE.summary(), request_id, environ)
+        if path == "/api/fiscal-reserve/rates" and method == "POST":
+            data = _read_json(environ)
+            if "rates" in data:
+                settings = FISCAL_RESERVE.update_rates(data["rates"])
+            else:
+                settings = FISCAL_RESERVE.update_rate(str(data.get("category", "")), data.get("rate"))
+            return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
+        if path == "/api/fiscal-reserve/results" and method == "POST":
+            entry = FISCAL_RESERVE.record_realized_result(_read_json(environ))
+            return _json_response(start_response, HTTPStatus.OK, {"entry": entry, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()
             return _json_response(start_response, HTTPStatus.OK, {"guide": {"guide_id": guide.guide_id, "title": guide.title, "steps": [{"step_id": step.step_id, "title": step.title, "purpose": step.purpose, "location": step.location.value, "action_hint": step.action_hint, "technical_details_hidden": step.technical_details_hidden} for step in guide.steps], "completion_message": guide.completion_message, "execution_authorized": guide.execution_authorized}}, request_id, environ)
@@ -634,6 +649,8 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/financeiro/reserva-fiscal" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "fiscal-reserve.html", "text/html; charset=utf-8", request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
