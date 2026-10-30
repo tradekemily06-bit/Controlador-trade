@@ -142,9 +142,11 @@ class FiscalReserve:
         reference = str(payload.get("reference") or "").strip()
         if not reference:
             raise ValueError("reference é obrigatório para rastreabilidade")
-        occurred_on = str(payload.get("occurred_on") or date.today().isoformat())
+        occurred_on = str(payload.get("occurred_on") or datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat())
         try:
-            date.fromisoformat(occurred_on)
+            parsed_date = datetime.strptime(occurred_on, "%Y-%m-%d").date()
+            if parsed_date.isoformat() != occurred_on:
+                raise ValueError
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         notes = str(payload.get("notes") or "").strip()[:1000]
