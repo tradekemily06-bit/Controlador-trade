@@ -9,10 +9,14 @@ class S:
  def statistics(self): return {"total_decisions":0}
  def memory_view(self,limit=5): return []
 class F:
- def summary(self): return {"total_reserved_brl":0}
+ def summary(self):
+  return {"total_reserved_brl":0,"as_of":"2026-10-30","periods":{"day":{},"week":{},"month":{},"year":{}}}
 class C:
+ calls=[]
  def __init__(self): self.chat=self; self.completions=self
- def create(self,**kw): return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Resposta teste"))])
+ def create(self,**kw):
+  self.calls.append(kw)
+  return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="Resposta teste"))])
 
 def test_chat_is_persistent_read_only_and_owner_scoped(tmp_path):
  store=AssistantConversationStore(tmp_path/"assistant.sqlite")
@@ -20,6 +24,10 @@ def test_chat_is_persistent_read_only_and_owner_scoped(tmp_path):
  result=a.ask("one@example.com","Como está o sistema?")
  assert result["read_only"] and result["execution_allowed"] is False
  assert [m["role"] for m in store.history("one@example.com",result["conversation_id"])]==["user","assistant"]
+ system_message=C.calls[-1]["messages"][0]["content"]
+ assert "dia, semana, mês e ano" in system_message
+ assert all(f'"{period}"' in system_message for period in ("day","week","month","year"))
+ assert "não significa que foram lançados" in system_message
  try: store.history("two@example.com",result["conversation_id"])
  except PermissionError: pass
  else: assert False
