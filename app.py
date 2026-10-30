@@ -278,12 +278,11 @@ def application(environ, start_response):
             if path == "/api/assistant/chat" and method == "POST":
                 data = _read_json(environ)
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), data.get("conversation_id")), request_id, environ)
+        if path.startswith("/api/fiscal-reserve"):
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
-            header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
-            identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
-            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
-            if not identity and (remote_required or str(environ.get("REMOTE_ADDR") or "") not in {"127.0.0.1", "::1"}):
-                return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Identidade autenticada necessária."}, request_id, environ)
             try:
                 preview = SERVICE.mt5_operational_adapter.read_closed_deal_candidates()
             except RuntimeError as exc:
