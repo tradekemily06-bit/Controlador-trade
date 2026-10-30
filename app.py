@@ -260,7 +260,10 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.OK, FISCAL_RESERVE.summary(), request_id, environ)
         if path == "/api/fiscal-reserve/rates" and method == "POST":
             data = _read_json(environ)
-            settings = FISCAL_RESERVE.update_rate(str(data.get("category", "")), data.get("rate"))
+            if "rates" in data:
+                settings = FISCAL_RESERVE.update_rates(data["rates"])
+            else:
+                settings = FISCAL_RESERVE.update_rate(str(data.get("category", "")), data.get("rate"))
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
             entry = FISCAL_RESERVE.record_realized_result(_read_json(environ))
