@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_RATES = {
@@ -185,7 +186,7 @@ class FiscalReserve:
 
     def summary(self, as_of: date | None = None) -> dict[str, Any]:
         rates = self.settings()
-        reference_day = as_of or date.today()
+        reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())
         periods = {
             "day": (reference_day, reference_day),
