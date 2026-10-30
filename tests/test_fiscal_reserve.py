@@ -114,3 +114,32 @@ def test_both_rates_update_together_and_invalid_set_changes_nothing(tmp_path):
         "BR_DAY_TRADE": 19.0,
         "FOREIGN_FINANCIAL_ASSET": 14.0,
     }
+
+
+
+def test_summary_exposes_day_week_month_and_year_totals(tmp_path):
+    from datetime import date
+
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    records = [
+        ("2026-10-30", 100, "TODAY"),
+        ("2026-10-28", 200, "THIS-WEEK"),
+        ("2026-10-01", 300, "THIS-MONTH"),
+        ("2026-09-30", 400, "THIS-YEAR"),
+        ("2025-12-31", 500, "LAST-YEAR"),
+    ]
+    for occurred_on, amount, reference in records:
+        reserve.record_realized_result({
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": amount,
+            "reference": reference,
+            "occurred_on": occurred_on,
+        })
+
+    summary = reserve.summary(as_of=date(2026, 10, 30))
+    assert set(summary["periods"]) == {"day", "week", "month", "year"}
+    assert summary["periods"]["day"]["realized_result_brl"] == 100
+    assert summary["periods"]["day"]["reserve_amount_brl"] == 20
+    assert summary["periods"]["week"]["realized_result_brl"] == 300
+    assert summary["periods"]["month"]["realized_result_brl"] == 600
+    assert summary["periods"]["year"]["realized_result_brl"] == 1000
