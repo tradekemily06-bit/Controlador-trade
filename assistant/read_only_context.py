@@ -23,6 +23,12 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
     observability = service.operational_observability()
     statistics = service.statistics()
     fiscal = fiscal_reserve.summary()
+    # The assistant needs aggregates, not transaction-level references or notes.
+    fiscal_context = {
+        key: fiscal[key]
+        for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations")
+        if key in fiscal
+    }
     recent_decisions = service.memory_view(limit=5)
 
     return {
@@ -45,7 +51,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
         "risk": risk,
         "operations": observability,
         "statistics": statistics,
-        "fiscal_reserve": fiscal,
+        "fiscal_reserve": fiscal_context,
         "recent_decisions": recent_decisions,
         "assistant_safety": {
             "read_only": True,
