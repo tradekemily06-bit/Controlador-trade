@@ -77,3 +77,40 @@ def test_reference_is_required_and_percent_is_bounded(tmp_path):
         assert "entre 0 e 100" in str(exc)
     else:
         raise AssertionError("rate above 100 must be rejected")
+
+
+
+def test_duplicate_reference_is_rejected_without_double_reserving(tmp_path):
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    payload = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000,
+        "reference": "CYCLE-UNIQUE-001",
+    }
+    reserve.record_realized_result(payload)
+    try:
+        reserve.record_realized_result(payload)
+    except ValueError as exc:
+        assert "já foi registrada" in str(exc)
+    else:
+        raise AssertionError("duplicate reference must not be counted twice")
+    assert reserve.summary()["total_reserved_brl"] == 200
+
+
+def test_both_rates_update_together_and_invalid_set_changes_nothing(tmp_path):
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    reserve.update_rates({"BR_DAY_TRADE": 19, "FOREIGN_FINANCIAL_ASSET": 14})
+    assert reserve.settings() == {
+        "BR_DAY_TRADE": 19.0,
+        "FOREIGN_FINANCIAL_ASSET": 14.0,
+    }
+    try:
+        reserve.update_rates({"BR_DAY_TRADE": 101, "FOREIGN_FINANCIAL_ASSET": 13})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid rate set must be rejected")
+    assert reserve.settings() == {
+        "BR_DAY_TRADE": 19.0,
+        "FOREIGN_FINANCIAL_ASSET": 14.0,
+    }
