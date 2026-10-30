@@ -188,9 +188,14 @@ class ICMarketsMT5DemoAdapter:
                 raise MT5AdapterError("MT5 não retornou histórico de negócios.")
             out = getattr(mt5, "DEAL_ENTRY_OUT", None)
             out_by = getattr(mt5, "DEAL_ENTRY_OUT_BY", None)
+            if out is None:
+                raise MT5AdapterError("MT5 não informou o tipo de negócio de encerramento; consulta bloqueada.")
+            closing_entries = {out}
+            if out_by is not None:
+                closing_entries.add(out_by)
             candidates = []
             for deal in deals:
-                if out is not None and getattr(deal, "entry", None) not in (out, out_by):
+                if getattr(deal, "entry", None) not in closing_entries:
                     continue
                 profit = float(getattr(deal, "profit", 0.0) or 0.0)
                 commission = float(getattr(deal, "commission", 0.0) or 0.0)
