@@ -143,3 +143,19 @@ def test_summary_exposes_day_week_month_and_year_totals(tmp_path):
     assert summary["periods"]["week"]["realized_result_brl"] == 300
     assert summary["periods"]["month"]["realized_result_brl"] == 600
     assert summary["periods"]["year"]["realized_result_brl"] == 1000
+
+
+def test_date_must_be_exact_iso_calendar_date(tmp_path):
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    for invalid in ("20261030", "30-10-2026", "2026-02-30"):
+        try:
+            reserve.record_realized_result({
+                "category": "BR_DAY_TRADE",
+                "realized_result_brl": 100,
+                "reference": "INVALID-" + invalid,
+                "occurred_on": invalid,
+            })
+        except ValueError as exc:
+            assert "YYYY-MM-DD" in str(exc)
+        else:
+            raise AssertionError("non-ISO or invalid calendar date must be rejected")
