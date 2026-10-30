@@ -646,6 +646,8 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/financeiro/reserva-fiscal" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "fiscal-reserve.html", "text/html; charset=utf-8", request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
