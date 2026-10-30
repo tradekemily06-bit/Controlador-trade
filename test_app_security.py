@@ -129,3 +129,35 @@ class AppSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_assistant_conversation_reads_require_trusted_identity_remotely(self):
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            denied, _, denied_body = self.request(
+                "/api/assistant/conversations", remote="203.0.113.20"
+            )
+            allowed, _, allowed_body = self.request(
+                "/api/assistant/conversations",
+                remote="203.0.113.20",
+                headers={"HTTP_X_AUTHENTICATED_USER": "audit-user@example.com"},
+            )
+            self.assertEqual(denied, "401 Unauthorized")
+            self.assertIn("Identidade autenticada necessária".encode(), denied_body)
+            self.assertEqual(allowed, "200 OK")
+            self.assertIn(b'"conversations"', allowed_body)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value

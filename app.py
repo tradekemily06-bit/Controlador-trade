@@ -278,6 +278,16 @@ def application(environ, start_response):
             if path == "/api/assistant/chat" and method == "POST":
                 data = _read_json(environ)
                 return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), data.get("conversation_id")), request_id, environ)
+        if path.startswith("/api/fiscal-reserve"):
+            authorized, reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
+            try:
+                preview = SERVICE.mt5_operational_adapter.read_closed_deal_candidates()
+            except RuntimeError as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico MT5 DEMO indisponível para conferência.", "detail": str(exc), "auto_registered": False}, request_id, environ)
+            return _json_response(start_response, HTTPStatus.OK, preview, request_id, environ)
         if path == "/api/fiscal-reserve" and method == "GET":
             return _json_response(start_response, HTTPStatus.OK, FISCAL_RESERVE.summary(), request_id, environ)
         if path == "/api/fiscal-reserve/rates" and method == "POST":

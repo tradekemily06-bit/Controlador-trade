@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 
 DEFAULT_RATES = {
@@ -141,9 +142,11 @@ class FiscalReserve:
         reference = str(payload.get("reference") or "").strip()
         if not reference:
             raise ValueError("reference é obrigatório para rastreabilidade")
-        occurred_on = str(payload.get("occurred_on") or date.today().isoformat())
+        occurred_on = str(payload.get("occurred_on") or datetime.now(ZoneInfo("America/Sao_Paulo")).date().isoformat())
         try:
-            date.fromisoformat(occurred_on)
+            parsed_date = datetime.strptime(occurred_on, "%Y-%m-%d").date()
+            if parsed_date.isoformat() != occurred_on:
+                raise ValueError
         except ValueError as exc:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         notes = str(payload.get("notes") or "").strip()[:1000]
@@ -183,10 +186,35 @@ class FiscalReserve:
             )
         return asdict(entry)
 
-    def summary(self) -> dict[str, Any]:
+    def summary(self, as_of: date | None = None) -> dict[str, Any]:
         rates = self.settings()
+        reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())
+        periods = {
+            "day": (reference_day, reference_day),
+            "week": (week_start, reference_day),
+            "month": (reference_day.replace(day=1), reference_day),
+            "year": (reference_day.replace(month=1, day=1), reference_day),
+        }
+        period_totals: dict[str, dict[str, Any]] = {}
         categories: dict[str, dict[str, Any]] = {}
         with self._connect() as db:
+            for period_name, (start_day, end_day) in periods.items():
+                row = db.execute(
+                    """SELECT COUNT(*) AS count,
+                    COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
+                    COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
+                    FROM fiscal_reserve_entries
+                    WHERE occurred_on >= ? AND occurred_on < ?""",
+                    (start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
+                ).fetchone()
+                period_totals[period_name] = {
+                    "start": start_day.isoformat(),
+                    "end": end_day.isoformat(),
+                    "entries": int(row["count"]),
+                    "realized_result_brl": round(float(row["realized_result_brl"]), 2),
+                    "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
+                }
             for category in sorted(VALID_CATEGORIES):
                 row = db.execute(
                     """SELECT COUNT(*) AS count,
@@ -213,6 +241,8 @@ class FiscalReserve:
             "currency": "BRL",
             "categories": categories,
             "total_reserved_brl": round(float(total["total"]), 2),
+            "periods": period_totals,
+            "as_of": reference_day.isoformat(),
             "history": [dict(item) for item in history],
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
