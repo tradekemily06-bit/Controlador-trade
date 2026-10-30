@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reserva Fiscal · Controlador Trading</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1118;--panel:#121d28;--line:#263747;--text:#edf4fa;--muted:#9aabba;--accent:#6bb6a1;--warn:#d8b477}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:1120px;margin:auto;padding:28px 18px 56px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}.eyebrow{color:var(--accent);font-size:12px;letter-spacing:.12em;font-weight:700}.title{font-size:clamp(26px,4vw,38px);margin:4px 0}.muted{color:var(--muted)}.pill{border:1px solid var(--line);padding:7px 12px;border-radius:999px;color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;min-width:0}.wide{grid-column:1/-1}.label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}.amount{font-size:clamp(25px,4vw,34px);font-weight:700;margin:7px 0}.rate{color:var(--accent);font-weight:700}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}label{display:block;color:var(--muted);font-size:13px}input,select,textarea{width:100%;margin-top:6px;padding:11px 12px;border-radius:9px;border:1px solid var(--line);background:#0c151e;color:var(--text);font:inherit}textarea{min-height:70px;resize:vertical}.btn{border:0;border-radius:9px;background:var(--accent);color:#07130f;padding:11px 16px;font-weight:700;cursor:pointer}.btn.secondary{background:#263747;color:var(--text)}.actions{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}.status{font-size:13px;color:var(--muted);min-height:20px}.table-wrap{overflow:auto;margin-top:12px}table{width:100%;border-collapse:collapse;min-width:600px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);font-size:13px}th{color:var(--muted);font-weight:600}.notice{border-left:3px solid var(--warn);padding:10px 13px;background:#211e17;color:#d8c8a8;border-radius:6px;font-size:13px;margin-top:18px}
+@media(max-width:680px){.grid,.fields{grid-template-columns:1fr}.wide{grid-column:auto}.top{align-items:flex-start;flex-direction:column}main{padding:20px 13px 40px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><div class="eyebrow">FINANCEIRO</div><h1 class="title">Reserva Fiscal</h1><div class="muted">Acompanhamento separado de resultados realizados e valores estimados para reserva.</div></div><div class="pill">CONTROLE DE PLANEJAMENTO · BRL</div></header>
+<section class="grid">
+<article class="card"><div class="row"><span class="label">Brasil · Day trade em bolsa</span><span class="rate" id="brRate">20%</span></div><div class="amount" id="brReserved">R$ 0,00</div><div class="muted">Reserva estimada acumulada</div><div class="muted" id="brProfit">Resultado registrado: R$ 0,00</div></article>
+<article class="card"><div class="row"><span class="label">Exterior · aplicações classificadas</span><span class="rate" id="foreignRate">15%</span></div><div class="amount" id="foreignReserved">R$ 0,00</div><div class="muted">Reserva estimada acumulada</div><div class="muted" id="foreignProfit">Resultado registrado: R$ 0,00</div></article>
+<article class="card wide"><div class="row"><div><div class="label">Total estimado reservado</div><div class="amount" id="totalReserved">R$ 0,00</div></div><button class="btn secondary" id="reload">ATUALIZAR</button></div><div class="muted">Valor de controle interno. Não representa saldo bancário nem imposto definitivamente apurado.</div></article>
+<article class="card wide"><div class="label">Registrar resultado realizado</div><div class="muted">Informe o resultado líquido já realizado e convertido para reais (BRL), com uma referência que permita conferência.</div>
+<form id="entryForm"><div class="fields">
+<label>Categoria<select id="category" required><option value="BR_DAY_TRADE">Brasil · Day trade em bolsa brasileira</option><option value="FOREIGN_FINANCIAL_ASSET">Exterior · aplicação financeira enquadrada</option></select></label>
+<label>Resultado realizado (R$)<input id="result" type="number" step="0.01" required placeholder="Ex.: 1250,00"></label>
+<label>Referência / comprovante<input id="reference" maxlength="160" required placeholder="ID da operação ou extrato"></label>
+<label>Data da realização<input id="occurredOn" type="date" required></label>
+<label style="grid-column:1/-1">Observações<textarea id="notes" maxlength="1000" placeholder="Opcional"></textarea></label>
+</div><div class="actions"><button class="btn" type="submit">REGISTRAR RESULTADO</button><span class="status" id="entryStatus" aria-live="polite"></span></div></form></article>
+<article class="card wide"><div class="label">Percentuais de referência</div><div class="muted">Podem ser alterados. A alteração afeta novos registros; o histórico preserva o percentual usado em cada lançamento.</div>
+<div class="fields">
+<label>Brasil · Day trade (%)<input id="brRateInput" type="number" min="0" max="100" step="0.01"></label>
+<label>Exterior · aplicações classificadas (%)<input id="foreignRateInput" type="number" min="0" max="100" step="0.01"></label>
+</div><div class="actions"><button class="btn secondary" id="saveRates" type="button">SALVAR PERCENTUAIS</button><span class="status" id="rateStatus" aria-live="polite"></span></div></article>
+<article class="card wide"><div class="label">Histórico</div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Resultado</th><th>Percentual</th><th>Reserva</th><th>Referência</th></tr></thead><tbody id="history"><tr><td colspan="6" class="muted">Carregando...</td></tr></tbody></table></div></article>
+</section>
+<div class="notice">Atenção: os percentuais são parâmetros iniciais de planejamento, não uma apuração tributária. Operações no exterior precisam de classificação correta; instrumentos não classificados não devem ser lançados nessa categoria. Perdas são registradas, mas compensações fiscais não são calculadas automaticamente. Nenhum dinheiro é transferido por esta área.</div>
+</main>
+<script>
+const money = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(value||0));
+const $ = id => document.getElementById(id);
+const categoryName = value => value === 'BR_DAY_TRADE' ? 'Brasil · Day trade' : 'Exterior · aplicação classificada';
+const escapeHtml = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path,options={}){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const data=await response.json();if(!response.ok)throw new Error(data.error||'Não foi possível concluir a solicitação.');return data;}
+async function refresh(){try{const data=await api('/api/fiscal-reserve');const br=data.categories.BR_DAY_TRADE,fo=data.categories.FOREIGN_FINANCIAL_ASSET;$('brRate').textContent=br.rate+'%';$('foreignRate').textContent=fo.rate+'%';$('brReserved').textContent=money(br.reserve_amount_brl);$('foreignReserved').textContent=money(fo.reserve_amount_brl);$('brProfit').textContent='Resultado registrado: '+money(br.realized_result_brl);$('foreignProfit').textContent='Resultado registrado: '+money(fo.realized_result_brl);$('totalReserved').textContent=money(data.total_reserved_brl);$('brRateInput').value=br.rate;$('foreignRateInput').value=fo.rate;$('history').innerHTML=data.history.length?data.history.map(item=>'<tr><td>'+escapeHtml(item.occurred_on)+'</td><td>'+escapeHtml(categoryName(item.category))+'</td><td>'+money(item.realized_result_brl)+'</td><td>'+Number(item.reserve_rate).toLocaleString('pt-BR')+'%</td><td>'+money(item.reserve_amount_brl)+'</td><td>'+escapeHtml(item.reference)+'</td></tr>').join(''):'<tr><td colspan="6" class="muted">Nenhum resultado registrado.</td></tr>';}catch(error){$('history').innerHTML='<tr><td colspan="6">'+escapeHtml(error.message)+'</td></tr>';}}
+$('entryForm').addEventListener('submit',async event=>{event.preventDefault();$('entryStatus').textContent='Registrando...';try{await api('/api/fiscal-reserve/results',{method:'POST',body:JSON.stringify({category:$('category').value,realized_result_brl:$('result').value,reference:$('reference').value,occurred_on:$('occurredOn').value,notes:$('notes').value})});$('entryStatus').textContent='Resultado registrado.';$('entryForm').reset();$('occurredOn').value=new Date().toISOString().slice(0,10);await refresh();}catch(error){$('entryStatus').textContent=error.message;}});
+$('saveRates').addEventListener('click',async()=>{const status=$('rateStatus');status.textContent='Salvando...';try{let settings=await api('/api/fiscal-reserve/rates',{method:'POST',body:JSON.stringify({category:'BR_DAY_TRADE',rate:$('brRateInput').value})});settings=await api('/api/fiscal-reserve/rates',{method:'POST',body:JSON.stringify({category:'FOREIGN_FINANCIAL_ASSET',rate:$('foreignRateInput').value})});status.textContent='Percentuais atualizados para novos registros.';await refresh();}catch(error){status.textContent=error.message;}});
+$('reload').addEventListener('click',refresh);$('occurredOn').value=new Date().toISOString().slice(0,10);refresh();
+</script></body></html>
