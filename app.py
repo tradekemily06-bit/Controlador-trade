@@ -21,6 +21,8 @@ from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
+from assistant.conversation_store import AssistantConversationStore
+from assistant.chat_service import EcosystemAssistant, AssistantUnavailableError
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
@@ -39,6 +41,9 @@ REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_D
 ONBOARDING = EcosystemOnboarding()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
+ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
+ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
+ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE)
 
 
 def _audit(environ, request_id: str, status: int) -> None:
@@ -256,6 +261,23 @@ def application(environ, start_response):
             status = SERVICE.system_status()
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
+        if path.startswith("/api/assistant/"):
+            header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
+            identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
+            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
+            if not identity:
+                if remote_required or str(environ.get("REMOTE_ADDR") or "") not in {"127.0.0.1", "::1"}:
+                    return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Identidade autenticada necessária."}, request_id, environ)
+                identity = "local-single-user"
+            if path == "/api/assistant/conversations" and method == "GET":
+                return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
+            if path == "/api/assistant/history" and method == "GET":
+                query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
+                if not query: raise ValueError("conversation_id obrigatório")
+                return _json_response(start_response, HTTPStatus.OK, {"messages": ASSISTANT.history(identity, query)}, request_id, environ)
+            if path == "/api/assistant/chat" and method == "POST":
+                data = _read_json(environ)
+                return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), data.get("conversation_id")), request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
             identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
@@ -660,12 +682,16 @@ def application(environ, start_response):
         if path == "/api/learning/attempts" and method == "POST":
             attempt = SERVICE.add_learning_attempt(_read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"attempt": attempt.__dict__, "execution_allowed": False}, request_id, environ)
+        if path == "/assistente" and method == "GET":
+            return _file_response(start_response, WEB_DIR / "assistant.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/financeiro/reserva-fiscal" and method == "GET":
             return _file_response(start_response, WEB_DIR / "fiscal-reserve.html", "text/html; charset=utf-8", request_id, environ)
         if path in {"/", "/index.html"} and method == "GET":
             return _file_response(start_response, WEB_DIR / "index.html", "text/html; charset=utf-8", request_id, environ)
         if path == "/manifest.webmanifest" and method == "GET":
             return _file_response(start_response, WEB_DIR / "manifest.webmanifest", "application/manifest+json; charset=utf-8", request_id, environ)
+    except AssistantUnavailableError as exc:
+        return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except PermissionError as exc:
         return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": str(exc), "request_id": request_id}, request_id, environ)
     except (TypeError, ValueError, json.JSONDecodeError):
