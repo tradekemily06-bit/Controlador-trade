@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timezone, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import math
 from typing import Any
@@ -179,7 +179,7 @@ class ICMarketsMT5DemoAdapter:
             if account is None or not self._is_demo_account(account, mt5):
                 raise MT5AdapterError("conta MT5 não confirmada como DEMO; consulta fiscal bloqueada.")
             end = datetime.now(timezone.utc)
-            start = end - __import__("datetime").timedelta(days=lookback_days)
+            start = end - timedelta(days=lookback_days)
             history_fn = getattr(mt5, "history_deals_get", None)
             if not callable(history_fn):
                 raise MT5AdapterError("histórico de negócios MT5 indisponível.")
