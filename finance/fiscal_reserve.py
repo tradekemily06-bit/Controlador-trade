@@ -117,6 +117,22 @@ class FiscalReserve:
             )
         return self.settings()
 
+    def update_rates(self, rates: dict[str, Any]) -> dict[str, float]:
+        if not isinstance(rates, dict) or set(rates) != VALID_CATEGORIES:
+            raise ValueError("informe os percentuais de BR_DAY_TRADE e FOREIGN_FINANCIAL_ASSET")
+        parsed = {}
+        for category, value in rates.items():
+            parsed[self._category(category)] = self._money(value, "percentual")
+        if any(not 0 <= value <= 100 for value in parsed.values()):
+            raise ValueError("percentuais devem estar entre 0 e 100")
+        with self._connect() as db:
+            db.executemany(
+                "INSERT INTO fiscal_reserve_settings(category, rate) VALUES (?, ?) "
+                "ON CONFLICT(category) DO UPDATE SET rate = excluded.rate",
+                list(parsed.items()),
+            )
+        return self.settings()
+
     def record_realized_result(self, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
@@ -132,6 +148,12 @@ class FiscalReserve:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         notes = str(payload.get("notes") or "").strip()[:1000]
         with self._connect() as db:
+            existing = db.execute(
+                "SELECT entry_id FROM fiscal_reserve_entries WHERE category = ? AND reference = ?",
+                (category, reference),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError("esta referência já foi registrada nesta categoria")
             row = db.execute(
                 "SELECT rate FROM fiscal_reserve_settings WHERE category = ?",
                 (category,),
