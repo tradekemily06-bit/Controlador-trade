@@ -10,7 +10,7 @@ class S:
  def memory_view(self,limit=5): return []
 class F:
  def summary(self):
-  return {"total_reserved_brl":0,"as_of":"2026-10-30","periods":{"day":{},"week":{},"month":{},"year":{}}}
+  return {"total_reserved_brl":0,"as_of":"2026-10-30","periods":{"day":{},"week":{},"month":{},"year":{}},"history":[{"reference":"PRIVATE-TRADE-REFERENCE","notes":"PRIVATE-TRADE-NOTE"}]}
 class C:
  calls=[]
  def __init__(self): self.chat=self; self.completions=self
@@ -28,6 +28,8 @@ def test_chat_is_persistent_read_only_and_owner_scoped(tmp_path):
  assert "dia, semana, mês e ano" in system_message
  assert all(f'"{period}"' in system_message for period in ("day","week","month","year"))
  assert "não significa que foram lançados" in system_message
+ assert "PRIVATE-TRADE-REFERENCE" not in system_message
+ assert "PRIVATE-TRADE-NOTE" not in system_message
  try: store.history("two@example.com",result["conversation_id"])
  except PermissionError: pass
  else: assert False
