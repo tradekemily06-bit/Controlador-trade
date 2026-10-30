@@ -222,7 +222,7 @@ class ICMarketsMT5DemoAdapter:
                 "count": len(candidates),
                 "candidates": candidates,
                 "auto_registered": False,
-                "notice": "Valores brutos na moeda da conta. Exigem classificação, conferência de custos e conversão para BRL; nenhum lançamento foi criado.",
+                "notice": "Valores na moeda da conta por negócio de saída: lucro + comissão + swap + taxa desse negócio. Custos registrados em negócios anteriores da mesma posição podem não estar incluídos. Exigem conferência do histórico completo, classificação e conversão documentada para BRL; nenhum lançamento foi criado.",
             }
         finally:
             mt5.shutdown()
