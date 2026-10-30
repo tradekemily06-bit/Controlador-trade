@@ -132,7 +132,6 @@ if __name__ == "__main__":
 
 
     def test_assistant_conversation_reads_require_trusted_identity_remotely(self):
-        from app import ASSISTANT_DB
         names = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
             "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
