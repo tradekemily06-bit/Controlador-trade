@@ -42,12 +42,21 @@ class FiscalReserve:
 
     def __init__(self, database_path: str = ":memory:") -> None:
         self.database_path = str(database_path)
-        if self.database_path != ":memory:":
+        self._memory_uri: str | None = None
+        self._memory_anchor: sqlite3.Connection | None = None
+        if self.database_path == ":memory:":
+            # Keep a shared in-memory database alive across short-lived connections.
+            self._memory_uri = f"file:fiscal_reserve_{uuid.uuid4().hex}?mode=memory&cache=shared"
+            self._memory_anchor = sqlite3.connect(self._memory_uri, uri=True, timeout=5)
+        else:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=5)
+        if self._memory_uri:
+            connection = sqlite3.connect(self._memory_uri, uri=True, timeout=5)
+        else:
+            connection = sqlite3.connect(self.database_path, timeout=5)
         connection.row_factory = sqlite3.Row
         return connection
 
