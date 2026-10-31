@@ -127,10 +127,6 @@ class AppSecurityTests(unittest.TestCase):
                 os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = old_header
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_assistant_conversation_reads_require_trusted_identity_remotely(self):
         names = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
@@ -161,3 +157,7 @@ if __name__ == "__main__":
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+
+if __name__ == "__main__":
+    unittest.main()
