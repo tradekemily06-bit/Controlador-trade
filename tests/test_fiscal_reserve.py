@@ -159,3 +159,15 @@ def test_date_must_be_exact_iso_calendar_date(tmp_path):
             assert "YYYY-MM-DD" in str(exc)
         else:
             raise AssertionError("non-ISO or invalid calendar date must be rejected")
+
+
+def test_default_in_memory_database_persists_between_operations():
+    reserve = FiscalReserve()
+    assert reserve.settings()["BR_DAY_TRADE"] == 20.0
+    entry = reserve.record_realized_result({
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 100,
+        "reference": "MEMORY-DB-001",
+    })
+    assert entry["reserve_amount_brl"] == 20
+    assert reserve.summary()["total_reserved_brl"] == 20
