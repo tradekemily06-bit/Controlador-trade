@@ -67,6 +67,31 @@ def test_external_assistant_context_excludes_free_text_and_identifiers():
  assert '"wins": 1' in payload
 
 
+def test_unclassified_foreign_generic_rate_is_not_sent_to_assistant():
+ class LegacyFiscal:
+  def summary(self):
+   return {
+    "name":"Reserva Fiscal",
+    "currency":"BRL",
+    "as_of":"2026-11-02",
+    "categories":{
+     "BR_DAY_TRADE":{"rate":20.0,"reserve_amount_brl":100.0},
+     "FOREIGN_FINANCIAL_ASSET":{"rate":15.0,"entries":2,"reserve_amount_brl":0.0},
+    },
+    "total_reserved_brl":100.0,
+    "periods":{},
+    "limitations":[],
+   }
+ import json
+ payload=collect_read_only_context(S(),LegacyFiscal())
+ foreign=payload["fiscal_reserve"]["categories"]["FOREIGN_FINANCIAL_ASSET"]
+ assert "rate" not in foreign
+ assert foreign["classification_status"]=="PENDING_CLASSIFICATION"
+ assert foreign["rate_available"] is False
+ serialized=json.dumps(payload,ensure_ascii=False)
+ assert '"rate": 15.0' not in serialized
+
+
 def test_missing_openai_key_fails_closed_without_exposing_credentials(tmp_path, monkeypatch):
  from assistant.chat_service import AssistantUnavailableError
  monkeypatch.delenv("OPENAI_API_KEY", raising=False)
