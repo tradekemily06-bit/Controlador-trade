@@ -238,9 +238,10 @@ def application(environ, start_response):
         else:
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
                 return _json_response(
                     start_response,
-                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    status,
                     {"error": reason, "request_id": request_id},
                     request_id,
                     environ,
