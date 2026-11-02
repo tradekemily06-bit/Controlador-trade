@@ -147,6 +147,8 @@ class FiscalReserve:
 
     def update_rate(self, category: str, rate: Any) -> dict[str, float]:
         category = self._category(category)
+        if category == "FOREIGN_FINANCIAL_ASSET":
+            raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
         parsed = self._money(rate, "percentual")
         if not 0 <= parsed <= 100:
             raise ValueError("percentual deve estar entre 0 e 100")
@@ -159,8 +161,8 @@ class FiscalReserve:
         return self.settings()
 
     def update_rates(self, rates: dict[str, Any]) -> dict[str, float]:
-        if not isinstance(rates, dict) or set(rates) != VALID_CATEGORIES:
-            raise ValueError("informe os percentuais de BR_DAY_TRADE e FOREIGN_FINANCIAL_ASSET")
+        if not isinstance(rates, dict) or set(rates) != {"BR_DAY_TRADE"}:
+            raise ValueError("somente o percentual brasileiro pode ser alterado nesta etapa")
         parsed = {}
         for category, value in rates.items():
             parsed[self._category(category)] = self._money(value, "percentual")
