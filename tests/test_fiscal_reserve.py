@@ -171,3 +171,47 @@ def test_default_in_memory_database_persists_between_operations():
     })
     assert entry["reserve_amount_brl"] == 20
     assert reserve.summary()["total_reserved_brl"] == 20
+
+
+
+def test_history_pagination_returns_total_and_has_more(tmp_path):
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    for number in range(5):
+        reserve.record_realized_result({
+            "category": "BR_DAY_TRADE",
+            "realized_result_brl": 100 + number,
+            "reference": f"PAGE-{number}",
+            "occurred_on": "2026-10-30",
+        })
+    first = reserve.summary(history_limit=2, history_offset=0)
+    second = reserve.summary(history_limit=2, history_offset=2)
+    last = reserve.summary(history_limit=2, history_offset=4)
+    assert first["history_page"] == {"limit": 2, "offset": 0, "returned": 2, "total": 5, "has_more": True}
+    assert second["history_page"]["has_more"] is True
+    assert last["history_page"]["has_more"] is False
+    assert len({row["reference"] for row in first["history"] + second["history"] + last["history"]}) == 5
+
+
+def test_concurrent_duplicate_reference_is_never_double_recorded(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+    payload = {
+        "category": "BR_DAY_TRADE",
+        "realized_result_brl": 1000,
+        "reference": "CONCURRENT-UNIQUE-001",
+    }
+
+    def attempt():
+        try:
+            reserve.record_realized_result(payload)
+            return "created"
+        except ValueError:
+            return "duplicate"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: attempt(), range(8)))
+
+    assert results.count("created") == 1
+    assert results.count("duplicate") == 7
+    assert reserve.summary()["total_reserved_brl"] == 200
