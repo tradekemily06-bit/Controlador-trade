@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 from zoneinfo import ZoneInfo
 
 
@@ -52,13 +53,22 @@ class FiscalReserve:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         if self._memory_uri:
-            connection = sqlite3.connect(self._memory_uri, uri=True, timeout=5)
+            connection = sqlite3.connect(self._memory_uri, uri=True, timeout=10)
         else:
-            connection = sqlite3.connect(self.database_path, timeout=5)
+            connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
-        return connection
+        connection.execute("PRAGMA busy_timeout = 10000")
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as db:
@@ -82,6 +92,27 @@ class FiscalReserve:
                     notes TEXT NOT NULL
                 )
             """)
+            duplicates = db.execute(
+                """SELECT category, reference, COUNT(*) AS total
+                FROM fiscal_reserve_entries
+                GROUP BY category, reference
+                HAVING COUNT(*) > 1
+                LIMIT 10"""
+            ).fetchall()
+            if duplicates:
+                details = ", ".join(
+                    f"{row['category']}:{row['reference']} ({row['total']})"
+                    for row in duplicates
+                )
+                raise RuntimeError(
+                    "Referências fiscais duplicadas encontradas; revisar os registros "
+                    f"antes de ativar a proteção de unicidade: {details}"
+                )
+            db.execute(
+                """CREATE UNIQUE INDEX IF NOT EXISTS
+                ux_fiscal_reserve_category_reference
+                ON fiscal_reserve_entries(category, reference)"""
+            )
             for category, rate in DEFAULT_RATES.items():
                 db.execute(
                     "INSERT OR IGNORE INTO fiscal_reserve_settings(category, rate) VALUES (?, ?)",
@@ -116,6 +147,8 @@ class FiscalReserve:
 
     def update_rate(self, category: str, rate: Any) -> dict[str, float]:
         category = self._category(category)
+        if category == "FOREIGN_FINANCIAL_ASSET":
+            raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
         parsed = self._money(rate, "percentual")
         if not 0 <= parsed <= 100:
             raise ValueError("percentual deve estar entre 0 e 100")
@@ -128,8 +161,8 @@ class FiscalReserve:
         return self.settings()
 
     def update_rates(self, rates: dict[str, Any]) -> dict[str, float]:
-        if not isinstance(rates, dict) or set(rates) != VALID_CATEGORIES:
-            raise ValueError("informe os percentuais de BR_DAY_TRADE e FOREIGN_FINANCIAL_ASSET")
+        if not isinstance(rates, dict) or set(rates) != {"BR_DAY_TRADE"}:
+            raise ValueError("somente o percentual brasileiro pode ser alterado nesta etapa")
         parsed = {}
         for category, value in rates.items():
             parsed[self._category(category)] = self._money(value, "percentual")
@@ -147,6 +180,14 @@ class FiscalReserve:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
+        # The generic foreign category is retained for historical rows and
+        # configuration compatibility only. New foreign results must not be
+        # reserved until instrument/jurisdiction/FX classification is explicit.
+        if category == "FOREIGN_FINANCIAL_ASSET":
+            raise ValueError(
+                "resultado internacional não pode ser lançado na categoria genérica; "
+                "mantenha-o pendente até classificação tributária e conversão cambial validadas"
+            )
         result = self._money(payload.get("realized_result_brl"), "realized_result_brl")
         reference = str(payload.get("reference") or "").strip()
         if not reference:
@@ -160,6 +201,9 @@ class FiscalReserve:
             raise ValueError("occurred_on deve usar YYYY-MM-DD") from exc
         notes = str(payload.get("notes") or "").strip()[:1000]
         with self._connect() as db:
+            # Serialize writers before checking the idempotency key. The unique
+            # index remains the final guard if multiple workers race.
+            db.execute("BEGIN IMMEDIATE")
             existing = db.execute(
                 "SELECT entry_id FROM fiscal_reserve_entries WHERE category = ? AND reference = ?",
                 (category, reference),
@@ -195,7 +239,16 @@ class FiscalReserve:
             )
         return asdict(entry)
 
-    def summary(self, as_of: date | None = None) -> dict[str, Any]:
+    def summary(
+        self,
+        as_of: date | None = None,
+        history_limit: int = 100,
+        history_offset: int = 0,
+    ) -> dict[str, Any]:
+        if isinstance(history_limit, bool) or not isinstance(history_limit, int) or not 1 <= history_limit <= 500:
+            raise ValueError("history_limit deve estar entre 1 e 500")
+        if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
+            raise ValueError("history_offset deve ser um inteiro não negativo")
         rates = self.settings()
         reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())
@@ -241,9 +294,14 @@ class FiscalReserve:
             total = db.execute(
                 "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries"
             ).fetchone()
+            history_total = int(db.execute(
+                "SELECT COUNT(*) AS total FROM fiscal_reserve_entries"
+            ).fetchone()["total"])
             history = db.execute(
                 """SELECT * FROM fiscal_reserve_entries
-                ORDER BY occurred_on DESC, created_at DESC LIMIT 100"""
+                ORDER BY occurred_on DESC, created_at DESC, entry_id DESC
+                LIMIT ? OFFSET ?""",
+                (history_limit, history_offset),
             ).fetchall()
         return {
             "name": "Reserva Fiscal",
@@ -253,6 +311,13 @@ class FiscalReserve:
             "periods": period_totals,
             "as_of": reference_day.isoformat(),
             "history": [dict(item) for item in history],
+            "history_page": {
+                "limit": history_limit,
+                "offset": history_offset,
+                "returned": len(history),
+                "total": history_total,
+                "has_more": history_offset + len(history) < history_total,
+            },
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",

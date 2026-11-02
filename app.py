@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import sqlite3
 from dataclasses import asdict
 from http import HTTPStatus
 from pathlib import Path
@@ -21,6 +22,7 @@ from integration.execution_provider import build_demo_execution_port
 from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
+from finance.fiscal_pending_queue import FiscalPendingQueue
 from assistant.conversation_store import AssistantConversationStore
 from assistant.chat_service import EcosystemAssistant, AssistantUnavailableError
 
@@ -41,6 +43,7 @@ REAL_RUNTIME = RealRuntimeController(runtime=OPERATIONAL_RUNTIME, root=RUNTIME_D
 ONBOARDING = EcosystemOnboarding()
 FISCAL_RESERVE_DB = Path(os.environ.get("CONTROLADOR_FISCAL_RESERVE_DB", str(RUNTIME_DIR / "fiscal-reserve.sqlite3")))
 FISCAL_RESERVE = FiscalReserve(str(FISCAL_RESERVE_DB))
+FISCAL_PENDING_QUEUE = FiscalPendingQueue(str(FISCAL_RESERVE_DB))
 ASSISTANT_DB = Path(os.environ.get('CONTROLADOR_ASSISTANT_DB', str(RUNTIME_DIR / 'assistant.sqlite3')))
 ASSISTANT_STORE = AssistantConversationStore(ASSISTANT_DB)
 ASSISTANT = EcosystemAssistant(ASSISTANT_STORE, SERVICE, FISCAL_RESERVE)
@@ -235,9 +238,10 @@ def application(environ, start_response):
         else:
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
+                status = HTTPStatus.UNAUTHORIZED if reason == "trusted identity is required" else HTTPStatus.SERVICE_UNAVAILABLE
                 return _json_response(
                     start_response,
-                    HTTPStatus.SERVICE_UNAVAILABLE,
+                    status,
                     {"error": reason, "request_id": request_id},
                     request_id,
                     environ,
@@ -282,14 +286,57 @@ def application(environ, start_response):
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
                 return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
-        if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
+        if path == "/api/fiscal-reserve/pending" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
-                preview = SERVICE.mt5_operational_adapter.read_closed_deal_candidates()
+                limit = int(query.get("limit", ["100"])[-1] or "100")
+                offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            return _json_response(start_response, HTTPStatus.OK,
+                                  FISCAL_PENDING_QUEUE.list_pending(limit=limit, offset=offset),
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/pending" and method == "POST":
+            try:
+                item = FISCAL_PENDING_QUEUE.add(_read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência com essa referência.", "request_id": request_id},
+                                      request_id, environ)
+            return _json_response(start_response, HTTPStatus.CREATED,
+                                  {"pending": item, "reserve_calculated": False},
+                                  request_id, environ)
+        if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                lookback_days = int(query.get("lookback_days", ["30"])[-1] or "30")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("lookback_days deve ser um inteiro") from exc
+            if not 1 <= lookback_days <= 365:
+                raise ValueError("lookback_days deve estar entre 1 e 365")
+            try:
+                preview = SERVICE.mt5_operational_adapter.read_closed_deal_candidates(lookback_days=lookback_days)
             except RuntimeError as exc:
                 return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE, {"error": "Histórico MT5 DEMO indisponível para conferência.", "detail": str(exc), "auto_registered": False}, request_id, environ)
             return _json_response(start_response, HTTPStatus.OK, preview, request_id, environ)
         if path == "/api/fiscal-reserve" and method == "GET":
-            return _json_response(start_response, HTTPStatus.OK, FISCAL_RESERVE.summary(), request_id, environ)
+            query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
+            try:
+                history_limit = int(query.get("limit", ["100"])[-1] or "100")
+                history_offset = int(query.get("offset", ["0"])[-1] or "0")
+            except (TypeError, ValueError) as exc:
+                raise ValueError("limit e offset devem ser inteiros") from exc
+            if not 1 <= history_limit <= 500:
+                raise ValueError("limit deve estar entre 1 e 500")
+            if history_offset < 0:
+                raise ValueError("offset deve ser não negativo")
+            return _json_response(
+                start_response,
+                HTTPStatus.OK,
+                FISCAL_RESERVE.summary(history_limit=history_limit, history_offset=history_offset),
+                request_id,
+                environ,
+            )
         if path == "/api/fiscal-reserve/rates" and method == "POST":
             data = _read_json(environ)
             if "rates" in data:

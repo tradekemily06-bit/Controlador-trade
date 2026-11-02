@@ -197,3 +197,62 @@ def test_close_position_blocks_when_position_is_not_owned_by_controlador():
     result = ICMarketsMT5DemoAdapter(mt5_module=fake).close_position("123456")
     assert result.accepted is False
     assert fake.sent == []
+
+
+def test_fiscal_preview_reads_only_closing_deals_and_never_books_results():
+ from datetime import datetime, timezone
+ class FiscalFakeMT5(FakeMT5):
+  DEAL_ENTRY_OUT = 1
+  DEAL_ENTRY_IN = 0
+  def account_info(self):
+   return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO, currency="USD")
+  def history_deals_get(self, start, end):
+   timestamp=int(datetime(2026,10,30,12,tzinfo=timezone.utc).timestamp())
+   return (
+    SimpleNamespace(entry=self.DEAL_ENTRY_IN,ticket=10,position_id=7,symbol="EURUSD",volume=0.01,profit=0,commission=-0.5,swap=0,fee=0,time=timestamp),
+    SimpleNamespace(entry=self.DEAL_ENTRY_OUT,ticket=11,position_id=7,symbol="EURUSD",volume=0.01,profit=12,commission=-0.2,swap=-0.1,fee=-0.05,time=timestamp),
+   )
+ fake=FiscalFakeMT5()
+ result=ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(30)
+ assert result["count"]==1
+ assert result["account_currency"]=="USD"
+ assert result["candidates"][0]["ticket"]=="11"
+ assert result["candidates"][0]["net_result_account_currency"]==11.65
+ assert result["auto_registered"] is False
+ assert "negócios anteriores" in result["notice"]
+ assert fake.shutdown_calls==1
+
+
+def test_fiscal_preview_blocks_non_demo_and_invalid_lookback():
+ fake=FakeMT5(demo=False)
+ adapter=ICMarketsMT5DemoAdapter(mt5_module=fake)
+ try:
+  adapter.read_closed_deal_candidates(30)
+ except Exception as exc:
+  assert "DEMO" in str(exc)
+ else:
+  assert False
+ assert fake.shutdown_calls==1
+ try:
+  adapter.read_closed_deal_candidates(0)
+ except ValueError as exc:
+  assert "1 e 365" in str(exc)
+ else:
+  assert False
+
+
+def test_fiscal_preview_fails_closed_when_history_is_unavailable():
+ class MissingHistoryFake(FakeMT5):
+  ACCOUNT_TRADE_MODE_DEMO=2
+  DEAL_ENTRY_OUT=1
+  def account_info(self):
+   return SimpleNamespace(trade_mode=self.ACCOUNT_TRADE_MODE_DEMO,currency="USD")
+  def history_deals_get(self,start,end): return None
+ fake=MissingHistoryFake()
+ try:
+  ICMarketsMT5DemoAdapter(mt5_module=fake).read_closed_deal_candidates(7)
+ except Exception as exc:
+  assert "histórico" in str(exc)
+ else:
+  assert False
+ assert fake.shutdown_calls==1
