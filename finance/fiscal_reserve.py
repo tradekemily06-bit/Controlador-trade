@@ -267,7 +267,8 @@ class FiscalReserve:
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                     FROM fiscal_reserve_entries
-                    WHERE occurred_on >= ? AND occurred_on < ?""",
+                    WHERE category = 'BR_DAY_TRADE'
+                    AND occurred_on >= ? AND occurred_on < ?""",
                     (start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
                 ).fetchone()
                 period_totals[period_name] = {
@@ -285,14 +286,25 @@ class FiscalReserve:
                     FROM fiscal_reserve_entries WHERE category = ?""",
                     (category,),
                 ).fetchone()
-                categories[category] = {
-                    "rate": rates[category],
-                    "entries": int(row["count"]),
-                    "realized_result_brl": round(float(row["realized_result_brl"]), 2),
-                    "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
-                }
+                if category == "FOREIGN_FINANCIAL_ASSET":
+                    # Legacy foreign rows remain in history for audit only.
+                    # They are unclassified and must never contribute to reserve totals.
+                    categories[category] = {
+                        "entries": int(row["count"]),
+                        "realized_result_brl": 0.0,
+                        "reserve_amount_brl": 0.0,
+                        "classification_status": "PENDING_CLASSIFICATION",
+                        "rate_available": False,
+                    }
+                else:
+                    categories[category] = {
+                        "rate": rates[category],
+                        "entries": int(row["count"]),
+                        "realized_result_brl": round(float(row["realized_result_brl"]), 2),
+                        "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
+                    }
             total = db.execute(
-                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries"
+                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE category = 'BR_DAY_TRADE'"
             ).fetchone()
             history_total = int(db.execute(
                 "SELECT COUNT(*) AS total FROM fiscal_reserve_entries"
@@ -321,7 +333,7 @@ class FiscalReserve:
             "limitations": [
                 "Estimativa de planejamento; não representa imposto apurado ou devido.",
                 "Resultados negativos são registrados, mas compensações fiscais não são calculadas.",
-                "Resultados estrangeiros exigem classificação tributária validada e conversão para BRL.",
+                "Resultados estrangeiros, inclusive registros legados, ficam fora dos totais até classificação tributária validada e conversão para BRL.",
                 "Nenhum valor é transferido ou movimentado pela Reserva Fiscal.",
             ],
         }
