@@ -24,9 +24,9 @@ main{max-width:1120px;margin:auto;padding:28px 18px 56px}.top{display:flex;justi
 <div><div class="label">Este mês</div><div class="amount" id="periodMonthReserve">R$ 0,00</div><div class="muted" id="periodMonthResult">Resultado: R$ 0,00</div></div>
 <div><div class="label">Este ano</div><div class="amount" id="periodYearReserve">R$ 0,00</div><div class="muted" id="periodYearResult">Resultado: R$ 0,00</div></div>
 </div><div class="muted" id="periodAsOf">Períodos calculados pela data de realização registrada.</div></article>
-<article class="card wide"><div class="label">Registrar resultado realizado</div><div class="muted">Informe o resultado líquido já realizado e convertido para reais (BRL), com uma referência que permita conferência.</div>
+<article class="card wide"><div class="label">Registrar resultado realizado</div><div class="muted">Informe o resultado líquido já realizado e convertido para reais (BRL), com uma referência que permita conferência. Lançamentos internacionais estão bloqueados nesta etapa: não use a taxa genérica de 15%; mantenha esses resultados fora da reserva até classificação do instrumento, jurisdição e conversão cambial serem validadas.</div>
 <form id="entryForm"><div class="fields">
-<label>Categoria<select id="category" required><option value="BR_DAY_TRADE">Brasil · Day trade em bolsa brasileira</option><option value="FOREIGN_FINANCIAL_ASSET">Exterior · aplicação com classificação validada</option></select></label>
+<label>Categoria<select id="category" required><option value="BR_DAY_TRADE">Brasil · Day trade em bolsa brasileira</option></select></label>
 <label>Resultado realizado (R$)<input id="result" type="number" step="0.01" required placeholder="Ex.: 1250,00"></label>
 <label>Referência / comprovante<input id="reference" maxlength="160" required placeholder="ID da operação ou extrato"></label>
 <label>Data da realização<input id="occurredOn" type="date" required></label>
