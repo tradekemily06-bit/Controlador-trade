@@ -552,12 +552,18 @@ def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch)
                 "FOREIGN_FINANCIAL_ASSET": {
                     "rate": 15.0,
                     "entries": 2,
-                    "reserve_amount_brl": 0.0,
+                    "realized_result_brl": 500.0,
+                    "reserve_amount_brl": 75.0,
                 },
             },
-            "total_reserved_brl": 100.0,
+            "total_reserved_brl": 175.0,
             "periods": {},
-            "history": [],
+            "history": [{
+                "category": "FOREIGN_FINANCIAL_ASSET",
+                "realized_result_brl": 500.0,
+                "reserve_rate": 15.0,
+                "reserve_amount_brl": 75.0,
+            }],
             "history_page": {"limit": 100, "offset": 0, "returned": 0, "total": 0, "has_more": False},
         },
     )
@@ -569,4 +575,11 @@ def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch)
     assert "rate" not in foreign
     assert foreign["classification_status"] == "PENDING_CLASSIFICATION"
     assert foreign["rate_available"] is False
+    assert foreign["realized_result_brl"] == 0.0
+    assert foreign["reserve_amount_brl"] == 0.0
+    assert payload["total_reserved_brl"] == 175.0
     assert payload["categories"]["BR_DAY_TRADE"]["rate"] == 20.0
+    legacy = payload["history"][0]
+    assert "reserve_rate" not in legacy
+    assert "reserve_amount_brl" not in legacy
+    assert legacy["classification_status"] == "PENDING_CLASSIFICATION"
