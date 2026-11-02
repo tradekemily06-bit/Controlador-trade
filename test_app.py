@@ -180,3 +180,27 @@ def test_remote_mutation_is_blocked_without_trusted_identity():
     result = b"".join(application(environ, start_response))
     assert captured["status"].startswith("503")
     assert json.loads(result)["error"] == "trusted remote identity provider is not configured"
+
+
+
+def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, monkeypatch):
+    import app
+    from finance.fiscal_pending_queue import FiscalPendingQueue
+
+    monkeypatch.setattr(app, "FISCAL_PENDING_QUEUE", FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3")))
+    payload = {
+        "reference": "API-DUPLICATE-001",
+        "original_amount": 125.50,
+        "original_currency": "USD",
+        "instrument": "ETF",
+        "jurisdiction": "US",
+        "occurred_on": "2026-10-30",
+    }
+
+    created_status, created = call_app("/api/fiscal-reserve/pending", "POST", payload)
+    duplicate_status, duplicate = call_app("/api/fiscal-reserve/pending", "POST", payload)
+
+    assert created_status.startswith("201")
+    assert created["reserve_calculated"] is False
+    assert duplicate_status.startswith("409")
+    assert duplicate["error"] == "Já existe uma pendência com essa referência."
