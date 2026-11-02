@@ -22,7 +22,7 @@ class FakeService:
 
     def memory_view(self, limit=50):
         assert limit == 5
-        return [{"decision_id": "d-1", "signal": "AGUARDAR"}]
+        return [{"decision_id": "d-1", "signal": "AGUARDAR", "score": 30, "confirmed": False}]
 
 
 class FakeFiscalReserve:
@@ -38,7 +38,8 @@ def test_context_is_read_only_and_contains_existing_module_summaries():
     assert context["system"]["real"] == "DESABILITADO"
     assert context["risk"]["allowed"] is False
     assert context["fiscal_reserve"]["total_reserved_brl"] == 0.0
-    assert context["recent_decisions"][0]["decision_id"] == "d-1"
+    assert "decision_id" not in context["recent_decisions"][0]
+    assert context["recent_decisions"][0]["signal"] == "AGUARDAR"
     assert context["assistant_safety"]["read_only"] is True
     assert context["assistant_safety"]["may_execute_orders"] is False
     assert context["assistant_safety"]["may_enable_real"] is False
