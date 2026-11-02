@@ -178,6 +178,14 @@ class FiscalReserve:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
+        # The generic foreign category is retained for historical rows and
+        # configuration compatibility only. New foreign results must not be
+        # reserved until instrument/jurisdiction/FX classification is explicit.
+        if category == "FOREIGN_FINANCIAL_ASSET":
+            raise ValueError(
+                "resultado internacional não pode ser lançado na categoria genérica; "
+                "mantenha-o pendente até classificação tributária e conversão cambial validadas"
+            )
         result = self._money(payload.get("realized_result_brl"), "realized_result_brl")
         reference = str(payload.get("reference") or "").strip()
         if not reference:
