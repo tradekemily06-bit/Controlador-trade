@@ -129,6 +129,19 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
         for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations")
         if key in fiscal
     }
+    # The legacy foreign category may still carry a historical generic rate
+    # (15%). Never forward that rate to the external assistant as tax guidance.
+    categories = fiscal_context.get("categories")
+    if isinstance(categories, dict):
+        foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
+        if isinstance(foreign, dict):
+            safe_foreign = dict(foreign)
+            safe_foreign.pop("rate", None)
+            safe_foreign["classification_status"] = "PENDING_CLASSIFICATION"
+            safe_foreign["rate_available"] = False
+            categories = dict(categories)
+            categories["FOREIGN_FINANCIAL_ASSET"] = safe_foreign
+            fiscal_context["categories"] = categories
     recent_decisions = service.memory_view(limit=5)
 
     components = status.get("components", {})
