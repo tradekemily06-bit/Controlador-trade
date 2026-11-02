@@ -16,7 +16,7 @@ main{max-width:1120px;margin:auto;padding:28px 18px 56px}.top{display:flex;justi
 <header class="top"><div><div class="eyebrow">FINANCEIRO</div><h1 class="title">Reserva Fiscal</h1><div class="muted">Acompanhamento separado de resultados realizados e valores estimados para reserva.</div></div><div class="pill">CONTROLE DE PLANEJAMENTO · BRL</div></header>
 <section class="grid">
 <article class="card"><div class="row"><span class="label">Brasil · Day trade em bolsa</span><span class="rate" id="brRate">20%</span></div><div class="amount" id="brReserved">R$ 0,00</div><div class="muted">Reserva estimada acumulada</div><div class="muted" id="brProfit">Resultado registrado: R$ 0,00</div></article>
-<article class="card"><div class="row"><span class="label">Exterior · aplicações classificadas</span><span class="rate" id="foreignRate">15%</span></div><div class="amount" id="foreignReserved">R$ 0,00</div><div class="muted">Reserva estimada acumulada</div><div class="muted" id="foreignProfit">Resultado registrado: R$ 0,00</div></article>
+<article class="card"><div class="row"><span class="label">Exterior · aplicação com classificação validada</span><span class="rate" id="foreignRate">15%</span></div><div class="amount" id="foreignReserved">R$ 0,00</div><div class="muted">Reserva estimada acumulada</div><div class="muted" id="foreignProfit">Resultado registrado: R$ 0,00</div></article>
 <article class="card wide"><div class="row"><div><div class="label">Total estimado reservado</div><div class="amount" id="totalReserved">R$ 0,00</div></div><button class="btn secondary" id="reload">ATUALIZAR</button></div><div class="muted">Valor de controle interno. Não representa saldo bancário nem imposto definitivamente apurado.</div></article>
 <article class="card wide"><div class="label">Acompanhamento por período</div><div class="fields" id="periodTotals">
 <div><div class="label">Hoje</div><div class="amount" id="periodDayReserve">R$ 0,00</div><div class="muted" id="periodDayResult">Resultado: R$ 0,00</div></div>
@@ -26,7 +26,7 @@ main{max-width:1120px;margin:auto;padding:28px 18px 56px}.top{display:flex;justi
 </div><div class="muted" id="periodAsOf">Períodos calculados pela data de realização registrada.</div></article>
 <article class="card wide"><div class="label">Registrar resultado realizado</div><div class="muted">Informe o resultado líquido já realizado e convertido para reais (BRL), com uma referência que permita conferência.</div>
 <form id="entryForm"><div class="fields">
-<label>Categoria<select id="category" required><option value="BR_DAY_TRADE">Brasil · Day trade em bolsa brasileira</option><option value="FOREIGN_FINANCIAL_ASSET">Exterior · aplicação financeira enquadrada</option></select></label>
+<label>Categoria<select id="category" required><option value="BR_DAY_TRADE">Brasil · Day trade em bolsa brasileira</option><option value="FOREIGN_FINANCIAL_ASSET">Exterior · aplicação com classificação validada</option></select></label>
 <label>Resultado realizado (R$)<input id="result" type="number" step="0.01" required placeholder="Ex.: 1250,00"></label>
 <label>Referência / comprovante<input id="reference" maxlength="160" required placeholder="ID da operação ou extrato"></label>
 <label>Data da realização<input id="occurredOn" type="date" required></label>
@@ -39,7 +39,7 @@ main{max-width:1120px;margin:auto;padding:28px 18px 56px}.top{display:flex;justi
 </div><div class="actions"><button class="btn secondary" id="saveRates" type="button">SALVAR PERCENTUAIS</button><span class="status" id="rateStatus" aria-live="polite"></span></div></article>
 <article class="card wide"><div class="row"><div class="label">Histórico</div><span class="muted" id="historyPageLabel">Carregando...</span></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Resultado</th><th>Percentual</th><th>Reserva</th><th>Referência</th></tr></thead><tbody id="history"><tr><td colspan="6" class="muted">Carregando...</td></tr></tbody></table></div><div class="actions"><button class="btn secondary" id="historyPrev" type="button" disabled>ANTERIOR</button><button class="btn secondary" id="historyNext" type="button" disabled>PRÓXIMA</button></div></article>
 </section>
-<div class="notice">Atenção: os percentuais são parâmetros iniciais de planejamento, não uma apuração tributária. Operações no exterior precisam de classificação correta; instrumentos não classificados não devem ser lançados nessa categoria. Perdas são registradas, mas compensações fiscais não são calculadas automaticamente. Nenhum dinheiro é transferido por esta área.</div>
+<div class="notice">Atenção: os percentuais são parâmetros configuráveis de planejamento, não alíquotas universais nem apuração tributária. A categoria do exterior não deve ser usada automaticamente para Forex, CFDs, futuros, derivativos, cripto ou qualquer instrumento sem enquadramento individual confirmado. Se houver dúvida, não registre a operação nessa categoria; mantenha-a pendente de classificação com apoio contábil. Perdas são registradas, mas compensações fiscais não são calculadas automaticamente. Nenhum dinheiro é transferido por esta área.</div>
 </main>
 <script>
 const money = value => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(value||0));
