@@ -23,6 +23,12 @@ CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
 
+## Assistente do Ecossistema
+
+Para habilitar respostas com IA, configure `OPENAI_API_KEY` como variável de ambiente protegida no usuário/serviço Windows que inicia o runtime. A chave fica somente no servidor; nunca a coloque no Git, na interface web, em arquivos servidos ao navegador ou em mensagens do Assistente. Opcionalmente, configure `OPENAI_MODEL`; sem essa variável, o serviço usa o modelo padrão definido pelo código. Sem `OPENAI_API_KEY`, a rota de conversa responde como indisponível e não deve ser tratada como Assistente operacionalmente pronto.
+
+O texto da pergunta e o resumo operacional enviado ao provedor externo devem ser informados ao usuário na interface. Não envie senhas, tokens, códigos de autenticação ou dados bancários sensíveis. O Assistente permanece somente leitura e recebe agregados da Reserva Fiscal, não o histórico individual de referências e observações.
+
 CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint interno de atualizações for usado.
 
 ## Ordem de inicialização
