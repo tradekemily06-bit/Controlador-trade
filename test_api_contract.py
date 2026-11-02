@@ -537,3 +537,36 @@ def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     assert payload["live"] is True
     assert "execution_allowed" not in payload
     assert "real" not in payload
+
+
+def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch):
+    import app
+
+    monkeypatch.setattr(
+        app.FISCAL_RESERVE,
+        "summary",
+        lambda **_: {
+            "name": "Reserva Fiscal",
+            "categories": {
+                "BR_DAY_TRADE": {"rate": 20.0, "reserve_amount_brl": 100.0},
+                "FOREIGN_FINANCIAL_ASSET": {
+                    "rate": 15.0,
+                    "entries": 2,
+                    "reserve_amount_brl": 0.0,
+                },
+            },
+            "total_reserved_brl": 100.0,
+            "periods": {},
+            "history": [],
+            "history_page": {"limit": 100, "offset": 0, "returned": 0, "total": 0, "has_more": False},
+        },
+    )
+
+    status, _, payload = ApiContractTests().request("/api/fiscal-reserve")
+
+    assert status == "200 OK"
+    foreign = payload["categories"]["FOREIGN_FINANCIAL_ASSET"]
+    assert "rate" not in foreign
+    assert foreign["classification_status"] == "PENDING_CLASSIFICATION"
+    assert foreign["rate_available"] is False
+    assert payload["categories"]["BR_DAY_TRADE"]["rate"] == 20.0
