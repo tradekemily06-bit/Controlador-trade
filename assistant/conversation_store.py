@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib, sqlite3, uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 class AssistantConversationStore:
@@ -9,8 +10,19 @@ class AssistantConversationStore:
             db.execute("CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY, owner TEXT NOT NULL, title TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('user','assistant')), content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
             db.execute("CREATE INDEX IF NOT EXISTS conversations_owner ON conversations(owner,updated_at DESC)")
+    @contextmanager
     def _db(self):
-        db=sqlite3.connect(self.path,timeout=10); db.row_factory=sqlite3.Row; return db
+        db=sqlite3.connect(self.path,timeout=10)
+        db.row_factory=sqlite3.Row
+        db.execute("PRAGMA busy_timeout = 10000")
+        try:
+            yield db
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
     @staticmethod
     def _owner(identity):
         value=str(identity or "").strip().casefold()
