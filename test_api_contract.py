@@ -556,7 +556,7 @@ def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch)
                     "reserve_amount_brl": 75.0,
                 },
             },
-            "total_reserved_brl": 175.0,
+            "total_reserved_brl": 100.0,
             "periods": {},
             "history": [{
                 "category": "FOREIGN_FINANCIAL_ASSET",
@@ -577,7 +577,7 @@ def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch)
     assert foreign["rate_available"] is False
     assert foreign["realized_result_brl"] == 0.0
     assert foreign["reserve_amount_brl"] == 0.0
-    assert payload["total_reserved_brl"] == 175.0
+    assert payload["total_reserved_brl"] == 100.0
     assert payload["categories"]["BR_DAY_TRADE"]["rate"] == 20.0
     legacy = payload["history"][0]
     assert "reserve_rate" not in legacy
