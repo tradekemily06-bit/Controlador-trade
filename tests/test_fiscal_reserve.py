@@ -11,7 +11,7 @@ def test_defaults_are_separate_and_configurable(tmp_path):
     assert reserve.settings()["BR_DAY_TRADE"] == 18.0
 
 
-def test_realized_results_create_separate_reserves_and_history(tmp_path):
+def test_brazil_result_is_reserved_and_generic_foreign_result_is_blocked(tmp_path):
     reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
     brazil = reserve.record_realized_result({
         "category": "BR_DAY_TRADE",
@@ -19,19 +19,23 @@ def test_realized_results_create_separate_reserves_and_history(tmp_path):
         "reference": "MT5-DEMO-TRADE-001",
         "occurred_on": "2026-10-29",
     })
-    foreign = reserve.record_realized_result({
-        "category": "FOREIGN_FINANCIAL_ASSET",
-        "realized_result_brl": 2000,
-        "reference": "BROKER-STATEMENT-001",
-        "occurred_on": "2026-10-29",
-    })
     assert brazil["reserve_amount_brl"] == 200
-    assert foreign["reserve_amount_brl"] == 300
+    try:
+        reserve.record_realized_result({
+            "category": "FOREIGN_FINANCIAL_ASSET",
+            "realized_result_brl": 2000,
+            "reference": "BROKER-STATEMENT-001",
+            "occurred_on": "2026-10-29",
+        })
+    except ValueError as exc:
+        assert "classificação tributária" in str(exc)
+    else:
+        raise AssertionError("generic foreign results must remain unreserved")
     summary = reserve.summary()
-    assert summary["total_reserved_brl"] == 500
+    assert summary["total_reserved_brl"] == 200
     assert summary["categories"]["BR_DAY_TRADE"]["reserve_amount_brl"] == 200
-    assert summary["categories"]["FOREIGN_FINANCIAL_ASSET"]["reserve_amount_brl"] == 300
-    assert len(summary["history"]) == 2
+    assert summary["categories"]["FOREIGN_FINANCIAL_ASSET"]["reserve_amount_brl"] == 0
+    assert len(summary["history"]) == 1
 
 
 def test_losses_are_recorded_without_assuming_tax_loss_offsets(tmp_path):
