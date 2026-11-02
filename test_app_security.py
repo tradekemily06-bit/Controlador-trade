@@ -161,3 +161,33 @@ class AppSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+    def test_all_remote_assistant_routes_require_trusted_identity(self):
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            routes = [
+                ("/api/assistant/conversations", "GET", None),
+                ("/api/assistant/history?conversation_id=not-owned", "GET", None),
+                ("/api/assistant/chat", "POST", {"message": "teste"}),
+            ]
+            for path, method, payload in routes:
+                status, _, body = self.request(path, method=method, payload=payload, remote="203.0.113.44")
+                self.assertEqual(status, "401 Unauthorized", path)
+                self.assertIn("Identidade autenticada necessária".encode(), body)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
