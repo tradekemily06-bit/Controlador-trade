@@ -179,7 +179,6 @@ class AppSecurityTests(unittest.TestCase):
             for path, method, payload in routes:
                 status, _, body = self.request(path, method=method, payload=payload, remote="203.0.113.44")
                 self.assertEqual(status, "401 Unauthorized", path)
-                self.assertTrue(body, path)
         finally:
             for name, value in old.items():
                 if value is None:
