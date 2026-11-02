@@ -101,24 +101,33 @@ def test_duplicate_reference_is_rejected_without_double_reserving(tmp_path):
     assert reserve.summary()["total_reserved_brl"] == 200
 
 
-def test_both_rates_update_together_and_invalid_set_changes_nothing(tmp_path):
+def test_only_brazil_rate_can_be_updated_and_invalid_set_changes_nothing(tmp_path):
     reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
-    reserve.update_rates({"BR_DAY_TRADE": 19, "FOREIGN_FINANCIAL_ASSET": 14})
+    reserve.update_rates({"BR_DAY_TRADE": 19})
     assert reserve.settings() == {
         "BR_DAY_TRADE": 19.0,
-        "FOREIGN_FINANCIAL_ASSET": 14.0,
+        "FOREIGN_FINANCIAL_ASSET": 15.0,
     }
+    for attempt in (
+        lambda: reserve.update_rate("FOREIGN_FINANCIAL_ASSET", 14),
+        lambda: reserve.update_rates({"BR_DAY_TRADE": 18, "FOREIGN_FINANCIAL_ASSET": 14}),
+    ):
+        try:
+            attempt()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("generic foreign rate changes must be rejected")
     try:
-        reserve.update_rates({"BR_DAY_TRADE": 101, "FOREIGN_FINANCIAL_ASSET": 13})
+        reserve.update_rates({"BR_DAY_TRADE": 101})
     except ValueError:
         pass
     else:
-        raise AssertionError("invalid rate set must be rejected")
+        raise AssertionError("invalid Brazilian rate must be rejected")
     assert reserve.settings() == {
         "BR_DAY_TRADE": 19.0,
-        "FOREIGN_FINANCIAL_ASSET": 14.0,
+        "FOREIGN_FINANCIAL_ASSET": 15.0,
     }
-
 
 
 def test_summary_exposes_day_week_month_and_year_totals(tmp_path):
