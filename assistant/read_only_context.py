@@ -1,7 +1,7 @@
 """Read-only context assembly for the Controlador Trading assistant.
 
-This module deliberately exposes only approved summaries from existing services.
-It does not execute trades, change settings, move funds, or infer tax outcomes.
+Only explicit, low-sensitivity fields are sent to the external model provider.
+This module does not execute trades, change settings, move funds, or infer tax outcomes.
 """
 from __future__ import annotations
 
@@ -9,12 +9,113 @@ from datetime import datetime, timezone
 from typing import Any
 
 
-def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, Any]:
-    """Build a compact, factual snapshot for an assistant response.
+def _count(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError, OverflowError):
+        return 0
 
-    The caller is responsible for authenticating the user and deciding whether
-    the snapshot may be sent to an external model provider.
-    """
+
+def _decision_summary(item: Any) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        return {}
+    # Exclude decision IDs, symbols, reasons and any free-form/user-provided text.
+    return {
+        key: item[key]
+        for key in ("created_at", "signal", "score", "confirmed", "outcome")
+        if key in item and isinstance(item[key], (str, int, float, bool, type(None)))
+    }
+
+
+def _risk_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    limits = value.get("configured_limits")
+    safe_limits = {}
+    if isinstance(limits, dict):
+        for key in ("daily_loss_limit", "max_operations", "max_consecutive_losses"):
+            item = limits.get(key)
+            if isinstance(item, (int, float)) and not isinstance(item, bool):
+                safe_limits[key] = item
+    return {
+        "available": True,
+        "allowed": bool(value.get("allowed", False)),
+        "configured_limits": safe_limits,
+    }
+
+
+def _operations_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    execution = value.get("execution") if isinstance(value.get("execution"), dict) else {}
+    reconciliation = value.get("reconciliation") if isinstance(value.get("reconciliation"), dict) else {}
+    recovery = value.get("recovery") if isinstance(value.get("recovery"), dict) else {}
+    kill = value.get("kill_switch") if isinstance(value.get("kill_switch"), dict) else {}
+    health = value.get("runtime_health") if isinstance(value.get("runtime_health"), dict) else {}
+    market = value.get("market_data") if isinstance(value.get("market_data"), dict) else {}
+    # Do not forward request IDs, free-form messages/reasons, supervisor payloads,
+    # broker symbols, timeframes, or other arbitrary nested runtime data.
+    return {
+        "available": True,
+        "execution": {
+            "allowed": False,
+            "mode": str(execution.get("mode", "UNKNOWN"))[:24],
+            "state": str(execution.get("state", "UNKNOWN"))[:32],
+            "real": "DISABLED",
+        },
+        "reconciliation": {
+            "state": str(reconciliation.get("state", "UNKNOWN"))[:32],
+            "pending_count": len(reconciliation.get("pending_request_ids", [])) if isinstance(reconciliation.get("pending_request_ids", []), list) else 0,
+            "unknown_count": len(reconciliation.get("unknown_request_ids", [])) if isinstance(reconciliation.get("unknown_request_ids", []), list) else 0,
+        },
+        "recovery": {
+            "state": str(recovery.get("state", "UNKNOWN"))[:32],
+            "can_resume": bool(recovery.get("can_resume", False)),
+        },
+        "kill_switch": {
+            "state": str(kill.get("state", "UNKNOWN"))[:24],
+            "enabled": bool(kill.get("enabled", False)),
+        },
+        "runtime_health": {
+            "state": str(health.get("state", "UNKNOWN"))[:24],
+            "ledger_entries": _count(health.get("ledger_entries")),
+            "pending_executions": _count(health.get("pending_executions")),
+            "unknown_executions": _count(health.get("unknown_executions")),
+        },
+        "market_data": {
+            "health": str(market.get("health", "UNKNOWN"))[:24],
+            "safe_for_analysis": bool(market.get("safe_for_analysis", False)),
+            "candle_count": _count(market.get("candle_count")),
+            "gap_count": _count(market.get("gap_count")),
+            "stale": market.get("stale") if isinstance(market.get("stale"), bool) else None,
+        },
+    }
+
+
+def _statistics_summary(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"available": False}
+    safe = {}
+    for key in ("total", "total_decisions", "actionable", "wins", "losses", "draws", "open", "win_rate"):
+        item = value.get(key)
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            safe[key] = item
+    periods = value.get("periods")
+    if isinstance(periods, dict):
+        safe["periods"] = {}
+        for period in ("daily", "weekly", "monthly", "day", "week", "month", "year"):
+            row = periods.get(period)
+            if isinstance(row, dict):
+                safe["periods"][period] = {
+                    key: row[key] for key in ("total", "actionable", "wins", "losses", "draws", "open", "win_rate")
+                    if key in row and isinstance(row[key], (int, float)) and not isinstance(row[key], bool)
+                }
+    safe["available"] = True
+    return safe
+
+
+def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, Any]:
+    """Build a compact, privacy-filtered snapshot for an assistant response."""
     if service is None or fiscal_reserve is None:
         raise ValueError("serviço do ecossistema e Reserva Fiscal são obrigatórios")
 
@@ -23,7 +124,6 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
     observability = service.operational_observability()
     statistics = service.statistics()
     fiscal = fiscal_reserve.summary()
-    # The assistant needs aggregates, not transaction-level references or notes.
     fiscal_context = {
         key: fiscal[key]
         for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations")
@@ -31,28 +131,28 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
     }
     recent_decisions = service.memory_view(limit=5)
 
+    components = status.get("components", {})
+    safe_components = {}
+    if isinstance(components, dict):
+        for key, value in components.items():
+            if isinstance(value, (str, int, float, bool)):
+                safe_components[str(key)[:64]] = str(value)[:48] if isinstance(value, str) else value
+
     return {
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "sources": [
-            "system_status",
-            "risk_status",
-            "operational_observability",
-            "statistics",
-            "fiscal_reserve",
-            "recent_decisions",
-        ],
+        "sources": ["system_status", "risk_status", "operational_observability", "statistics", "fiscal_reserve", "recent_decisions"],
         "system": {
-            "mode": status.get("mode", "UNKNOWN"),
-            "execution_allowed": bool(status.get("execution_allowed", False)),
-            "real": status.get("real", "UNKNOWN"),
-            "health": status.get("health", "UNKNOWN"),
-            "components": status.get("components", {}),
+            "mode": str(status.get("mode", "UNKNOWN"))[:24],
+            "execution_allowed": False,
+            "real": "DESABILITADO",
+            "health": str(status.get("health", "UNKNOWN"))[:24],
+            "components": safe_components,
         },
-        "risk": risk,
-        "operations": observability,
-        "statistics": statistics,
+        "risk": _risk_summary(risk),
+        "operations": _operations_summary(observability),
+        "statistics": _statistics_summary(statistics),
         "fiscal_reserve": fiscal_context,
-        "recent_decisions": recent_decisions,
+        "recent_decisions": [_decision_summary(item) for item in recent_decisions if isinstance(item, dict)][-5:],
         "assistant_safety": {
             "read_only": True,
             "may_execute_orders": False,
