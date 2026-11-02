@@ -113,3 +113,18 @@ def test_user_prompt_is_not_promoted_to_system_instructions(tmp_path):
  assert messages[1]["role"]=="user"
  assert messages[1]["content"]==injection
  assert "não ativa REAL" in messages[0]["content"]
+
+
+
+def test_openai_client_uses_explicit_provider_timeout(tmp_path, monkeypatch):
+ import sys
+ from types import SimpleNamespace
+ monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+ captured = {}
+ class FakeOpenAI:
+  def __init__(self, **kwargs):
+   captured.update(kwargs)
+ monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F())
+ assistant._client()
+ assert captured == {"api_key": "test-key", "timeout": 30.0}
