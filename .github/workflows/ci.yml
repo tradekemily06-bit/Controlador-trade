@@ -35,7 +35,7 @@ jobs:
           python -m pip_audit -r requirements.txt
 
       - name: Compile all Python project surfaces
-        run: python -m compileall -q app.py core data execution audit analysis integration security_guard.py security_audit.py web
+        run: python -m compileall -q app.py assistant finance core data execution audit analysis integration security_guard.py security_audit.py web
 
       - name: Build production container
         run: docker build --tag controlador-trade:ci .
