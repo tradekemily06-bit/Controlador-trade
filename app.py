@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import sqlite3
 from dataclasses import asdict
 from http import HTTPStatus
 from pathlib import Path
@@ -295,7 +296,12 @@ def application(environ, start_response):
                                   FISCAL_PENDING_QUEUE.list_pending(limit=limit, offset=offset),
                                   request_id, environ)
         if path == "/api/fiscal-reserve/pending" and method == "POST":
-            item = FISCAL_PENDING_QUEUE.add(_read_json(environ))
+            try:
+                item = FISCAL_PENDING_QUEUE.add(_read_json(environ))
+            except sqlite3.IntegrityError:
+                return _json_response(start_response, HTTPStatus.CONFLICT,
+                                      {"error": "Já existe uma pendência com essa referência.", "request_id": request_id},
+                                      request_id, environ)
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False},
                                   request_id, environ)
