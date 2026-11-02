@@ -330,12 +330,18 @@ def application(environ, start_response):
                 raise ValueError("limit deve estar entre 1 e 500")
             if history_offset < 0:
                 raise ValueError("offset deve ser não negativo")
+            fiscal_summary = FISCAL_RESERVE.summary(
+                history_limit=history_limit, history_offset=history_offset
+            )
+            # Keep legacy foreign settings in storage for historical compatibility,
+            # but never expose the generic percentage as a usable public tax rate.
+            foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
+            if isinstance(foreign, dict):
+                foreign.pop("rate", None)
+                foreign["classification_status"] = "PENDING_CLASSIFICATION"
+                foreign["rate_available"] = False
             return _json_response(
-                start_response,
-                HTTPStatus.OK,
-                FISCAL_RESERVE.summary(history_limit=history_limit, history_offset=history_offset),
-                request_id,
-                environ,
+                start_response, HTTPStatus.OK, fiscal_summary, request_id, environ
             )
         if path == "/api/fiscal-reserve/rates" and method == "POST":
             data = _read_json(environ)
