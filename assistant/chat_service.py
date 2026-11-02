@@ -24,7 +24,7 @@ class EcosystemAssistant:
         if not key: raise AssistantUnavailableError("Assistente não configurado: chave OpenAI ausente no servidor.")
         try: from openai import OpenAI
         except ImportError as exc: raise AssistantUnavailableError("Biblioteca OpenAI não instalada.") from exc
-        return OpenAI(api_key=key)
+        return OpenAI(api_key=key, timeout=30.0)
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def ask(self,identity,message,cid=None):
