@@ -159,7 +159,7 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     }
     host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
     is_loopback = client in {"127.0.0.1", "::1"}
-    if local_mutations_allowed and is_loopback and (not host or host in local_hosts):
+    if local_mutations_allowed and not remote_access_required and is_loopback and (not host or host in local_hosts):
         return True, "local"
 
     if not remote_access_required:
