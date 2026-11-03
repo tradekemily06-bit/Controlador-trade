@@ -228,7 +228,7 @@ def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tm
 
  assistant.ask("owner@example.com", "Resuma minha Reserva Fiscal")
  prompt = client.calls[-1]["messages"][0]["content"]
- context = json.loads(prompt.split("CONTEXTO JSON:\\n", 1)[1])
+ context = json.loads(prompt.split("CONTEXTO JSON:", 1)[1].strip())
 
  reserve = context["fiscal_reserve"]
  assert reserve["total_reserved_brl"] == 200
