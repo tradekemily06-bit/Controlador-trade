@@ -335,14 +335,21 @@ class AppSecurityTests(unittest.TestCase):
         from pathlib import Path
         import app as app_module
         from finance.fiscal_pending_queue import FiscalPendingQueue
+        from finance.fiscal_schema import migrate_fiscal_schema
 
         old_queue = app_module.FISCAL_PENDING_QUEUE
+        old_db = app_module.FISCAL_RESERVE_DB
         old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
+        old_identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY")
         with tempfile.TemporaryDirectory() as directory:
             try:
                 os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
-                queue = FiscalPendingQueue(str(Path(directory) / "fiscal.sqlite"))
-                pending = queue.add({
+                os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "review-test-owner"
+                fiscal_path = Path(directory) / "fiscal.sqlite"
+                app_module.FISCAL_RESERVE_DB = fiscal_path
+                queue = FiscalPendingQueue(str(fiscal_path))
+                migrate_fiscal_schema(str(fiscal_path))
+                pending = queue.add("review-test-owner", {
                     "reference": "REVIEW-API-TEST",
                     "original_amount": 125.50,
                     "original_currency": "USD",
@@ -388,6 +395,11 @@ class AppSecurityTests(unittest.TestCase):
                 self.assertFalse(listed_data["reserve_calculated"])
             finally:
                 app_module.FISCAL_PENDING_QUEUE = old_queue
+                app_module.FISCAL_RESERVE_DB = old_db
+                if old_identity is None:
+                    os.environ.pop("CONTROLADOR_SINGLE_USER_IDENTITY", None)
+                else:
+                    os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = old_identity
                 if old_required is None:
                     os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
                 else:
