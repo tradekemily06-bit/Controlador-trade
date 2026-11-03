@@ -153,3 +153,12 @@ Até que o ledger e a fila da Reserva Fiscal tenham isolamento por proprietário
 O Assistente separa conversas por identidade, mas isso não significa que os registros da Reserva Fiscal estejam separados por identidade. A fila de pendências estrangeiras e o ledger fiscal usam o banco compartilhado do runtime. Adicionar outra identidade ao Access antes de implementar e testar o isolamento fiscal pode expor registros e totais de outra pessoa.
 
 O código confia no header de identidade configurado e não valida criptograficamente o JWT do Cloudflare Access. Portanto, o origin deve permanecer acessível somente pelo Tunnel/proxy confiável; o proxy deve sobrescrever/remover qualquer header de identidade enviado pelo cliente. Nunca publique a porta 8000 nem encaminhe tráfego direto ao origin. Aumentar o número de identidades autorizadas exige primeiro isolamento fiscal por proprietário, testes de acesso cruzado e revisão da fronteira de confiança do proxy.
+
+## Revisão profissional de pendências fiscais
+
+A fila estrangeira oferece consulta e inclusão de evidências de revisão por item:
+
+- `GET /api/fiscal-reserve/pending/{pending_id}/reviews`: lista o histórico de revisões.
+- `POST /api/fiscal-reserve/pending/{pending_id}/reviews`: registra uma revisão com classificação sugerida, jurisdição indicada pelo profissional, nome e qualificação, identificação/registro profissional, data, referência de evidência e observações.
+
+As duas rotas passam pela mesma autorização de identidade exigida para as demais rotas `/api/fiscal-reserve`. O registro é histórico e não altera o status `PENDING_CLASSIFICATION`, não libera alíquota e não calcula imposto ou reserva. Os campos preenchidos são declarações/documentos informados por quem usa a interface; o software não verifica a autenticidade do profissional, do registro ou do parecer. A validação efetiva deve ocorrer fora do sistema com o profissional responsável. Não use dados fictícios como parecer real.
