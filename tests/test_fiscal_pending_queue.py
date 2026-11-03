@@ -173,9 +173,8 @@ def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
     pending = queue.add(sample())
     queue.record_review(pending["pending_id"], review_sample())
 
-    with sqlite3.connect(path) as db:
-        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 0  # enforcement is per connection
-        db.execute("PRAGMA foreign_keys = ON")
+    with queue._connect() as db:
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         try:
             db.execute(
                 "DELETE FROM fiscal_reserve_pending_foreign WHERE pending_id = ?",
