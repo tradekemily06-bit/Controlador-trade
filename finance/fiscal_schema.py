@@ -37,6 +37,26 @@ def migrate_fiscal_schema(database_path: str) -> str:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
+        if all(table in existing for table in TABLES):
+            owner_columns = {
+                table: {row["name"] for row in db.execute(f'PRAGMA table_info("{table}")')}
+                for table in TABLES
+            }
+            if all("owner_id" in columns for columns in owner_columns.values()):
+                stored_owners = set()
+                for table in TABLES:
+                    stored_owners.update(
+                        row[0] for row in db.execute(
+                            f'SELECT DISTINCT owner_id FROM "{table}" WHERE owner_id IS NOT NULL'
+                        ).fetchall()
+                    )
+                if stored_owners and stored_owners != {owner_id}:
+                    raise RuntimeError(
+                        "A identidade fiscal configurada não corresponde ao proprietário já gravado; "
+                        "migração automática entre proprietários foi bloqueada."
+                    )
+                db.commit()
+                return owner_id
 
         # Capture the old layouts before replacing anything. A missing table is
         # treated as an empty table, which supports clean first-time installs.
