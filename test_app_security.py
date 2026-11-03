@@ -188,3 +188,34 @@ class AppSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_remote_fiscal_and_assistant_delete_routes_require_identity(self):
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            routes = [
+                ("/api/fiscal-reserve/pending", "GET", None),
+                ("/api/fiscal-reserve/pending", "POST", {"reference": "REMOTE-UNAUTH", "original_amount": 1, "original_currency": "USD", "instrument": "ETF", "jurisdiction": "US", "occurred_on": "2026-11-02"}),
+                ("/api/assistant/conversations", "DELETE", None),
+            ]
+            expected = ["403 Forbidden", "401 Unauthorized", "401 Unauthorized"]
+            for (path, method, payload), expected_status in zip(routes, expected):
+                status, _, _ = self.request(
+                    path, method=method, payload=payload, remote="203.0.113.77"
+                )
+                self.assertEqual(status, expected_status, f"{method} {path}")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
