@@ -1,0 +1,55 @@
+{
+  "project": "Controlador-Trader",
+  "purpose": "Especificação visual extraída das cinco imagens fornecidas para reprodução do painel. Não representa código funcional nem inventa estados não visíveis.",
+  "source_images": [
+    {"file": "8870.jpg", "state": "closed", "reference": "C fechado"},
+    {"file": "8871.jpg", "state": "open", "tab": "COCKPIT"},
+    {"file": "8872.jpg", "state": "open", "tab": "ANÁLISE"},
+    {"file": "8873.jpg", "state": "open", "tab": "ESTUDO"},
+    {"file": "8878.jpg", "state": "open", "tab": "MAIS / ADMIN"}
+  ],
+  "capture": {
+    "image_dimensions_px": [694, 1536],
+    "note": "As capturas incluem barras do Android e do visualizador. As coordenadas e dimensões internas do painel devem ser recalibradas para a área útil do gráfico MT5; não usar a tela inteira do celular como tamanho fixo."
+  },
+  "visual_tokens": {
+    "background_chart": "#080B0F",
+    "panel_background": "#10151B",
+    "module_background": "#161C24",
+    "panel_border": "#25303B",
+    "primary_text": "#E9EEF3",
+    "muted_text": "#7F8B97",
+    "accent": "#46D6AD"
+  },
+  "closed_state": {
+    "trigger": "C",
+    "shape": "circular",
+    "placement": "parte inferior esquerda da área do gráfico",
+    "status_below": "INDISPONÍVEL",
+    "panel_visible": false
+  },
+  "open_state": {
+    "header": {"title": "Controlador-Trader", "right_badge": "DEMO"},
+    "navigation": ["COCKPIT", "ANÁLISE", "ESTUDO", "MAIS / ADMIN"],
+    "footer": {"system_state_label": "Estado do sistema", "system_state_value": "INDISPONÍVEL", "control": "Alavancagem", "real_mode": "REAL — DESABILITADO"},
+    "tabs": {
+      "COCKPIT": ["Operação", "Motor de Decisão", "Gestão de Risco", "Notificações", "MT5 DEMO / Simulação", "Kill Switch"],
+      "ANÁLISE": ["Análise de Mercado", "Memória", "Estatísticas", "Relatórios"],
+      "ESTUDO": ["Laboratório", "Replay", "Simulador", "Aprendizado", "Descobertas", "Escola / Tutorial / Onboarding"],
+      "MAIS / ADMIN": ["Financeiro", "Configurações", "Auditoria", "Segurança", "Conexões", "Multi-Broker"]
+    }
+  },
+  "assistant_ecosystem": {
+    "required_by_user": true,
+    "visible_in_reference_images": false,
+    "found_in_supplied_source_archive": false,
+    "implementation_status": "Módulo funcional separado, acessível dentro de Financeiro sem criar uma quinta área principal."
+  },
+  "fidelity_rules": [
+    "Não alterar os arquivos originais do Figma.",
+    "Não modificar as imagens de referência.",
+    "Separar reprodução visual de integração funcional.",
+    "Não exibir estado operacional como online sem conexão real validada.",
+    "REAL permanece bloqueado."
+  ]
+}
