@@ -241,3 +241,11 @@ def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tm
  assert "INTEGRATION-TEST-001" not in prompt
  assert context["assistant_safety"]["may_execute_orders"] is False
  assert context["assistant_safety"]["may_enable_real"] is False
+
+
+
+def test_assistant_enforces_hard_output_token_limit(tmp_path):
+ client = C()
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F(), client_factory=lambda: client)
+ assistant.ask("owner@example.com", "Resuma o estado do ecossistema")
+ assert client.calls[-1]["max_completion_tokens"] == 600
