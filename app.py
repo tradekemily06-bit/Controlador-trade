@@ -275,6 +275,15 @@ def application(environ, start_response):
                 identity = "local-single-user"
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
+            if path == "/api/assistant/conversations" and method == "DELETE":
+                query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
+                if not query:
+                    raise ValueError("conversation_id obrigatório")
+                try:
+                    ASSISTANT.delete_conversation(identity, query)
+                except PermissionError:
+                    return _json_response(start_response, HTTPStatus.NOT_FOUND, {"error": "conversa não encontrada"}, request_id, environ)
+                return _json_response(start_response, HTTPStatus.OK, {"deleted": True}, request_id, environ)
             if path == "/api/assistant/history" and method == "GET":
                 query = parse_qs(environ.get("QUERY_STRING") or "").get("conversation_id", [""])[-1]
                 if not query: raise ValueError("conversation_id obrigatório")
