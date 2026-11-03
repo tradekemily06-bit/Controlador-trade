@@ -135,10 +135,13 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
     if isinstance(categories, dict):
         foreign = categories.get("FOREIGN_FINANCIAL_ASSET")
         if isinstance(foreign, dict):
-            safe_foreign = dict(foreign)
-            safe_foreign.pop("rate", None)
-            safe_foreign["classification_status"] = "PENDING_CLASSIFICATION"
-            safe_foreign["rate_available"] = False
+            safe_foreign = {
+                "entries": _count(foreign.get("entries")),
+                "realized_result_brl": 0.0,
+                "reserve_amount_brl": 0.0,
+                "classification_status": "PENDING_CLASSIFICATION",
+                "rate_available": False,
+            }
             categories = dict(categories)
             categories["FOREIGN_FINANCIAL_ASSET"] = safe_foreign
             fiscal_context["categories"] = categories

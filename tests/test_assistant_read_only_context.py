@@ -53,3 +53,41 @@ def test_context_rejects_missing_dependencies():
         assert "obrigatórios" in str(exc)
     else:
         raise AssertionError("missing service must be rejected")
+
+
+
+def test_context_sanitizes_all_legacy_foreign_tax_values():
+    class FiscalWithLegacyForeignData:
+        def summary(self):
+            return {
+                "name": "Reserva Fiscal",
+                "currency": "BRL",
+                "total_reserved_brl": 10.0,
+                "categories": {
+                    "BR_DAY_TRADE": {"rate": 20.0, "realized_result_brl": 50.0, "reserve_amount_brl": 10.0},
+                    "FOREIGN_FINANCIAL_ASSET": {
+                        "rate": 15.0,
+                        "entries": 2,
+                        "realized_result_brl": 900.0,
+                        "reserve_amount_brl": 135.0,
+                        "notes": "informação legada",
+                    },
+                },
+                "periods": {},
+                "limitations": [],
+                "history": [{"reference": "PRIVATE-FOREIGN-REF", "notes": "não enviar"}],
+            }
+
+    context = collect_read_only_context(FakeService(), FiscalWithLegacyForeignData())
+    foreign = context["fiscal_reserve"]["categories"]["FOREIGN_FINANCIAL_ASSET"]
+
+    assert foreign == {
+        "entries": 2,
+        "realized_result_brl": 0.0,
+        "reserve_amount_brl": 0.0,
+        "classification_status": "PENDING_CLASSIFICATION",
+        "rate_available": False,
+    }
+    assert "history" not in context["fiscal_reserve"]
+    assert "PRIVATE-FOREIGN-REF" not in str(context)
+    assert "informação legada" not in str(context)

@@ -1,0 +1,135 @@
+{
+  "project": "Controlador-Trader",
+  "purpose": "Especificação visual extraída das cinco imagens fornecidas para reprodução do painel. Não representa código funcional nem inventa estados não visíveis.",
+  "source_images": [
+    {
+      "file": "8870.jpg",
+      "state": "closed",
+      "reference": "C fechado"
+    },
+    {
+      "file": "8871.jpg",
+      "state": "open",
+      "tab": "COCKPIT"
+    },
+    {
+      "file": "8872.jpg",
+      "state": "open",
+      "tab": "ANÁLISE"
+    },
+    {
+      "file": "8873.jpg",
+      "state": "open",
+      "tab": "ESTUDO"
+    },
+    {
+      "file": "8878.jpg",
+      "state": "open",
+      "tab": "MAIS / ADMIN"
+    }
+  ],
+  "capture": {
+    "image_dimensions_px": [
+      694,
+      1536
+    ],
+    "note": "As capturas incluem barras do Android e do visualizador. As coordenadas e dimensões internas do painel devem ser recalibradas para a área útil do gráfico MT5; não usar a tela inteira do celular como tamanho fixo."
+  },
+  "visual_tokens": {
+    "background_chart": "#080B0F",
+    "grid": "linhas verticais e horizontais discretas sobre fundo quase preto",
+    "panel_background": "#10151B",
+    "module_background": "#161C24",
+    "panel_border": "#25303B",
+    "primary_text": "#E9EEF3",
+    "muted_text": "#7F8B97",
+    "accent": "#46D6AD",
+    "mode_badge": "DEMO em verde-água, contorno fino e formato cápsula",
+    "typography": "sans-serif semelhante a Inter; título em negrito; módulos em peso regular"
+  },
+  "closed_state": {
+    "trigger": "C",
+    "shape": "circular",
+    "appearance": "círculo com contorno verde-água, brilho externo discreto, fundo escuro e letra C centralizada em verde-água",
+    "placement": "parte inferior esquerda da área do gráfico, conforme referência",
+    "status_below": "INDISPONÍVEL",
+    "panel_visible": false,
+    "other_visible_content": "não adicionar título, módulos, nome de pasta, rótulos técnicos ou informações de conversa ao estado fechado"
+  },
+  "open_state": {
+    "container": {
+      "shape": "retângulo com cantos arredondados",
+      "background": "#10151B",
+      "border": "fino, cinza-azulado",
+      "header": {
+        "title": "Controlador-Trader",
+        "right_badge": "DEMO"
+      },
+      "navigation": [
+        "COCKPIT",
+        "ANÁLISE",
+        "ESTUDO",
+        "MAIS / ADMIN"
+      ],
+      "footer": {
+        "system_state_label": "Estado do sistema",
+        "system_state_value": "INDISPONÍVEL",
+        "control": "Alavancagem",
+        "real_mode": "REAL — DESABILITADO"
+      }
+    },
+    "tabs": {
+      "COCKPIT": [
+        "Operação",
+        "Motor de Decisão",
+        "Gestão de Risco",
+        "Notificações",
+        "MT5 DEMO / Simulação",
+        "Kill Switch"
+      ],
+      "ANÁLISE": [
+        "Análise de Mercado",
+        "Memória",
+        "Estatísticas",
+        "Relatórios"
+      ],
+      "ESTUDO": [
+        "Laboratório",
+        "Replay",
+        "Simulador",
+        "Aprendizado",
+        "Descobertas",
+        "Escola / Tutorial / Onboarding"
+      ],
+      "MAIS / ADMIN": [
+        "Financeiro",
+        "Configurações",
+        "Auditoria",
+        "Segurança",
+        "Conexões",
+        "Multi-Broker"
+      ]
+    },
+    "module_rows": "linhas largas em cartões horizontais escuros, texto alinhado à esquerda e chevron à direita",
+    "panel_position": "sobre o gráfico, com o botão C permanecendo visível abaixo/esquerda; preservar a referência de sobreposição e proporção"
+  },
+  "assistant_ecosystem": {
+    "required_by_user": true,
+    "visible_in_reference_images": false,
+    "found_in_supplied_source_archive": false,
+    "implementation_status": "não especificado pelas referências; requer definição de ponto de acesso sem alterar os quatro grupos de navegação aprovados"
+  },
+  "fidelity_rules": [
+    "Usar a imagem 8870.jpg apenas para o estado C fechado.",
+    "Usar 8871.jpg, 8872.jpg, 8873.jpg e 8878.jpg para os quatro estados abertos.",
+    "Não acrescentar conteúdo, mensagens, indicadores ou controles que não estejam definidos nas referências ou especificações funcionais aprovadas.",
+    "Não alterar o arquivo original do Figma.",
+    "Não substituir o design por uma interpretação visual nova.",
+    "Separar reprodução visual de integração funcional: não exibir estado operacional como online sem conexão real validada."
+  ],
+  "limitations": [
+    "As imagens permitem inferir cores, textos, hierarquia e proporções visíveis, mas não revelam o JSON interno original do Figma.",
+    "Não é possível recuperar automaticamente interações, regras de negócio, dimensões vetoriais ou estados não mostrados apenas a partir de screenshots.",
+    "Os valores hexadecimais e dimensões devem ser validados por comparação de renderização; são estimativas visuais quando não há tokens de origem."
+  ]
+}

@@ -20,6 +20,7 @@ CONTROLADOR_REMOTE_ACCESS_REQUIRED=true
 CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true
 CONTROLADOR_LOCAL_MUTATION_HOSTS=localhost,127.0.0.1,[::1]
 CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
+CONTROLADOR_SINGLE_USER_IDENTITY=usuario-individual-autorizado@example.com
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
 
@@ -145,3 +146,20 @@ Os artefatos de estado portáveis são:
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 
 A escolha DEMO/REAL continua sendo uma decisão operacional separada da portabilidade. O painel pode apresentar o fluxo REAL controlado, mas a seleção ou preparação nunca substitui as barreiras de autorização, segurança, risco, recovery e confirmação humana.
+
+## Política de identidade e isolamento dos dados fiscais
+
+Até que o ledger e a fila da Reserva Fiscal tenham isolamento por proprietário em todas as operações de leitura e escrita, esta implantação é de usuário único. A política da aplicação Cloudflare Access deve permitir somente uma identidade individual explicitamente autorizada; não use regras amplas por domínio de e-mail, organização ou grupo. Configure também `CONTROLADOR_SINGLE_USER_IDENTITY` com o mesmo e-mail individual autorizado no Access: a aplicação compara esse valor com o header confiável nas rotas do Assistente e da Reserva Fiscal, bloqueando outra identidade. Celular e notebook devem autenticar a mesma identidade autorizada.
+
+O Assistente separa conversas por identidade, mas isso não significa que os registros da Reserva Fiscal estejam separados por identidade. A fila de pendências estrangeiras e o ledger fiscal usam o banco compartilhado do runtime. Adicionar outra identidade ao Access antes de implementar e testar o isolamento fiscal pode expor registros e totais de outra pessoa.
+
+O código confia no header de identidade configurado e não valida criptograficamente o JWT do Cloudflare Access. Portanto, o origin deve permanecer acessível somente pelo Tunnel/proxy confiável; o proxy deve sobrescrever/remover qualquer header de identidade enviado pelo cliente. Nunca publique a porta 8000 nem encaminhe tráfego direto ao origin. Aumentar o número de identidades autorizadas exige primeiro isolamento fiscal por proprietário, testes de acesso cruzado e revisão da fronteira de confiança do proxy.
+
+## Revisão profissional de pendências fiscais
+
+A fila estrangeira oferece consulta e inclusão de evidências de revisão por item:
+
+- `GET /api/fiscal-reserve/pending/{pending_id}/reviews`: lista o histórico de revisões.
+- `POST /api/fiscal-reserve/pending/{pending_id}/reviews`: registra uma revisão com classificação sugerida, jurisdição indicada pelo profissional, nome e qualificação, identificação/registro profissional, data, referência de evidência e observações.
+
+As duas rotas passam pela mesma autorização de identidade exigida para as demais rotas `/api/fiscal-reserve`. O registro é histórico e não altera o status `PENDING_CLASSIFICATION`, não libera alíquota e não calcula imposto ou reserva. Os campos preenchidos são declarações/documentos informados por quem usa a interface; o software não verifica a autenticidade do profissional, do registro ou do parecer. A validação efetiva deve ocorrer fora do sistema com o profissional responsável. Não use dados fictícios como parecer real.

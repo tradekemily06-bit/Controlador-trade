@@ -144,22 +144,23 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
     identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
     client = str(environ.get("REMOTE_ADDR") or "").strip()
-
-    if not remote_access_required and (not client or client in {"127.0.0.1", "::1"}):
-        return True, "local"
-
-    local_mutations_allowed = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
-    local_hosts = {
-        item.strip().lower()
-        for item in os.environ.get(
-            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
-            "localhost,127.0.0.1,[::1]",
-        ).split(",")
-        if item.strip()
-    }
-    host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
     is_loopback = client in {"127.0.0.1", "::1"}
-    if local_mutations_allowed and is_loopback and (not host or host in local_hosts):
+
+    if not remote_access_required and is_loopback:
+        local_mutations_allowed = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
+        if not local_mutations_allowed:
+            return False, "local mutations are disabled"
+        local_hosts = {
+            item.strip().lower()
+            for item in os.environ.get(
+                "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+                "localhost,127.0.0.1,[::1]",
+            ).split(",")
+            if item.strip()
+        }
+        host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
+        if host and host not in local_hosts:
+            return False, "local host is not allowed"
         return True, "local"
 
     if not remote_access_required:
@@ -171,6 +172,14 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     identity = str(environ.get("HTTP_" + identity_header.upper().replace("-", "_")) or "").strip()
     if not identity:
         return False, "trusted identity is required"
+
+    # Optional single-user pin: when configured, every remote fiscal/assistant
+    # request must resolve to this exact normalized Access identity.
+    expected_identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
+    if not expected_identity:
+        return False, "single-user identity is not configured"
+    if identity.casefold() != expected_identity.casefold():
+        return False, "authenticated identity is not authorized for this single-user runtime"
 
     return True, "trusted"
 
@@ -266,12 +275,20 @@ def application(environ, start_response):
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
         if path.startswith("/api/assistant/"):
+            authorized, auth_reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                auth_status = HTTPStatus.UNAUTHORIZED if auth_reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
+                public_reason = (
+                    "Identidade autenticada necessária."
+                    if auth_reason == "trusted identity is required"
+                    else "Identidade autenticada não autorizada para este runtime."
+                    if "not authorized for this single-user runtime" in auth_reason
+                    else auth_reason
+                )
+                return _json_response(start_response, auth_status, {"error": public_reason}, request_id, environ)
             header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
             identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
-            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
             if not identity:
-                if remote_required or str(environ.get("REMOTE_ADDR") or "") not in {"127.0.0.1", "::1"}:
-                    return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Identidade autenticada necessária."}, request_id, environ)
                 identity = "local-single-user"
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
@@ -315,6 +332,21 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False},
                                   request_id, environ)
+        if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
+            pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
+            if not pending_id or "/" in pending_id:
+                raise ValueError("pending_id inválido")
+            if method == "GET":
+                return _json_response(start_response, HTTPStatus.OK,
+                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(pending_id),
+                                       "status_unchanged": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False},
+                                      request_id, environ)
+            if method == "POST":
+                review = FISCAL_PENDING_QUEUE.record_review(pending_id, _read_json(environ))
+                return _json_response(start_response, HTTPStatus.CREATED,
+                                      {"review": review, "reserve_calculated": False},
+                                      request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
@@ -367,6 +399,9 @@ def application(environ, start_response):
                 settings = FISCAL_RESERVE.update_rates(data["rates"])
             else:
                 settings = FISCAL_RESERVE.update_rate(str(data.get("category", "")), data.get("rate"))
+            # Keep the legacy foreign setting internally for database compatibility,
+            # but never expose its generic percentage through the public API.
+            settings.pop("FOREIGN_FINANCIAL_ASSET", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
             entry = FISCAL_RESERVE.record_realized_result(_read_json(environ))

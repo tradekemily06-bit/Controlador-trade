@@ -27,6 +27,7 @@ class ApiContractTests(unittest.TestCase):
             "QUERY_STRING": query,
             "CONTENT_TYPE": "application/json" if payload is not None else "",
             "CONTENT_LENGTH": str(len(body)),
+            "REMOTE_ADDR": "127.0.0.1",
             "wsgi.input": io.BytesIO(body),
         }
         response = b"".join(application(environ, start_response))

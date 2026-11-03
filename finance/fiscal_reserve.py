@@ -19,9 +19,10 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_RATES = {
     "BR_DAY_TRADE": 20.0,
-    "FOREIGN_FINANCIAL_ASSET": 15.0,
 }
-VALID_CATEGORIES = frozenset(DEFAULT_RATES)
+# Keep the legacy category readable for historical rows, but never configure
+# or seed a generic foreign tax percentage.
+VALID_CATEGORIES = frozenset({"BR_DAY_TRADE", "FOREIGN_FINANCIAL_ASSET"})
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,11 @@ class FiscalReserve:
                 ux_fiscal_reserve_category_reference
                 ON fiscal_reserve_entries(category, reference)"""
             )
+            # Remove the obsolete generic foreign percentage from settings.
+            # Historical ledger rows are deliberately preserved for audit.
+            db.execute(
+                "DELETE FROM fiscal_reserve_settings WHERE category = 'FOREIGN_FINANCIAL_ASSET'"
+            )
             for category, rate in DEFAULT_RATES.items():
                 db.execute(
                     "INSERT OR IGNORE INTO fiscal_reserve_settings(category, rate) VALUES (?, ?)",
@@ -128,6 +134,8 @@ class FiscalReserve:
 
     @staticmethod
     def _money(value: Any, field: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{field} deve ser numérico")
         try:
             amount = float(value)
         except (TypeError, ValueError) as exc:

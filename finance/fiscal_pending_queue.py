@@ -40,6 +40,23 @@ class FiscalPendingQueue:
                     created_at TEXT NOT NULL
                 )
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS fiscal_pending_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    pending_id TEXT NOT NULL,
+                    candidate_classification TEXT NOT NULL,
+                    confirmed_jurisdiction TEXT NOT NULL,
+                    reviewer_name TEXT NOT NULL,
+                    reviewer_role TEXT NOT NULL,
+                    professional_registration TEXT NOT NULL,
+                    evidence_reference TEXT NOT NULL,
+                    reviewed_on TEXT NOT NULL,
+                    review_notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(pending_id) REFERENCES fiscal_reserve_pending_foreign(pending_id)
+                )
+            """)
+            db.execute("CREATE INDEX IF NOT EXISTS fiscal_pending_reviews_item ON fiscal_pending_reviews(pending_id, created_at DESC)")
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -47,6 +64,8 @@ class FiscalPendingQueue:
                              uri=bool(self._uri), timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout = 10000")
+        # SQLite foreign-key enforcement is connection-local and disabled by default.
+        db.execute("PRAGMA foreign_keys = ON")
         try:
             yield db
             db.commit()
@@ -69,6 +88,8 @@ class FiscalPendingQueue:
 
     @staticmethod
     def _positive(value: Any, field: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{field} deve ser numérico")
         try:
             number = float(value)
         except (TypeError, ValueError) as exc:
@@ -123,6 +144,79 @@ class FiscalPendingQueue:
                        "VALUES (:pending_id, :reference, :original_amount, :original_currency, :instrument, "
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :notes, :status, :created_at)", item)
         return item
+
+    def record_review(self, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Append professional review evidence; never changes pending status or calculates tax."""
+        if not isinstance(payload, dict):
+            raise ValueError("payload deve ser um objeto")
+        pending_id = str(pending_id or "").strip()
+        if not pending_id or len(pending_id) > 80:
+            raise ValueError("pending_id inválido")
+
+        def required(name: str, maximum: int) -> str:
+            value = str(payload.get(name) or "").strip()
+            if not value or len(value) > maximum:
+                raise ValueError(f"{name} é obrigatório e deve ter até {maximum} caracteres")
+            return value
+
+        candidate = required("candidate_classification", 120)
+        jurisdiction = required("confirmed_jurisdiction", 120)
+        reviewer = required("reviewer_name", 160)
+        role = required("reviewer_role", 80).casefold()
+        if role not in {"contador", "consultor tributário", "profissional tributário"}:
+            raise ValueError("reviewer_role deve identificar um profissional tributário")
+        registration = required("professional_registration", 100)
+        evidence = required("evidence_reference", 500)
+        reviewed_on = self._date(payload.get("reviewed_on"), "reviewed_on")
+        notes = str(payload.get("review_notes") or "").strip()
+        if len(notes) > 2000:
+            raise ValueError("review_notes deve ter até 2000 caracteres")
+
+        review = {
+            "review_id": str(uuid.uuid4()),
+            "pending_id": pending_id,
+            "candidate_classification": candidate,
+            "confirmed_jurisdiction": jurisdiction,
+            "reviewer_name": reviewer,
+            "reviewer_role": role,
+            "professional_registration": registration,
+            "evidence_reference": evidence,
+            "reviewed_on": reviewed_on,
+            "review_notes": notes,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE pending_id = ?",
+                (pending_id,),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+            db.execute(
+                """INSERT INTO fiscal_pending_reviews
+                (review_id, pending_id, candidate_classification, confirmed_jurisdiction,
+                 reviewer_name, reviewer_role, professional_registration, evidence_reference,
+                 reviewed_on, review_notes, created_at)
+                VALUES (:review_id, :pending_id, :candidate_classification, :confirmed_jurisdiction,
+                 :reviewer_name, :reviewer_role, :professional_registration, :evidence_reference,
+                 :reviewed_on, :review_notes, :created_at)""",
+                review,
+            )
+        return {**review, "status_unchanged": "PENDING_CLASSIFICATION",
+                "reserve_calculated": False, "tax_rate_available": False}
+
+    def list_reviews(self, pending_id: str) -> list[dict[str, Any]]:
+        pending_id = str(pending_id or "").strip()
+        with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE pending_id = ?",
+                (pending_id,),
+            ).fetchone():
+                raise ValueError("pendência não encontrada")
+            rows = db.execute(
+                "SELECT * FROM fiscal_pending_reviews WHERE pending_id = ? ORDER BY created_at DESC, review_id DESC",
+                (pending_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_pending(self, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:

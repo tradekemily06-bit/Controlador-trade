@@ -56,10 +56,10 @@ def test_external_assistant_context_excludes_free_text_and_identifiers():
    return [{"decision_id":"PRIVATE-DECISION-ID","created_at":"2026-10-30T12:00:00Z","symbol":"PRIVATE-SYMBOL","timeframe":"PRIVATE-TIMEFRAME","signal":"BUY","score":80,"confirmed":True,"reason":"PRIVATE-DECISION-REASON","outcome":"WIN"}]
  class SafeFiscal:
   def summary(self):
-   return {"name":"Reserva Fiscal","currency":"BRL","as_of":"2026-10-30","categories":{},"total_reserved_brl":0,"periods":{},"limitations":[],"history":[{"notes":"PRIVATE-FISCAL-NOTE","reference":"PRIVATE-FISCAL-REFERENCE"}]}
+   return {"name":"Reserva Fiscal","currency":"BRL","as_of":"2026-10-30","categories":{},"total_reserved_brl":0,"periods":{},"limitations":[],"history":[{"notes":"PRIVATE-FISCAL-NOTE","reference":"PRIVATE-FISCAL-REFERENCE"}],"reviews":[{"reviewer_name":"PRIVATE-REVIEWER","professional_registration":"PRIVATE-REGISTRATION","review_notes":"PRIVATE-REVIEW-NOTE","evidence_reference":"PRIVATE-EVIDENCE"}]}
  import json
  payload=json.dumps(collect_read_only_context(SensitiveService(),SafeFiscal()),ensure_ascii=False)
- for secret in ("PRIVATE-RISK-REASON","PRIVATE-REQUEST-ID","PRIVATE-RECOVERY-MESSAGE","PRIVATE-KILL-REASON","PRIVATE-HEALTH-MESSAGE","PRIVATE-SYMBOL","PRIVATE-TIMEFRAME","PRIVATE-SUPERVISOR-TOKEN","PRIVATE-DECISION-ID","PRIVATE-DECISION-REASON","PRIVATE-FISCAL-NOTE","PRIVATE-FISCAL-REFERENCE"):
+ for secret in ("PRIVATE-RISK-REASON","PRIVATE-REQUEST-ID","PRIVATE-RECOVERY-MESSAGE","PRIVATE-KILL-REASON","PRIVATE-HEALTH-MESSAGE","PRIVATE-SYMBOL","PRIVATE-TIMEFRAME","PRIVATE-SUPERVISOR-TOKEN","PRIVATE-DECISION-ID","PRIVATE-DECISION-REASON","PRIVATE-FISCAL-NOTE","PRIVATE-FISCAL-REFERENCE","PRIVATE-REVIEWER","PRIVATE-REGISTRATION","PRIVATE-REVIEW-NOTE","PRIVATE-EVIDENCE"):
   assert secret not in payload
  assert '"execution_allowed": false' in payload
  assert '"may_enable_real": false' in payload
@@ -190,3 +190,87 @@ def test_assistant_tax_guidance_does_not_infer_unverified_tax_facts():
  assert "Diferencie registros informados pelo usuário, estimativas de planejamento e obrigações fiscais oficialmente apuradas" in SYSTEM_PROMPT
  assert "não integra os totais" in SYSTEM_PROMPT
  assert "contador qualificado na jurisdição aplicável" in SYSTEM_PROMPT
+
+
+def test_conversation_list_and_append_are_owner_scoped_and_identity_normalized(tmp_path):
+ store=AssistantConversationStore(tmp_path/"assistant.sqlite")
+ own_id=store.append("Owner@Example.com",None,"user","conversa do titular")
+ other_id=store.append("other@example.com",None,"user","conversa de outra pessoa")
+ assert [row["conversation_id"] for row in store.list(" owner@example.com ")]==[own_id]
+ # Identity normalization is case-insensitive and trims surrounding whitespace.
+ assert store.history("OWNER@example.com",own_id)[0]["content"]=="conversa do titular"
+ try:
+  store.append("other@example.com",own_id,"user","tentativa de escrita cruzada")
+ except PermissionError:
+  pass
+ else:
+  assert False
+ assert [row["content"] for row in store.history("Owner@Example.com",own_id)]==["conversa do titular"]
+ assert [row["conversation_id"] for row in store.list("other@example.com")]==[other_id]
+
+
+def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tmp_path):
+ import json
+ from datetime import date
+ from finance.fiscal_reserve import FiscalReserve
+
+ fiscal = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+ today = date.today().isoformat()
+ fiscal.record_realized_result({
+  "category": "BR_DAY_TRADE",
+  "realized_result_brl": 1000,
+  "reference": "INTEGRATION-TEST-001",
+  "occurred_on": today,
+ })
+ store = AssistantConversationStore(tmp_path / "assistant-integration.sqlite")
+ client = C()
+ assistant = EcosystemAssistant(store, S(), fiscal, client_factory=lambda: client)
+
+ assistant.ask("owner@example.com", "Resuma minha Reserva Fiscal")
+ prompt = client.calls[-1]["messages"][0]["content"]
+ context = json.loads(prompt.split("CONTEXTO JSON:", 1)[1].strip())
+
+ reserve = context["fiscal_reserve"]
+ assert reserve["total_reserved_brl"] == 200
+ assert reserve["categories"]["BR_DAY_TRADE"]["realized_result_brl"] == 1000
+ assert reserve["categories"]["BR_DAY_TRADE"]["reserve_amount_brl"] == 200
+ for period in ("day", "week", "month", "year"):
+  assert reserve["periods"][period]["realized_result_brl"] == 1000
+  assert reserve["periods"][period]["reserve_amount_brl"] == 200
+ assert "history" not in reserve
+ assert "INTEGRATION-TEST-001" not in prompt
+ assert context["assistant_safety"]["may_execute_orders"] is False
+ assert context["assistant_safety"]["may_enable_real"] is False
+
+
+
+def test_assistant_enforces_hard_output_token_limit(tmp_path):
+ client = C()
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F(), client_factory=lambda: client)
+ assistant.ask("owner@example.com", "Resuma o estado do ecossistema")
+ assert client.calls[-1]["max_completion_tokens"] == 600
+
+
+def test_assistant_bounds_history_sent_to_model(tmp_path):
+ store = AssistantConversationStore(tmp_path/"assistant.sqlite")
+ cid = store.append("owner@example.com", None, "user", "A" * 4000)
+ for index in range(5):
+  store.append("owner@example.com", cid, "assistant", "B" * 4000)
+  store.append("owner@example.com", cid, "user", "C" * 4000)
+ client = C()
+ assistant = EcosystemAssistant(store, S(), F(), client_factory=lambda: client)
+ assistant.ask("owner@example.com", "Pergunta atual")
+ sent = client.calls[-1]["messages"][1:]
+ assert sum(len(message["content"]) for message in sent) <= 12000
+ assert len(sent) <= 12
+ assert sent[-1]["content"] == "Pergunta atual"
+
+
+def test_assistant_rejects_user_message_over_4000_characters(tmp_path):
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F(), client_factory=C)
+ try:
+  assistant.ask("owner@example.com", "X" * 4001)
+ except ValueError as exc:
+  assert "4.000 caracteres" in str(exc)
+ else:
+  assert False

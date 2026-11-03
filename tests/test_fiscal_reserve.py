@@ -3,10 +3,7 @@ from finance.fiscal_reserve import FiscalReserve
 
 def test_defaults_are_separate_and_configurable(tmp_path):
     reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
-    assert reserve.settings() == {
-        "BR_DAY_TRADE": 20.0,
-        "FOREIGN_FINANCIAL_ASSET": 15.0,
-    }
+    assert reserve.settings() == {"BR_DAY_TRADE": 20.0}
     reserve.update_rate("BR_DAY_TRADE", 18)
     assert reserve.settings()["BR_DAY_TRADE"] == 18.0
 
@@ -104,10 +101,7 @@ def test_duplicate_reference_is_rejected_without_double_reserving(tmp_path):
 def test_only_brazil_rate_can_be_updated_and_invalid_set_changes_nothing(tmp_path):
     reserve = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
     reserve.update_rates({"BR_DAY_TRADE": 19})
-    assert reserve.settings() == {
-        "BR_DAY_TRADE": 19.0,
-        "FOREIGN_FINANCIAL_ASSET": 15.0,
-    }
+    assert reserve.settings() == {"BR_DAY_TRADE": 19.0}
     for attempt in (
         lambda: reserve.update_rate("FOREIGN_FINANCIAL_ASSET", 14),
         lambda: reserve.update_rates({"BR_DAY_TRADE": 18, "FOREIGN_FINANCIAL_ASSET": 14}),
@@ -124,10 +118,7 @@ def test_only_brazil_rate_can_be_updated_and_invalid_set_changes_nothing(tmp_pat
         pass
     else:
         raise AssertionError("invalid Brazilian rate must be rejected")
-    assert reserve.settings() == {
-        "BR_DAY_TRADE": 19.0,
-        "FOREIGN_FINANCIAL_ASSET": 15.0,
-    }
+    assert reserve.settings() == {"BR_DAY_TRADE": 19.0}
 
 
 def test_summary_exposes_day_week_month_and_year_totals(tmp_path):
@@ -260,3 +251,42 @@ def test_legacy_foreign_rows_are_preserved_but_excluded_from_all_reserve_totals(
     assert foreign["rate_available"] is False
     # Keep the source record for audit; API presentation is sanitized separately.
     assert summary["history"][0]["reference"] == "LEGACY-FOREIGN-1"
+
+
+def test_obsolete_foreign_rate_is_removed_without_deleting_legacy_history(tmp_path):
+    import sqlite3
+
+    database = tmp_path / "legacy-settings.sqlite3"
+    with sqlite3.connect(database) as db:
+        db.execute(
+            "CREATE TABLE fiscal_reserve_settings (category TEXT PRIMARY KEY, rate REAL NOT NULL)"
+        )
+        db.execute(
+            "INSERT INTO fiscal_reserve_settings(category, rate) VALUES (?, ?)",
+            ("FOREIGN_FINANCIAL_ASSET", 15.0),
+        )
+
+    reserve = FiscalReserve(str(database))
+    assert reserve.settings() == {"BR_DAY_TRADE": 20.0}
+    with sqlite3.connect(database) as db:
+        remaining = db.execute(
+            "SELECT category FROM fiscal_reserve_settings ORDER BY category"
+        ).fetchall()
+    assert remaining == [("BR_DAY_TRADE",)]
+
+
+def test_money_rejects_boolean_values():
+    reserve = FiscalReserve()
+    for value in (True, False):
+        try:
+            reserve.record_realized_result({"category": "BR_DAY_TRADE", "realized_result_brl": value, "reference": f"BOOL-{value}"})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("boolean must not be accepted as money")
+        try:
+            reserve.update_rate("BR_DAY_TRADE", value)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("boolean must not be accepted as a percentage")
