@@ -73,6 +73,9 @@ class FiscalReserve:
 
     def _initialize(self) -> None:
         with self._connect() as db:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_settings)")}
+            if "owner_id" in columns:
+                return
             db.execute("""
                 CREATE TABLE IF NOT EXISTS fiscal_reserve_settings (
                     category TEXT PRIMARY KEY,
