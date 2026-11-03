@@ -1,4 +1,14 @@
+import os
 from finance.fiscal_pending_queue import FiscalPendingQueue
+from finance.fiscal_schema import migrate_fiscal_schema
+
+OWNER = "test-owner"
+os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = OWNER
+
+def make_queue(path):
+    queue = FiscalPendingQueue(str(path))
+    migrate_fiscal_schema(str(path))
+    return queue
 
 
 def sample(reference="FOREIGN-STATEMENT-001"):
@@ -16,22 +26,22 @@ def sample(reference="FOREIGN-STATEMENT-001"):
 
 
 def test_foreign_item_is_persisted_as_pending_without_tax_calculation(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
-    item = queue.add(sample())
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    item = queue.add(OWNER, sample())
     assert item["status"] == "PENDING_CLASSIFICATION"
     assert item["original_amount"] == 125.5
     assert item["original_currency"] == "USD"
-    result = queue.list_pending()
+    result = queue.list_pending(OWNER)
     assert result["total"] == 1
     assert result["items"][0]["reference"] == "FOREIGN-STATEMENT-001"
     assert "não integram os totais" in result["note"]
 
 
 def test_duplicate_reference_is_rejected(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
-    queue.add(sample())
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    queue.add(OWNER, sample())
     try:
-        queue.add(sample())
+        queue.add(OWNER, sample())
     except Exception as exc:
         assert "UNIQUE" in str(exc).upper()
     else:
@@ -39,7 +49,7 @@ def test_duplicate_reference_is_rejected(tmp_path):
 
 
 def test_fx_evidence_must_be_complete(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     payload = sample()
     payload["fx_source"] = ""
     try:
@@ -51,7 +61,7 @@ def test_fx_evidence_must_be_complete(tmp_path):
 
 
 def test_invalid_amount_currency_and_date_are_rejected(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     for key, value in (("original_amount", 0), ("original_currency", "XYZ"), ("occurred_on", "30/10/2026")):
         payload = sample()
         payload[key] = value
@@ -68,19 +78,19 @@ def test_queue_is_separate_from_reserve_ledger(tmp_path):
     path = str(tmp_path / "fiscal.sqlite3")
     queue = FiscalPendingQueue(path)
     reserve = FiscalReserve(path)
-    queue.add(sample())
-    assert reserve.summary()["total_reserved_brl"] == 0
+    queue.add(OWNER, sample())
+    assert reserve.summary(OWNER)["total_reserved_brl"] == 0
     assert reserve.summary()["periods"]["year"]["entries"] == 0
 
 
 def test_pending_queue_pagination_returns_distinct_pages_and_total(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     for number in range(7):
-        queue.add(sample(f"FOREIGN-PAGE-{number}"))
+        queue.add(OWNER, sample(f"FOREIGN-PAGE-{number}"))
 
-    first = queue.list_pending(limit=3, offset=0)
-    second = queue.list_pending(limit=3, offset=3)
-    last = queue.list_pending(limit=3, offset=6)
+    first = queue.list_pending(OWNER, limit=3, offset=0)
+    second = queue.list_pending(OWNER, limit=3, offset=3)
+    last = queue.list_pending(OWNER, limit=3, offset=6)
 
     assert first["total"] == second["total"] == last["total"] == 7
     assert len(first["items"]) == 3
@@ -92,10 +102,10 @@ def test_pending_queue_pagination_returns_distinct_pages_and_total(tmp_path):
 
 
 def test_pending_queue_rejects_invalid_pagination(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     for limit, offset in ((0, 0), (501, 0), (True, 0), (10, -1), (10, True)):
         try:
-            queue.list_pending(limit=limit, offset=offset)
+            queue.list_pending(OWNER, limit=limit, offset=offset)
         except ValueError:
             pass
         else:
@@ -116,25 +126,25 @@ def review_sample():
 
 
 def test_professional_review_is_append_only_and_never_classifies_or_calculates(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
-    pending = queue.add(sample())
-    review = queue.record_review(pending["pending_id"], review_sample())
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    pending = queue.add(OWNER, sample())
+    review = queue.record_review(OWNER, pending["pending_id"], review_sample())
 
     assert review["status_unchanged"] == "PENDING_CLASSIFICATION"
     assert review["reserve_calculated"] is False
     assert review["tax_rate_available"] is False
-    assert queue.list_reviews(pending["pending_id"])[0]["review_id"] == review["review_id"]
-    assert queue.list_pending()["items"][0]["status"] == "PENDING_CLASSIFICATION"
+    assert queue.list_reviews(OWNER, pending["pending_id"])[0]["review_id"] == review["review_id"]
+    assert queue.list_pending(OWNER)["items"][0]["status"] == "PENDING_CLASSIFICATION"
 
 
 def test_review_requires_professional_identity_and_evidence(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
-    pending = queue.add(sample())
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    pending = queue.add(OWNER, sample())
     for key in ("reviewer_name", "professional_registration", "evidence_reference"):
         payload = review_sample()
         payload[key] = ""
         try:
-            queue.record_review(pending["pending_id"], payload)
+            queue.record_review(OWNER, pending["pending_id"], payload)
         except ValueError:
             pass
         else:
@@ -142,13 +152,13 @@ def test_review_requires_professional_identity_and_evidence(tmp_path):
 
 
 def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
-    pending = queue.add(sample())
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
+    pending = queue.add(OWNER, sample())
     for key, value in (("reviewer_role", "trader"), ("reviewed_on", "03/11/2026")):
         payload = review_sample()
         payload[key] = value
         try:
-            queue.record_review(pending["pending_id"], payload)
+            queue.record_review(OWNER, pending["pending_id"], payload)
         except ValueError:
             pass
         else:
@@ -156,7 +166,7 @@ def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
 
 
 def test_review_for_unknown_pending_item_is_rejected(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     try:
         queue.record_review("missing-id", review_sample())
     except ValueError as exc:
@@ -170,8 +180,8 @@ def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
 
     path = str(tmp_path / "fiscal.sqlite3")
     queue = FiscalPendingQueue(path)
-    pending = queue.add(sample())
-    queue.record_review(pending["pending_id"], review_sample())
+    pending = queue.add(OWNER, sample())
+    queue.record_review(OWNER, pending["pending_id"], review_sample())
 
     with queue._connect() as db:
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
@@ -187,7 +197,7 @@ def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
 
 
 def test_pending_amount_and_fx_rate_reject_boolean_values(tmp_path):
-    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    queue = make_queue(tmp_path / "fiscal.sqlite3")
     for key in ("original_amount", "fx_rate"):
         payload = sample()
         payload[key] = True
