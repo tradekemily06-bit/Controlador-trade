@@ -348,8 +348,8 @@ class AppSecurityTests(unittest.TestCase):
                 fiscal_path = Path(directory) / "fiscal.sqlite"
                 app_module.FISCAL_RESERVE_DB = fiscal_path
                 queue = FiscalPendingQueue(str(fiscal_path))
-                migrate_fiscal_schema(str(fiscal_path))
-                pending = queue.add("review-test-owner", {
+                owner_id = migrate_fiscal_schema(str(fiscal_path))
+                pending = queue.add(owner_id, {
                     "reference": "REVIEW-API-TEST",
                     "original_amount": 125.50,
                     "original_currency": "USD",
