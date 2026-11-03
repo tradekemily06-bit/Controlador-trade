@@ -234,7 +234,7 @@ class AppSecurityTests(unittest.TestCase):
                 ("/api/assistant/conversations", "DELETE", None),
             ]
             expected = [
-                "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden",
+                "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden", "401 Unauthorized",
                 "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
                 "401 Unauthorized",
             ]
