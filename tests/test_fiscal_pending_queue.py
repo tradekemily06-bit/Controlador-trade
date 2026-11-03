@@ -184,3 +184,16 @@ def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
             pass
         else:
             raise AssertionError("pending item with review history must not be deleted")
+
+
+def test_pending_amount_and_fx_rate_reject_boolean_values(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    for key in ("original_amount", "fx_rate"):
+        payload = sample()
+        payload[key] = True
+        try:
+            queue.add(payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"boolean must not be accepted for {key}")
