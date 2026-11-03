@@ -318,7 +318,8 @@ class FiscalReserve:
                 (owner_id,),
             ).fetchone()
             history_total = int(db.execute(
-                "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?"
+                "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?",
+                (owner_id,),
             ).fetchone()["total"])
             history = db.execute(
                 """SELECT * FROM fiscal_reserve_entries WHERE owner_id = ?
