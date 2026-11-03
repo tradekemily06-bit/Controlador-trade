@@ -44,7 +44,7 @@ class EcosystemAssistant:
         messages=[{"role":"system","content":SYSTEM_PROMPT+"\nCONTEXTO JSON:\n"+json.dumps(context,ensure_ascii=False,default=str)[:24000]}]
         messages += [{"role":m["role"],"content":m["content"]} for m in history]
         try:
-            response=self._client().chat.completions.create(model=self.model,messages=messages,temperature=0.2)
+            response=self._client().chat.completions.create(model=self.model,messages=messages,temperature=0.2,max_completion_tokens=600)
             answer=response.choices[0].message.content
             if not isinstance(answer,str) or not answer.strip(): raise ValueError("resposta vazia")
         except AssistantUnavailableError: raise
