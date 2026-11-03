@@ -337,7 +337,7 @@ class FiscalReserve:
             "total_reserved_brl": round(float(total["total"]), 2),
             "periods": period_totals,
             "as_of": reference_day.isoformat(),
-            "history": [dict(item) for item in history],
+            "history": [{key: value for key, value in dict(item).items() if key != "owner_id"} for item in history],
             "history_page": {
                 "limit": history_limit,
                 "offset": history_offset,
