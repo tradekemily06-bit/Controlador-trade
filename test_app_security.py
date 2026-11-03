@@ -109,24 +109,23 @@ class AppSecurityTests(unittest.TestCase):
 
     def test_remote_access_requires_trusted_identity_when_enabled(self):
         from app import _authorize_remote_mutation
-        old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
-        old_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER")
+        names = {"CONTROLADOR_REMOTE_ACCESS_REQUIRED", "CONTROLADOR_TRUSTED_IDENTITY_HEADER", "CONTROLADOR_SINGLE_USER_IDENTITY", "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"}
+        old = {name: os.environ.get(name) for name in names}
         try:
             os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
-            allowed, _ = _authorize_remote_mutation({"REMOTE_ADDR": "127.0.0.1", "HTTP_X_AUTHENTICATED_USER": "user@example.com"})
-            denied, _ = _authorize_remote_mutation({"REMOTE_ADDR": "127.0.0.1"})
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "user@example.com"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            allowed, _ = _authorize_remote_mutation({"REMOTE_ADDR": "203.0.113.10", "HTTP_X_AUTHENTICATED_USER": "user@example.com"})
+            denied, _ = _authorize_remote_mutation({"REMOTE_ADDR": "203.0.113.10"})
             self.assertTrue(allowed)
             self.assertFalse(denied)
         finally:
-            if old_required is None:
-                os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
-            else:
-                os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
-            if old_header is None:
-                os.environ.pop("CONTROLADOR_TRUSTED_IDENTITY_HEADER", None)
-            else:
-                os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = old_header
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
     def test_assistant_conversation_reads_require_trusted_identity_remotely(self):
@@ -135,12 +134,14 @@ class AppSecurityTests(unittest.TestCase):
             "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
             "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
             "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
         }
         old = {name: os.environ.get(name) for name in names}
         try:
             os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
             os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "audit-user@example.com"
             denied, _, denied_body = self.request(
                 "/api/assistant/conversations", remote="203.0.113.20"
             )
@@ -167,12 +168,14 @@ class AppSecurityTests(unittest.TestCase):
             "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
             "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
             "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
         }
         old = {name: os.environ.get(name) for name in names}
         try:
             os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
             os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "audit-user@example.com"
             routes = [
                 ("/api/assistant/conversations", "GET", None),
                 ("/api/assistant/history?conversation_id=not-owned", "GET", None),
@@ -250,6 +253,25 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+
+    def test_remote_access_fails_closed_when_single_user_identity_is_unset(self):
+        from app import _authorize_remote_mutation
+        names = {"CONTROLADOR_REMOTE_ACCESS_REQUIRED", "CONTROLADOR_TRUSTED_IDENTITY_HEADER", "CONTROLADOR_SINGLE_USER_IDENTITY", "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"}
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ.pop("CONTROLADOR_SINGLE_USER_IDENTITY", None)
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            allowed, reason = _authorize_remote_mutation({"REMOTE_ADDR": "203.0.113.9", "HTTP_X_AUTHENTICATED_USER": "someone@example.com"})
+            self.assertFalse(allowed)
+            self.assertEqual(reason, "single-user identity is not configured")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
     def test_single_user_identity_pin_blocks_other_access_identity_for_fiscal_and_assistant(self):
         names = {
