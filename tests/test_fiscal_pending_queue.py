@@ -100,3 +100,66 @@ def test_pending_queue_rejects_invalid_pagination(tmp_path):
             pass
         else:
             raise AssertionError("invalid pending pagination must be rejected")
+
+
+def review_sample():
+    return {
+        "candidate_classification": "ETF - revisar enquadramento",
+        "confirmed_jurisdiction": "Estados Unidos",
+        "reviewer_name": "Profissional de teste",
+        "reviewer_role": "contador",
+        "professional_registration": "CRC-TESTE-123",
+        "evidence_reference": "Parecer interno REF-2026-001",
+        "reviewed_on": "2026-11-03",
+        "review_notes": "Registro de teste; não autoriza cálculo automático.",
+    }
+
+
+def test_professional_review_is_append_only_and_never_classifies_or_calculates(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    pending = queue.add(sample())
+    review = queue.record_review(pending["pending_id"], review_sample())
+
+    assert review["status_unchanged"] == "PENDING_CLASSIFICATION"
+    assert review["reserve_calculated"] is False
+    assert review["tax_rate_available"] is False
+    assert queue.list_reviews(pending["pending_id"])[0]["review_id"] == review["review_id"]
+    assert queue.list_pending()["items"][0]["status"] == "PENDING_CLASSIFICATION"
+
+
+def test_review_requires_professional_identity_and_evidence(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    pending = queue.add(sample())
+    for key in ("reviewer_name", "professional_registration", "evidence_reference"):
+        payload = review_sample()
+        payload[key] = ""
+        try:
+            queue.record_review(pending["pending_id"], payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{key} must be required")
+
+
+def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    pending = queue.add(sample())
+    for key, value in (("reviewer_role", "trader"), ("reviewed_on", "03/11/2026")):
+        payload = review_sample()
+        payload[key] = value
+        try:
+            queue.record_review(pending["pending_id"], payload)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid {key} must be rejected")
+
+
+def test_review_for_unknown_pending_item_is_rejected(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    try:
+        queue.record_review("missing-id", review_sample())
+    except ValueError as exc:
+        assert "não encontrada" in str(exc)
+    else:
+        raise AssertionError("unknown pending item must be rejected")
