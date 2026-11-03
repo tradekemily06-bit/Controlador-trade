@@ -249,3 +249,28 @@ def test_assistant_enforces_hard_output_token_limit(tmp_path):
  assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F(), client_factory=lambda: client)
  assistant.ask("owner@example.com", "Resuma o estado do ecossistema")
  assert client.calls[-1]["max_completion_tokens"] == 600
+
+
+def test_assistant_bounds_history_sent_to_model(tmp_path):
+ store = AssistantConversationStore(tmp_path/"assistant.sqlite")
+ cid = store.append("owner@example.com", None, "user", "A" * 4000)
+ for index in range(5):
+  store.append("owner@example.com", cid, "assistant", "B" * 4000)
+  store.append("owner@example.com", cid, "user", "C" * 4000)
+ client = C()
+ assistant = EcosystemAssistant(store, S(), F(), client_factory=lambda: client)
+ assistant.ask("owner@example.com", "Pergunta atual")
+ sent = client.calls[-1]["messages"][1:]
+ assert sum(len(message["content"]) for message in sent) <= 12000
+ assert len(sent) <= 12
+ assert sent[-1]["content"] == "Pergunta atual"
+
+
+def test_assistant_rejects_user_message_over_4000_characters(tmp_path):
+ assistant = EcosystemAssistant(AssistantConversationStore(tmp_path/"assistant.sqlite"), S(), F(), client_factory=C)
+ try:
+  assistant.ask("owner@example.com", "X" * 4001)
+ except ValueError as exc:
+  assert "4.000 caracteres" in str(exc)
+ else:
+  assert False
