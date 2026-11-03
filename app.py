@@ -315,6 +315,21 @@ def application(environ, start_response):
             return _json_response(start_response, HTTPStatus.CREATED,
                                   {"pending": item, "reserve_calculated": False},
                                   request_id, environ)
+        if path.startswith("/api/fiscal-reserve/pending/") and path.endswith("/reviews"):
+            pending_id = path[len("/api/fiscal-reserve/pending/"):-len("/reviews")].strip("/")
+            if not pending_id or "/" in pending_id:
+                raise ValueError("pending_id inválido")
+            if method == "GET":
+                return _json_response(start_response, HTTPStatus.OK,
+                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(pending_id),
+                                       "status_unchanged": "PENDING_CLASSIFICATION",
+                                       "reserve_calculated": False},
+                                      request_id, environ)
+            if method == "POST":
+                review = FISCAL_PENDING_QUEUE.record_review(pending_id, _read_json(environ))
+                return _json_response(start_response, HTTPStatus.CREATED,
+                                      {"review": review, "reserve_calculated": False},
+                                      request_id, environ)
         if path == "/api/fiscal-reserve/mt5-preview" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
