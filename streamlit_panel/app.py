@@ -77,6 +77,7 @@ def money(value: Any) -> str:
 def show_assistant() -> None:
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
+    st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
     try:
         conversations = api("/api/assistant/conversations").get("conversations", [])
     except Exception as exc:
@@ -95,6 +96,17 @@ def show_assistant() -> None:
         st.session_state.assistant_loaded_id = None
         st.rerun()
     cid = None if selected == "__new__" else selected
+    if cid and st.checkbox("Confirmo que desejo excluir a conversa selecionada", key="confirm_delete_assistant"):
+        if st.button("Excluir conversa e mensagens locais", key="delete_assistant"):
+            try:
+                api("/api/assistant/conversations?conversation_id=" + urllib.parse.quote(cid), "DELETE")
+                st.session_state.assistant_conversation_id = None
+                st.session_state.assistant_loaded_id = None
+                st.session_state.assistant_history = []
+                st.success("Conversa removida do histórico local.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
     if cid and st.session_state.get("assistant_loaded_id") != cid:
         try:
             st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(cid)).get("messages", [])
@@ -144,7 +156,20 @@ def show_fiscal() -> None:
         st.error(str(exc))
         summary = {}
 
-    with st.expander("Registrar resultado realizado · Brasil day trade"):
+    with st.expander("Percentual de planejamento · Brasil day trade"):
+        current_rate = summary.get("categories", {}).get("BR_DAY_TRADE", {}).get("rate", 0) if summary else 0
+        with st.form("fiscal_rate_form"):
+            rate = st.number_input("Percentual para novos lançamentos", min_value=0.0, max_value=100.0, value=float(current_rate or 0), step=0.5)
+            rate_submit = st.form_submit_button("Salvar percentual")
+        if rate_submit:
+            try:
+                api("/api/fiscal-reserve/rates", "POST", {"rates": {"BR_DAY_TRADE": rate}})
+                st.success("Percentual atualizado para novos registros. O histórico preserva o percentual usado em cada lançamento.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+    with st.expander("Registrar resultado realizado · Brasil day trade")
         with st.form("fiscal_result_form"):
             occurred_on = st.date_input("Data da realização")
             result = st.number_input("Resultado realizado (R$)", min_value=0.0, step=10.0, format="%.2f")
@@ -171,11 +196,19 @@ def show_fiscal() -> None:
         col5, col6 = st.columns(2)
         jurisdiction = col5.text_input("Jurisdição", placeholder="EUA, Brasil, outro")
         occurred_on = col6.date_input("Data da operação", key="foreign_date")
+        fx_rate = st.number_input("Cotação cambial (opcional)", min_value=0.0, step=0.0001, format="%.8f")
+        fx_date = st.date_input("Data da cotação", key="foreign_fx_date")
+        fx_source = st.text_input("Fonte da cotação (opcional)", max_chars=200)
         notes = st.text_area("Observações", max_chars=1000, key="foreign_notes")
         submitted = st.form_submit_button("Guardar como pendente")
     if submitted:
         try:
-            api("/api/fiscal-reserve/pending", "POST", {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "notes": notes})
+            pending_payload = {"reference": reference, "original_amount": amount, "original_currency": currency, "instrument": instrument, "jurisdiction": jurisdiction, "occurred_on": occurred_on.isoformat(), "notes": notes}
+            if fx_rate or fx_source:
+                if not fx_rate or not fx_source:
+                    raise ValueError("Para guardar a cotação, informe valor e fonte.")
+                pending_payload.update({"fx_rate": fx_rate, "fx_date": fx_date.isoformat(), "fx_source": fx_source})
+            api("/api/fiscal-reserve/pending", "POST", pending_payload)
             st.success("Registro guardado como pendente. Nenhum cálculo foi feito.")
             st.rerun()
         except Exception as exc:
