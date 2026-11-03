@@ -273,6 +273,16 @@ def show_fiscal() -> None:
 
 
 AREAS = CONFIG["open_state"]["tabs"]
+if "panel_open" not in st.session_state:
+    st.session_state.panel_open = True
+if not st.session_state.panel_open:
+    st.button("C", key="open_control_hub")
+    st.caption("INDISPONÍVEL")
+    if st.session_state.get("open_control_hub"):
+        st.session_state.panel_open = True
+        st.rerun()
+    st.stop()
+
 st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Prévia Streamlit independente · Figma original preservado</div></div>', unsafe_allow_html=True)
 area = st.radio("Áreas principais", list(AREAS), horizontal=True, label_visibility="collapsed")
 st.divider()
@@ -295,4 +305,12 @@ else:
     st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL · <b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
 
 st.divider()
+left, right = st.columns([2, 1])
+with left:
+    st.markdown('<div class="status-card"><b>Estado do sistema:</b> INDISPONÍVEL<br><b>REAL:</b> DESABILITADO</div>', unsafe_allow_html=True)
+with right:
+    st.checkbox("Alavancagem", value=False, disabled=True, help="Controle visual nesta prévia; não altera a conta MT5.")
+    if st.button("C · Fechar painel", key="close_control_hub"):
+        st.session_state.panel_open = False
+        st.rerun()
 st.caption("Estado do sistema: consulte /api/health para validação operacional. Esta interface não declara o runtime online sem resposta real.")
