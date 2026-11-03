@@ -175,7 +175,9 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     # Optional single-user pin: when configured, every remote fiscal/assistant
     # request must resolve to this exact normalized Access identity.
     expected_identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
-    if expected_identity and identity.casefold() != expected_identity.casefold():
+    if not expected_identity:
+        return False, "single-user identity is not configured"
+    if identity.casefold() != expected_identity.casefold():
         return False, "authenticated identity is not authorized for this single-user runtime"
 
     return True, "trusted"
