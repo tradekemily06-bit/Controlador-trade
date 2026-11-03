@@ -56,10 +56,10 @@ def test_external_assistant_context_excludes_free_text_and_identifiers():
    return [{"decision_id":"PRIVATE-DECISION-ID","created_at":"2026-10-30T12:00:00Z","symbol":"PRIVATE-SYMBOL","timeframe":"PRIVATE-TIMEFRAME","signal":"BUY","score":80,"confirmed":True,"reason":"PRIVATE-DECISION-REASON","outcome":"WIN"}]
  class SafeFiscal:
   def summary(self):
-   return {"name":"Reserva Fiscal","currency":"BRL","as_of":"2026-10-30","categories":{},"total_reserved_brl":0,"periods":{},"limitations":[],"history":[{"notes":"PRIVATE-FISCAL-NOTE","reference":"PRIVATE-FISCAL-REFERENCE"}]}
+   return {"name":"Reserva Fiscal","currency":"BRL","as_of":"2026-10-30","categories":{},"total_reserved_brl":0,"periods":{},"limitations":[],"history":[{"notes":"PRIVATE-FISCAL-NOTE","reference":"PRIVATE-FISCAL-REFERENCE"}],"reviews":[{"reviewer_name":"PRIVATE-REVIEWER","professional_registration":"PRIVATE-REGISTRATION","review_notes":"PRIVATE-REVIEW-NOTE","evidence_reference":"PRIVATE-EVIDENCE"}]}
  import json
  payload=json.dumps(collect_read_only_context(SensitiveService(),SafeFiscal()),ensure_ascii=False)
- for secret in ("PRIVATE-RISK-REASON","PRIVATE-REQUEST-ID","PRIVATE-RECOVERY-MESSAGE","PRIVATE-KILL-REASON","PRIVATE-HEALTH-MESSAGE","PRIVATE-SYMBOL","PRIVATE-TIMEFRAME","PRIVATE-SUPERVISOR-TOKEN","PRIVATE-DECISION-ID","PRIVATE-DECISION-REASON","PRIVATE-FISCAL-NOTE","PRIVATE-FISCAL-REFERENCE"):
+ for secret in ("PRIVATE-RISK-REASON","PRIVATE-REQUEST-ID","PRIVATE-RECOVERY-MESSAGE","PRIVATE-KILL-REASON","PRIVATE-HEALTH-MESSAGE","PRIVATE-SYMBOL","PRIVATE-TIMEFRAME","PRIVATE-SUPERVISOR-TOKEN","PRIVATE-DECISION-ID","PRIVATE-DECISION-REASON","PRIVATE-FISCAL-NOTE","PRIVATE-FISCAL-REFERENCE","PRIVATE-REVIEWER","PRIVATE-REGISTRATION","PRIVATE-REVIEW-NOTE","PRIVATE-EVIDENCE"):
   assert secret not in payload
  assert '"execution_allowed": false' in payload
  assert '"may_enable_real": false' in payload
