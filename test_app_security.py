@@ -251,6 +251,36 @@ class AppSecurityTests(unittest.TestCase):
                     os.environ[name] = value
 
 
+    def test_single_user_identity_pin_blocks_other_access_identity_for_fiscal_and_assistant(self):
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "owner@example.com"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            other_headers = {"HTTP_X_AUTHENTICATED_USER": "other@example.com"}
+            fiscal, _, _ = self.request("/api/fiscal-reserve", remote="203.0.113.88", headers=other_headers)
+            assistant, _, _ = self.request("/api/assistant/conversations", remote="203.0.113.88", headers=other_headers)
+            self.assertEqual(fiscal, "403 Forbidden")
+            self.assertEqual(assistant, "403 Forbidden")
+            owner_headers = {"HTTP_X_AUTHENTICATED_USER": "OWNER@example.com"}
+            fiscal_owner, _, _ = self.request("/api/fiscal-reserve", remote="203.0.113.88", headers=owner_headers)
+            assistant_owner, _, _ = self.request("/api/assistant/conversations", remote="203.0.113.88", headers=owner_headers)
+            self.assertEqual(fiscal_owner, "200 OK")
+            self.assertEqual(assistant_owner, "200 OK")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
     def test_fiscal_review_api_records_evidence_without_classifying_or_calculating(self):
         import tempfile
         from pathlib import Path
