@@ -163,3 +163,25 @@ def test_review_for_unknown_pending_item_is_rejected(tmp_path):
         assert "não encontrada" in str(exc)
     else:
         raise AssertionError("unknown pending item must be rejected")
+
+
+def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
+    import sqlite3
+
+    path = str(tmp_path / "fiscal.sqlite3")
+    queue = FiscalPendingQueue(path)
+    pending = queue.add(sample())
+    queue.record_review(pending["pending_id"], review_sample())
+
+    with sqlite3.connect(path) as db:
+        assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 0  # enforcement is per connection
+        db.execute("PRAGMA foreign_keys = ON")
+        try:
+            db.execute(
+                "DELETE FROM fiscal_reserve_pending_foreign WHERE pending_id = ?",
+                (pending["pending_id"],),
+            )
+        except sqlite3.IntegrityError:
+            pass
+        else:
+            raise AssertionError("pending item with review history must not be deleted")
