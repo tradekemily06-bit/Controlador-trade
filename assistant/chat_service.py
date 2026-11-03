@@ -54,9 +54,9 @@ class EcosystemAssistant:
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
-    def ask(self,identity,message,cid=None):
+    def ask(self,identity,message,fiscal_owner_id,cid=None):
         if not isinstance(message,str) or not message.strip() or len(message)>4000: raise ValueError("Mensagem deve ter de 1 a 4.000 caracteres.")
-        context=collect_read_only_context(self.service,self.fiscal)
+        context=collect_read_only_context(self.service,self.fiscal,fiscal_owner_id)
         cid=self.store.append(identity,cid,"user",message)
         history=self.store.history(identity,cid,12)
         messages=[{"role":"system","content":SYSTEM_PROMPT+"\nCONTEXTO JSON:\n"+json.dumps(context,ensure_ascii=False,default=str)[:MAX_CONTEXT_CHARS]}]
