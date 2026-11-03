@@ -145,3 +145,11 @@ Os artefatos de estado portáveis são:
 Assim, a troca de Windows/VPS preserva o estado do ecossistema sem transportar a identidade da máquina. O novo host deve fornecer novamente sua configuração local, MT5, Cloudflare/Access e segredos pelo mecanismo de implantação apropriado.
 
 A escolha DEMO/REAL continua sendo uma decisão operacional separada da portabilidade. O painel pode apresentar o fluxo REAL controlado, mas a seleção ou preparação nunca substitui as barreiras de autorização, segurança, risco, recovery e confirmação humana.
+
+## Política de identidade e isolamento dos dados fiscais
+
+Até que o ledger e a fila da Reserva Fiscal tenham isolamento por proprietário em todas as operações de leitura e escrita, esta implantação é de usuário único. A política da aplicação Cloudflare Access deve permitir somente uma identidade individual explicitamente autorizada; não use regras amplas por domínio de e-mail, organização ou grupo. Celular e notebook devem autenticar a mesma identidade autorizada.
+
+O Assistente separa conversas por identidade, mas isso não significa que os registros da Reserva Fiscal estejam separados por identidade. A fila de pendências estrangeiras e o ledger fiscal usam o banco compartilhado do runtime. Adicionar outra identidade ao Access antes de implementar e testar o isolamento fiscal pode expor registros e totais de outra pessoa.
+
+O código confia no header de identidade configurado e não valida criptograficamente o JWT do Cloudflare Access. Portanto, o origin deve permanecer acessível somente pelo Tunnel/proxy confiável; o proxy deve sobrescrever/remover qualquer header de identidade enviado pelo cliente. Nunca publique a porta 8000 nem encaminhe tráfego direto ao origin. Aumentar o número de identidades autorizadas exige primeiro isolamento fiscal por proprietário, testes de acesso cruzado e revisão da fronteira de confiança do proxy.
