@@ -87,3 +87,16 @@ def test_migration_without_configured_identity_changes_nothing(tmp_path, monkeyp
         "SELECT sql FROM sqlite_master WHERE type='table' ORDER BY name"
     ).fetchall()
     assert before == after
+
+
+def test_migration_refuses_to_reassign_an_existing_owner(tmp_path, monkeypatch):
+    path = str(tmp_path / "legacy.sqlite3")
+    _legacy_db(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "first-owner")
+    first_owner = migrate_fiscal_schema(path)
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "different-owner")
+    with pytest.raises(RuntimeError, match="não corresponde ao proprietário"):
+        migrate_fiscal_schema(path)
+    db = sqlite3.connect(path)
+    assert db.execute("SELECT DISTINCT owner_id FROM fiscal_reserve_entries").fetchall() == [(first_owner,)]
+    db.close()
