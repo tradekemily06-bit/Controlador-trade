@@ -540,13 +540,15 @@ def test_lightweight_liveness_probe_does_not_run_slow_system_diagnostics():
     assert "real" not in payload
 
 
-def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch):
+def test_fiscal_summary_api_hides_unclassified_foreign_generic_rate(monkeypatch, tmp_path):
     import app
 
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "api-contract-owner")
+    monkeypatch.setattr(app, "FISCAL_RESERVE_DB", tmp_path / "fiscal.sqlite3")
     monkeypatch.setattr(
         app.FISCAL_RESERVE,
         "summary",
-        lambda **_: {
+        lambda _owner_id, **_: {
             "name": "Reserva Fiscal",
             "categories": {
                 "BR_DAY_TRADE": {"rate": 20.0, "reserve_amount_brl": 100.0},
