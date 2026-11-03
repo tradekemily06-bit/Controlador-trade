@@ -187,7 +187,11 @@ def test_fiscal_pending_api_returns_conflict_for_duplicate_reference(tmp_path, m
     import app
     from finance.fiscal_pending_queue import FiscalPendingQueue
 
-    monkeypatch.setattr(app, "FISCAL_PENDING_QUEUE", FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3")))
+    monkeypatch.setenv("CONTROLADOR_SINGLE_USER_IDENTITY", "api-test-owner")
+    fiscal_path = tmp_path / "fiscal.sqlite3"
+    monkeypatch.setattr(app, "FISCAL_RESERVE_DB", fiscal_path)
+    monkeypatch.setattr(app, "FISCAL_PENDING_QUEUE", FiscalPendingQueue(str(fiscal_path)))
+    monkeypatch.setattr(app, "FISCAL_RESERVE", __import__("finance.fiscal_reserve", fromlist=["FiscalReserve"]).FiscalReserve(str(fiscal_path)))
     payload = {
         "reference": "API-DUPLICATE-001",
         "original_amount": 125.50,
