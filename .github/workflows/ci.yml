@@ -29,6 +29,11 @@ jobs:
         run: python -m pytest -q core/test_strategy_robustness.py
 
       - name: Run full test suite
+        env:
+          # Tests use loopback WSGI requests; opt in only inside this isolated CI step.
+          CONTROLADOR_REMOTE_ACCESS_REQUIRED: "false"
+          CONTROLADOR_LOCAL_MUTATIONS_ALLOWED: "true"
+          CONTROLADOR_LOCAL_MUTATION_HOSTS: "localhost,127.0.0.1,[::1]"
         run: python -m pytest -q
 
       - name: Dependency security audit
