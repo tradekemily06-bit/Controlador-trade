@@ -250,5 +250,69 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+
+    def test_fiscal_review_api_records_evidence_without_classifying_or_calculating(self):
+        import tempfile
+        from pathlib import Path
+        import app as app_module
+        from finance.fiscal_pending_queue import FiscalPendingQueue
+
+        old_queue = app_module.FISCAL_PENDING_QUEUE
+        old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
+                queue = FiscalPendingQueue(str(Path(directory) / "fiscal.sqlite"))
+                pending = queue.add({
+                    "reference": "REVIEW-API-TEST",
+                    "original_amount": 125.50,
+                    "original_currency": "USD",
+                    "instrument": "ETF",
+                    "jurisdiction": "US",
+                    "occurred_on": "2026-11-02",
+                })
+                app_module.FISCAL_PENDING_QUEUE = queue
+                review_payload = {
+                    "candidate_classification": "ETF",
+                    "confirmed_jurisdiction": "US",
+                    "reviewer_name": "Revisor de teste",
+                    "reviewer_role": "contador",
+                    "professional_registration": "CRC-TESTE",
+                    "evidence_reference": "DOC-TESTE-1",
+                    "reviewed_on": "2026-11-03",
+                    "review_notes": "Registro de validação automatizada",
+                }
+                created, _, created_body = self.request(
+                    f"/api/fiscal-reserve/pending/{pending['pending_id']}/reviews",
+                    method="POST",
+                    payload=review_payload,
+                    remote="127.0.0.1",
+                )
+                self.assertEqual(created, "201 Created")
+                created_data = json.loads(created_body)
+                self.assertFalse(created_data["reserve_calculated"])
+                self.assertEqual(
+                    created_data["review"]["status_unchanged"],
+                    "PENDING_CLASSIFICATION",
+                )
+                listed, _, listed_body = self.request(
+                    f"/api/fiscal-reserve/pending/{pending['pending_id']}/reviews",
+                    remote="127.0.0.1",
+                )
+                self.assertEqual(listed, "200 OK")
+                listed_data = json.loads(listed_body)
+                self.assertEqual(len(listed_data["reviews"]), 1)
+                self.assertEqual(
+                    listed_data["status_unchanged"],
+                    "PENDING_CLASSIFICATION",
+                )
+                self.assertFalse(listed_data["reserve_calculated"])
+            finally:
+                app_module.FISCAL_PENDING_QUEUE = old_queue
+                if old_required is None:
+                    os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
+                else:
+                    os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
+
 if __name__ == "__main__":
     unittest.main()
