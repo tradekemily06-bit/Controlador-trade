@@ -25,3 +25,13 @@ def test_streamlit_panel_connects_assistant_and_fiscal_to_existing_api():
         assert route in source
     assert "CONTROLADOR_TRUSTED_IDENTITY_HEADER" in source
     assert "REAL permanece bloqueado" in source or "REAL" in source
+
+
+
+def test_streamlit_fiscal_panel_records_losses_and_pages_the_ledger():
+    source = (PANEL_DIR / "app.py").read_text(encoding="utf-8")
+    assert "min_value=-1000000000000.0" in source
+    assert "fiscal_history_offset" in source
+    assert "fiscal_history_next" in source
+    assert "fiscal_history_previous" in source
+    assert "compensação ou transporte de perdas não é calculado automaticamente" in source
