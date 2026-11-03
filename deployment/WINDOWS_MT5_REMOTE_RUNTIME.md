@@ -27,7 +27,7 @@ CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sq
 
 Para habilitar respostas com IA, configure `OPENAI_API_KEY` como variável de ambiente protegida no usuário/serviço Windows que inicia o runtime. A chave fica somente no servidor; nunca a coloque no Git, na interface web, em arquivos servidos ao navegador ou em mensagens do Assistente. Opcionalmente, configure `OPENAI_MODEL`; sem essa variável, o serviço usa o modelo padrão definido pelo código. Sem `OPENAI_API_KEY`, a rota de conversa responde como indisponível e não deve ser tratada como Assistente operacionalmente pronto.
 
-O texto da pergunta e o resumo operacional enviado ao provedor externo devem ser informados ao usuário na interface. Não envie senhas, tokens, códigos de autenticação ou dados bancários sensíveis. O Assistente permanece somente leitura e recebe agregados da Reserva Fiscal, não o histórico individual de referências e observações.
+O texto da pergunta e o resumo operacional enviado ao provedor externo devem ser informados ao usuário na interface. Não envie senhas, tokens, códigos de autenticação ou dados bancários sensíveis. O Assistente permanece somente leitura e recebe agregados da Reserva Fiscal, não o histórico individual de referências e observações. A exclusão de uma conversa pela interface apaga a conversa e suas mensagens do banco local do Ecossistema, mas não solicita nem garante exclusão de dados já transmitidos ao provedor externo; a retenção do provedor segue as configurações e políticas da conta/API. Não prometa ao usuário exclusão externa.
 
 CONTROLADOR_UPDATE_TOKEN continua sendo segredo de ambiente quando o endpoint interno de atualizações for usado.
 
