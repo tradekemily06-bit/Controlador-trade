@@ -23,6 +23,8 @@ from security_guard import MAX_BODY_BYTES, SECURITY
 from security_audit import AUDIT
 from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_pending_queue import FiscalPendingQueue
+from finance.fiscal_schema import migrate_fiscal_schema
+from finance.fiscal_identity import FiscalOwnerIdentityError
 from assistant.conversation_store import AssistantConversationStore
 from assistant.chat_service import EcosystemAssistant, AssistantUnavailableError
 
@@ -286,10 +288,15 @@ def application(environ, start_response):
                     else auth_reason
                 )
                 return _json_response(start_response, auth_status, {"error": public_reason}, request_id, environ)
-            header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
-            identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
-            if not identity:
-                identity = "local-single-user"
+            try:
+                fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+            except (FiscalOwnerIdentityError, RuntimeError) as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
+                                       "detail": str(exc)}, request_id, environ)
+            # A identidade canônica mantém o mesmo espaço de conversas no acesso
+            # local e remoto autorizado, sem confiar no valor enviado pelo navegador.
+            identity = fiscal_owner_id
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
             if path == "/api/assistant/conversations" and method == "DELETE":
@@ -307,11 +314,17 @@ def application(environ, start_response):
                 return _json_response(start_response, HTTPStatus.OK, {"messages": ASSISTANT.history(identity, query)}, request_id, environ)
             if path == "/api/assistant/chat" and method == "POST":
                 data = _read_json(environ)
-                return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), data.get("conversation_id")), request_id, environ)
+                return _json_response(start_response, HTTPStatus.OK, ASSISTANT.ask(identity, data.get("message"), fiscal_owner_id, data.get("conversation_id")), request_id, environ)
         if path.startswith("/api/fiscal-reserve"):
             authorized, reason = _authorize_remote_mutation(environ)
             if not authorized:
                 return _json_response(start_response, HTTPStatus.FORBIDDEN, {"error": reason, "request_id": request_id}, request_id, environ)
+            try:
+                fiscal_owner_id = migrate_fiscal_schema(str(FISCAL_RESERVE_DB))
+            except (FiscalOwnerIdentityError, RuntimeError) as exc:
+                return _json_response(start_response, HTTPStatus.SERVICE_UNAVAILABLE,
+                                      {"error": "Reserva Fiscal indisponível até validar a identidade proprietária e a migração.",
+                                       "detail": str(exc)}, request_id, environ)
         if path == "/api/fiscal-reserve/pending" and method == "GET":
             query = parse_qs(environ.get("QUERY_STRING") or "", keep_blank_values=True)
             try:
@@ -320,11 +333,11 @@ def application(environ, start_response):
             except (TypeError, ValueError) as exc:
                 raise ValueError("limit e offset devem ser inteiros") from exc
             return _json_response(start_response, HTTPStatus.OK,
-                                  FISCAL_PENDING_QUEUE.list_pending(limit=limit, offset=offset),
+                                  FISCAL_PENDING_QUEUE.list_pending(fiscal_owner_id, limit=limit, offset=offset),
                                   request_id, environ)
         if path == "/api/fiscal-reserve/pending" and method == "POST":
             try:
-                item = FISCAL_PENDING_QUEUE.add(_read_json(environ))
+                item = FISCAL_PENDING_QUEUE.add(fiscal_owner_id, _read_json(environ))
             except sqlite3.IntegrityError:
                 return _json_response(start_response, HTTPStatus.CONFLICT,
                                       {"error": "Já existe uma pendência com essa referência.", "request_id": request_id},
@@ -338,12 +351,12 @@ def application(environ, start_response):
                 raise ValueError("pending_id inválido")
             if method == "GET":
                 return _json_response(start_response, HTTPStatus.OK,
-                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(pending_id),
+                                      {"reviews": FISCAL_PENDING_QUEUE.list_reviews(fiscal_owner_id, pending_id),
                                        "status_unchanged": "PENDING_CLASSIFICATION",
                                        "reserve_calculated": False},
                                       request_id, environ)
             if method == "POST":
-                review = FISCAL_PENDING_QUEUE.record_review(pending_id, _read_json(environ))
+                review = FISCAL_PENDING_QUEUE.record_review(fiscal_owner_id, pending_id, _read_json(environ))
                 return _json_response(start_response, HTTPStatus.CREATED,
                                       {"review": review, "reserve_calculated": False},
                                       request_id, environ)
@@ -372,7 +385,7 @@ def application(environ, start_response):
             if history_offset < 0:
                 raise ValueError("offset deve ser não negativo")
             fiscal_summary = FISCAL_RESERVE.summary(
-                history_limit=history_limit, history_offset=history_offset
+                fiscal_owner_id, history_limit=history_limit, history_offset=history_offset
             )
             # Keep legacy foreign settings in storage for historical compatibility,
             # but never expose the generic percentage as a usable public tax rate.
@@ -396,15 +409,15 @@ def application(environ, start_response):
         if path == "/api/fiscal-reserve/rates" and method == "POST":
             data = _read_json(environ)
             if "rates" in data:
-                settings = FISCAL_RESERVE.update_rates(data["rates"])
+                settings = FISCAL_RESERVE.update_rates(fiscal_owner_id, data["rates"])
             else:
-                settings = FISCAL_RESERVE.update_rate(str(data.get("category", "")), data.get("rate"))
+                settings = FISCAL_RESERVE.update_rate(fiscal_owner_id, str(data.get("category", "")), data.get("rate"))
             # Keep the legacy foreign setting internally for database compatibility,
             # but never expose its generic percentage through the public API.
             settings.pop("FOREIGN_FINANCIAL_ASSET", None)
             return _json_response(start_response, HTTPStatus.OK, {"settings": settings}, request_id, environ)
         if path == "/api/fiscal-reserve/results" and method == "POST":
-            entry = FISCAL_RESERVE.record_realized_result(_read_json(environ))
+            entry = FISCAL_RESERVE.record_realized_result(fiscal_owner_id, _read_json(environ))
             return _json_response(start_response, HTTPStatus.OK, {"entry": entry, "execution_allowed": False}, request_id, environ)
         if path == "/api/onboarding" and method == "GET":
             guide = ONBOARDING.build_first_use_guide()

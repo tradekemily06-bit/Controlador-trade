@@ -73,6 +73,9 @@ class FiscalReserve:
 
     def _initialize(self) -> None:
         with self._connect() as db:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_settings)")}
+            if "owner_id" in columns:
+                return
             db.execute("""
                 CREATE TABLE IF NOT EXISTS fiscal_reserve_settings (
                     category TEXT PRIMARY KEY,
@@ -146,14 +149,15 @@ class FiscalReserve:
             raise ValueError(f"{field} excede o limite permitido")
         return round(amount, 2)
 
-    def settings(self) -> dict[str, float]:
+    def settings(self, owner_id: str) -> dict[str, float]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT category, rate FROM fiscal_reserve_settings ORDER BY category"
+                "SELECT category, rate FROM fiscal_reserve_settings WHERE owner_id = ? ORDER BY category",
+                (owner_id,),
             ).fetchall()
         return {row["category"]: float(row["rate"]) for row in rows}
 
-    def update_rate(self, category: str, rate: Any) -> dict[str, float]:
+    def update_rate(self, owner_id: str, category: str, rate: Any) -> dict[str, float]:
         category = self._category(category)
         if category == "FOREIGN_FINANCIAL_ASSET":
             raise ValueError("percentual internacional genérico não pode ser alterado sem classificação validada")
@@ -162,13 +166,13 @@ class FiscalReserve:
             raise ValueError("percentual deve estar entre 0 e 100")
         with self._connect() as db:
             db.execute(
-                "INSERT INTO fiscal_reserve_settings(category, rate) VALUES (?, ?) "
-                "ON CONFLICT(category) DO UPDATE SET rate = excluded.rate",
-                (category, parsed),
+                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate) VALUES (?, ?, ?) "
+                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate",
+                (owner_id, category, parsed),
             )
-        return self.settings()
+        return self.settings(owner_id)
 
-    def update_rates(self, rates: dict[str, Any]) -> dict[str, float]:
+    def update_rates(self, owner_id: str, rates: dict[str, Any]) -> dict[str, float]:
         if not isinstance(rates, dict) or set(rates) != {"BR_DAY_TRADE"}:
             raise ValueError("somente o percentual brasileiro pode ser alterado nesta etapa")
         parsed = {}
@@ -178,13 +182,13 @@ class FiscalReserve:
             raise ValueError("percentuais devem estar entre 0 e 100")
         with self._connect() as db:
             db.executemany(
-                "INSERT INTO fiscal_reserve_settings(category, rate) VALUES (?, ?) "
-                "ON CONFLICT(category) DO UPDATE SET rate = excluded.rate",
-                list(parsed.items()),
+                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate) VALUES (?, ?, ?) "
+                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate",
+                [(owner_id, category, rate) for category, rate in parsed.items()],
             )
-        return self.settings()
+        return self.settings(owner_id)
 
-    def record_realized_result(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def record_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("payload deve ser um objeto")
         category = self._category(payload.get("category"))
@@ -213,14 +217,14 @@ class FiscalReserve:
             # index remains the final guard if multiple workers race.
             db.execute("BEGIN IMMEDIATE")
             existing = db.execute(
-                "SELECT entry_id FROM fiscal_reserve_entries WHERE category = ? AND reference = ?",
-                (category, reference),
+                "SELECT entry_id FROM fiscal_reserve_entries WHERE owner_id = ? AND category = ? AND reference = ?",
+                (owner_id, category, reference),
             ).fetchone()
             if existing is not None:
                 raise ValueError("esta referência já foi registrada nesta categoria")
             row = db.execute(
-                "SELECT rate FROM fiscal_reserve_settings WHERE category = ?",
-                (category,),
+                "SELECT rate FROM fiscal_reserve_settings WHERE owner_id = ? AND category = ?",
+                (owner_id, category),
             ).fetchone()
             rate = float(row["rate"])
             # A negative result is recorded, but no automatic tax-loss carryforward
@@ -240,15 +244,16 @@ class FiscalReserve:
             )
             db.execute(
                 """INSERT INTO fiscal_reserve_entries
-                (entry_id, category, entry_type, realized_result_brl, reserve_rate,
+                (entry_id, owner_id, category, entry_type, realized_result_brl, reserve_rate,
                  reserve_amount_brl, reference, occurred_on, created_at, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                tuple(asdict(entry).values()),
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (entry.entry_id, owner_id, entry.category, entry.entry_type, entry.realized_result_brl, entry.reserve_rate, entry.reserve_amount_brl, entry.reference, entry.occurred_on, entry.created_at, entry.notes),
             )
         return asdict(entry)
 
     def summary(
         self,
+        owner_id: str,
         as_of: date | None = None,
         history_limit: int = 100,
         history_offset: int = 0,
@@ -257,7 +262,7 @@ class FiscalReserve:
             raise ValueError("history_limit deve estar entre 1 e 500")
         if isinstance(history_offset, bool) or not isinstance(history_offset, int) or history_offset < 0:
             raise ValueError("history_offset deve ser um inteiro não negativo")
-        rates = self.settings()
+        rates = self.settings(owner_id)
         reference_day = as_of or datetime.now(ZoneInfo("America/Sao_Paulo")).date()
         week_start = reference_day.fromordinal(reference_day.toordinal() - reference_day.weekday())
         periods = {
@@ -275,9 +280,9 @@ class FiscalReserve:
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                     FROM fiscal_reserve_entries
-                    WHERE category = 'BR_DAY_TRADE'
+                    WHERE owner_id = ? AND category = 'BR_DAY_TRADE'
                     AND occurred_on >= ? AND occurred_on < ?""",
-                    (start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
+                    (owner_id, start_day.isoformat(), date.fromordinal(end_day.toordinal() + 1).isoformat()),
                 ).fetchone()
                 period_totals[period_name] = {
                     "start": start_day.isoformat(),
@@ -291,8 +296,8 @@ class FiscalReserve:
                     """SELECT COUNT(*) AS count,
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
-                    FROM fiscal_reserve_entries WHERE category = ?""",
-                    (category,),
+                    FROM fiscal_reserve_entries WHERE owner_id = ? AND category = ?""",
+                    (owner_id, category),
                 ).fetchone()
                 if category == "FOREIGN_FINANCIAL_ASSET":
                     # Legacy foreign rows remain in history for audit only.
@@ -312,16 +317,18 @@ class FiscalReserve:
                         "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
                     }
             total = db.execute(
-                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE category = 'BR_DAY_TRADE'"
+                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'",
+                (owner_id,),
             ).fetchone()
             history_total = int(db.execute(
-                "SELECT COUNT(*) AS total FROM fiscal_reserve_entries"
+                "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?",
+                (owner_id,),
             ).fetchone()["total"])
             history = db.execute(
-                """SELECT * FROM fiscal_reserve_entries
+                """SELECT * FROM fiscal_reserve_entries WHERE owner_id = ?
                 ORDER BY occurred_on DESC, created_at DESC, entry_id DESC
                 LIMIT ? OFFSET ?""",
-                (history_limit, history_offset),
+                (owner_id, history_limit, history_offset),
             ).fetchall()
         return {
             "name": "Reserva Fiscal",
@@ -330,7 +337,7 @@ class FiscalReserve:
             "total_reserved_brl": round(float(total["total"]), 2),
             "periods": period_totals,
             "as_of": reference_day.isoformat(),
-            "history": [dict(item) for item in history],
+            "history": [{key: value for key, value in dict(item).items() if key != "owner_id"} for item in history],
             "history_page": {
                 "limit": history_limit,
                 "offset": history_offset,
