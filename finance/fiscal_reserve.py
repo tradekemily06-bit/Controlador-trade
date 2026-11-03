@@ -179,11 +179,11 @@ class FiscalReserve:
             raise ValueError("percentuais devem estar entre 0 e 100")
         with self._connect() as db:
             db.executemany(
-                "INSERT INTO fiscal_reserve_settings(category, rate) VALUES (?, ?) "
-                "ON CONFLICT(category) DO UPDATE SET rate = excluded.rate",
+                "INSERT INTO fiscal_reserve_settings(owner_id, category, rate) VALUES (?, ?, ?) "
+                "ON CONFLICT(owner_id, category) DO UPDATE SET rate = excluded.rate",
                 [(owner_id, category, rate) for category, rate in parsed.items()],
             )
-        return self.settings()
+        return self.settings(owner_id)
 
     def record_realized_result(self, owner_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
@@ -294,7 +294,7 @@ class FiscalReserve:
                     COALESCE(SUM(realized_result_brl), 0) AS realized_result_brl,
                     COALESCE(SUM(reserve_amount_brl), 0) AS reserve_amount_brl
                     FROM fiscal_reserve_entries WHERE owner_id = ? AND category = ?""",
-                    (category,),
+                    (owner_id, category),
                 ).fetchone()
                 if category == "FOREIGN_FINANCIAL_ASSET":
                     # Legacy foreign rows remain in history for audit only.
@@ -314,7 +314,8 @@ class FiscalReserve:
                         "reserve_amount_brl": round(float(row["reserve_amount_brl"]), 2),
                     }
             total = db.execute(
-                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'"
+                "SELECT COALESCE(SUM(reserve_amount_brl), 0) AS total FROM fiscal_reserve_entries WHERE owner_id = ? AND category = 'BR_DAY_TRADE'",
+                (owner_id,),
             ).fetchone()
             history_total = int(db.execute(
                 "SELECT COUNT(*) AS total FROM fiscal_reserve_entries WHERE owner_id = ?"
