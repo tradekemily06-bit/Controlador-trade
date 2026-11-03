@@ -169,7 +169,7 @@ def show_fiscal() -> None:
             except Exception as exc:
                 st.error(str(exc))
 
-    with st.expander("Registrar resultado realizado · Brasil day trade")
+    with st.expander("Registrar resultado realizado · Brasil day trade"):
         with st.form("fiscal_result_form"):
             occurred_on = st.date_input("Data da realização")
             result = st.number_input("Resultado realizado (R$)", min_value=0.0, step=10.0, format="%.2f")
