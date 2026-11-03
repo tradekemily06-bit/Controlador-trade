@@ -275,7 +275,14 @@ def application(environ, start_response):
             authorized, auth_reason = _authorize_remote_mutation(environ)
             if not authorized:
                 auth_status = HTTPStatus.UNAUTHORIZED if auth_reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
-                return _json_response(start_response, auth_status, {"error": auth_reason}, request_id, environ)
+                public_reason = (
+                    "Identidade autenticada necessária."
+                    if auth_reason == "trusted identity is required"
+                    else "Identidade autenticada não autorizada para este runtime."
+                    if "not authorized for this single-user runtime" in auth_reason
+                    else auth_reason
+                )
+                return _json_response(start_response, auth_status, {"error": public_reason}, request_id, environ)
             header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
             identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
             if not identity:
