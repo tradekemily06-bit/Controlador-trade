@@ -74,6 +74,31 @@ class AppSecurityTests(unittest.TestCase):
             SECURITY.limit = old_limit
             SECURITY._buckets.clear()
 
+    def test_local_mutation_is_denied_when_explicitly_disabled(self):
+        from app import _authorize_remote_mutation
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            os.environ["CONTROLADOR_LOCAL_MUTATION_HOSTS"] = "localhost,127.0.0.1"
+            allowed, reason = _authorize_remote_mutation(
+                {"REMOTE_ADDR": "127.0.0.1", "HTTP_HOST": "localhost:8000"}
+            )
+            self.assertFalse(allowed)
+            self.assertEqual(reason, "local mutations are disabled")
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+
     def test_explicit_local_notebook_mutation_requires_local_host(self):
         from app import _authorize_remote_mutation
         names = {
