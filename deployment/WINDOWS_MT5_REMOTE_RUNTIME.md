@@ -20,6 +20,7 @@ CONTROLADOR_REMOTE_ACCESS_REQUIRED=true
 CONTROLADOR_LOCAL_MUTATIONS_ALLOWED=true
 CONTROLADOR_LOCAL_MUTATION_HOSTS=localhost,127.0.0.1,[::1]
 CONTROLADOR_TRUSTED_IDENTITY_HEADER=Cf-Access-Authenticated-User-Email
+CONTROLADOR_SINGLE_USER_IDENTITY=usuario-individual-autorizado@example.com
 CONTROLADOR_RUNTIME_DIR=C:\\Controlador-trade\\.runtime
 CONTROLADOR_SECURITY_AUDIT_DB=C:\\Controlador-trade\\.runtime\\security-audit.sqlite
 
@@ -148,7 +149,7 @@ A escolha DEMO/REAL continua sendo uma decisão operacional separada da portabil
 
 ## Política de identidade e isolamento dos dados fiscais
 
-Até que o ledger e a fila da Reserva Fiscal tenham isolamento por proprietário em todas as operações de leitura e escrita, esta implantação é de usuário único. A política da aplicação Cloudflare Access deve permitir somente uma identidade individual explicitamente autorizada; não use regras amplas por domínio de e-mail, organização ou grupo. Celular e notebook devem autenticar a mesma identidade autorizada.
+Até que o ledger e a fila da Reserva Fiscal tenham isolamento por proprietário em todas as operações de leitura e escrita, esta implantação é de usuário único. A política da aplicação Cloudflare Access deve permitir somente uma identidade individual explicitamente autorizada; não use regras amplas por domínio de e-mail, organização ou grupo. Configure também `CONTROLADOR_SINGLE_USER_IDENTITY` com o mesmo e-mail individual autorizado no Access: a aplicação compara esse valor com o header confiável nas rotas do Assistente e da Reserva Fiscal, bloqueando outra identidade. Celular e notebook devem autenticar a mesma identidade autorizada.
 
 O Assistente separa conversas por identidade, mas isso não significa que os registros da Reserva Fiscal estejam separados por identidade. A fila de pendências estrangeiras e o ledger fiscal usam o banco compartilhado do runtime. Adicionar outra identidade ao Access antes de implementar e testar o isolamento fiscal pode expor registros e totais de outra pessoa.
 
