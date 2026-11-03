@@ -55,7 +55,7 @@ def test_external_assistant_context_excludes_free_text_and_identifiers():
   def memory_view(self,limit=5):
    return [{"decision_id":"PRIVATE-DECISION-ID","created_at":"2026-10-30T12:00:00Z","symbol":"PRIVATE-SYMBOL","timeframe":"PRIVATE-TIMEFRAME","signal":"BUY","score":80,"confirmed":True,"reason":"PRIVATE-DECISION-REASON","outcome":"WIN"}]
  class SafeFiscal:
-  def summary(self):
+  def summary(self, owner_id):
    return {"name":"Reserva Fiscal","currency":"BRL","as_of":"2026-10-30","categories":{},"total_reserved_brl":0,"periods":{},"limitations":[],"history":[{"notes":"PRIVATE-FISCAL-NOTE","reference":"PRIVATE-FISCAL-REFERENCE"}],"reviews":[{"reviewer_name":"PRIVATE-REVIEWER","professional_registration":"PRIVATE-REGISTRATION","review_notes":"PRIVATE-REVIEW-NOTE","evidence_reference":"PRIVATE-EVIDENCE"}]}
  import json
  payload=json.dumps(collect_read_only_context(SensitiveService(),SafeFiscal(),"test-fiscal-owner"),ensure_ascii=False)
@@ -69,7 +69,7 @@ def test_external_assistant_context_excludes_free_text_and_identifiers():
 
 def test_unclassified_foreign_generic_rate_is_not_sent_to_assistant():
  class LegacyFiscal:
-  def summary(self):
+  def summary(self, owner_id):
    return {
     "name":"Reserva Fiscal",
     "currency":"BRL",
