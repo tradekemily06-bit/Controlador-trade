@@ -84,7 +84,7 @@ class AppSecurityTests(unittest.TestCase):
         }
         old = {name: os.environ.get(name) for name in names}
         try:
-            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
             os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "true"
             os.environ["CONTROLADOR_LOCAL_MUTATION_HOSTS"] = "localhost,127.0.0.1"
@@ -368,8 +368,7 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
 
-if __name__ == "__main__":
-    unittest.main()
+
 
     def test_missing_remote_address_is_not_treated_as_local(self):
         from app import _authorize_remote_mutation
@@ -391,3 +390,39 @@ if __name__ == "__main__":
                 os.environ.pop("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", None)
             else:
                 os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = old_local
+
+
+    def test_remote_access_cannot_use_local_mutation_bypass(self):
+        from app import _authorize_remote_mutation
+        names = {
+            "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
+            "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
+            "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
+        }
+        old = {name: os.environ.get(name) for name in names}
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
+            os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "owner@example.com"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "true"
+            local_without_identity, _ = _authorize_remote_mutation({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "localhost:8501",
+            })
+            local_with_identity, _ = _authorize_remote_mutation({
+                "REMOTE_ADDR": "127.0.0.1",
+                "HTTP_HOST": "localhost:8501",
+                "HTTP_X_AUTHENTICATED_USER": "owner@example.com",
+            })
+            self.assertFalse(local_without_identity)
+            self.assertTrue(local_with_identity)
+        finally:
+            for name, value in old.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
+
+if __name__ == "__main__":
+    unittest.main()
