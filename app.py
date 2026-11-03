@@ -148,18 +148,19 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
 
     if not remote_access_required and is_loopback:
         local_mutations_allowed = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
-        if local_mutations_allowed:
-            local_hosts = {
-                item.strip().lower()
-                for item in os.environ.get(
-                    "CONTROLADOR_LOCAL_MUTATION_HOSTS",
-                    "localhost,127.0.0.1,[::1]",
-                ).split(",")
-                if item.strip()
-            }
-            host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
-            if host and host not in local_hosts:
-                return False, "local host is not allowed"
+        if not local_mutations_allowed:
+            return False, "local mutations are disabled"
+        local_hosts = {
+            item.strip().lower()
+            for item in os.environ.get(
+                "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+                "localhost,127.0.0.1,[::1]",
+            ).split(",")
+            if item.strip()
+        }
+        host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
+        if host and host not in local_hosts:
+            return False, "local host is not allowed"
         return True, "local"
 
     if not remote_access_required:
