@@ -18,6 +18,7 @@ def call_app(path, method="GET", payload=None, authorization=None):
         "QUERY_STRING": "",
         "CONTENT_TYPE": "application/json" if payload is not None else "",
         "CONTENT_LENGTH": str(len(body)),
+            "REMOTE_ADDR": "127.0.0.1",
         "wsgi.input": io.BytesIO(body),
     }
     if authorization is not None:
