@@ -2,6 +2,7 @@ import io
 import json
 import os
 import unittest
+from urllib.parse import urlsplit
 
 from app import application
 from security_guard import MAX_BODY_BYTES
@@ -16,10 +17,11 @@ class AppSecurityTests(unittest.TestCase):
             captured["status"] = status
             captured["headers"] = dict(headers)
 
+        parsed_path = urlsplit(path)
         environ = {
             "REQUEST_METHOD": method,
-            "PATH_INFO": path,
-            "QUERY_STRING": "",
+            "PATH_INFO": parsed_path.path,
+            "QUERY_STRING": parsed_path.query,
             "CONTENT_TYPE": "application/json" if payload is not None else "",
             "CONTENT_LENGTH": str(len(body)),
             "REMOTE_ADDR": remote,
