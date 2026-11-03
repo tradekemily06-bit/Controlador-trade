@@ -190,3 +190,20 @@ def test_assistant_tax_guidance_does_not_infer_unverified_tax_facts():
  assert "Diferencie registros informados pelo usuário, estimativas de planejamento e obrigações fiscais oficialmente apuradas" in SYSTEM_PROMPT
  assert "não integra os totais" in SYSTEM_PROMPT
  assert "contador qualificado na jurisdição aplicável" in SYSTEM_PROMPT
+
+
+def test_conversation_list_and_append_are_owner_scoped_and_identity_normalized(tmp_path):
+ store=AssistantConversationStore(tmp_path/"assistant.sqlite")
+ own_id=store.append("Owner@Example.com",None,"user","conversa do titular")
+ other_id=store.append("other@example.com",None,"user","conversa de outra pessoa")
+ assert [row["conversation_id"] for row in store.list(" owner@example.com ")]==[own_id]
+ # Identity normalization is case-insensitive and trims surrounding whitespace.
+ assert store.history("OWNER@example.com",own_id)[0]["content"]=="conversa do titular"
+ try:
+  store.append("other@example.com",own_id,"user","tentativa de escrita cruzada")
+ except PermissionError:
+  pass
+ else:
+  assert False
+ assert [row["content"] for row in store.history("Owner@Example.com",own_id)]==["conversa do titular"]
+ assert [row["conversation_id"] for row in store.list("other@example.com")]==[other_id]
