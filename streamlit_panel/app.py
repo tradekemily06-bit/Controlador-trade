@@ -85,9 +85,14 @@ def show_assistant() -> None:
     ids = [item.get("conversation_id") for item in conversations]
     labels = {item.get("conversation_id"): item.get("title", "Conversa") for item in conversations}
     selected = st.selectbox("Histórico", options=["__new__"] + ids, format_func=lambda value: "Nova conversa" if value == "__new__" else labels.get(value, "Conversa"))
+    if selected == "__new__":
+        st.session_state.assistant_conversation_id = None
+        st.session_state.assistant_history = []
+        st.session_state.assistant_loaded_id = None
     if st.button("Iniciar nova conversa", key="new_assistant"):
         st.session_state.assistant_conversation_id = None
         st.session_state.assistant_history = []
+        st.session_state.assistant_loaded_id = None
         st.rerun()
     cid = None if selected == "__new__" else selected
     if cid and st.session_state.get("assistant_loaded_id") != cid:
