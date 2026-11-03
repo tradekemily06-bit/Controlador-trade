@@ -4,6 +4,24 @@ from assistant.read_only_context import collect_read_only_context
 
 class AssistantUnavailableError(RuntimeError): pass
 
+# Bound model input independently from the output-token cap.
+MAX_CONTEXT_CHARS = 24000
+MAX_HISTORY_CHARS = 12000
+MAX_HISTORY_MESSAGES = 12
+
+
+def _bounded_history(history, max_chars=MAX_HISTORY_CHARS, max_messages=MAX_HISTORY_MESSAGES):
+    selected = []
+    remaining = max_chars
+    for item in reversed(history[-max_messages:]):
+        content = item.get("content", "")
+        if not isinstance(content, str) or not content or remaining <= 0:
+            continue
+        content = content[-remaining:]
+        selected.append({"role": item["role"], "content": content})
+        remaining -= len(content)
+    return list(reversed(selected))
+
 SYSTEM_PROMPT=(
     "Você é o Assistente do Ecossistema Controlador Trading. Responda em português claro, direto e conciso. "
     "Use somente os dados do contexto para falar sobre a conta; se algo não estiver disponível, diga isso sem adivinhar. "
@@ -41,8 +59,8 @@ class EcosystemAssistant:
         context=collect_read_only_context(self.service,self.fiscal)
         cid=self.store.append(identity,cid,"user",message)
         history=self.store.history(identity,cid,12)
-        messages=[{"role":"system","content":SYSTEM_PROMPT+"\nCONTEXTO JSON:\n"+json.dumps(context,ensure_ascii=False,default=str)[:24000]}]
-        messages += [{"role":m["role"],"content":m["content"]} for m in history]
+        messages=[{"role":"system","content":SYSTEM_PROMPT+"\nCONTEXTO JSON:\n"+json.dumps(context,ensure_ascii=False,default=str)[:MAX_CONTEXT_CHARS]}]
+        messages += _bounded_history(history)
         try:
             response=self._client().chat.completions.create(model=self.model,messages=messages,temperature=0.2,max_completion_tokens=600)
             answer=response.choices[0].message.content
