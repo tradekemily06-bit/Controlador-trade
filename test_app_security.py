@@ -370,3 +370,24 @@ class AppSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_missing_remote_address_is_not_treated_as_local(self):
+        from app import _authorize_remote_mutation
+        old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
+        old_local = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED")
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
+            os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            for environ in ({}, {"REMOTE_ADDR": ""}):
+                allowed, reason = _authorize_remote_mutation(environ)
+                self.assertFalse(allowed)
+                self.assertEqual(reason, "trusted remote identity provider is not configured")
+        finally:
+            if old_required is None:
+                os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
+            else:
+                os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
+            if old_local is None:
+                os.environ.pop("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", None)
+            else:
+                os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = old_local
