@@ -64,6 +64,8 @@ class FiscalPendingQueue:
                              uri=bool(self._uri), timeout=10)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA busy_timeout = 10000")
+        # SQLite foreign-key enforcement is connection-local and disabled by default.
+        db.execute("PRAGMA foreign_keys = ON")
         try:
             yield db
             db.commit()
