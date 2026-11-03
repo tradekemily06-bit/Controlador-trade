@@ -48,7 +48,7 @@ def test_context_is_read_only_and_contains_existing_module_summaries():
 
 def test_context_rejects_missing_dependencies():
     try:
-        collect_read_only_context(None, FakeFiscalReserve())
+        collect_read_only_context(None, FakeFiscalReserve(), "test-owner")
     except ValueError as exc:
         assert "obrigatórios" in str(exc)
     else:
