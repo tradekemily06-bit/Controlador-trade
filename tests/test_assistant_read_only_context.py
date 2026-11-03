@@ -26,12 +26,12 @@ class FakeService:
 
 
 class FakeFiscalReserve:
-    def summary(self):
+    def summary(self, owner_id):
         return {"name": "Reserva Fiscal", "total_reserved_brl": 0.0, "history": []}
 
 
 def test_context_is_read_only_and_contains_existing_module_summaries():
-    context = collect_read_only_context(FakeService(), FakeFiscalReserve())
+    context = collect_read_only_context(FakeService(), FakeFiscalReserve(), "test-owner")
 
     assert context["system"]["mode"] == "SIMULACAO"
     assert context["system"]["execution_allowed"] is False
@@ -58,7 +58,7 @@ def test_context_rejects_missing_dependencies():
 
 def test_context_sanitizes_all_legacy_foreign_tax_values():
     class FiscalWithLegacyForeignData:
-        def summary(self):
+        def summary(self, owner_id):
             return {
                 "name": "Reserva Fiscal",
                 "currency": "BRL",
@@ -78,7 +78,7 @@ def test_context_sanitizes_all_legacy_foreign_tax_values():
                 "history": [{"reference": "PRIVATE-FOREIGN-REF", "notes": "não enviar"}],
             }
 
-    context = collect_read_only_context(FakeService(), FiscalWithLegacyForeignData())
+    context = collect_read_only_context(FakeService(), FiscalWithLegacyForeignData(), "test-owner")
     foreign = context["fiscal_reserve"]["categories"]["FOREIGN_FINANCIAL_ASSET"]
 
     assert foreign == {
