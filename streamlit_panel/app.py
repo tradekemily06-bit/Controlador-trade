@@ -73,6 +73,27 @@ def money(value: Any) -> str:
     except (TypeError, ValueError):
         return "—"
 
+def fiscal_history_display_row(item: dict[str, Any]) -> dict[str, Any]:
+    """Fail closed: only the explicitly supported Brazilian category shows estimates."""
+    category = str(item.get("category") or "").strip().upper()
+    row = {
+        "Data": item.get("occurred_on"),
+        "Categoria": category or "NÃO CLASSIFICADA",
+        "Resultado (R$)": "—",
+        "Percentual de planejamento (%)": "—",
+        "Reserva estimada (R$)": "—",
+        "Referência": item.get("reference"),
+        "Status": "PENDENTE DE CLASSIFICAÇÃO",
+    }
+    if category == "BR_DAY_TRADE":
+        row.update({
+            "Resultado (R$)": item.get("realized_result_brl"),
+            "Percentual de planejamento (%)": item.get("reserve_rate"),
+            "Reserva estimada (R$)": item.get("reserve_amount_brl"),
+            "Status": "PLANEJAMENTO · BRASIL DAY TRADE",
+        })
+    return row
+
 
 def _reset_assistant_conversation() -> None:
     st.session_state.assistant_conversation_id = None
@@ -162,14 +183,11 @@ def show_fiscal() -> None:
         fiscal_history = summary.get("history", [])
         st.markdown("#### Histórico da Reserva Fiscal")
         if fiscal_history:
-            st.dataframe([{
-                "Data": item.get("occurred_on"),
-                "Categoria": item.get("category"),
-                "Resultado (R$)": item.get("realized_result_brl"),
-                "Percentual de planejamento (%)": item.get("reserve_rate"),
-                "Reserva estimada (R$)": item.get("reserve_amount_brl"),
-                "Referência": item.get("reference"),
-            } for item in fiscal_history], use_container_width=True, hide_index=True)
+            st.dataframe(
+                [fiscal_history_display_row(item) for item in fiscal_history],
+                use_container_width=True,
+                hide_index=True,
+            )
             page = summary.get("history_page", {})
             st.caption(f"Exibindo {page.get('returned', len(fiscal_history))} de {page.get('total', len(fiscal_history))} registros.")
             previous_col, next_col = st.columns(2)
