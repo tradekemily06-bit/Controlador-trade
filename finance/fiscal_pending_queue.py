@@ -146,7 +146,7 @@ class FiscalPendingQueue:
                        "jurisdiction, occurred_on, fx_rate, fx_date, fx_source, notes, status, created_at) "
                        "VALUES (:pending_id, :owner_id, :reference, :original_amount, :original_currency, :instrument, "
                        ":jurisdiction, :occurred_on, :fx_rate, :fx_date, :fx_source, :notes, :status, :created_at)", item)
-        return item
+        return {key: value for key, value in item.items() if key != "owner_id"}
 
     def record_review(self, owner_id: str, pending_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         """Append professional review evidence; never changes pending status or calculates tax."""
@@ -205,7 +205,8 @@ class FiscalPendingQueue:
                  :reviewed_on, :review_notes, :created_at)""",
                 review,
             )
-        return {**review, "status_unchanged": "PENDING_CLASSIFICATION",
+        public_review = {key: value for key, value in review.items() if key != "owner_id"}
+        return {**public_review, "status_unchanged": "PENDING_CLASSIFICATION",
                 "reserve_calculated": False, "tax_rate_available": False}
 
     def list_reviews(self, owner_id: str, pending_id: str) -> list[dict[str, Any]]:
@@ -220,7 +221,7 @@ class FiscalPendingQueue:
                 "SELECT * FROM fiscal_pending_reviews WHERE owner_id = ? AND pending_id = ? ORDER BY created_at DESC, review_id DESC",
                 (owner_id, pending_id),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows]
 
     def list_pending(self, owner_id: str, limit: int = 100, offset: int = 0) -> dict[str, Any]:
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
@@ -232,6 +233,6 @@ class FiscalPendingQueue:
             rows = db.execute("SELECT * FROM fiscal_reserve_pending_foreign WHERE owner_id = ? "
                               "ORDER BY created_at DESC, pending_id DESC LIMIT ? OFFSET ?",
                               (owner_id, limit, offset)).fetchall()
-        return {"items": [dict(row) for row in rows], "total": total,
+        return {"items": [{key: value for key, value in dict(row).items() if key != "owner_id"} for row in rows], "total": total,
                 "limit": limit, "offset": offset,
                 "note": "Pendências não integram os totais nem geram estimativa de reserva."}
