@@ -71,3 +71,32 @@ def test_queue_is_separate_from_reserve_ledger(tmp_path):
     queue.add(sample())
     assert reserve.summary()["total_reserved_brl"] == 0
     assert reserve.summary()["periods"]["year"]["entries"] == 0
+
+
+def test_pending_queue_pagination_returns_distinct_pages_and_total(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    for number in range(7):
+        queue.add(sample(f"FOREIGN-PAGE-{number}"))
+
+    first = queue.list_pending(limit=3, offset=0)
+    second = queue.list_pending(limit=3, offset=3)
+    last = queue.list_pending(limit=3, offset=6)
+
+    assert first["total"] == second["total"] == last["total"] == 7
+    assert len(first["items"]) == 3
+    assert len(second["items"]) == 3
+    assert len(last["items"]) == 1
+    references = [item["reference"] for page in (first, second, last) for item in page["items"]]
+    assert len(references) == len(set(references)) == 7
+    assert all(item["status"] == "PENDING_CLASSIFICATION" for page in (first, second, last) for item in page["items"])
+
+
+def test_pending_queue_rejects_invalid_pagination(tmp_path):
+    queue = FiscalPendingQueue(str(tmp_path / "fiscal.sqlite3"))
+    for limit, offset in ((0, 0), (501, 0), (True, 0), (10, -1), (10, True)):
+        try:
+            queue.list_pending(limit=limit, offset=offset)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid pending pagination must be rejected")
