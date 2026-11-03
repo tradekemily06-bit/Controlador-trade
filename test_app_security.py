@@ -186,10 +186,6 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_remote_fiscal_and_assistant_delete_routes_require_identity(self):
         names = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
@@ -219,3 +215,6 @@ if __name__ == "__main__":
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+if __name__ == "__main__":
+    unittest.main()
