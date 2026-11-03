@@ -74,10 +74,19 @@ def money(value: Any) -> str:
         return "—"
 
 
+def _reset_assistant_conversation() -> None:
+    st.session_state.assistant_conversation_id = None
+    st.session_state.assistant_history = []
+    st.session_state.assistant_loaded_id = None
+    st.session_state.assistant_selector = "__new__"
+
+
 def show_assistant() -> None:
     st.subheader("Assistente do Ecossistema")
     st.caption("Somente leitura · não envia ordens, não movimenta dinheiro e não substitui orientação fiscal profissional.")
     st.warning("Privacidade: sua pergunta e um resumo dos dados operacionais disponíveis são enviados pelo servidor à OpenAI para gerar a resposta. A chave permanece no servidor. Excluir uma conversa remove o histórico local, mas não solicita a exclusão de dados já transmitidos à OpenAI. Não envie senhas, códigos de acesso ou dados bancários sensíveis.")
+    if "_assistant_pending_select_id" in st.session_state:
+        st.session_state.assistant_selector = st.session_state.pop("_assistant_pending_select_id")
     try:
         conversations = api("/api/assistant/conversations").get("conversations", [])
     except Exception as exc:
@@ -85,16 +94,16 @@ def show_assistant() -> None:
         st.error(str(exc))
     ids = [item.get("conversation_id") for item in conversations]
     labels = {item.get("conversation_id"): item.get("title", "Conversa") for item in conversations}
-    selected = st.selectbox("Histórico", options=["__new__"] + ids, format_func=lambda value: "Nova conversa" if value == "__new__" else labels.get(value, "Conversa"))
-    if selected == "__new__":
-        st.session_state.assistant_conversation_id = None
-        st.session_state.assistant_history = []
-        st.session_state.assistant_loaded_id = None
-    if st.button("Iniciar nova conversa", key="new_assistant"):
-        st.session_state.assistant_conversation_id = None
-        st.session_state.assistant_history = []
-        st.session_state.assistant_loaded_id = None
+    if st.session_state.get("assistant_selector", "__new__") not in ["__new__"] + ids:
+        st.session_state.assistant_selector = "__new__"
+    selected = st.selectbox("Histórico", options=["__new__"] + ids, format_func=lambda value: "Nova conversa" if value == "__new__" else labels.get(value, "Conversa"), key="assistant_selector")
+    if st.button("Iniciar nova conversa", key="new_assistant", on_click=_reset_assistant_conversation):
         st.rerun()
+    if selected == "__new__" and st.session_state.get("assistant_last_selected") != "__new__":
+        st.session_state.assistant_conversation_id = None
+        st.session_state.assistant_history = []
+        st.session_state.assistant_loaded_id = None
+    st.session_state.assistant_last_selected = selected
     cid = None if selected == "__new__" else selected
     if cid and st.checkbox("Confirmo que desejo excluir a conversa selecionada", key="confirm_delete_assistant"):
         if st.button("Excluir conversa e mensagens locais", key="delete_assistant"):
@@ -103,6 +112,7 @@ def show_assistant() -> None:
                 st.session_state.assistant_conversation_id = None
                 st.session_state.assistant_loaded_id = None
                 st.session_state.assistant_history = []
+                st.session_state._assistant_pending_select_id = "__new__"
                 st.success("Conversa removida do histórico local.")
                 st.rerun()
             except Exception as exc:
@@ -128,6 +138,7 @@ def show_assistant() -> None:
                 st.write(response.get("answer", "Sem resposta."))
             st.session_state.assistant_history = api("/api/assistant/history?conversation_id=" + urllib.parse.quote(response["conversation_id"])).get("messages", [])
             st.session_state.assistant_loaded_id = response["conversation_id"]
+            st.session_state._assistant_pending_select_id = response["conversation_id"]
             st.rerun()
         except Exception as exc:
             st.error(str(exc))
