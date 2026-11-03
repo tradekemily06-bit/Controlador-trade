@@ -23,6 +23,9 @@ class FiscalPendingQueue:
         else:
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as db:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(fiscal_reserve_pending_foreign)")}
+            if "owner_id" in columns:
+                return
             db.execute("""
                 CREATE TABLE IF NOT EXISTS fiscal_reserve_pending_foreign (
                     pending_id TEXT PRIMARY KEY,
