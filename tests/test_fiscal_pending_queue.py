@@ -53,7 +53,7 @@ def test_fx_evidence_must_be_complete(tmp_path):
     payload = sample()
     payload["fx_source"] = ""
     try:
-        queue.add(payload)
+        queue.add(OWNER, payload)
     except ValueError as exc:
         assert "fx_date e fx_source" in str(exc)
     else:
@@ -66,7 +66,7 @@ def test_invalid_amount_currency_and_date_are_rejected(tmp_path):
         payload = sample()
         payload[key] = value
         try:
-            queue.add(payload)
+            queue.add(OWNER, payload)
         except ValueError:
             pass
         else:
@@ -80,7 +80,7 @@ def test_queue_is_separate_from_reserve_ledger(tmp_path):
     reserve = FiscalReserve(path)
     queue.add(OWNER, sample())
     assert reserve.summary(OWNER)["total_reserved_brl"] == 0
-    assert reserve.summary()["periods"]["year"]["entries"] == 0
+    assert reserve.summary(OWNER)["periods"]["year"]["entries"] == 0
 
 
 def test_pending_queue_pagination_returns_distinct_pages_and_total(tmp_path):
@@ -168,7 +168,7 @@ def test_review_rejects_unqualified_role_and_invalid_date(tmp_path):
 def test_review_for_unknown_pending_item_is_rejected(tmp_path):
     queue = make_queue(tmp_path / "fiscal.sqlite3")
     try:
-        queue.record_review("missing-id", review_sample())
+        queue.record_review(OWNER, "missing-id", review_sample())
     except ValueError as exc:
         assert "não encontrada" in str(exc)
     else:
@@ -179,7 +179,7 @@ def test_review_foreign_key_is_enforced_and_prevents_orphaning(tmp_path):
     import sqlite3
 
     path = str(tmp_path / "fiscal.sqlite3")
-    queue = FiscalPendingQueue(path)
+    queue = make_queue(path)
     pending = queue.add(OWNER, sample())
     queue.record_review(OWNER, pending["pending_id"], review_sample())
 
@@ -202,7 +202,7 @@ def test_pending_amount_and_fx_rate_reject_boolean_values(tmp_path):
         payload = sample()
         payload[key] = True
         try:
-            queue.add(payload)
+            queue.add(OWNER, payload)
         except ValueError:
             pass
         else:
