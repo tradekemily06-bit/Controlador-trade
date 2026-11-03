@@ -273,3 +273,20 @@ def test_obsolete_foreign_rate_is_removed_without_deleting_legacy_history(tmp_pa
             "SELECT category FROM fiscal_reserve_settings ORDER BY category"
         ).fetchall()
     assert remaining == [("BR_DAY_TRADE",)]
+
+
+def test_money_rejects_boolean_values():
+    reserve = FiscalReserve()
+    for value in (True, False):
+        try:
+            reserve.record_realized_result({"category": "BR_DAY_TRADE", "realized_result_brl": value, "reference": f"BOOL-{value}"})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("boolean must not be accepted as money")
+        try:
+            reserve.update_rate("BR_DAY_TRADE", value)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("boolean must not be accepted as a percentage")
