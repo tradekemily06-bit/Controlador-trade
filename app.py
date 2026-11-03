@@ -338,8 +338,17 @@ def application(environ, start_response):
             foreign = fiscal_summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET")
             if isinstance(foreign, dict):
                 foreign.pop("rate", None)
+                foreign["realized_result_brl"] = 0.0
+                foreign["reserve_amount_brl"] = 0.0
                 foreign["classification_status"] = "PENDING_CLASSIFICATION"
                 foreign["rate_available"] = False
+            # Legacy foreign ledger rows remain available for audit, but their
+            # historical generic rate/reserve amount must not be presented as valid.
+            for entry in fiscal_summary.get("history", []):
+                if isinstance(entry, dict) and entry.get("category") == "FOREIGN_FINANCIAL_ASSET":
+                    entry.pop("reserve_rate", None)
+                    entry.pop("reserve_amount_brl", None)
+                    entry["classification_status"] = "PENDING_CLASSIFICATION"
             return _json_response(
                 start_response, HTTPStatus.OK, fiscal_summary, request_id, environ
             )

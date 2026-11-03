@@ -228,3 +228,35 @@ def test_concurrent_duplicate_reference_is_never_double_recorded(tmp_path):
     assert results.count("created") == 1
     assert results.count("duplicate") == 7
     assert reserve.summary()["total_reserved_brl"] == 200
+
+
+
+def test_legacy_foreign_rows_are_preserved_but_excluded_from_all_reserve_totals(tmp_path):
+    import sqlite3
+    from datetime import date
+
+    database = tmp_path / "legacy-fiscal.sqlite3"
+    reserve = FiscalReserve(str(database))
+    with sqlite3.connect(database) as db:
+        db.execute(
+            """INSERT INTO fiscal_reserve_entries
+            (entry_id, category, entry_type, realized_result_brl, reserve_rate,
+             reserve_amount_brl, reference, occurred_on, created_at, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("legacy-foreign-1", "FOREIGN_FINANCIAL_ASSET", "REALIZED_RESULT",
+             1000.0, 15.0, 150.0, "LEGACY-FOREIGN-1", "2026-11-02",
+             "2026-11-02T12:00:00+00:00", "legacy row"),
+        )
+
+    summary = reserve.summary(as_of=date(2026, 11, 2))
+    foreign = summary["categories"]["FOREIGN_FINANCIAL_ASSET"]
+    assert summary["total_reserved_brl"] == 0.0
+    assert summary["periods"]["day"]["realized_result_brl"] == 0.0
+    assert summary["periods"]["day"]["reserve_amount_brl"] == 0.0
+    assert foreign["entries"] == 1
+    assert foreign["realized_result_brl"] == 0.0
+    assert foreign["reserve_amount_brl"] == 0.0
+    assert foreign["classification_status"] == "PENDING_CLASSIFICATION"
+    assert foreign["rate_available"] is False
+    # Keep the source record for audit; API presentation is sanitized separately.
+    assert summary["history"][0]["reference"] == "LEGACY-FOREIGN-1"
