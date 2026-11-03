@@ -226,13 +226,15 @@ class AppSecurityTests(unittest.TestCase):
                 ("/api/fiscal-reserve", "GET", None),
                 ("/api/fiscal-reserve/mt5-preview", "GET", None),
                 ("/api/fiscal-reserve/pending", "GET", None),
+                ("/api/fiscal-reserve/pending/00000000-0000-0000-0000-000000000000/reviews", "GET", None),
+                ("/api/fiscal-reserve/pending/00000000-0000-0000-0000-000000000000/reviews", "POST", {"candidate_classification": "ETF", "confirmed_jurisdiction": "US", "reviewer_name": "Teste", "reviewer_role": "contador", "professional_registration": "CRC-TESTE", "evidence_reference": "DOC-1", "reviewed_on": "2026-11-03"}),
                 ("/api/fiscal-reserve/pending", "POST", {"reference": "REMOTE-UNAUTH", "original_amount": 1, "original_currency": "USD", "instrument": "ETF", "jurisdiction": "US", "occurred_on": "2026-11-02"}),
                 ("/api/fiscal-reserve/rates", "POST", {"category": "BR_DAY_TRADE", "rate": 20}),
                 ("/api/fiscal-reserve/results", "POST", {"category": "BR_DAY_TRADE", "realized_result_brl": 10, "reference": "REMOTE-UNAUTH"}),
                 ("/api/assistant/conversations", "DELETE", None),
             ]
             expected = [
-                "403 Forbidden", "403 Forbidden", "403 Forbidden",
+                "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden", "403 Forbidden",
                 "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
                 "401 Unauthorized",
             ]
