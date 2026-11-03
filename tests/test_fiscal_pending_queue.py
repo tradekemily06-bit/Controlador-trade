@@ -2,8 +2,9 @@ import os
 from finance.fiscal_pending_queue import FiscalPendingQueue
 from finance.fiscal_schema import migrate_fiscal_schema
 
-OWNER = "test-owner"
-os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = OWNER
+os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "test-owner"
+from finance.fiscal_identity import configured_fiscal_owner_id
+OWNER = configured_fiscal_owner_id()
 
 def make_queue(path):
     queue = FiscalPendingQueue(str(path))
