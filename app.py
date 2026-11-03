@@ -144,22 +144,22 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     remote_access_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
     identity_header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
     client = str(environ.get("REMOTE_ADDR") or "").strip()
-
-    if not remote_access_required and client in {"127.0.0.1", "::1"}:
-        return True, "local"
-
-    local_mutations_allowed = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
-    local_hosts = {
-        item.strip().lower()
-        for item in os.environ.get(
-            "CONTROLADOR_LOCAL_MUTATION_HOSTS",
-            "localhost,127.0.0.1,[::1]",
-        ).split(",")
-        if item.strip()
-    }
-    host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
     is_loopback = client in {"127.0.0.1", "::1"}
-    if local_mutations_allowed and not remote_access_required and is_loopback and (not host or host in local_hosts):
+
+    if not remote_access_required and is_loopback:
+        local_mutations_allowed = os.environ.get("CONTROLADOR_LOCAL_MUTATIONS_ALLOWED", "").strip().lower() in {"1", "true", "yes"}
+        if local_mutations_allowed:
+            local_hosts = {
+                item.strip().lower()
+                for item in os.environ.get(
+                    "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+                    "localhost,127.0.0.1,[::1]",
+                ).split(",")
+                if item.strip()
+            }
+            host = str(environ.get("HTTP_HOST") or "").split(":", 1)[0].strip().lower()
+            if host and host not in local_hosts:
+                return False, "local host is not allowed"
         return True, "local"
 
     if not remote_access_required:
