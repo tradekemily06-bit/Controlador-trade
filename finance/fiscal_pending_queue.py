@@ -209,8 +209,8 @@ class FiscalPendingQueue:
         pending_id = str(pending_id or "").strip()
         with self._connect() as db:
             if not db.execute(
-                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE pending_id = ?",
-                (pending_id,),
+                "SELECT 1 FROM fiscal_reserve_pending_foreign WHERE owner_id = ? AND pending_id = ?",
+                (owner_id, pending_id),
             ).fetchone():
                 raise ValueError("pendência não encontrada")
             rows = db.execute(
