@@ -214,6 +214,20 @@ def show_fiscal() -> None:
         except Exception as exc:
             st.error(str(exc))
 
+    with st.expander("Prévia de negócios encerrados · MT5 DEMO"):
+        lookback = st.number_input("Período de consulta (dias)", min_value=1, max_value=365, value=30, step=1)
+        if st.button("Consultar MT5 DEMO", key="mt5_fiscal_preview"):
+            try:
+                preview = api("/api/fiscal-reserve/mt5-preview?lookback_days=" + str(int(lookback)))
+                st.info(f"{preview.get('count', 0)} negócio(s) candidato(s) · moeda da conta: {preview.get('account_currency', '—')} · nenhum lançamento foi criado.")
+                candidates = preview.get("candidates", [])
+                if candidates:
+                    st.dataframe([{"Data UTC": item.get("occurred_at_utc"), "Ativo": item.get("symbol"), "Ticket": item.get("ticket"), "Resultado": item.get("net_result_account_currency"), "Moeda": item.get("account_currency")} for item in candidates], use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Nenhum negócio encerrado encontrado no período.")
+            except Exception as exc:
+                st.error(str(exc))
+
     try:
         pending_data = api("/api/fiscal-reserve/pending?limit=50&offset=0")
         items = pending_data.get("items", [])
