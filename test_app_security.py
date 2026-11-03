@@ -219,12 +219,14 @@ class AppSecurityTests(unittest.TestCase):
             "CONTROLADOR_TRUSTED_IDENTITY_HEADER",
             "CONTROLADOR_LOCAL_MUTATIONS_ALLOWED",
             "CONTROLADOR_LOCAL_MUTATION_HOSTS",
+            "CONTROLADOR_SINGLE_USER_IDENTITY",
         }
         old = {name: os.environ.get(name) for name in names}
         try:
             os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "true"
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
             os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
+            os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "audit-user@example.com"
             routes = [
                 ("/api/fiscal-reserve", "GET", None),
                 ("/api/fiscal-reserve/mt5-preview", "GET", None),
