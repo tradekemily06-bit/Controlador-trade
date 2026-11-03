@@ -157,6 +157,21 @@ def show_fiscal() -> None:
         c.metric("Total atualmente calculado", money(summary.get("total_reserved_brl")))
         st.caption(f"Referência: {summary.get('as_of', '—')} · Brasil day trade · percentual aplicado: {br.get('rate', '—')}%")
         st.info(f"Exterior: {foreign.get('entries', 0)} registro(s) legado(s) · classificação pendente · fora dos totais.")
+        fiscal_history = summary.get("history", [])
+        st.markdown("#### Histórico da Reserva Fiscal")
+        if fiscal_history:
+            st.dataframe([{
+                "Data": item.get("occurred_on"),
+                "Categoria": item.get("category"),
+                "Resultado (R$)": item.get("realized_result_brl"),
+                "Percentual de planejamento (%)": item.get("reserve_rate"),
+                "Reserva estimada (R$)": item.get("reserve_amount_brl"),
+                "Referência": item.get("reference"),
+            } for item in fiscal_history], use_container_width=True, hide_index=True)
+            page = summary.get("history_page", {})
+            st.caption(f"Exibindo {page.get('returned', len(fiscal_history))} de {page.get('total', len(fiscal_history))} registros. A API permite paginação; a navegação de páginas ainda será adicionada.")
+        else:
+            st.caption("Nenhum resultado registrado no livro fiscal.")
         periods = summary.get("periods", {})
         cols = st.columns(4)
         for col, period, label in zip(cols, ("day", "week", "month", "year"), ("Dia", "Semana", "Mês", "Ano")):
@@ -183,7 +198,7 @@ def show_fiscal() -> None:
     with st.expander("Registrar resultado realizado · Brasil day trade"):
         with st.form("fiscal_result_form"):
             occurred_on = st.date_input("Data da realização")
-            result = st.number_input("Resultado realizado (R$)", min_value=0.0, step=10.0, format="%.2f")
+            result = st.number_input("Resultado realizado (R$)", min_value=-1000000000000.0, max_value=1000000000000.0, step=10.0, format="%.2f", help="Permite registrar lucro ou prejuízo. Prejuízos são registrados, mas compensação ou transporte de perdas não é calculado automaticamente.")
             reference = st.text_input("Referência / comprovante", max_chars=160)
             notes = st.text_area("Observações", max_chars=1000)
             submitted = st.form_submit_button("Registrar resultado")
