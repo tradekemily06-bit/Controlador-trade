@@ -199,11 +199,19 @@ class AppSecurityTests(unittest.TestCase):
             os.environ["CONTROLADOR_TRUSTED_IDENTITY_HEADER"] = "X-Authenticated-User"
             os.environ["CONTROLADOR_LOCAL_MUTATIONS_ALLOWED"] = "false"
             routes = [
+                ("/api/fiscal-reserve", "GET", None),
+                ("/api/fiscal-reserve/mt5-preview", "GET", None),
                 ("/api/fiscal-reserve/pending", "GET", None),
                 ("/api/fiscal-reserve/pending", "POST", {"reference": "REMOTE-UNAUTH", "original_amount": 1, "original_currency": "USD", "instrument": "ETF", "jurisdiction": "US", "occurred_on": "2026-11-02"}),
+                ("/api/fiscal-reserve/rates", "POST", {"category": "BR_DAY_TRADE", "rate": 20}),
+                ("/api/fiscal-reserve/results", "POST", {"category": "BR_DAY_TRADE", "realized_result_brl": 10, "reference": "REMOTE-UNAUTH"}),
                 ("/api/assistant/conversations", "DELETE", None),
             ]
-            expected = ["403 Forbidden", "401 Unauthorized", "401 Unauthorized"]
+            expected = [
+                "403 Forbidden", "403 Forbidden", "403 Forbidden",
+                "401 Unauthorized", "401 Unauthorized", "401 Unauthorized",
+                "401 Unauthorized",
+            ]
             for (path, method, payload), expected_status in zip(routes, expected):
                 status, _, _ = self.request(
                     path, method=method, payload=payload, remote="203.0.113.77"
