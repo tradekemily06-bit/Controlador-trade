@@ -276,11 +276,10 @@ AREAS = CONFIG["open_state"]["tabs"]
 if "panel_open" not in st.session_state:
     st.session_state.panel_open = True
 if not st.session_state.panel_open:
-    st.button("C", key="open_control_hub")
-    st.caption("INDISPONÍVEL")
-    if st.session_state.get("open_control_hub"):
+    if st.button("C", key="open_control_hub"):
         st.session_state.panel_open = True
         st.rerun()
+    st.caption("INDISPONÍVEL")
     st.stop()
 
 st.markdown('<div class="status-card"><span style="font-size:1.35rem;font-weight:800">Controlador-Trader</span> <span class="demo-pill" style="float:right">DEMO</span><div class="muted">Prévia Streamlit independente · Figma original preservado</div></div>', unsafe_allow_html=True)
