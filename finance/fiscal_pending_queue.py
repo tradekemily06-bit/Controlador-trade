@@ -88,6 +88,8 @@ class FiscalPendingQueue:
 
     @staticmethod
     def _positive(value: Any, field: str) -> float:
+        if isinstance(value, bool):
+            raise ValueError(f"{field} deve ser numérico")
         try:
             number = float(value)
         except (TypeError, ValueError) as exc:
