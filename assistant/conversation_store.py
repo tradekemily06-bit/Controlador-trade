@@ -48,3 +48,16 @@ class AssistantConversationStore:
             db.execute("INSERT INTO messages(conversation_id,role,content) VALUES(?,?,?)",(cid,role,content.strip()))
             db.execute("UPDATE conversations SET updated_at=CURRENT_TIMESTAMP WHERE id=?",(cid,))
         return cid
+
+    def delete(self, identity, cid):
+        owner = self._owner(identity)
+        with self._db() as db:
+            exists = db.execute(
+                "SELECT 1 FROM conversations WHERE id=? AND owner=?",
+                (cid, owner),
+            ).fetchone()
+            if not exists:
+                raise PermissionError("conversa não encontrada")
+            db.execute("DELETE FROM messages WHERE conversation_id=?", (cid,))
+            db.execute("DELETE FROM conversations WHERE id=? AND owner=?", (cid, owner))
+        return True
