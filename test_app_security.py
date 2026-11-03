@@ -186,6 +186,28 @@ class AppSecurityTests(unittest.TestCase):
                 else:
                     os.environ[name] = value
 
+
+    def test_fiscal_rate_api_never_exposes_legacy_foreign_percentage(self):
+        old_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED")
+        try:
+            os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = "false"
+            status, _, body = self.request(
+                "/api/fiscal-reserve/rates",
+                method="POST",
+                payload={"rates": {"BR_DAY_TRADE": 20}},
+                remote="127.0.0.1",
+            )
+            self.assertEqual(status, "200 OK")
+            response = json.loads(body)
+            self.assertEqual(response["settings"], {"BR_DAY_TRADE": 20.0})
+            self.assertNotIn("FOREIGN_FINANCIAL_ASSET", response["settings"])
+            self.assertNotIn("15.0", body.decode("utf-8"))
+        finally:
+            if old_required is None:
+                os.environ.pop("CONTROLADOR_REMOTE_ACCESS_REQUIRED", None)
+            else:
+                os.environ["CONTROLADOR_REMOTE_ACCESS_REQUIRED"] = old_required
+
     def test_remote_fiscal_and_assistant_delete_routes_require_identity(self):
         names = {
             "CONTROLADOR_REMOTE_ACCESS_REQUIRED",
