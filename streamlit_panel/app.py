@@ -145,10 +145,12 @@ def show_assistant() -> None:
 
 
 def show_fiscal() -> None:
+    if "fiscal_history_offset" not in st.session_state:
+        st.session_state.fiscal_history_offset = 0
     st.subheader("Reserva Fiscal")
     st.caption("Planejamento e separação estimada. Registros estrangeiros não classificados ficam fora dos totais; nenhuma alíquota genérica é aplicada.")
     try:
-        summary = api("/api/fiscal-reserve?limit=50&offset=0")
+        summary = api("/api/fiscal-reserve?limit=50&offset=" + str(int(st.session_state.fiscal_history_offset)))
         br = summary.get("categories", {}).get("BR_DAY_TRADE", {})
         foreign = summary.get("categories", {}).get("FOREIGN_FINANCIAL_ASSET", {})
         a, b, c = st.columns(3)
@@ -169,7 +171,16 @@ def show_fiscal() -> None:
                 "Referência": item.get("reference"),
             } for item in fiscal_history], use_container_width=True, hide_index=True)
             page = summary.get("history_page", {})
-            st.caption(f"Exibindo {page.get('returned', len(fiscal_history))} de {page.get('total', len(fiscal_history))} registros. A API permite paginação; a navegação de páginas ainda será adicionada.")
+            st.caption(f"Exibindo {page.get('returned', len(fiscal_history))} de {page.get('total', len(fiscal_history))} registros.")
+            previous_col, next_col = st.columns(2)
+            with previous_col:
+                if st.button("← Histórico anterior", disabled=int(page.get("offset", 0)) <= 0, key="fiscal_history_previous"):
+                    st.session_state.fiscal_history_offset = max(0, int(page.get("offset", 0)) - int(page.get("limit", 50)))
+                    st.rerun()
+            with next_col:
+                if st.button("Próximos registros →", disabled=not page.get("has_more", False), key="fiscal_history_next"):
+                    st.session_state.fiscal_history_offset = int(page.get("offset", 0)) + int(page.get("limit", 50))
+                    st.rerun()
         else:
             st.caption("Nenhum resultado registrado no livro fiscal.")
         periods = summary.get("periods", {})
