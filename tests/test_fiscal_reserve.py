@@ -3,6 +3,7 @@ from finance.fiscal_reserve import FiscalReserve
 from finance.fiscal_schema import migrate_fiscal_schema
 
 OWNER = "test-owner"
+os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = OWNER
 
 def make_reserve(path):
     os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = OWNER
@@ -98,9 +99,9 @@ def test_duplicate_reference_is_rejected_without_double_reserving(tmp_path):
         "realized_result_brl": 1000,
         "reference": "CYCLE-UNIQUE-001",
     }
-    reserve.record_realized_result(payload)
+    reserve.record_realized_result(OWNER, payload)
     try:
-        reserve.record_realized_result(payload)
+        reserve.record_realized_result(OWNER, payload)
     except ValueError as exc:
         assert "já foi registrada" in str(exc)
     else:
@@ -175,8 +176,8 @@ def test_date_must_be_exact_iso_calendar_date(tmp_path):
             raise AssertionError("non-ISO or invalid calendar date must be rejected")
 
 
-def test_default_in_memory_database_persists_between_operations():
-    reserve = make_reserve("memory-test.sqlite3")
+def test_default_database_persists_between_operations(tmp_path):
+    reserve = make_reserve(tmp_path / "memory-test.sqlite3")
     assert reserve.settings(OWNER)["BR_DAY_TRADE"] == 20.0
     entry = reserve.record_realized_result(OWNER, {
         "category": "BR_DAY_TRADE",
@@ -218,7 +219,7 @@ def test_concurrent_duplicate_reference_is_never_double_recorded(tmp_path):
 
     def attempt():
         try:
-            reserve.record_realized_result(payload)
+            reserve.record_realized_result(OWNER, payload)
             return "created"
         except ValueError:
             return "duplicate"
@@ -287,8 +288,8 @@ def test_obsolete_foreign_rate_is_removed_without_deleting_legacy_history(tmp_pa
     assert remaining == [("BR_DAY_TRADE",)]
 
 
-def test_money_rejects_boolean_values():
-    reserve = make_reserve("boolean-test.sqlite3")
+def test_money_rejects_boolean_values(tmp_path):
+    reserve = make_reserve(tmp_path / "boolean-test.sqlite3")
     for value in (True, False):
         try:
             reserve.record_realized_result(OWNER, {"category": "BR_DAY_TRADE", "realized_result_brl": value, "reference": f"BOOL-{value}"})
