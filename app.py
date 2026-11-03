@@ -172,6 +172,12 @@ def _authorize_remote_mutation(environ) -> tuple[bool, str]:
     if not identity:
         return False, "trusted identity is required"
 
+    # Optional single-user pin: when configured, every remote fiscal/assistant
+    # request must resolve to this exact normalized Access identity.
+    expected_identity = os.environ.get("CONTROLADOR_SINGLE_USER_IDENTITY", "").strip()
+    if expected_identity and identity.casefold() != expected_identity.casefold():
+        return False, "authenticated identity is not authorized for this single-user runtime"
+
     return True, "trusted"
 
 
@@ -266,12 +272,13 @@ def application(environ, start_response):
             status["real_runtime"] = REAL_RUNTIME.status()
             return _json_response(start_response, HTTPStatus.OK, status, request_id, environ)
         if path.startswith("/api/assistant/"):
+            authorized, auth_reason = _authorize_remote_mutation(environ)
+            if not authorized:
+                auth_status = HTTPStatus.UNAUTHORIZED if auth_reason == "trusted identity is required" else HTTPStatus.FORBIDDEN
+                return _json_response(start_response, auth_status, {"error": auth_reason}, request_id, environ)
             header = os.environ.get("CONTROLADOR_TRUSTED_IDENTITY_HEADER", "").strip()
             identity = str(environ.get("HTTP_" + header.upper().replace("-", "_")) or "").strip() if header else ""
-            remote_required = os.environ.get("CONTROLADOR_REMOTE_ACCESS_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
             if not identity:
-                if remote_required or str(environ.get("REMOTE_ADDR") or "") not in {"127.0.0.1", "::1"}:
-                    return _json_response(start_response, HTTPStatus.UNAUTHORIZED, {"error": "Identidade autenticada necessária."}, request_id, environ)
                 identity = "local-single-user"
             if path == "/api/assistant/conversations" and method == "GET":
                 return _json_response(start_response, HTTPStatus.OK, {"conversations": ASSISTANT.conversations(identity)}, request_id, environ)
