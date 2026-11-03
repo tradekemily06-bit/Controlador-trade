@@ -76,7 +76,7 @@ def test_invalid_amount_currency_and_date_are_rejected(tmp_path):
 def test_queue_is_separate_from_reserve_ledger(tmp_path):
     from finance.fiscal_reserve import FiscalReserve
     path = str(tmp_path / "fiscal.sqlite3")
-    queue = FiscalPendingQueue(path)
+    queue = make_queue(path)
     reserve = FiscalReserve(path)
     queue.add(OWNER, sample())
     assert reserve.summary(OWNER)["total_reserved_brl"] == 0
