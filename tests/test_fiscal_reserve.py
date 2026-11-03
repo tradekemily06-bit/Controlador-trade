@@ -7,7 +7,7 @@ from finance.fiscal_identity import configured_fiscal_owner_id
 OWNER = configured_fiscal_owner_id()
 
 def make_reserve(path):
-    os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = OWNER
+    os.environ["CONTROLADOR_SINGLE_USER_IDENTITY"] = "test-owner"
     reserve = FiscalReserve(str(path))
     migrate_fiscal_schema(str(path))
     return reserve
