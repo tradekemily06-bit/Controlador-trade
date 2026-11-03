@@ -114,7 +114,7 @@ def _statistics_summary(value: Any) -> dict[str, Any]:
     return safe
 
 
-def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, Any]:
+def collect_read_only_context(service: Any, fiscal_reserve: Any, fiscal_owner_id: str) -> dict[str, Any]:
     """Build a compact, privacy-filtered snapshot for an assistant response."""
     if service is None or fiscal_reserve is None:
         raise ValueError("serviço do ecossistema e Reserva Fiscal são obrigatórios")
@@ -123,7 +123,7 @@ def collect_read_only_context(service: Any, fiscal_reserve: Any) -> dict[str, An
     risk = service.risk_status()
     observability = service.operational_observability()
     statistics = service.statistics()
-    fiscal = fiscal_reserve.summary()
+    fiscal = fiscal_reserve.summary(fiscal_owner_id)
     fiscal_context = {
         key: fiscal[key]
         for key in ("name", "currency", "as_of", "categories", "total_reserved_brl", "periods", "limitations")
