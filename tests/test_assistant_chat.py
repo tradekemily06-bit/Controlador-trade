@@ -207,3 +207,37 @@ def test_conversation_list_and_append_are_owner_scoped_and_identity_normalized(t
   assert False
  assert [row["content"] for row in store.history("Owner@Example.com",own_id)]==["conversa do titular"]
  assert [row["conversation_id"] for row in store.list("other@example.com")]==[other_id]
+
+
+def test_assistant_receives_live_fiscal_reserve_period_totals_without_history(tmp_path):
+ import json
+ from datetime import date
+ from finance.fiscal_reserve import FiscalReserve
+
+ fiscal = FiscalReserve(str(tmp_path / "fiscal.sqlite3"))
+ today = date.today().isoformat()
+ fiscal.record_realized_result({
+  "category": "BR_DAY_TRADE",
+  "realized_result_brl": 1000,
+  "reference": "INTEGRATION-TEST-001",
+  "occurred_on": today,
+ })
+ store = AssistantConversationStore(tmp_path / "assistant-integration.sqlite")
+ client = C()
+ assistant = EcosystemAssistant(store, S(), fiscal, client_factory=lambda: client)
+
+ assistant.ask("owner@example.com", "Resuma minha Reserva Fiscal")
+ prompt = client.calls[-1]["messages"][0]["content"]
+ context = json.loads(prompt.split("CONTEXTO JSON:\\n", 1)[1])
+
+ reserve = context["fiscal_reserve"]
+ assert reserve["total_reserved_brl"] == 200
+ assert reserve["categories"]["BR_DAY_TRADE"]["realized_result_brl"] == 1000
+ assert reserve["categories"]["BR_DAY_TRADE"]["reserve_amount_brl"] == 200
+ for period in ("day", "week", "month", "year"):
+  assert reserve["periods"][period]["realized_result_brl"] == 1000
+  assert reserve["periods"][period]["reserve_amount_brl"] == 200
+ assert "history" not in reserve
+ assert "INTEGRATION-TEST-001" not in prompt
+ assert context["assistant_safety"]["may_execute_orders"] is False
+ assert context["assistant_safety"]["may_enable_real"] is False
