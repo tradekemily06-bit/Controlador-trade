@@ -63,6 +63,36 @@ class EcosystemAssistant:
         try: from openai import OpenAI
         except ImportError as exc: raise AssistantUnavailableError("Biblioteca OpenAI não instalada.") from exc
         return OpenAI(api_key=key, timeout=30.0)
+    def readiness(self):
+        try:
+            self._client()
+        except AssistantUnavailableError as exc:
+            return {
+                "available": False,
+                "message": str(exc),
+                "read_only": True,
+                "may_execute_orders": False,
+                "may_enable_real": False,
+                "may_move_money": False,
+            }
+        except Exception:
+            return {
+                "available": False,
+                "message": "Provedor do Assistente indisponível.",
+                "read_only": True,
+                "may_execute_orders": False,
+                "may_enable_real": False,
+                "may_move_money": False,
+            }
+        return {
+            "available": True,
+            "provider": "OpenAI API",
+            "model": self.model,
+            "read_only": True,
+            "may_execute_orders": False,
+            "may_enable_real": False,
+            "may_move_money": False,
+        }
     def conversations(self,identity): return self.store.list(identity)
     def history(self,identity,cid): return self.store.history(identity,cid)
     def delete_conversation(self,identity,cid): return self.store.delete(identity,cid)
