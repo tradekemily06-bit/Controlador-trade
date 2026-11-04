@@ -60,7 +60,8 @@ def _configure(tmp_path, monkeypatch):
             "occurred_on": f"2026-11-{number + 1:02d}",
         })
 
-    # Another owner's rows must not affect the authenticated owner's page or total.
+    # Exercise API owner filters independently from the startup migration guard.
+    # The migration guard intentionally rejects mixed-owner fiscal databases.
     foreign.add("another-owner", {
         "reference": "FOREIGN-OTHER-OWNER",
         "original_amount": 999,
@@ -74,6 +75,7 @@ def _configure(tmp_path, monkeypatch):
         "instrument": "ETF",
         "occurred_on": "2026-11-30",
     })
+    monkeypatch.setattr(app_module, "migrate_fiscal_schema", lambda _path: owner_id)
     return owner_id
 
 
