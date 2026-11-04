@@ -88,6 +88,7 @@ class EcosystemAssistant:
             "available": True,
             "provider": "OpenAI API",
             "model": self.model,
+            "connection_tested": False,
             "read_only": True,
             "may_execute_orders": False,
             "may_enable_real": False,
